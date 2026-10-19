@@ -22,17 +22,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
     setSelectedPlan(planId);
   };
 
-  const handleConfirmUpgrade = () => {
+  const handleConfirmUpgrade = async () => {
     setIsUpgrading(true);
-    setTimeout(() => {
-      upgradePlan(selectedPlan);
+    try {
+      await upgradePlan(selectedPlan);
       setIsUpgrading(false);
       setUpgradeSuccess(true);
       setTimeout(() => {
         setUpgradeSuccess(false);
         onClose();
       }, 1500);
-    }, 800);
+    } catch {
+      setIsUpgrading(false);
+    }
   };
 
   return (

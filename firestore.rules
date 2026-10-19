@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['id', 'name', 'email', 'plan']) &&
+             data.id is string && data.id.size() <= 128 && data.id == request.auth.uid &&
+             data.name is string && data.name.size() <= 120 &&
+             data.email is string && data.email.size() <= 180 &&
+             data.plan in ['free', 'pro', 'executive'];
+    }
+
+    function isValidResume(data) {
+      return data.keys().hasAll(['id', 'userId', 'title']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.title is string && data.title.size() <= 150;
+    }
+
+    // Connection testing doc
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // Users collection: Private user profile, plan and credits
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false;
+
+      allow create: if isSignedIn() && 
+                       request.auth.uid == userId && 
+                       isValidUser(incoming());
+
+      allow update: if isSignedIn() && 
+                       request.auth.uid == userId && 
+                       isValidUser(incoming()) && 
+                       incoming().id == existing().id &&
+                       incoming().email == existing().email;
+
+      allow delete: if false;
+
+      // User resumes subcollection
+      match /resumes/{resumeId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(resumeId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() && 
+                         request.auth.uid == userId && 
+                         isValidId(resumeId) && 
+                         isValidResume(incoming()) &&
+                         incoming().userId == request.auth.uid;
+
+        allow update: if isSignedIn() && 
+                         request.auth.uid == userId && 
+                         isValidId(resumeId) && 
+                         isValidResume(incoming()) &&
+                         incoming().userId == existing().userId;
+
+        allow delete: if isSignedIn() && 
+                         request.auth.uid == userId && 
+                         isValidId(resumeId);
+      }
+    }
+  }
+}

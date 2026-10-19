@@ -17,20 +17,26 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   currentCV,
   onLoadResume
 }) => {
-  const { savedResumes, saveCurrentResume, deleteResume } = useAuth();
+  const { savedResumes, saveCurrentResume, deleteResume, firebaseUser } = useAuth();
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
-  const handleSaveCurrent = (e: React.FormEvent) => {
+  const handleSaveCurrent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
-    saveCurrentResume(currentCV, newTitle.trim(), currentCV.personalDetails.title);
-    setNewTitle('');
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2000);
+    setIsSaving(true);
+    try {
+      await saveCurrentResume(currentCV, newTitle.trim(), currentCV.personalDetails.title);
+      setNewTitle('');
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSelectResume = (cv: CVData) => {
@@ -54,9 +60,23 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Os Meus Currículos Salvos</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">Os Meus Currículos Salvos</h2>
+              {firebaseUser ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Firebase Cloud Sincronizado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                  Armazenamento Local
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Alterne entre diferentes versões do seu currículo para diferentes vagas.
+              {firebaseUser
+                ? 'Os seus currículos estão armazenados com segurança no Firestore na nuvem.'
+                : 'Inicie sessão com o Google para guardar e sincronizar os seus currículos no Firebase Cloud.'}
             </p>
           </div>
           <button
@@ -80,11 +100,15 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
             />
             <button
               type="submit"
-              disabled={!newTitle.trim()}
+              disabled={!newTitle.trim() || isSaving}
               className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors whitespace-nowrap shadow-xs flex items-center gap-1.5"
             >
-              {saveSuccess ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Plus className="w-3.5 h-3.5" />}
-              <span>{saveSuccess ? 'Guardado!' : 'Guardar Versão'}</span>
+              {saveSuccess ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+              ) : (
+                <Plus className="w-3.5 h-3.5" />
+              )}
+              <span>{isSaving ? 'A guardar...' : saveSuccess ? 'Guardado na Nuvem!' : 'Guardar Versão'}</span>
             </button>
           </form>
         </div>

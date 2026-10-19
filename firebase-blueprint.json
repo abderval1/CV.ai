@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile, plan subscription status and credits",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the user matching auth UID",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name of the user",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the user",
+          "maxLength": 180
+        },
+        "plan": {
+          "type": "string",
+          "enum": ["free", "pro", "executive"],
+          "description": "Subscription tier of the SaaS user"
+        },
+        "creditsRemaining": {
+          "type": "number",
+          "description": "AI generation credits balance"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp in ISO format",
+          "maxLength": 50
+        },
+        "subscriptionExpiresAt": {
+          "type": "string",
+          "description": "Optional ISO expiry timestamp for active plan",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "name", "email", "plan"]
+    },
+    "Resume": {
+      "title": "Resume",
+      "description": "A saved CV document belonging to the user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the resume",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID of the owner matching auth UID",
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Title or name given to this resume version",
+          "maxLength": 150
+        },
+        "targetJob": {
+          "type": "string",
+          "description": "Target job position or vacancy name",
+          "maxLength": 180
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Formatted timestamp or ISO date of last modification",
+          "maxLength": 50
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "userId", "title"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile and SaaS subscription information"
+    },
+    "/users/{userId}/resumes/{resumeId}": {
+      "schema": "Resume",
+      "description": "Subcollection of saved resumes and tailored versions created by the user"
+    }
+  }
+}
