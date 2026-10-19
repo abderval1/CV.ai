@@ -27,23 +27,23 @@ export default function App() {
   );
 
   const [letterBody, setLetterBody] = useState<string>(
-    `A/C: Comité de Seleção e Recrutamento
-Expertise France / Delegação da União Europeia em Angola
+    `To: The Selection and Recruitment Committee
+Expertise France / European Union Delegation in Angola
 Luanda, Angola
 
-Assunto: Candidatura ao posto de MEAL & Information Systems Coordinator
+Subject: Application for the Position of MEAL & Information Systems Coordinator
 
-Exmos. Senhores Membros do Comité de Seleção,
+Dear Members of the Selection Committee,
 
-É com elevado interesse e sentido de compromisso que apresento a minha candidatura à posição de MEAL & Information Systems Coordinator. Com sólida trajetória no desenho, operacionalização e automação de sistemas digitais de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL), trago a experiência comprovada de atuação direta em programas de grande escala financiados pela União Europeia (como o Programa FRESAN, co-gerido pelo Camões, I.P., FAO e PNUD) e pelo Programa Alimentar Mundial das Nações Unidas (WFP) em Angola.
+It is with great interest and deep professional dedication that I submit my application for the position of Senior MEAL & Information Systems Coordinator. With solid progressive experience in designing, operationalizing, and automating digital Monitoring, Evaluation, Accountability, and Learning (MEAL) systems, I bring a proven track record of direct leadership in large-scale international development programmes funded by the European Union (such as the FRESAN Programme, co-managed by Camões, I.P., FAO, and UNDP) and the United Nations World Food Programme (WFP) in Angola.
 
-No âmbito da assistência técnica ao Camões, I.P., fui o responsável direto pela concepção, programação e entrada em produção da Plataforma Digital Colaborativa do Sistema de Gestão de Informação MEAL (disponível em https://sgi-fresancamoes.com/). Liderando a entrega de todos os produtos do Termo de Referência (TdR), estruturei as interfaces pública e privada, automatizei os fluxos de dados de campo das províncias da Huíla, Namibe e Cunene com regras de alerta pré-análise para a equipa M&A da UIC, e garanti a integração de indicadores orientados a resultados segundo os referenciais da OCDE/CAD e as Políticas de Segurança da Informação do Camões, I.P.
+Under technical assistance with Camões, I.P., I was directly responsible for architecting, programming, and deploying the collaborative digital platform for the project's Results-Oriented MEAL Information System (accessible in production at https://sgi-fresancamoes.com/). Leading the full delivery of contractual Terms of Reference (ToR) products, I structured multi-tier public and private interfaces, automated provincial data flows across Huíla, Namibe, and Cunene with real-time pre-analysis verification thresholds, and ensured strict OECD/DAC (2019) alignment and compliance with Camões, I.P. Information Security Policies.
 
-Destaco igualmente a minha experiência na estruturação de fluxos de recolha móvel (KoboToolbox, ODK, Survey Solutions e WFP MoDA), auditorias de qualidade de dados (DQA), e concepção de painéis analíticos interativos em Power BI para suporte a decisões estratégicas e reporte a doadores internacionais. Adicionalmente, a minha intervenção em consórcios multiatores consolidou a minha capacidade de diálogo e harmonização metodológica com ministérios setoriais (INE, MINAGRIF) e parceiros de implementação no terreno.
+Furthermore, my operational expertise in electronic mobile data collection (KoBoToolbox, ODK, Survey Solutions, and WFP MoDA), data quality assurance (DQA) field audits, and executive dashboard modeling in Power BI enables leadership teams and international donors to make agile, evidence-based strategic decisions. In multi-agency consortia, I have consistently harmonized methodologies and indicators between national ministries (INE, MINAGRIF) and field implementing partners.
 
-Motivado pela relevância dos vossos objetivos e com plena capacidade de entrega imediata, coloco-me à disposição para aprofundar a demonstração das minhas competências numa entrevista técnica.
+Driven by the strategic vision and humanitarian impact of your initiative, and prepared for immediate deployment, I welcome the opportunity to discuss my qualifications in greater detail during a technical interview.
 
-Com os meus melhores cumprimentos,
+Sincerely,
 
 ${AGOSTINHO_CV.personalDetails.name}
 ${AGOSTINHO_CV.personalDetails.title}
@@ -57,8 +57,8 @@ ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
 
       if (activeTab === 'cover') {
         const blob = await generateCoverLetterDocx(cv, letterBody);
-        triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
-        setWordNotificationMessage('Carta de Apresentação em Word (.docx) Descarregada!');
+        triggerDownload(blob, `Cover_Letter_${sanitizedName}.docx`);
+        setWordNotificationMessage('Cover Letter in Word (.docx) Downloaded!');
       } else {
         const blob = await generateWordDocument(cv);
         triggerDownload(blob, `CV_${sanitizedName}_MEAL.docx`);

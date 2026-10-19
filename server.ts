@@ -115,10 +115,10 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
     }
   });
 
-  // AI Cover Letter endpoint
+  // AI Cover Letter endpoint with language support
   app.post('/api/cover-letter', async (req, res) => {
     try {
-      const { cvData, jobDescription, recipientName, organizationName } = req.body;
+      const { cvData, jobDescription, recipientName, organizationName, language } = req.body;
 
       if (!ai) {
         return res.status(503).json({
@@ -128,34 +128,38 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
       }
 
       const prompt = `
-Você é um especialista em cartas de motivação e candidaturas para Organizações Internacionais (ONU, União Europeia, ONGs Internacionais).
-Escreva uma Carta de Apresentação / Motivação de alto nível (em Português ou no idioma solicitado) para:
-Candidato: ${cvData?.name || 'Agostinho do Rosário'}
-Título: ${cvData?.title || 'Especialista em MEAL e Sistemas de Informação'}
-Contacto: ${cvData?.email || ''} | ${cvData?.phone || ''} | ${cvData?.location || ''}
-Organização Alvo: ${organizationName || 'Painel de Seleção / Direção de Recursos Humanos'}
-Destinatário: ${recipientName || 'Estimados Membros do Comité de Seleção'}
+Você é um consultor executivo sênior de Recursos Humanos especializado em candidaturas diplomáticas e de alto nível para Organizações Internacionais (ONU, União Europeia, Expertise France, Camões I.P., ONGs Globais).
+Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
 
-Vaga / Termos de Referência:
-${jobDescription || 'Especialista Sênior em MEAL e Sistemas de Dados'}
+DADOS DO CANDIDATO:
+Nome: ${cvData?.name || 'Agostinho do Rosário'}
+Título: ${cvData?.title || 'Senior MEAL & Information Systems Specialist'}
+Contactos: ${cvData?.email || ''} | ${cvData?.phone || ''} | ${cvData?.location || ''} | ${cvData?.linkedin || ''}
+Organização Alvo: ${organizationName || 'Selection Committee / Human Resources Directorate'}
+Destinatário: ${recipientName || 'Dear Members of the Selection Committee'}
+Portal em Produção Relevante: https://sgi-fresancamoes.com/ (Plataforma MEAL desenvolvida para Camões, I.P. / União Europeia)
 
-Resumo de Qualificações do Candidato:
+TERMOS DE REFERÊNCIA / DESCRIÇÃO DA VAGA:
+${jobDescription || 'Senior MEAL & Information Systems Coordinator'}
+
+Resumo Profissional:
 ${cvData?.summary || ''}
-Experiências Principais:
+
+Experiências Principais (WFP Angola, Camões I.P. / FRESAN, INE Angola):
 ${JSON.stringify(cvData?.experiences || [], null, 2)}
 
-A carta deve ter:
-1. Cabeçalho formal clássico.
-2. Parágrafo 1: Abertura firme declarando a candidatura e motivação pelo impacto do projeto.
-3. Parágrafo 2: Demonstração de competência técnica direta (sistemas MEAL, Kobo, Power BI, DQA, Logframes).
-4. Parágrafo 3: Prova de coordenação e liderança de dados em consórcios internacionais (WFP, UE, Camões, INE).
-5. Parágrafo 4: Encerramento cortês e disponibilidade para entrevista técnica.
+DIRETRIZES DA CARTA:
+1. Cabeçalho formal clássico internacional com data e endereço.
+2. Abertura afirmativa declarando a candidatura à posição e motivação estratégica pelo impacto.
+3. Demonstração de autoridade técnica direta: arquitetura de sistemas MEAL, recolha móvel (Kobo, ODK, Survey Solutions, MoDA), automação de validações e regras de alerta pré-análise, auditorias de qualidade de dados (DQA), e dashboards executivos em Power BI.
+4. Citação do sucesso comprovado da entrega da plataforma colaborativa do FRESAN / Camões, I.P. (https://sgi-fresancamoes.com/) financiada pela União Europeia e intervenção em consórcios com agências da ONU (WFP, FAO, PNUD).
+5. Conclusão cortês com prontidão para entrevista técnica.
 
-Responda em JSON:
+Responda ESTRITAMENTE em JSON:
 {
-  "subject": "Candidatura ao posto de...",
-  "letterBody": "Texto completo formatado em parágrafos limpos",
-  "keySellingPoints": ["ponto 1", "ponto 2", "ponto 3"]
+  "subject": "Application for the position of...",
+  "letterBody": "Full letter text formatted in clear paragraphs",
+  "keySellingPoints": ["point 1", "point 2", "point 3"]
 }
       `.trim();
 
@@ -164,7 +168,7 @@ Responda em JSON:
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
-          temperature: 0.3
+          temperature: 0.25
         }
       });
 
@@ -172,6 +176,57 @@ Responda em JSON:
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/cover-letter:', err);
+      return res.status(500).json({ error: err.message, fallback: true });
+    }
+  });
+
+  // Dedicated AI Translation endpoint for Cover Letters & CV text
+  app.post('/api/translate-letter', async (req, res) => {
+    try {
+      const { text, targetLanguage } = req.body;
+
+      if (!text) {
+        return res.status(400).json({ error: 'Texto não fornecido.' });
+      }
+
+      if (!ai) {
+        return res.status(503).json({
+          error: 'Chave GEMINI_API_KEY não configurada no servidor.',
+          fallback: true
+        });
+      }
+
+      const prompt = `
+You are a senior diplomatic translator specialized in international civil service correspondence (United Nations, European Union, Diplomatic Missions).
+Translate the following formal Cover Letter / Statement of Interest into: ${targetLanguage || 'English'}.
+
+CRITICAL GUIDELINES:
+- Preserve official institutional nomenclature, acronyms, and standards (MEAL, SGI, WFP, FAO, UNDP, EU, OECD/DAC, Logframe, PIRS, DQA, https://sgi-fresancamoes.com/).
+- Adapt formal salutations and closings to the executive conventions of the target language (e.g., in English: "Dear Members of the Selection Committee," ... "Sincerely,"; in French: "Madame, Monsieur les Membres du Comité de Sélection," ... "Veuillez agréer, Madame, Monsieur..."; in Spanish: "Estimados Miembros del Comité de Selección," ... "Atentamente,").
+- Keep exact paragraph spacing and line breaks.
+
+Text to translate:
+${text}
+
+Respond STRICTLY in JSON:
+{
+  "translatedText": "Translated letter text with clean line breaks"
+}
+      `.trim();
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.2
+        }
+      });
+
+      const parsed = JSON.parse(response.text?.trim() || '{}');
+      return res.json(parsed);
+    } catch (err: any) {
+      console.error('Erro na rota /api/translate-letter:', err);
       return res.status(500).json({ error: err.message, fallback: true });
     }
   });
