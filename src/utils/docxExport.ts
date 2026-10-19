@@ -456,6 +456,189 @@ export async function generateWordDocument(cv: CVData): Promise<Blob> {
   return await Packer.toBlob(doc);
 }
 
+export async function generateCoverLetterDocx(
+  cv: CVData,
+  letterBody: string
+): Promise<Blob> {
+  const COLOR_PRIMARY = '111827';
+  const COLOR_MUTED = '4B5563';
+  const FONT_FAMILY = 'Times New Roman';
+
+  const docChildren: Paragraph[] = [];
+
+  // Elegant Executive Header matching the UN / European standard
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 30 },
+      children: [
+        new TextRun({
+          text: (cv.personalDetails.name || 'AGOSTINHO DO ROSÁRIO').toUpperCase(),
+          bold: true,
+          size: 32, // 16pt
+          font: FONT_FAMILY,
+          color: COLOR_PRIMARY
+        })
+      ]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 40 },
+      children: [
+        new TextRun({
+          text: cv.personalDetails.title || '',
+          bold: true,
+          size: 21, // 10.5pt
+          font: FONT_FAMILY,
+          color: COLOR_MUTED
+        })
+      ]
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+      border: {
+        bottom: {
+          style: BorderStyle.SINGLE,
+          size: 6,
+          color: 'CCCCCC',
+          space: 4
+        }
+      },
+      children: [
+        new TextRun({
+          text: [
+            cv.personalDetails.location,
+            cv.personalDetails.phone,
+            cv.personalDetails.email,
+            cv.personalDetails.linkedin
+          ]
+            .filter(Boolean)
+            .join('  |  '),
+          size: 19, // 9.5pt
+          font: FONT_FAMILY,
+          color: COLOR_MUTED
+        })
+      ]
+    })
+  );
+
+  // Split letterBody into clean paragraphs
+  const paragraphs = letterBody.split('\n');
+
+  let currentBlock: string[] = [];
+
+  for (const line of paragraphs) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (currentBlock.length > 0) {
+        const textBlock = currentBlock.join(' ');
+        const isSubject = textBlock.toLowerCase().startsWith('assunto:');
+        const isAc = textBlock.toLowerCase().startsWith('a/c:');
+        const isDateOrHeader = textBlock.includes('Luanda') || textBlock.includes('Angola');
+
+        docChildren.push(
+          new Paragraph({
+            spacing: {
+              before: isSubject ? 120 : 60,
+              after: isSubject ? 120 : 100,
+              line: 276 // 1.15 line spacing
+            },
+            children: [
+              new TextRun({
+                text: textBlock,
+                bold: isSubject || isAc,
+                size: 22, // 11pt
+                font: FONT_FAMILY,
+                color: COLOR_PRIMARY
+              })
+            ]
+          })
+        );
+        currentBlock = [];
+      }
+    } else {
+      // If line is header address lines (short lines before main text)
+      if (
+        trimmed.startsWith('A/C:') ||
+        trimmed.startsWith('Assunto:') ||
+        trimmed.includes('@') ||
+        trimmed.length < 50
+      ) {
+        if (currentBlock.length > 0) {
+          docChildren.push(
+            new Paragraph({
+              spacing: { after: 80, line: 276 },
+              children: [
+                new TextRun({
+                  text: currentBlock.join(' '),
+                  size: 22,
+                  font: FONT_FAMILY,
+                  color: COLOR_PRIMARY
+                })
+              ]
+            })
+          );
+          currentBlock = [];
+        }
+        const isBold = trimmed.startsWith('A/C:') || trimmed.startsWith('Assunto:');
+        docChildren.push(
+          new Paragraph({
+            spacing: { after: trimmed.startsWith('Assunto:') ? 140 : 40, line: 260 },
+            children: [
+              new TextRun({
+                text: trimmed,
+                bold: isBold,
+                size: 22,
+                font: FONT_FAMILY,
+                color: COLOR_PRIMARY
+              })
+            ]
+          })
+        );
+      } else {
+        currentBlock.push(trimmed);
+      }
+    }
+  }
+
+  if (currentBlock.length > 0) {
+    docChildren.push(
+      new Paragraph({
+        spacing: { after: 100, line: 276 },
+        children: [
+          new TextRun({
+            text: currentBlock.join(' '),
+            size: 22,
+            font: FONT_FAMILY,
+            color: COLOR_PRIMARY
+          })
+        ]
+      })
+    );
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: convertInchesToTwip(0.8),
+              bottom: convertInchesToTwip(0.8),
+              left: convertInchesToTwip(0.85),
+              right: convertInchesToTwip(0.85)
+            }
+          }
+        },
+        children: docChildren
+      }
+    ]
+  });
+
+  return await Packer.toBlob(doc);
+}
+
 export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

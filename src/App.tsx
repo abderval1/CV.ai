@@ -8,7 +8,7 @@ import { AtsRadarPanel } from './components/AtsRadarPanel';
 import { AiTailorPanel } from './components/AiTailorPanel';
 import { CoverLetterPanel } from './components/CoverLetterPanel';
 import { PythonScriptPanel } from './components/PythonScriptPanel';
-import { generateWordDocument, triggerDownload } from './utils/docxExport';
+import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { FileText, SlidersHorizontal, Check } from 'lucide-react';
 
 export default function App() {
@@ -22,13 +22,49 @@ export default function App() {
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
   const [isExportingWord, setIsExportingWord] = useState<boolean>(false);
   const [wordSuccessNotification, setWordSuccessNotification] = useState<boolean>(false);
+  const [wordNotificationMessage, setWordNotificationMessage] = useState<string>(
+    'Ficheiro Word (.docx) Descarregado!'
+  );
+
+  const [letterBody, setLetterBody] = useState<string>(
+    `A/C: Comité de Seleção e Recrutamento
+Expertise France / Delegação da União Europeia em Angola
+Luanda, Angola
+
+Assunto: Candidatura ao posto de MEAL & Information Systems Coordinator
+
+Exmos. Senhores Membros do Comité de Seleção,
+
+É com elevado interesse e sentido de compromisso que apresento a minha candidatura à posição de MEAL & Information Systems Coordinator. Com sólida trajetória no desenho, operacionalização e automação de sistemas digitais de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL), trago a experiência comprovada de atuação direta em programas de grande escala financiados pela União Europeia (como o Programa FRESAN, co-gerido pelo Camões, I.P., FAO e PNUD) e pelo Programa Alimentar Mundial das Nações Unidas (WFP) em Angola.
+
+No âmbito da assistência técnica ao Camões, I.P., fui o responsável direto pela concepção, programação e entrada em produção da Plataforma Digital Colaborativa do Sistema de Gestão de Informação MEAL (disponível em https://sgi-fresancamoes.com/). Liderando a entrega de todos os produtos do Termo de Referência (TdR), estruturei as interfaces pública e privada, automatizei os fluxos de dados de campo das províncias da Huíla, Namibe e Cunene com regras de alerta pré-análise para a equipa M&A da UIC, e garanti a integração de indicadores orientados a resultados segundo os referenciais da OCDE/CAD e as Políticas de Segurança da Informação do Camões, I.P.
+
+Destaco igualmente a minha experiência na estruturação de fluxos de recolha móvel (KoboToolbox, ODK, Survey Solutions e WFP MoDA), auditorias de qualidade de dados (DQA), e concepção de painéis analíticos interativos em Power BI para suporte a decisões estratégicas e reporte a doadores internacionais. Adicionalmente, a minha intervenção em consórcios multiatores consolidou a minha capacidade de diálogo e harmonização metodológica com ministérios setoriais (INE, MINAGRIF) e parceiros de implementação no terreno.
+
+Motivado pela relevância dos vossos objetivos e com plena capacidade de entrega imediata, coloco-me à disposição para aprofundar a demonstração das minhas competências numa entrevista técnica.
+
+Com os meus melhores cumprimentos,
+
+${AGOSTINHO_CV.personalDetails.name}
+${AGOSTINHO_CV.personalDetails.title}
+${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
+  );
 
   const handleExportWord = async () => {
     try {
       setIsExportingWord(true);
-      const blob = await generateWordDocument(cv);
-      const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo';
-      triggerDownload(blob, `CV_${sanitizedName}_MEAL.docx`);
+      const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Agostinho_do_Rosario';
+
+      if (activeTab === 'cover') {
+        const blob = await generateCoverLetterDocx(cv, letterBody);
+        triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
+        setWordNotificationMessage('Carta de Apresentação em Word (.docx) Descarregada!');
+      } else {
+        const blob = await generateWordDocument(cv);
+        triggerDownload(blob, `CV_${sanitizedName}_MEAL.docx`);
+        setWordNotificationMessage('Currículo em Word (.docx) Descarregado!');
+      }
+
       setWordSuccessNotification(true);
       setTimeout(() => setWordSuccessNotification(false), 4000);
     } catch (err) {
@@ -56,7 +92,7 @@ export default function App() {
             <Check className="w-4 h-4" />
           </div>
           <div className="text-xs">
-            <p className="font-semibold">Ficheiro Word (.docx) Descarregado!</p>
+            <p className="font-semibold">{wordNotificationMessage}</p>
             <p className="text-slate-300">Formatado segundo o padrão internacional de tipografia e margens.</p>
           </div>
         </div>
@@ -149,6 +185,10 @@ export default function App() {
               <CoverLetterPanel
                 cv={cv}
                 jobDescription={jobDescription}
+                letterBody={letterBody}
+                setLetterBody={setLetterBody}
+                onExportWord={handleExportWord}
+                isExportingWord={isExportingWord}
               />
             )}
 

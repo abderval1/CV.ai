@@ -1,15 +1,24 @@
 import React, { useState } from 'react';
 import { CVData } from '../types/cv';
-import { Sparkles, Copy, Check, Printer, Loader2 } from 'lucide-react';
+import { Sparkles, Copy, Check, Printer, Loader2, Download } from 'lucide-react';
+import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 
 interface CoverLetterPanelProps {
   cv: CVData;
   jobDescription: string;
+  letterBody: string;
+  setLetterBody: (body: string) => void;
+  onExportWord?: () => void;
+  isExportingWord?: boolean;
 }
 
 export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   cv,
-  jobDescription
+  jobDescription,
+  letterBody,
+  setLetterBody,
+  onExportWord,
+  isExportingWord: externalExporting
 }) => {
   const [recipient, setRecipient] = useState<string>('Estimados Membros do Comité de Seleção');
   const [organization, setOrganization] = useState<string>(
@@ -20,31 +29,27 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [isExportingInternal, setIsExportingInternal] = useState<boolean>(false);
 
-  // Default letter matching Agostinho do Rosário's high-stakes application
-  const [letterBody, setLetterBody] = useState<string>(
-    `A/C: Comité de Seleção e Recrutamento
-${organization}
-Luanda, Angola
+  const isExportingDocx = externalExporting ?? isExportingInternal;
 
-Assunto: Candidatura ao posto de ${positionTitle}
-
-Exmos. Senhores Membros do Comité de Seleção,
-
-É com elevado interesse e sentido de compromisso que apresento a minha candidatura à posição de ${positionTitle}. Com sólida trajetória no desenho, operacionalização e automação de sistemas digitais de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL), trago a experiência comprovada de atuação direta em programas de grande escala financiados pela União Europeia (como o Programa FRESAN, co-gerido pelo Camões, I.P., FAO e PNUD) e pelo Programa Alimentar Mundial das Nações Unidas (WFP) em Angola.
-
-No âmbito da assistência técnica ao Camões, I.P., fui o responsável direto pela concepção, programação e entrada em produção da Plataforma Digital Colaborativa do Sistema de Gestão de Informação MEAL (disponível em https://sgi-fresancamoes.com/). Liderando a entrega de todos os produtos do Termo de Referência (TdR), estruturei as interfaces pública e privada, automatizei os fluxos de dados de campo das províncias da Huíla, Namibe e Cunene com regras de alerta pré-análise para a equipa M&A da UIC, e garanti a integração de indicadores orientados a resultados segundo os referenciais da OCDE/CAD e as Políticas de Segurança da Informação do Camões, I.P.
-
-Destaco igualmente a minha experiência na estruturação de fluxos de recolha móvel (KoboToolbox, ODK, Survey Solutions e WFP MoDA), auditorias de qualidade de dados (DQA), e concepção de painéis analíticos interativos em Power BI para suporte a decisões estratégicas e reporte a doadores internacionais. Adicionalmente, a minha intervenção em consórcios multiatores consolidou a minha capacidade de diálogo e harmonização metodológica com ministérios setoriais (INE, MINAGRIF) e parceiros de implementação no terreno.
-
-Motivado pela relevância dos vossos objetivos e com plena capacidade de entrega imediata, coloco-me à disposição para aprofundar a demonstração das minhas competências numa entrevista técnica.
-
-Com os meus melhores cumprimentos,
-
-${cv.personalDetails.name}
-${cv.personalDetails.title}
-${cv.personalDetails.phone} | ${cv.personalDetails.email}`
-  );
+  const handleExportDocx = async () => {
+    if (onExportWord) {
+      onExportWord();
+      return;
+    }
+    setIsExportingInternal(true);
+    try {
+      const blob = await generateCoverLetterDocx(cv, letterBody);
+      const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Candidato';
+      triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
+    } catch (e) {
+      console.error('Erro ao gerar carta em Word:', e);
+      alert('Erro ao gerar documento Word da carta.');
+    } finally {
+      setIsExportingInternal(false);
+    }
+  };
 
   const handleGenerateAiLetter = async () => {
     setIsLoading(true);
@@ -97,19 +102,31 @@ ${cv.personalDetails.phone} | ${cv.personalDetails.email}`
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Primary Action: Download Word (.docx) */}
+            <button
+              type="button"
+              onClick={handleExportDocx}
+              disabled={isExportingDocx}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg transition-colors shadow-xs"
+              title="Descarregar Carta de Apresentação em formato Word (.docx)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExportingDocx ? 'A Gerar .docx...' : 'Descarregar Word (.docx)'}</span>
+            </button>
+
             <button
               type="button"
               onClick={handleGenerateAiLetter}
               disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-60 rounded-lg transition-colors shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-60 rounded-lg transition-colors shadow-xs"
             >
               {isLoading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               )}
-              <span>Regerar com IA</span>
+              <span>Regerar c/ IA</span>
             </button>
 
             <button

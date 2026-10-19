@@ -97,7 +97,13 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 transition-colors rounded-lg shadow-sm whitespace-nowrap shrink-0"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>{isExportingWord ? 'A Gerar .docx...' : 'Descarregar Word (.docx)'}</span>
+            <span>
+              {isExportingWord
+                ? 'A Gerar .docx...'
+                : activeTab === 'cover'
+                ? 'Descarregar Carta (.docx)'
+                : 'Descarregar Word (.docx)'}
+            </span>
           </button>
         </div>
       </div>
