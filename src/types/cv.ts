@@ -72,3 +72,36 @@ export interface CoverLetterData {
   letterBody: string;
   keySellingPoints: string[];
 }
+
+export type SubscriptionPlan = 'free' | 'pro' | 'executive';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  plan: SubscriptionPlan;
+  avatarUrl?: string;
+  creditsRemaining: number;
+  subscriptionExpiresAt?: string;
+  createdAt: string;
+}
+
+export interface SavedResume {
+  id: string;
+  title: string;
+  targetJob: string;
+  updatedAt: string;
+  data: CVData;
+}
+
+export interface PricingPlan {
+  id: SubscriptionPlan;
+  name: string;
+  tagline: string;
+  priceMonthly: string;
+  priceYearly: string;
+  features: string[];
+  isPopular?: boolean;
+  ctaText: string;
+}
+

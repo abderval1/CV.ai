@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CVData } from './types/cv';
-import { AGOSTINHO_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
+import { GENERIC_DEFAULT_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
 import { Header } from './components/Header';
 import { CVDocumentView } from './components/CVDocumentView';
 import { ContentEditor } from './components/ContentEditor';
@@ -8,16 +8,20 @@ import { AtsRadarPanel } from './components/AtsRadarPanel';
 import { AiTailorPanel } from './components/AiTailorPanel';
 import { CoverLetterPanel } from './components/CoverLetterPanel';
 import { PythonScriptPanel } from './components/PythonScriptPanel';
+import { RawInputGenerator } from './components/RawInputGenerator';
+import { AuthModal } from './components/AuthModal';
+import { PricingModal } from './components/PricingModal';
+import { MyResumesModal } from './components/MyResumesModal';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { FileText, SlidersHorizontal, Check } from 'lucide-react';
 
 export default function App() {
-  const [cv, setCv] = useState<CVData>(AGOSTINHO_CV);
+  const [cv, setCv] = useState<CVData>(GENERIC_DEFAULT_CV);
   const [jobDescription, setJobDescription] = useState<string>(
     SAMPLE_JOB_OFFERS[0].description
   );
-  const [activeTab, setActiveTab] = useState<'editor' | 'ats' | 'ai' | 'cover' | 'python'>(
-    'editor'
+  const [activeTab, setActiveTab] = useState<'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python'>(
+    'raw'
   );
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
   const [isExportingWord, setIsExportingWord] = useState<boolean>(false);
@@ -26,42 +30,47 @@ export default function App() {
     'Ficheiro Word (.docx) Descarregado!'
   );
 
+  // Modal states for SaaS
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
+  const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
+
   const [letterBody, setLetterBody] = useState<string>(
     `To: The Selection and Recruitment Committee
-Expertise France / European Union Delegation in Angola
+International Development Programme / Partner Agency
 Luanda, Angola
 
-Subject: Application for the Position of MEAL & Information Systems Coordinator
+Subject: Application for the Position of Senior Project & Information Systems Coordinator
 
 Dear Members of the Selection Committee,
 
-It is with great interest and deep professional dedication that I submit my application for the position of Senior MEAL & Information Systems Coordinator. With solid progressive experience in designing, operationalizing, and automating digital Monitoring, Evaluation, Accountability, and Learning (MEAL) systems, I bring a proven track record of direct leadership in large-scale international development programmes funded by the European Union (such as the FRESAN Programme, co-managed by Camões, I.P., FAO, and UNDP) and the United Nations World Food Programme (WFP) in Angola.
+It is with great interest and professional dedication that I submit my application for this executive position. With solid progressive experience in designing, operationalizing, and automating digital Monitoring, Evaluation, and Information Systems, I bring a proven track record of technical leadership in high-impact initiatives.
 
-Under technical assistance with Camões, I.P., I was directly responsible for architecting, programming, and deploying the collaborative digital platform for the project's Results-Oriented MEAL Information System (accessible in production at https://sgi-fresancamoes.com/). Leading the full delivery of contractual Terms of Reference (ToR) products, I structured multi-tier public and private interfaces, automated provincial data flows across Huíla, Namibe, and Cunene with real-time pre-analysis verification thresholds, and ensured strict OECD/DAC (2019) alignment and compliance with Camões, I.P. Information Security Policies.
+In my recent assignments, I was responsible for architecting, deploying, and maintaining collaborative digital platforms, standardizing field data collection workflows, and ensuring strict adherence to international evaluation standards and data security policies. 
 
-Furthermore, my operational expertise in electronic mobile data collection (KoBoToolbox, ODK, Survey Solutions, and WFP MoDA), data quality assurance (DQA) field audits, and executive dashboard modeling in Power BI enables leadership teams and international donors to make agile, evidence-based strategic decisions. In multi-agency consortia, I have consistently harmonized methodologies and indicators between national ministries (INE, MINAGRIF) and field implementing partners.
+Furthermore, my operational expertise in electronic mobile data collection (KoBoToolbox, ODK), data quality assurance (DQA) field audits, and executive dashboard modeling in Power BI enables leadership teams and international partners to make agile, evidence-based strategic decisions.
 
-Driven by the strategic vision and humanitarian impact of your initiative, and prepared for immediate deployment, I welcome the opportunity to discuss my qualifications in greater detail during a technical interview.
+Driven by the strategic vision and impact of your organization, and prepared for immediate deployment, I welcome the opportunity to discuss my qualifications in greater detail during a technical interview.
 
 Sincerely,
 
-${AGOSTINHO_CV.personalDetails.name}
-${AGOSTINHO_CV.personalDetails.title}
-${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
+${cv.personalDetails.name || 'Seu Nome'}
+${cv.personalDetails.title || 'Especialista em Gestão de Projetos & Sistemas'}
+${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`
   );
 
   const handleExportWord = async () => {
     try {
       setIsExportingWord(true);
-      const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Agostinho_do_Rosario';
+      const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo_Estrategico';
 
       if (activeTab === 'cover') {
         const blob = await generateCoverLetterDocx(cv, letterBody);
-        triggerDownload(blob, `Cover_Letter_${sanitizedName}.docx`);
-        setWordNotificationMessage('Cover Letter in Word (.docx) Downloaded!');
+        triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
+        setWordNotificationMessage('Carta de Apresentação em Word (.docx) Descarregada!');
       } else {
         const blob = await generateWordDocument(cv);
-        triggerDownload(blob, `CV_${sanitizedName}_MEAL.docx`);
+        triggerDownload(blob, `Curriculo_${sanitizedName}.docx`);
         setWordNotificationMessage('Currículo em Word (.docx) Descarregado!');
       }
 
@@ -77,12 +86,15 @@ ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 selection:bg-slate-900 selection:text-white">
-      {/* Top Bar Navigation Contract */}
+      {/* Top Bar Navigation Contract with SaaS actions */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onExportWord={handleExportWord}
         isExportingWord={isExportingWord}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenPricingModal={() => setIsPricingModalOpen(true)}
+        onOpenMyResumesModal={() => setIsMyResumesModalOpen(true)}
       />
 
       {/* Word Export Floating Toast Notification */}
@@ -137,9 +149,10 @@ ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
           }`}
         >
           {/* Section Breadcrumb & Status */}
-          <div className="px-4 sm:px-6 py-3.5 bg-white border-b border-slate-200 flex items-center justify-between gap-4">
+          <div className="px-4 sm:px-6 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 text-xs">
               <span className="font-semibold text-slate-900">
+                {activeTab === 'raw' && '0. Importar Informações, Documentos & LinkedIn'}
                 {activeTab === 'editor' && '1. Editor de Conteúdo & Perfil'}
                 {activeTab === 'ats' && '2. Vaga & Análise de Compatibilidade ATS'}
                 {activeTab === 'ai' && '3. Otimizador com Inteligência Artificial'}
@@ -155,6 +168,20 @@ ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
 
           {/* Active Tab Panel View */}
           <div className="p-4 sm:p-6 flex-1">
+            {activeTab === 'raw' && (
+              <RawInputGenerator
+                onCVGenerated={(newCV) => {
+                  setCv(newCV);
+                  setActiveTab('editor');
+                }}
+                currentJobDescription={jobDescription}
+                onUpdateJobDescription={setJobDescription}
+                onOpenPreview={() => {
+                  setMobileViewMode('preview');
+                }}
+              />
+            )}
+
             {activeTab === 'editor' && (
               <ContentEditor
                 cv={cv}
@@ -210,6 +237,26 @@ ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email}`
           />
         </section>
       </main>
+
+      {/* SaaS Authentication Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+
+      {/* SaaS Pricing & Subscription Upgrade Modal */}
+      <PricingModal
+        isOpen={isPricingModalOpen}
+        onClose={() => setIsPricingModalOpen(false)}
+      />
+
+      {/* My Saved Resumes Library Modal */}
+      <MyResumesModal
+        isOpen={isMyResumesModalOpen}
+        onClose={() => setIsMyResumesModalOpen(false)}
+        currentCV={cv}
+        onLoadResume={(loadedCV) => setCv(loadedCV)}
+      />
     </div>
   );
 }

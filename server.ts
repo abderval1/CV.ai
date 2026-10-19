@@ -115,6 +115,110 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
     }
   });
 
+  // Generate full structured CV from raw inputs & target job description
+  app.post('/api/generate-from-raw', async (req, res) => {
+    try {
+      const { rawCandidateInfo, jobDescription, candidateLinkedIn, targetStandard } = req.body;
+
+      if (!rawCandidateInfo && !candidateLinkedIn) {
+        return res.status(400).json({ error: 'Nenhuma informação do candidato foi fornecida.' });
+      }
+
+      if (!ai) {
+        return res.status(503).json({
+          error: 'Chave GEMINI_API_KEY não configurada no servidor.',
+          fallback: true
+        });
+      }
+
+      const prompt = `
+Você é o mais conceituado consultor executivo de Recursos Humanos e Recrutamento Internacional para Nações Unidas (ONU), União Europeia, ONGs Internacionais e Multinacionais de Tecnologia.
+
+O candidato enviou textos brutos, notas de carreira, projetos, documentos ou histórico do LinkedIn.
+Em outro campo, foi fornecida a descrição da vaga pretendida (Termos de Referência / Requisitos).
+
+SUA MISSÃO:
+Analisar minuciosamente os dados do candidato e GERAR UM CURRÍCULO ESTRUTURADO COMPLETO, estrategicamente adaptado e otimizado para a vaga fornecida.
+Padrão Institucional Alvo: ${targetStandard || 'ONU / União Europeia (Padrão António Paulo)'}.
+
+DADOS BRUTOS DO CANDIDATO (Textos, Documentos, Histórico, LinkedIn):
+${rawCandidateInfo || ''}
+${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
+
+DESCRIÇÃO DA VAGA / TERMOS DE REFERÊNCIA (TdR):
+${jobDescription || 'Vaga executiva na área de MEAL, Gestão de Sistemas de Informação ou Engenharia de Dados.'}
+
+DIRETRIZES DE FORMULAÇÃO DE ALTO IMPACTO:
+1. Extraia o Nome Completo, Título Executivo (adaptado à vaga), Localização, Telefone, E-mail e LinkedIn. Se faltar algum dado de contacto, deduza ou mantenha o que existir.
+2. Resumo Executivo (Summary): Escreva um resumo sênior de 4-6 linhas destacando anos de experiência, liderança técnica, padrões internacionais e impacto comprovado alinhado aos objetivos da vaga.
+3. Competências Principais (Core Competencies): Extraia de 5 a 6 categorias de competências essenciais, cada uma com título forte e descrição com palavras-chave exatas da vaga.
+4. Experiência Profissional: Organize em ordem cronológica reversa. Para cada cargo, estruture a Organização, Cargo, Período, Financiador/Projeto (se aplicável) e crie bullet points de alto impacto usando a fórmula do Google/ONU: Ação Forte + Contexto/Ferramentas + Métrica/Resultado quantificável (redução de erros, prazos, número de utilizadores, orçamentos, etc.). Inclua links de plataformas em produção se citados.
+5. Formação Académica (Education): Liste graus, instituições e anos.
+6. Formação Especializada & Idiomas: Inclua metodologias, softwares e fluência nos idiomas relevantes.
+7. Referências: Estruture referências formais com Nome, Entidade/Cargo e Contacto.
+
+Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
+{
+  "personalDetails": {
+    "name": "Nome Completo",
+    "title": "Título Profissional Executivo",
+    "location": "Cidade, País",
+    "phone": "+244 ...",
+    "email": "email@...",
+    "linkedin": "linkedin.com/in/...",
+    "website": "https://..."
+  },
+  "summary": "Texto do resumo de alto impacto...",
+  "competencies": [
+    { "id": "comp-1", "category": "Nome da Competência", "description": "Detalhes técnicos e ferramentas" }
+  ],
+  "experiences": [
+    {
+      "id": "exp-1",
+      "company": "Organização / Empresa",
+      "role": "Cargo",
+      "period": "Período",
+      "location": "Local",
+      "donor": "Financiador se houver",
+      "highlights": ["Ponto de impacto 1", "Ponto de impacto 2"]
+    }
+  ],
+  "educations": [
+    { "id": "edu-1", "degree": "Grau", "institution": "Universidade", "period": "Anos", "gpaOrHonors": "Honras se houver" }
+  ],
+  "trainings": ["Formação 1", "Formação 2"],
+  "languages": [
+    { "language": "Idioma", "level": "Nível de proficiência" }
+  ],
+  "references": [
+    { "id": "ref-1", "name": "Nome", "institutionAndPosition": "Entidade e Cargo", "contact": "email ou telefone" }
+  ],
+  "atsInsights": {
+    "scoreEstimate": 94,
+    "matchedKeywords": ["palavra1", "palavra2"],
+    "missingKeywords": ["palavra3"],
+    "recommendations": ["recomendação 1", "recomendação 2"]
+  }
+}
+      `.trim();
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.25
+        }
+      });
+
+      const parsed = JSON.parse(response.text?.trim() || '{}');
+      return res.json(parsed);
+    } catch (err: any) {
+      console.error('Erro na rota /api/generate-from-raw:', err);
+      return res.status(500).json({ error: err.message, fallback: true });
+    }
+  });
+
   // AI Cover Letter endpoint with language support
   app.post('/api/cover-letter', async (req, res) => {
     try {

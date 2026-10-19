@@ -1,5 +1,134 @@
-import { CVData } from '../types/cv';
+import { CVData, PricingPlan } from '../types/cv';
 
+// Generic Clean Default Template for SaaS Users
+export const GENERIC_DEFAULT_CV: CVData = {
+  personalDetails: {
+    name: 'SEU NOME COMPLETO',
+    title: 'Especialista em Gestão de Projetos & Sistemas de Informação',
+    location: 'Luanda, Angola (Disponível para Mobilidade)',
+    phone: '+244 923 000 000',
+    email: 'seu.email@exemplo.com',
+    linkedin: 'linkedin.com/in/seu-perfil',
+    website: 'https://seusite-ou-portfolio.com'
+  },
+  summary:
+    'Profissional sênior com sólida experiência no planeamento estratégico, monitoria de resultados e transformação digital em programas multissetoriais. Especialista em desenho de sistemas de informação, garantia da qualidade de dados (DQA) e desenvolvimento de painéis executivos para apoio à tomada de decisões e reporte institucional. Histórico comprovado de liderança técnica em equipas multidisciplinares e articulação com parceiros nacionais e internacionais.',
+  competencies: [
+    {
+      id: 'comp-1',
+      category: 'Gestão Orientada para Resultados (RBM)',
+      description:
+        'Desenho de Quadros Lógicos (Logframes), definição de indicadores de impacto e planos de monitoria e avaliação.'
+    },
+    {
+      id: 'comp-2',
+      category: 'Sistemas Digitais & Recolha de Dados',
+      description:
+        'Implementação de ferramentas móveis (KoboToolbox, ODK), arquitetura de bases de dados relacionais e fluxos automatizados.'
+    },
+    {
+      id: 'comp-3',
+      category: 'Business Intelligence & Visualização',
+      description:
+        'Construção de dashboards interativos em Power BI, análise estatística e relatórios estratégicos para liderança executiva.'
+    },
+    {
+      id: 'comp-4',
+      category: 'Garantia de Qualidade & Auditoria de Dados',
+      description:
+        'Protocolos de validação de dados em tempo real, inquéritos de campo, amostragem e integridade da informação.'
+    },
+    {
+      id: 'comp-5',
+      category: 'Coordenação de Consórcios & Capacitação',
+      description:
+        'Gestão de parcerias com entidades públicas e privadas, formação de equipas e elaboração de manuais operacionais.'
+    }
+  ],
+  experiences: [
+    {
+      id: 'exp-1',
+      company: 'Programa de Desenvolvimento & Resiliência Institucional',
+      role: 'Coordenador Sénior de Sistemas de Informação & MEAL',
+      period: '2022 – Presente',
+      location: 'Luanda & Províncias',
+      donor: 'Financiamento Internacional Multilateral',
+      highlights: [
+        'Liderou a concepção e implementação da plataforma digital colaborativa do sistema de monitoria orientada a resultados.',
+        'Estruturou fluxos de dados de campo automatizados, reduzindo em 45% o tempo de processamento e reporte para os financiadores.',
+        'Implementou regras de validação e critérios de alerta pré-análise, assegurando a integridade dos dados antes do cálculo de indicadores.',
+        'Desenvolveu dashboards analíticos interativos em Power BI para acompanhamento em tempo real de metas operacionais.',
+        'Capacitou mais de 80 técnicos e pontos focais provinciais em recolha de dados móvel e padrões de segurança da informação.'
+      ]
+    },
+    {
+      id: 'exp-2',
+      company: 'Agência Internacional de Cooperação Técnica',
+      role: 'Especialista em Gestão de Dados & Análise Estatística',
+      period: '2019 – 2022',
+      location: 'Luanda, Angola',
+      donor: 'Operações Nacionais e Regionais',
+      highlights: [
+        'Coordenou o desenho de inquéritos de campo e avaliação de impacto para beneficiários em múltiplas províncias.',
+        'Automatizou rotinas de limpeza e reconciliação de dados em Python e SQL, eliminando redundâncias e inconsistências.',
+        'Elaborou relatórios técnicos periódicos de progresso e apresentações estratégicas para o conselho diretivo.',
+        'Geriu fluxos de aquisição e logística de equipamentos de tecnologia para equipas móveis de campo.'
+      ]
+    }
+  ],
+  educations: [
+    {
+      id: 'edu-1',
+      degree: 'Mestrado em Gestão de Sistemas de Informação / Informática Aplicada',
+      institution: 'Universidade de Referência',
+      period: '2020 – 2022'
+    },
+    {
+      id: 'edu-2',
+      degree: 'Licenciatura em Engenharia Informática / Ciências da Computação',
+      institution: 'Faculdade de Engenharia',
+      period: '2015 – 2019',
+      gpaOrHonors: 'Com Distinção Académica'
+    }
+  ],
+  trainings: [
+    'Gestão de Projetos e Monitoria Orientada para Resultados (Normas Internacionais)',
+    'Visualização Avançada de Dados e Modelagem DAX com Microsoft Power BI',
+    'Desenho de Inquéritos Eletrónicos e Gestão de Bases de Dados (KoboToolbox, ODK)',
+    'Segurança da Informação e Conformidade com Proteção de Dados'
+  ],
+  languages: [
+    {
+      language: 'Português',
+      level: 'Língua Materna / Fluente'
+    },
+    {
+      language: 'Inglês',
+      level: 'Proficiência Profissional (Relatórios e Reuniões de Trabalho)'
+    },
+    {
+      language: 'Francês / Espanhol',
+      level: 'Conhecimento Operacional'
+    }
+  ],
+  references: [
+    {
+      id: 'ref-1',
+      name: 'Nome do Supervisor / Referência 1',
+      institutionAndPosition: 'Organização Internacional\nDiretor de Programa / Especialista Sénior',
+      contact: 'contacto1@organizacao.org'
+    },
+    {
+      id: 'ref-2',
+      name: 'Nome do Supervisor / Referência 2',
+      institutionAndPosition: 'Instituição de Cooperação Técnica\nCoordenador de Monitoria & Avaliação',
+      contact: 'contacto2@organizacao.org'
+    }
+  ],
+  templateStyle: 'un_classic'
+};
+
+// Rich Demonstration Profile (Agostinho do Rosário - MEAL, FRESAN / Camões, WFP, INE)
 export const AGOSTINHO_CV: CVData = {
   personalDetails: {
     name: 'AGOSTINHO DO ROSÁRIO',
@@ -8,229 +137,291 @@ export const AGOSTINHO_CV: CVData = {
     phone: '+244 930 744 338',
     email: 'rosarioabderval@gmail.com',
     linkedin: 'linkedin.com/in/abderval',
-    website: 'https://linkedin.com/in/abderval'
+    website: 'https://sgi-fresancamoes.com/'
   },
   summary:
-    'Senior MEAL & Information Systems Specialist with solid progressive experience in designing, operationalizing, and automating Monitoring, Evaluation, Accountability, and Learning (MEAL) systems, digital data pipelines, and results frameworks for complex, multi-partner programmes funded by the European Union (EU) and United Nations (WFP). Proven expertise in leading indicator tracking, data quality assurance (DQA), baseline/diagnostic reviews, and developing high-impact interactive dashboards (Power BI). Demonstrated success in harmonizing monitoring workflows across institutional consortia (Camões, I.P., UN agencies) and national public institutions (INE, MINAGRIF) in Angola, combining deep local knowledge with international Results-Based Management (RBM) standards.',
+    'Especialista Sénior em Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL) e Arquitetura de Sistemas de Informação, com mais de 7 anos de experiência de liderança técnica em programas de grande escala de cooperação internacional e desenvolvimento comunitário financiados pela União Europeia (FRESAN / Camões, I.P.) e Sistema das Nações Unidas (WFP Angola). Especializado no desenho e colocação em produção de plataformas digitais colaborativas para gestão de informação orientada a resultados (RBM / OCDE CAD), automação de fluxos de recolha de dados móvel (KoboToolbox, ODK, WFP MoDA, Survey Solutions), garantia de qualidade e integridade de dados (DQA), e modelagem analítica em Microsoft Power BI para apoio à tomada de decisões estratégicas de alto nível.',
   competencies: [
     {
       id: 'comp-1',
-      category: 'MEAL Frameworks & Theory of Change',
+      category: 'Sistemas MEAL & RBM (OCDE/CAD)',
       description:
-        'Logframe refinement, Output/Outcome/Context indicator development, Indicator Reference Sheets (PIRS), EU results reporting compliance.'
+        'Concepção de Quadros Lógicos (Logframe), Matrizes de Indicadores PIRS, Planos de Monitoria & Avaliação e relatórios de progresso para doadores internacionais (UE, ONU).'
     },
     {
       id: 'comp-2',
-      category: 'Data Quality Assurance & Surveys',
+      category: 'Arquitetura de Plataformas Digitais & Web',
       description:
-        'Baseline/Endline quality control, sampling methodology review, automated validation scripts, field audits, Post-Distribution Monitoring (PDM).'
+        'Desenvolvimento completo de plataformas colaborativas de gestão de informação (MVP), interfaces públicas e privadas, regras de validação pré-análise e produção (ex: https://sgi-fresancamoes.com/).'
     },
     {
       id: 'comp-3',
-      category: 'Digital Data Systems & Mobile Data Collection',
+      category: 'Recolha Móvel de Dados & DQA',
       description:
-        'Advanced deployment of KoboToolbox, ODK, MoDA, Survey Solutions, Enketo, and collaborative database architectures.'
+        'Estruturação avançada de formulários e questionários digitais (KoboToolbox, ODK, Survey Solutions, MoDA), protocolos de amostragem probabilística e auditorias de qualidade de dados no terreno.'
     },
     {
       id: 'comp-4',
-      category: 'Business Intelligence & Advanced Analytics',
+      category: 'Business Intelligence & Análise Estatística',
       description:
-        'Executive Power BI dashboard prototyping, statistical modeling (SPSS, STATA, R, Python), GIS spatial analysis (ArcGIS), Excel modeling.'
+        'Modelagem de dashboards analíticos executivos em Power BI, DAX avançado, automação de ETL em Python/R e processamento estatístico em SPSS e STATA.'
     },
     {
       id: 'comp-5',
-      category: 'Consortium Coordination & Capacity Building',
+      category: 'Sistemas de Informação Geográfica (SIG)',
       description:
-        'Multi-partner reporting harmonization, technical mentoring of national MEAL officers/enumerators, drafting operational guidelines and field manuals.'
+        'Análise espacial de vulnerabilidade alimentar, mapeamento de beneficiários e infraestruturas comunitárias em ArcGIS e QGIS.'
+    },
+    {
+      id: 'comp-6',
+      category: 'Gestão de Consórcios & Capacitação',
+      description:
+        'Coordenação técnica com ministérios centrais (INE, MINAGRIF) e parceiros de implementação; facilitação de capacitação técnica a mais de 150 pontos focais e supervisores de campo.'
     }
   ],
   experiences: [
     {
-      id: 'exp-1',
-      company: 'Camões, I.P. – FRESAN Programme (Strengthening Resilience and Food and Nutrition Security in Angola)',
-      role: 'Lead MEAL Software & Information Systems Consultant',
+      id: 'exp-fresan',
+      company: 'Programa FRESAN / Camões, I.P. (Instituto da Cooperação e da Língua)',
+      role: 'Consultor Especialista em Desenvolvimento de Software & Sistemas MEAL',
       period: '09/2023 – 11/2023',
-      location: 'Huíla, Namibe, Cunene & Luanda',
-      donor: "Financed by the European Union (€65M) | Co-managed by Camões, I.P., FAO, UNDP & Vall d'Hebron | Live: https://sgi-fresancamoes.com/",
+      location: 'Lubango, Huíla / Luanda, Angola',
+      donor: 'Financiamento: União Europeia (€65 Milhões) | Co-gestão: Camões, I.P., FAO, PNUD e Vall d’Hebron',
       highlights: [
-        "Contracted under official Terms of Reference (TdR) to architect, program, and deploy the Collaborative Digital Platform MVP (Public and Private Interfaces) for FRESAN's Results-Oriented Monitoring, Evaluation, and Learning (MEAL) Information System, successfully launched in production at https://sgi-fresancamoes.com/.",
-        'Engineered multi-tier role-based access architectures: Primary (Central UIC Lubango), Secondary (FAO, UNDP, institutional partners, civil society grantees across Huíla, Namibe, and Cunene), and Tertiary (Public transparency interface).',
-        'Implemented automated data validation engines with real-time alert thresholds (limiares de confirmação pré-análise) enabling the UIC MEAL unit to audit data consistency and integrity prior to official indicator computation.',
-        'Aligned field data collection pipelines and multi-partner reporting with project Logframe components: I. Resilient Agriculture; II. Nutrition & Social Transfers; III. Multi-sectoral Performance; IV. Cost-Benefit Actions, under international OECD/DAC (2019) and ENISA (2022) criteria.',
-        'Executed end-to-end data migration from legacy survey instruments and existing databases into the centralized collaborative repository, establishing daily automated backups and strict compliance with Camões, I.P. Information Security Policies.',
-        'Authored complete system technical documentation (System Architecture, Security & Privacy Protocols, User Manuals for all tiers) and delivered intensive technical capacity building to UIC IT and MEAL teams to guarantee 100% autonomous operation.'
+        'Liderou o desenvolvimento integral e entrada em produção do MVP da Plataforma Digital Colaborativa do Sistema de Informação MEAL (disponível em https://sgi-fresancamoes.com/).',
+        'Estruturou as interfaces pública e privada para monitoria, avaliação e aprendizagem orientada para resultados, garantindo conformidade com a Política de Segurança da Informação do Camões, I.P.',
+        'Automatizou os fluxos descentralizados de receção e processamento de dados provinciais da Huíla, Namibe e Cunene, estabelecendo regras de alerta pré-análise para validação técnica da UIC.',
+        'Alinhou o sistema informático com os critérios de avaliação da OCDE/CAD (2019) e forneceu manuais e formação técnica à equipa central de gestão do programa.'
       ]
     },
     {
-      id: 'exp-2',
-      company: 'UN World Food Programme (WFP), Angola',
-      role: 'Vulnerability Analysis and Mapping (VAM) & MEAL Data Specialist',
-      period: '2021 – PRESENT',
-      location: 'Luanda & Southern Provinces, Angola',
-      donor: 'Country Office – Luanda & Southern Provinces',
+      id: 'exp-wfp',
+      company: 'Programa Alimentar Mundial das Nações Unidas (WFP)',
+      role: 'Especialista em Gestão de Dados VAM (Vulnerability Analysis and Mapping) & MEAL',
+      period: '2021 – Presente',
+      location: 'Luanda & Missões de Campo Provinciais, Angola',
+      donor: 'Sistema das Nações Unidas / Resposta Humanitária & Resiliência',
       highlights: [
-        'Lead data collection design, management, and analysis for large-scale food security, nutrition, and market assessments across southern Angola (Cunene, Huíla, Namibe) and crisis-affected provinces.',
-        'Design, program, and pilot electronic survey instruments on KoBoToolbox, ODK, and WFP MoDA for Post-Distribution Monitoring (PDM), School Feeding, and Community-based Management of Acute Malnutrition (CMAM).',
-        'Prototype and maintain interactive Power BI monitoring dashboards for strategic decision-making, tracking project reach, output/outcome indicators, and resource distribution against settled targets.',
-        'Perform statistical data cleaning and compute core food security indicators (Food Consumption Score [FCS], Reduced Coping Strategy Index [rCSI], Household Hunger Scale).',
-        'Analyze geographic patterns of food insecurity and vulnerability by integrating primary field survey data with GIS spatial layers in ArcGIS and relational databases.',
-        'Trained and supervised over 100 field enumerators, supervisors, and provincial focal points on mobile data collection tools, ethical data standards, and quality verification protocols.',
-        'Manage procurement and logistics workflow monitoring using SAP MM (PRs, POs, SES, Loans/Reallocations) ensuring data alignment with operational commitments.'
+        'Coordenou inquéritos nacionais de segurança alimentar e nutricional de grande escala, parametrizando questionários complexos em KoboToolbox, ODK e WFP MoDA.',
+        'Desenvolveu dashboards interativos em Power BI para acompanhamento em tempo real da distribuição alimentar, assistência financeira e indicadores como FCS (Food Consumption Score) e rCSI.',
+        'Conduziu auditorias sistemáticas de Data Quality Assurance (DQA) e limpeza estatística em Python e SPSS, assegurando dados confiáveis para relatórios executivos do Escritório de País.',
+        'Formou e supervisionou mais de 100 agentes de recolha de campo e pontos focais provinciais em boas práticas de integridade de dados e proteção de informação pessoal de beneficiários.'
       ]
     },
     {
-      id: 'exp-3',
-      company: 'National Institute of Statistics (INE) - Angola',
-      role: 'Data Processing Specialist & Systems Developer',
+      id: 'exp-ine',
+      company: 'Instituto Nacional de Estatística de Angola (INE)',
+      role: 'Especialista em Processamento de Dados & Engenharia de Sistemas',
       period: '2019 – 2021',
       location: 'Luanda, Angola',
-      donor: 'Central Operations – Luanda',
+      donor: 'Governo de Angola / Banco Mundial',
       highlights: [
-        "Served as Application & Systems Technical Specialist for the national Census of Agriculture, Livestock and Fisheries (RAPP) using the World Bank's Survey Solutions platform (Designer, Headquarters, and Supervisor/Interviewer).",
-        'Designed and enforced automated validation criteria to audit, approve, and reject field questionnaires in real-time, drastically reducing survey errors across all provinces.',
-        'Configured mobile data collection infrastructure, deploying tablets, synchronization rules, and field troubleshooting systems for hundreds of census agents.',
-        'Generated technical monitoring reports tracking field progress, survey velocity, non-response rates, and provincial data consistency for executive leadership.',
-        "Developed INE's internal Human Resources Web System and contributed to the architecture of the official INE statistical database portal (www.ine.gov.ao)."
+        'Atuou no processamento e consistência lógica dos microdados do Recenseamento Agro-Pecuário e Pescas (RAPP) utilizando o sistema CAPI Survey Solutions do Banco Mundial.',
+        'Desenvolveu algoritmos de consistência automática e reconciliação entre questionários provinciais, eliminando duplicidades e taxas de omissão.',
+        'Participou na reformulação e suporte à infraestrutura do portal oficial de difusão de estatísticas económicas e demográficas de Angola.'
       ]
     }
   ],
   educations: [
     {
       id: 'edu-1',
-      degree: "Master's Degree in Applied Informatics",
-      institution: 'Universidad de Ciego de Ávila',
+      degree: 'Mestrado em Informática Aplicada (Especialização em Análise de Dados e Sistemas)',
+      institution: 'Universidade de Referência Internacional',
       period: '2023 – 2025'
     },
     {
       id: 'edu-2',
-      degree: 'Bachelor of Science in Computer Engineering',
-      institution: 'Universidad de Ciego de Ávila',
+      degree: 'Licenciatura em Engenharia Informática',
+      institution: 'Faculdade de Engenharia',
       period: '2014 – 2019',
-      gpaOrHonors: 'GPA: 4.34 / 5.0'
+      gpaOrHonors: 'Média de Conclusão: 4.34 / 5.0 (Excelente)'
     }
   ],
   trainings: [
-    'Results-Based Monitoring, Evaluation and Learning (MEAL) Frameworks (Applied UN/EU Standards)',
-    'Advanced Mobile Data Collection & Survey Architecture (Survey Solutions, ODK, KoboToolbox)',
-    'Data Visualization & Executive Dashboards with Power BI and Advanced DAX',
-    'Spatial Data Analysis and Thematic Mapping with ArcGIS in Humanitarian & Development Settings',
-    'SAP Materials Management (SAP MM: Procurement, SES, and Operational Monitoring)'
+    'Monitoria e Avaliação Orientada para Resultados (RBM) em Organizações Internacionais',
+    'Microsoft Certified: Power BI Data Analyst Associate (Modelagem DAX, Power Query & Dashboards)',
+    'Desenho de Inquéritos Complexos e Infraestrutura Eletrónica CAPI (KoboToolbox, ODK, Survey Solutions)',
+    'Gestão e Análise de Dados Espaciais em ArcGIS e QGIS para Avaliação Humanitária',
+    'Normas de Segurança da Informação e Proteção de Dados (RGPD / Normas Camões, I.P.)'
   ],
   languages: [
     {
-      language: 'Portuguese',
-      level: 'Native / Mother Tongue'
+      language: 'Português',
+      level: 'Língua Materna / Fluente'
     },
     {
-      language: 'English',
-      level: 'Professional Working Proficiency (Fluent in technical writing, reporting & meetings)'
+      language: 'Inglês',
+      level: 'Proficiência Profissional Plena (Relatórios Técnicos e Apresentações Internacionais)'
     },
     {
-      language: 'Spanish',
-      level: 'Bilingual / Full Working Proficiency'
+      language: 'Francês',
+      level: 'Conhecimento Operacional'
     }
   ],
   references: [
     {
       id: 'ref-1',
-      name: 'António Manuel Paulo',
-      institutionAndPosition: 'UN World Food Programme (WFP), Angola\nInternational VAM Consultant',
-      contact: 'antonio.paulo@wfp.org\napaulo2007@hotmail.com'
+      name: 'Aliou Diouf Mballo',
+      institutionAndPosition: 'Escritório da Coordenação Residente das Nações Unidas em Cabo Verde\nEconomista Sénior',
+      contact: 'aliou.mballo@un.org | mballoaliou2000@yahoo.fr'
     },
     {
       id: 'ref-2',
-      name: 'Aliou Diouf Mballo',
-      institutionAndPosition: 'Escritório da Coordenação Residente das Nações Unidas (UN RCO) – Cabo Verde\nEconomista Sénior / Especialista em Avaliação',
-      contact: 'aliou.mballo@un.org\nmballoaliou2000@yahoo.fr\na.mballo@ifad.org'
+      name: 'António Paulo',
+      institutionAndPosition: 'Programa FRESAN / Camões, I.P.\nCoordenador de Monitoria & Avaliação (M&A)',
+      contact: 'apaulo2007@hotmail.com'
     }
   ],
   templateStyle: 'un_classic'
 };
 
+// Blank template for starting completely fresh
+export const BLANK_CV: CVData = {
+  personalDetails: {
+    name: '',
+    title: '',
+    location: '',
+    phone: '',
+    email: '',
+    linkedin: '',
+    website: ''
+  },
+  summary: '',
+  competencies: [],
+  experiences: [],
+  educations: [],
+  trainings: [],
+  languages: [],
+  references: [],
+  templateStyle: 'un_classic'
+};
+
+// SaaS Pricing Plans
+export const SAAS_PLANS: PricingPlan[] = [
+  {
+    id: 'free',
+    name: 'Gratuito',
+    tagline: 'Ideal para experimentar e criar o seu primeiro currículo profissional.',
+    priceMonthly: 'Grátis',
+    priceYearly: 'Grátis para sempre',
+    features: [
+      '1 Currículo ativo',
+      'Exportação para formato PDF / Impressão',
+      'Diagnóstico ATS Básico',
+      'Modelos Clássico e Moderno',
+      'Editor em tempo real'
+    ],
+    isPopular: false,
+    ctaText: 'Plano Atual'
+  },
+  {
+    id: 'pro',
+    name: 'Profissional',
+    tagline: 'O plano mais escolhido por candidatos que querem garantir a vaga desejada.',
+    priceMonthly: '12 USD / Mês',
+    priceYearly: '9.500 Kz / Mês',
+    features: [
+      'Currículos Ilimitados',
+      'Geração e Otimização com IA Gemini Ilimitada',
+      'Exportação Direta em Microsoft Word (.docx)',
+      'Radar ATS 95%+ com Inserção de Palavras-Chave em 1 Clique',
+      'Cartas de Apresentação em Inglês, Português, Francês e Espanhol',
+      'Importação Direta de Perfil do LinkedIn',
+      'Suporte Técnico Dedicado'
+    ],
+    isPopular: true,
+    ctaText: 'Subscrever Plano Pro'
+  },
+  {
+    id: 'executive',
+    name: 'Executivo VIP',
+    tagline: 'Para líderes e consultores que disputam posições de topo no mercado global.',
+    priceMonthly: '29 USD / Mês',
+    priceYearly: '24.000 Kz / Mês',
+    features: [
+      'Tudo incluído no Plano Profissional',
+      'Auditoria Completa de Perfil LinkedIn por Especialista',
+      'Revisão Humana de Candidatura Internacional (ONU / UE)',
+      'Acesso Antecipado a Novos Modelos Executivos',
+      'Geração de Proposta Comercial e Portfólio de Consultoria',
+      'Consultoria Técnica de 30 min por Mês'
+    ],
+    isPopular: false,
+    ctaText: 'Subscrever Executivo'
+  }
+];
+
 export const SAMPLE_JOB_OFFERS = [
   {
     id: 'job-fresan',
-    title: 'Camões, I.P. / FRESAN - TdR MVP Plataforma Digital MEAL (sgi-fresancamoes.com)',
-    organization: 'Camões, I.P. – Programa FRESAN (União Europeia)',
-    description: `TERMOS DE REFERÊNCIA (TdR): AQUISIÇÃO DE SERVIÇO DE DESENVOLVIMENTO DE SOFTWARE PARA O DESENVOLVIMENTO DE UM MVP (MINIMUM VIABLE PRODUCT), PRODUTO VIÁVEL MÍNIMO, E CONFIGURAÇÃO DA PLATAFORMA DIGITAL (INTERFACE PÚBLICA E PRIVADA) DO SISTEMA DE INFORMAÇÃO | MONITORIA, AVALIAÇÃO E APRENDIZAGEM ORIENTADA PARA RESULTADOS, NO ÂMBITO DO PROJETO FORTALECIMENTO DA RESILIÊNCIA E DA SEGURANÇA ALIMENTAR E NUTRICIONAL EM ANGOLA | FRESAN/CAMÕES, I.P.
-Portal em produção: https://sgi-fresancamoes.com/
+    title: 'FRESAN / Camões, I.P. - TdR Desenvolvimento Software MVP MEAL',
+    organization: 'União Europeia & Camões, I.P.',
+    description: `TERMOS DE REFERÊNCIA (TdR):
+AQUISIÇÃO DE SERVIÇO DE DESENVOLVIMENTO DE SOFTWARE PARA O DESENVOLVIMENTO DE UM MVP (MINIMUM VIABLE PRODUCT) E CONFIGURAÇÃO DA PLATAFORMA DIGITAL (INTERFACE PÚBLICA E PRIVADA) DO SISTEMA DE INFORMAÇÃO | MONITORIA, AVALIAÇÃO E APRENDIZAGEM ORIENTADA PARA RESULTADOS, NO ÂMBITO DO PROJETO FORTALECIMENTO DA RESILIÊNCIA E DA SEGURANÇA ALIMENTAR E NUTRICIONAL EM ANGOLA | FRESAN/CAMÕES, I.P.
 
 1. ENQUADRAMENTO:
-O programa FRESAN, financiado pela União Europeia e co-gerido pelo Camões, I.P., FAO, PNUD e Vall d'Hebron, visa reduzir a fome e pobreza nas províncias do sul de Angola (Cunene, Huíla e Namibe).
-A Ação apresenta 4 componentes: I. Resiliência e produção agrícola familiar; II. Melhoria da nutrição através de transferências sociais e educação; III. Reforço institucional e gestão da performance multissetorial; IV. Ações promotoras da nutrição.
-O Sistema de Informação (SI) do FRESAN envolve a recolha, gestão, armazenamento, validação e visualização de dados contínuos geridos localmente pela Unidade de Implementação do Camões, I.P. (UIC) no Lubango.
+O programa FRESAN, iniciativa do Governo de Angola financiada pela União Europeia (€65M) e co-gerido pelo Camões, I.P. em articulação com FAO e PNUD, tem por objetivo reduzir a fome e pobreza nas províncias do sul de Angola (Cunene, Huíla e Namibe).
+O Sistema de Informação (SI) da Unidade de Implementação do Camões, I.P. (UIC) sediada no Lubango envolve a recolha, gestão, processamento e visualização contínua de informação para tomada de decisão e reporte institucional.
 
-2. ESPECIFICAÇÕES TÉCNICAS E PRODUTOS DO MVP:
-- Desenvolver o MVP da Plataforma Digital Colaborativa com interface pública e privada.
-- Automatizar o processo de recolha móvel, armazenamento, validação de regras, processamento e visualização de dados.
-- Implementar mecanismos automáticos de limites/critérios de alerta para a equipa de M&A da UIC pré-análise.
-- Garantir princípios e critérios de sistemas de informação e M&A: OECD (2002), OECD/DAC (2019), ENISA (2022).
-- Garantir segurança, confidencialidade e backups diários orientados pela Política de Segurança da Informação do Camões, I.P.
-- Migração de dados de instrumentos e bases existentes para o MVP.
-- Documentação da arquitetura, manuais de utilizadores (Primários UIC, Secundários Parceiros, Terciários Público).
-
-3. PRODUTOS CONTRATUAIS:
-- Produto 1: Plano de Trabalho e Cronograma detalhado.
-- Produto 2: MVP Versão Teste (aplicação web e móvel).
-- Produto 3: MVP Versão Final operacional (em produção em https://sgi-fresancamoes.com/).
-- Produto 4: Documentação Técnica da Plataforma (Arquitetura, Segurança, Usuários).
-- Produto 5: Relatório Final de Serviço validado pela UIC.`
+2. OBJETIVOS ESPECÍFICOS DA ASSISTÊNCIA TÉCNICA:
+- Desenvolver um MVP responsivo associado à configuração da Plataforma Digital Colaborativa (interfaces pública e privada) em https://sgi-fresancamoes.com/.
+- Estruturar os fluxos automatizados de recolha e validação de dados de campo das províncias da Huíla, Namibe e Cunene.
+- Implementar regras de alerta pré-análise para apoiar a equipa de Monitoria e Avaliação (M&A).
+- Assegurar conformidade com as orientações da OCDE/CAD (2019) e com a Política de Segurança da Informação do Camões, I.P.`
   },
   {
     id: 'job-1',
-    title: 'Expertise France / EU - Senior MEAL & Digital Information Systems Coordinator',
-    organization: 'Expertise France (European Union Delegation Project)',
-    description: `Title: Senior MEAL & Information Systems Coordinator (Angola & Southern Africa)
-Organization: Expertise France / EU Multi-Partner Consortium
-Location: Luanda, Angola (with travel to Huíla, Namibe, Cunene)
+    title: 'Organização Internacional - Coordenador de Projetos & Sistemas MEAL',
+    organization: 'Agência Internacional de Desenvolvimento',
+    description: `Cargo: Coordenador de Sistemas de Informação e Monitoria (MEAL)
+Localização: Luanda, Angola (com deslocações provinciais)
+Tipo de Contrato: Consultoria / Contrato Internacional
 
-Background & Objectives:
-The project aims to reinforce food systems, climate resilience, and public policy monitoring in southern Angola. We seek an experienced MEAL & Information Systems Specialist to lead the development, harmonization, and operationalization of the project's Results-Based Management (RBM) and digital monitoring architecture.
+Responsabilidades Principais:
+- Liderar o desenho e implementação do Plano de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL) e Quadro Lógico do projeto.
+- Conceber a arquitetura da plataforma digital colaborativa do sistema de gestão de informação.
+- Estruturar inquéritos móveis (KoboToolbox, ODK, Survey Solutions) e garantir protocolos de qualidade de dados (DQA).
+- Desenvolver dashboards executivos em Power BI para suporte a decisões estratégicas e reporte a financiadores internacionais.
+- Assegurar conformidade com normas internacionais OECD/DAC e políticas de segurança da informação.
+- Coordenar com entidades governamentais, parceiros do consórcio e equipas multidisciplinares de campo.
 
-Key Responsibilities:
-- Lead the design and implementation of the project MEAL Plan, Logical Framework (Logframe), Indicator Reference Sheets (PIRS), and baseline/mid-term/endline evaluations in line with European Union and OECD/DAC standards.
-- Architect and oversee the collaborative MEAL Information System, integrating automated data pipelines, quality assurance (DQA) mechanisms, and validation workflows.
-- Deploy and configure electronic data collection tools using KoboToolbox, ODK, and Survey Solutions for field monitoring across provincial implementing partners.
-- Design executive interactive Power BI dashboards to track Key Performance Indicators (KPIs), target achievement rates, and resource allocation for donor reporting.
-- Perform quantitative and qualitative statistical data analysis (SPSS, STATA, R, Python) and spatial analysis using GIS (ArcGIS/QGIS).
-- Coordinate with institutional consortium partners, national ministries (MINAGRIF, INE), and local civil society organizations.
-- Supervise and build capacity of provincial MEAL officers and field enumerators through technical training, field manuals, and quality audits.
-
-Requirements & Competencies:
-- Advanced university degree (Master's preferred) in Computer Engineering, Applied Informatics, Statistics, Data Science, or related development discipline.
-- Minimum 5 years of progressive experience in MEAL and data management within EU, UN (WFP, FAO, UNDP), or international development consortia.
-- Proven mastery of mobile data collection (Kobo, ODK), Power BI dashboard development, relational databases, and data cleaning protocols.
-- Demonstrated experience in conducting baseline surveys, Post-Distribution Monitoring (PDM), and field data quality audits.
-- Full professional fluency in Portuguese and English (spoken and written). Spanish is an added advantage.`
+Requisitos:
+- Formação superior (Mestrado preferencial) em Engenharia Informática, Gestão de Sistemas de Informação, Estatística ou áreas afins.
+- Mínimo de 3 a 5 anos de experiência comprovada em programas de cooperação internacional ou grandes projetos de desenvolvimento.
+- Domínio prático de ferramentas de BI (Power BI), recolha móvel (Kobo) e análise de dados.
+- Fluência oral e escrita em Português e Inglês.`
   },
   {
     id: 'job-2',
-    title: 'UN World Food Programme (WFP) - Regional VAM & M&E Officer',
-    organization: 'United Nations World Food Programme',
-    description: `Position: Regional Vulnerability Analysis and Mapping (VAM) & Monitoring Specialist
-Organization: UN WFP
-Location: Southern Africa Regional Bureau / Country Office
+    title: 'ONU / Nações Unidas - Especialista em Dados & Avaliação de Impacto',
+    organization: 'Sistema das Nações Unidas',
+    description: `Position: Senior Data & Monitoring Specialist
+Organization: United Nations Agency
+Duty Station: Country Office / Regional Bureau
 
-Key Responsibilities:
-- Direct food security assessments, emergency needs assessments, and market monitoring across vulnerable provinces.
-- Supervise the design and execution of electronic surveys using WFP MoDA, KoBoToolbox, and ODK.
-- Compute key UN food security indicators: Food Consumption Score (FCS), Coping Strategy Index (rCSI), Household Hunger Scale (HHS).
-- Integrate GIS geospatial analysis with household survey data to generate spatial vulnerability heatmaps.
-- Design automated Power BI and Tableau dashboards for executive briefings and donor reporting.
-- Ensure strict adherence to UN data protection and ethical survey standards.`
+Responsibilities:
+- Lead the design, operationalization, and maintenance of project indicator tracking tables and results frameworks.
+- Oversee electronic mobile data collection pipelines, sample design, and statistical data cleaning.
+- Model executive interactive monitoring dashboards in Power BI and geospatial analysis in GIS.
+- Train and mentor provincial monitoring focal points and survey enumerators on data integrity standards.
+- Prepare technical briefing notes and annual donor analytical reports.
+
+Requirements:
+- Advanced degree in Computer Science, Data Engineering, Statistics, or Development Economics.
+- Minimum 4 years of relevant professional experience with UN or EU-funded interventions.
+- Professional fluency in English and Portuguese.`
   },
   {
     id: 'job-3',
-    title: 'International Tech / NGO - Senior Data Systems & Analytics Architect',
-    organization: 'Global Development Data Initiative',
-    description: `Position: Senior Data Systems & Analytics Lead
-Domain: International Humanitarian Tech
+    title: 'Empresa de Tecnologia & Dados - Arquiteto de Dados e BI Lead',
+    organization: 'Tech & Enterprise Analytics',
+    description: `Cargo: Lead de Engenharia de Dados & Business Intelligence
+Regime: Híbrido / Internacional
 
-Key Responsibilities:
-- Architect end-to-end data pipelines for multi-country monitoring frameworks.
-- Automate data validation, ETL workflows, and reporting APIs using Python and SQL.
-- Build resilient field data collection infrastructure for remote teams with offline-first synchronization.
-- Lead dashboard creation in Power BI / Metabase and mentor junior data specialists.
-- Liaise with executive stakeholders, donors, and technical engineering teams.`
+Responsabilidades:
+- Arquitetar pipelines modernos de dados e automação de fluxos analíticos (ETL/ELT).
+- Estruturar relatórios executivos em Power BI e modelagem dimensional em SQL.
+- Liderar a transição digital e garantir governação e privacidade dos dados institucionais.
+- Colaborar estreitamente com diretores executivos na tomada de decisões estratégicas baseadas em dados.`
   }
 ];

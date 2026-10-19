@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CVData, Experience, Competency, Education, Reference } from '../types/cv';
 import { Plus, Trash2, ChevronDown, ChevronUp, RotateCcw, Sparkles } from 'lucide-react';
-import { AGOSTINHO_CV } from '../data/initialCV';
+import { GENERIC_DEFAULT_CV, AGOSTINHO_CV, BLANK_CV } from '../data/initialCV';
 
 interface ContentEditorProps {
   cv: CVData;
@@ -136,27 +136,27 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   return (
     <div className="space-y-4">
       {/* Quick Action Banner */}
-      <div className="bg-slate-900 text-white p-4 rounded-xl flex items-center justify-between gap-4">
+      <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Perfil MEAL & Dados Carregado</h2>
+          <h2 className="text-sm font-semibold">Editor Profissional de Conteúdo</h2>
           <p className="text-xs text-slate-300 mt-0.5">
-            Formato oficial António Paulo / Nações Unidas e União Europeia.
+            Altere qualquer secção. O documento A4 e a exportação em Word (.docx) atualizam em tempo real.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => onChange(AGOSTINHO_CV)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-            title="Restaurar dados originais de Agostinho do Rosário"
+            onClick={() => onChange(GENERIC_DEFAULT_CV)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-200 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+            title="Carregar modelo executivo padrão"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Restaurar Padrão</span>
+            <span className="hidden sm:inline">Modelo Padrão</span>
           </button>
           <button
             type="button"
             onClick={onOpenAiTailor}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors shadow-sm"
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>Otimizar c/ IA</span>

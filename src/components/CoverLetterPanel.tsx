@@ -45,9 +45,9 @@ Driven by the strategic vision and humanitarian impact of your initiative, and p
 
 Sincerely,
 
-${cv.personalDetails.name || 'Agostinho do Rosário'}
+${cv.personalDetails.name || 'Seu Nome Completo'}
 ${cv.personalDetails.title || 'Senior MEAL & Information Systems Specialist'}
-${cv.personalDetails.phone || '+244 930 744 338'} | ${cv.personalDetails.email || 'rosarioabderval@gmail.com'}`,
+${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
 
   pt: (cv) => `A/C: Comité de Seleção e Recrutamento
 Expertise France / Delegação da União Europeia em Angola
@@ -67,9 +67,9 @@ Motivado pela relevância dos vossos objetivos e com plena capacidade de entrega
 
 Com os meus melhores cumprimentos,
 
-${cv.personalDetails.name || 'Agostinho do Rosário'}
+${cv.personalDetails.name || 'Seu Nome Completo'}
 ${cv.personalDetails.title || 'Senior MEAL & Information Systems Specialist'}
-${cv.personalDetails.phone || '+244 930 744 338'} | ${cv.personalDetails.email || 'rosarioabderval@gmail.com'}`,
+${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
 
   fr: (cv) => `À l'attention du : Comité de Sélection et de Recrutement
 Expertise France / Délégation de l'Union Européenne en Angola
@@ -89,9 +89,9 @@ Résolument motivé par la portée stratégique de vos interventions et immédia
 
 Veuillez agréer, Madame, Monsieur les Membres du Comité de Sélection, l'expression de mes salutations distinguées.
 
-${cv.personalDetails.name || 'Agostinho do Rosário'}
-${cv.personalDetails.title || 'Spécialiste MEAL & Systèmes d\'Information'}
-${cv.personalDetails.phone || '+244 930 744 338'} | ${cv.personalDetails.email || 'rosarioabderval@gmail.com'}`,
+${cv.personalDetails.name || 'Seu Nome Completo'}
+${cv.personalDetails.title || "Spécialiste MEAL & Systèmes d'Information"}
+${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
 
   es: (cv) => `A la atención de: Comité de Selección y Reclutamiento
 Expertise France / Delegación de la Unión Europea en Angola
@@ -105,15 +105,15 @@ Es con gran interés y sólido compromiso profesional que presento mi candidatur
 
 En el marco de la asistencia técnica a Camões, I.P., fui el responsable directo de la arquitectura, programación y puesta en producción de la Plataforma Digital Colaborativa del Sistema de Información MEAL (disponible en https://sgi-fresancamoes.com/). Liderando la entrega de todos los productos de los Términos de Referencia (TdR), diseñé interfaces públicas y privadas multinivel, automaticé los flujos de datos de campo en Huíla, Namibe y Cunene con umbrales de alerta previa para el equipo de M&E de la UIC, garantizando la alineación con los estándares OCDE/CAD (2019) y las Políticas de Seguridad de la Información.
 
-Asimismo, mi dominio de la recolección móvil (KoBoToolbox, ODK, Survey Solutions y WFP MoDA), auditorías de calidad de datos (DQA) y tableros ejecutivos en Power BI proporciona a las direcciones estratégicas y a los donantes información rigurosa y en tiempo real. En consorcios multiagenciales, he armonizado con éxito metodologías de seguimiento con ministerios nacionales (INE, MINAGRIF) y socios locales.
+Asimismo, mi dominio de la recolección móvil (KoBoToolbox, ODK, Survey Solutions y WFP MoDA), auditorías de calidad de datos (DQA) y tableros ejecutivos en Power BI proporciona a las direcciones estratégicas y a los donantes información rigurosa y en tiempo real. En consorcios multiagenciales, he armonizado con éxito metodologías de seguimiento con ministerios nacionales (INE, MINAGRIF) e socios locales.
 
 Motivado por la misión y el impacto de su proyecto, y con plena disponibilidad de incorporación inmediata, quedo a su disposición para profundizar en mis competencias en una entrevista técnica.
 
 Atentamente,
 
-${cv.personalDetails.name || 'Agostinho do Rosário'}
+${cv.personalDetails.name || 'Seu Nome Completo'}
 ${cv.personalDetails.title || 'Especialista en MEAL y Sistemas de Información'}
-${cv.personalDetails.phone || '+244 930 744 338'} | ${cv.personalDetails.email || 'rosarioabderval@gmail.com'}`
+${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`
 };
 
 export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
@@ -214,9 +214,9 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
     try {
       const blob = await generateCoverLetterDocx(cv, letterBody);
       const sanitizedName =
-        cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Agostinho_do_Rosario';
+        cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Candidato';
       const langSuffix = selectedLang.toUpperCase();
-      triggerDownload(blob, `Cover_Letter_${sanitizedName}_${langSuffix}.docx`);
+      triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}_${langSuffix}.docx`);
     } catch (e) {
       console.error('Erro ao gerar carta em Word:', e);
       alert('Erro ao gerar documento Word da carta de apresentação.');
