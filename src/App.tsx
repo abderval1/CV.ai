@@ -12,6 +12,8 @@ import { RawInputGenerator } from './components/RawInputGenerator';
 import { AuthModal } from './components/AuthModal';
 import { PricingModal } from './components/PricingModal';
 import { MyResumesModal } from './components/MyResumesModal';
+import { SaaSAdminDashboard } from './components/SaaSAdminDashboard';
+import { TemplateAdvisorModal } from './components/TemplateAdvisorModal';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { FileText, SlidersHorizontal, Check } from 'lucide-react';
 
@@ -34,6 +36,8 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
   const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
+  const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
 
   const [letterBody, setLetterBody] = useState<string>(
     `To: The Selection and Recruitment Committee
@@ -95,6 +99,8 @@ ${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email |
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenPricingModal={() => setIsPricingModalOpen(true)}
         onOpenMyResumesModal={() => setIsMyResumesModalOpen(true)}
+        onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
+        onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
       />
 
       {/* Word Export Floating Toast Notification */}
@@ -256,6 +262,22 @@ ${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email |
         onClose={() => setIsMyResumesModalOpen(false)}
         currentCV={cv}
         onLoadResume={(loadedCV) => setCv(loadedCV)}
+      />
+
+      {/* SaaS Admin Backend Portal & Database Management */}
+      <SaaSAdminDashboard
+        isOpen={isAdminDashboardOpen}
+        onClose={() => setIsAdminDashboardOpen(false)}
+      />
+
+      {/* Global Template Advisor & Strategic Guide Modal */}
+      <TemplateAdvisorModal
+        isOpen={isTemplateAdvisorOpen}
+        onClose={() => setIsTemplateAdvisorOpen(false)}
+        currentTemplateId={cv.templateStyle}
+        onSelectTemplate={(newStyle) => setCv((prev) => ({ ...prev, templateStyle: newStyle }))}
+        cv={cv}
+        onUpdateCV={setCv}
       />
     </div>
   );

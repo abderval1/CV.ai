@@ -8,7 +8,11 @@ import {
   Loader2,
   Download,
   Languages,
-  Globe
+  Globe,
+  Building2,
+  UserCheck,
+  Send,
+  SlidersHorizontal
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 
@@ -21,100 +25,8 @@ interface CoverLetterPanelProps {
   isExportingWord?: boolean;
 }
 
-type SupportedLanguage = 'en' | 'pt' | 'fr' | 'es' | 'custom';
-
-const BUILT_IN_LETTERS: Record<
-  'en' | 'pt' | 'fr' | 'es',
-  (cv: CVData) => string
-> = {
-  en: (cv) => `To: The Selection and Recruitment Committee
-Expertise France / European Union Delegation in Angola
-Luanda, Angola
-
-Subject: Application for the Position of MEAL & Information Systems Coordinator
-
-Dear Members of the Selection Committee,
-
-It is with great interest and deep professional dedication that I submit my application for the position of Senior MEAL & Information Systems Coordinator. With solid progressive experience in designing, operationalizing, and automating digital Monitoring, Evaluation, Accountability, and Learning (MEAL) systems, I bring a proven track record of direct leadership in large-scale international development programmes funded by the European Union (such as the FRESAN Programme, co-managed by Camões, I.P., FAO, and UNDP) and the United Nations World Food Programme (WFP) in Angola.
-
-Under technical assistance with Camões, I.P., I was directly responsible for architecting, programming, and deploying the collaborative digital platform for the project's Results-Oriented MEAL Information System (accessible in production at https://sgi-fresancamoes.com/). Leading the full delivery of contractual Terms of Reference (ToR) products, I structured multi-tier public and private interfaces, automated provincial data flows across Huíla, Namibe, and Cunene with real-time pre-analysis verification thresholds, and ensured strict OECD/DAC (2019) alignment and compliance with Camões, I.P. Information Security Policies.
-
-Furthermore, my operational expertise in electronic mobile data collection (KoBoToolbox, ODK, Survey Solutions, and WFP MoDA), data quality assurance (DQA) field audits, and executive dashboard modeling in Power BI enables leadership teams and international donors to make agile, evidence-based strategic decisions. In multi-agency consortia, I have consistently harmonized methodologies and indicators between national ministries (INE, MINAGRIF) and field implementing partners.
-
-Driven by the strategic vision and humanitarian impact of your initiative, and prepared for immediate deployment, I welcome the opportunity to discuss my qualifications in greater detail during a technical interview.
-
-Sincerely,
-
-${cv.personalDetails.name || 'Seu Nome Completo'}
-${cv.personalDetails.title || 'Senior MEAL & Information Systems Specialist'}
-${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
-
-  pt: (cv) => `A/C: Comité de Seleção e Recrutamento
-Expertise France / Delegação da União Europeia em Angola
-Luanda, Angola
-
-Assunto: Candidatura ao posto de MEAL & Information Systems Coordinator
-
-Exmos. Senhores Membros do Comité de Seleção,
-
-É com elevado interesse e sentido de compromisso que apresento a minha candidatura à posição de MEAL & Information Systems Coordinator. Com sólida trajetória no desenho, operacionalização e automação de sistemas digitais de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL), trago a experiência comprovada de atuação direta em programas de grande escala financiados pela União Europeia (como o Programa FRESAN, co-gerido pelo Camões, I.P., FAO e PNUD) e pelo Programa Alimentar Mundial das Nações Unidas (WFP) em Angola.
-
-No âmbito da assistência técnica ao Camões, I.P., fui o responsável direto pela concepção, programação e entrada em produção da Plataforma Digital Colaborativa do Sistema de Gestão de Informação MEAL (disponível em https://sgi-fresancamoes.com/). Liderando a entrega de todos os produtos do Termo de Referência (TdR), estruturei as interfaces pública e privada, automatizei os fluxos de dados de campo das províncias da Huíla, Namibe e Cunene com regras de alerta pré-análise para a equipa M&A da UIC, e garanti a integração de indicadores orientados a resultados segundo os referenciais da OCDE/CAD e as Políticas de Segurança da Informação do Camões, I.P.
-
-Destaco igualmente a minha experiência na estruturação de fluxos de recolha móvel (KoboToolbox, ODK, Survey Solutions e WFP MoDA), auditorias de qualidade de dados (DQA), e concepção de painéis analíticos interativos em Power BI para suporte a decisões estratégicas e reporte a doadores internacionais. Adicionalmente, a minha intervenção em consórcios multiatores consolidou a minha capacidade de diálogo e harmonização metodológica com ministérios setoriais (INE, MINAGRIF) e parceiros de implementação no terreno.
-
-Motivado pela relevância dos vossos objetivos e com plena capacidade de entrega imediata, coloco-me à disposição para aprofundar a demonstração das minhas competências numa entrevista técnica.
-
-Com os meus melhores cumprimentos,
-
-${cv.personalDetails.name || 'Seu Nome Completo'}
-${cv.personalDetails.title || 'Senior MEAL & Information Systems Specialist'}
-${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
-
-  fr: (cv) => `À l'attention du : Comité de Sélection et de Recrutement
-Expertise France / Délégation de l'Union Européenne en Angola
-Luanda, Angola
-
-Objet : Candidature au poste de Coordonnateur MEAL et Systèmes d'Information
-
-Madame, Monsieur les Membres du Comité de Sélection,
-
-C'est avec un vif intérêt et un profond engagement professionnel que je vous soumets ma candidature au poste de Coordonnateur MEAL et Systèmes d'Information. Fort d'une expérience progressive dans la conception, l'opérationnalisation et l'automatisation des systèmes numériques de Suivi, Évaluation, Redevabilité et Apprentissage (MEAL), j'apporte un bilan éprouvé de leadership au sein de programmes d'envergure financés par l'Union Européenne (notamment le programme FRESAN, cogéré par Camões, I.P., la FAO et le PNUD) et le Programme Alimentaire Mondial des Nations Unies (PAM / WFP) en Angola.
-
-Dans le cadre de mon assistance technique auprès de Camões, I.P., j'ai été directement responsable de la conception architecturale, du développement logiciel et du déploiement en production de la Plateforme Numérique Collaborative du Système d'Information MEAL (accessible en production sur https://sgi-fresancamoes.com/). Assurant la livraison intégrale des livrables contractuels des Termes de Référence (TdR), j'ai structuré les interfaces publique et privée, automatisé les flux de données de terrain des provinces de Huíla, Namibe et Cunene avec des seuils d'alerte de pré-analyse pour l'équipe S&E de l'UIC, en stricte conformité avec les critères de l'OCDE/CAD (2019) et les politiques de sécurité de l'information.
-
-De surcroît, mon expertise dans les outils de collecte mobile (KoBoToolbox, ODK, Survey Solutions et WFP MoDA), les audits d'assurance qualité des données (DQA) et la modélisation de tableaux de bord interactifs sur Power BI permet aux équipes de direction et aux bailleurs de prendre des décisions stratégiques fondées sur des données probantes. Au sein de consortiums multipartites, j'ai harmonisé avec succès les méthodologies entre ministères nationaux (INE, MINAGRIF) et partenaires d'exécution.
-
-Résolument motivé par la portée stratégique de vos interventions et immédiatement disponible, je me tiens à votre entière disposition pour tout entretien technique.
-
-Veuillez agréer, Madame, Monsieur les Membres du Comité de Sélection, l'expression de mes salutations distinguées.
-
-${cv.personalDetails.name || 'Seu Nome Completo'}
-${cv.personalDetails.title || "Spécialiste MEAL & Systèmes d'Information"}
-${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`,
-
-  es: (cv) => `A la atención de: Comité de Selección y Reclutamiento
-Expertise France / Delegación de la Unión Europea en Angola
-Luanda, Angola
-
-Asunto: Candidatura al puesto de Coordinador MEAL y Sistemas de Información
-
-Estimados Miembros del Comité de Selección:
-
-Es con gran interés y sólido compromiso profesional que presento mi candidatura al puesto de Coordinador MEAL y Sistemas de Información. Con una trayectoria progresiva en el diseño, operacionalización y automatización de sistemas digitales de Monitoreo, Evaluación, Rendición de Cuentas y Aprendizaje (MEAL), aporto experiencia comprobada en programas internacionales financiados por la Unión Europea (como el Programa FRESAN, cogestionado por Camões, I.P., FAO y PNUD) y por el Programa Mundial de Alimentos de las Naciones Unidas (WFP) en Angola.
-
-En el marco de la asistencia técnica a Camões, I.P., fui el responsable directo de la arquitectura, programación y puesta en producción de la Plataforma Digital Colaborativa del Sistema de Información MEAL (disponible en https://sgi-fresancamoes.com/). Liderando la entrega de todos los productos de los Términos de Referencia (TdR), diseñé interfaces públicas y privadas multinivel, automaticé los flujos de datos de campo en Huíla, Namibe y Cunene con umbrales de alerta previa para el equipo de M&E de la UIC, garantizando la alineación con los estándares OCDE/CAD (2019) y las Políticas de Seguridad de la Información.
-
-Asimismo, mi dominio de la recolección móvil (KoBoToolbox, ODK, Survey Solutions y WFP MoDA), auditorías de calidad de datos (DQA) y tableros ejecutivos en Power BI proporciona a las direcciones estratégicas y a los donantes información rigurosa y en tiempo real. En consorcios multiagenciales, he armonizado con éxito metodologías de seguimiento con ministerios nacionales (INE, MINAGRIF) e socios locales.
-
-Motivado por la misión y el impacto de su proyecto, y con plena disponibilidad de incorporación inmediata, quedo a su disposición para profundizar en mis competencias en una entrevista técnica.
-
-Atentamente,
-
-${cv.personalDetails.name || 'Seu Nome Completo'}
-${cv.personalDetails.title || 'Especialista en MEAL y Sistemas de Información'}
-${cv.personalDetails.phone || '+244 923 000 000'} | ${cv.personalDetails.email || 'seu.email@exemplo.com'}`
-};
+type SupportedLanguage = 'pt' | 'en' | 'fr' | 'es';
+type LetterTone = 'executive' | 'un_diplomatic' | 'tech' | 'corporate';
 
 export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   cv,
@@ -122,106 +34,196 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   letterBody,
   setLetterBody,
   onExportWord,
-  isExportingWord: externalExporting
+  isExportingWord = false
 }) => {
-  const [selectedLang, setSelectedLang] = useState<SupportedLanguage>('en');
-  const [customLanguageName, setCustomLanguageName] = useState<string>('Alemão');
-  const [isTranslating, setIsTranslating] = useState<boolean>(false);
-  const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
+  const [recipient, setRecipient] = useState<string>('Comité de Seleção e Recrutamento');
+  const [targetOrg, setTargetOrg] = useState<string>('Diretoria de Recursos Humanos / Empresa Alvo');
+  const [targetRole, setTargetRole] = useState<string>(
+    cv.personalDetails.title || 'Cargo Pretendido'
+  );
+  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>('pt');
+  const [letterTone, setLetterTone] = useState<LetterTone>('executive');
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
-  const [isExportingInternal, setIsExportingInternal] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const isExportingDocx = externalExporting ?? isExportingInternal;
+  // Dynamic template generator based on user's actual profile and inputs
+  const buildDynamicLetter = (
+    lang: SupportedLanguage,
+    tone: LetterTone,
+    candName: string,
+    candTitle: string,
+    candPhone: string,
+    candEmail: string,
+    candLocation: string,
+    org: string,
+    rec: string,
+    role: string,
+    topExp?: string
+  ): string => {
+    const today = new Date().toLocaleDateString(lang === 'en' ? 'en-US' : lang === 'fr' ? 'fr-FR' : 'pt-PT', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
 
-  // Language switch handler (instant switch between high-impact preloads)
-  const handleSelectLanguage = (lang: 'en' | 'pt' | 'fr' | 'es') => {
-    setSelectedLang(lang);
-    setLetterBody(BUILT_IN_LETTERS[lang](cv));
-  };
+    if (lang === 'en') {
+      return `To: ${rec}
+${org}
+${candLocation || 'Luanda, Angola'} | ${today}
 
-  // Translate letter with Gemini AI
-  const handleTranslateWithAi = async (targetLangName: string) => {
-    setIsTranslating(true);
-    try {
-      const response = await fetch('/api/translate-letter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: letterBody,
-          targetLanguage: targetLangName
-        })
-      });
+Subject: Application for the Position of ${role}
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.translatedText) {
-          setLetterBody(data.translatedText);
-        }
-      }
-    } catch (e) {
-      console.warn('Erro na tradução com IA, mantendo texto:', e);
-      alert('Não foi possível traduzir com o serviço online neste momento.');
-    } finally {
-      setIsTranslating(false);
+Dear Members of the Selection Committee,
+
+It is with high enthusiasm and strong professional commitment that I submit my application for the position of ${role}. With extensive progressive experience in strategic execution, high-impact project delivery, and cross-functional leadership, I offer a proven track record of delivering measurable outcomes in complex organizational environments.
+
+Throughout my career as ${candTitle}${topExp ? `, including notable leadership at ${topExp}` : ''}, I have spearheaded initiatives that optimized processes, increased operational efficiency, and ensured strict alignment with international quality standards. My approach combines technical rigor with strong stakeholder engagement, enabling multidisciplinary teams to exceed performance targets consistently.
+
+Furthermore, my dedication to continuous improvement and evidence-based decision-making aligns directly with the mission and values of ${org}. Driven by the strategic impact of your work, and fully prepared for immediate deployment, I welcome the opportunity to discuss my qualifications in greater detail during a technical interview.
+
+Thank you for your time and consideration.
+
+Sincerely,
+
+${candName || 'Seu Nome Completo'}
+${candTitle || 'Profissional Executivo'}
+${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
     }
+
+    if (lang === 'fr') {
+      return `À l'attention du : ${rec}
+${org}
+${candLocation || 'Luanda, Angola'} | ${today}
+
+Objet : Candidature au poste de ${role}
+
+Madame, Monsieur les Membres du Comité de Sélection,
+
+C'est avec un vif intérêt et un profond engagement professionnel que je vous soumets ma candidature au poste de ${role}. Fort d'un parcours solide dans le pilotage de projets stratégiques, le déploiement de solutions opérationnelles et le leadership d'équipes multidisciplinaires, j'apporte une expertise éprouvée dans l'atteinte d'objectifs ambitieux.
+
+Tout au long de mes responsabilités en tant que ${candTitle}${topExp ? `, notamment au sein de ${topExp}` : ''}, j'ai coordonné des initiatives à fort impact, optimisé les processus de travail et garanti une stricte conformité avec les normes de qualité les plus exigeantes. Ma capacité à conjuguer rigueur technique et concertation stratégique permet aux organisations d'accélérer leurs résultats.
+
+Résolument motivé par les missions et la vision de ${org}, et immédiatement disponible, je me tiens à votre entière disposition pour tout entretien technique afin d'approfondir la pertinence de mon profil.
+
+Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées.
+
+${candName || 'Seu Nome Completo'}
+${candTitle || 'Spécialiste Exécutif'}
+${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+    }
+
+    if (lang === 'es') {
+      return `A la atención de: ${rec}
+${org}
+${candLocation || 'Luanda, Angola'} | ${today}
+
+Asunto: Candidatura al puesto de ${role}
+
+Estimados Miembros del Comité de Selección:
+
+Es con gran interés y sólido compromiso profesional que presento mi candidatura al puesto de ${role}. Con una destacada trayectoria en la ejecución de proyectos estratégicos, optimización de operaciones y liderazgo de equipos de alto rendimiento, pongo a su disposición una sólida experiencia en la consecución de resultados cuantificables.
+
+En mis funciones como ${candTitle}${topExp ? `, en especial en ${topExp}` : ''}, he liderado iniciativas transformadoras, optimizado flujos de trabajo e implementado rigurosos estándares de calidad y gobernanza. Mi enfoque combina solidez metodológica y gestión colaborativa, garantizando entregas de máxima excelencia.
+
+Motivado por el impacto y el prestigio de ${org}, y con plena disponibilidad para incorporación inmediata, quedo a su disposición para profundizar en mis competencias en una entrevista técnica.
+
+Agradeciendo de antemano su atención, les saluda atentamente,
+
+${candName || 'Seu Nome Completo'}
+${candTitle || 'Profesional Ejecutivo'}
+${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+    }
+
+    // Default: Portuguese
+    return `A/C: ${rec}
+${org}
+${candLocation || 'Luanda, Angola'} | ${today}
+
+Assunto: Candidatura à posição de ${role}
+
+Exmos. Senhores Membros do Comité de Seleção,
+
+É com elevado interesse e sentido de compromisso institucional que apresento a minha candidatura à posição de ${role}. Com uma trajetória sólida e progressiva no planeamento estratégico, liderança técnica de projetos e transformação de processos operacionais, trago a experiência comprovada de entrega de resultados de alto impacto em ambientes complexos.
+
+Ao longo da minha atuação como ${candTitle}${topExp ? `, com destaque para as realizações em ${topExp}` : ''}, liderei iniciativas que otimizaram fluxos de trabalho, elevaram os índices de qualidade e garantiram a conformidade estrita com normas internacionais de reporte e governança. O meu perfil conjuga rigor metodológico, capacidade analítica e liderança colaborativa de equipas multidisciplinares.
+
+Motivado pela visão estratégica e impacto dos projetos de ${org}, e com plena prontidão para mobilização imediata, coloco-me à inteira disposição para detalhar a aplicabilidade prática das minhas competências numa entrevista técnica.
+
+Agradecendo desde já a vossa atenção, apresento os meus melhores cumprimentos.
+
+${candName || 'Seu Nome Completo'}
+${candTitle || 'Especialista Executivo'}
+${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
   };
 
-  // Generate / Regenerate with AI in the current language
-  const handleGenerateAiLetter = async () => {
-    setIsGeneratingAi(true);
-    const langNames: Record<SupportedLanguage, string> = {
-      en: 'English (United Nations / International Standard)',
-      pt: 'Português (Padrão Camões, I.P. / União Europeia)',
-      fr: 'Français (Expertise France / Francophonie)',
-      es: 'Español (AECID / Cooperación Internacional)',
-      custom: customLanguageName
-    };
+  // Generate Letter with AI
+  const handleGenerateWithAI = async () => {
+    setIsGenerating(true);
+    setStatusMessage(null);
+
+    const topExpName = cv.experiences[0]?.company;
 
     try {
       const response = await fetch('/api/cover-letter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cvData: cv,
-          jobDescription,
-          language: langNames[selectedLang]
+          cvData: {
+            name: cv.personalDetails.name,
+            title: cv.personalDetails.title,
+            email: cv.personalDetails.email,
+            phone: cv.personalDetails.phone,
+            location: cv.personalDetails.location,
+            linkedin: cv.personalDetails.linkedin,
+            summary: cv.summary,
+            experiences: cv.experiences
+          },
+          jobDescription: jobDescription || targetRole,
+          recipientName: recipient,
+          organizationName: targetOrg,
+          language:
+            letterLanguage === 'en'
+              ? 'English (Inglês Internacional)'
+              : letterLanguage === 'fr'
+              ? 'Français (Francês Diplomático)'
+              : letterLanguage === 'es'
+              ? 'Español (Espanhol Internacional)'
+              : 'Português (Institucional)'
         })
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.letterBody) {
-          setLetterBody(data.letterBody);
-        }
+      if (!response.ok) {
+        throw new Error('Servidor retornou erro na geração.');
       }
-    } catch (e) {
-      console.warn('Cover letter AI fetch failed, fallback to template:', e);
-      if (selectedLang in BUILT_IN_LETTERS) {
-        setLetterBody(BUILT_IN_LETTERS[selectedLang as 'en' | 'pt' | 'fr' | 'es'](cv));
-      }
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  };
 
-  // Export to Word (.docx)
-  const handleExportDocx = async () => {
-    if (onExportWord) {
-      onExportWord();
-      return;
-    }
-    setIsExportingInternal(true);
-    try {
-      const blob = await generateCoverLetterDocx(cv, letterBody);
-      const sanitizedName =
-        cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Candidato';
-      const langSuffix = selectedLang.toUpperCase();
-      triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}_${langSuffix}.docx`);
-    } catch (e) {
-      console.error('Erro ao gerar carta em Word:', e);
-      alert('Erro ao gerar documento Word da carta de apresentação.');
+      const data = await response.json();
+      if (data && data.letterBody) {
+        setLetterBody(data.letterBody);
+        setStatusMessage('Carta de apresentação gerada com inteligência artificial!');
+      } else {
+        throw new Error('Formato inválido retornado.');
+      }
+    } catch {
+      // Heuristic dynamic fallback tailored to user's real data
+      const generated = buildDynamicLetter(
+        letterLanguage,
+        letterTone,
+        cv.personalDetails.name,
+        targetRole || cv.personalDetails.title,
+        cv.personalDetails.phone,
+        cv.personalDetails.email,
+        cv.personalDetails.location,
+        targetOrg,
+        recipient,
+        targetRole,
+        topExpName
+      );
+      setLetterBody(generated);
+      setStatusMessage('Carta gerada com sucesso e adaptada ao seu perfil!');
     } finally {
-      setIsExportingInternal(false);
+      setIsGenerating(false);
+      setTimeout(() => setStatusMessage(null), 3500);
     }
   };
 
@@ -231,174 +233,201 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleDownloadWordLocal = async () => {
+    if (onExportWord) {
+      onExportWord();
+    } else {
+      try {
+        const blob = await generateCoverLetterDocx(cv, letterBody);
+        const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta';
+        triggerDownload(blob, `Carta_Apresentacao_${nameClean}.docx`);
+      } catch (err) {
+        console.error('Erro ao exportar carta:', err);
+      }
+    }
   };
 
   return (
-    <div className="space-y-4">
-      {/* Top Configuration & Language Bar */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="space-y-5">
+      {/* Configuration Header Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Globe className="w-4 h-4 text-slate-700" />
-              <span>Carta de Apresentação Internacional</span>
+              <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
+              <span>Gerador Inteligente de Carta de Apresentação / Motivação</span>
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Escolha o idioma de envio oficial da vaga ou traduza para qualquer língua com IA.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Personalize o destinatário, empresa e idioma para gerar uma carta formal de alto impacto.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Primary Action: Download Word (.docx) */}
+          {/* Language Selector */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg shrink-0">
             <button
               type="button"
-              onClick={handleExportDocx}
-              disabled={isExportingDocx}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-lg transition-colors shadow-xs"
-              title="Descarregar Carta de Apresentação em formato Word (.docx)"
+              onClick={() => setLetterLanguage('pt')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                letterLanguage === 'pt' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              }`}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>{isExportingDocx ? 'A Gerar .docx...' : 'Descarregar Word (.docx)'}</span>
+              🇵🇹 PT
             </button>
-
             <button
               type="button"
-              onClick={handleGenerateAiLetter}
-              disabled={isGeneratingAi}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-60 rounded-lg transition-colors shadow-xs"
+              onClick={() => setLetterLanguage('en')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                letterLanguage === 'en' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              }`}
             >
-              {isGeneratingAi ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              🇬🇧 EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLetterLanguage('fr')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                letterLanguage === 'fr' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              🇫🇷 FR
+            </button>
+            <button
+              type="button"
+              onClick={() => setLetterLanguage('es')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                letterLanguage === 'es' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+              }`}
+            >
+              🇪🇸 ES
+            </button>
+          </div>
+        </div>
+
+        {/* Inputs: Destinatário, Empresa e Cargo */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+              Destinatário (Pessoa / Comité)
+            </label>
+            <input
+              type="text"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="Ex: Comité de Seleção"
+              className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+              Empresa / Organização Alvo
+            </label>
+            <input
+              type="text"
+              value={targetOrg}
+              onChange={(e) => setTargetOrg(e.target.value)}
+              placeholder="Ex: United Nations / Empresa Alvo"
+              className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+              Cargo Pretendido na Vaga
+            </label>
+            <input
+              type="text"
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              placeholder="Ex: Coordenador de Projetos"
+              className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
+            />
+          </div>
+        </div>
+
+        {/* Generate Button & Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGenerateWithAI}
+              disabled={isGenerating}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-xs flex items-center gap-2"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>A Redigir Carta com IA...</span>
+                </>
               ) : (
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Gerar Carta Adaptada com IA</span>
+                </>
               )}
-              <span>Regerar c/ IA</span>
             </button>
+          </div>
 
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleCopy}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copiada!' : 'Copiar'}</span>
+              <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
             </button>
 
             <button
               type="button"
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+              onClick={handleDownloadWordLocal}
+              disabled={isExportingWord}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
             >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Imprimir</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>Descarregar Carta Word (.docx)</span>
             </button>
           </div>
         </div>
 
-        {/* Language Selector Segmented Bar */}
-        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-slate-700 mr-1 flex items-center gap-1">
-              <Languages className="w-3.5 h-3.5" />
-              <span>Idioma Oficial:</span>
-            </span>
-
-            <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg text-xs">
-              <button
-                type="button"
-                onClick={() => handleSelectLanguage('en')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors ${
-                  selectedLang === 'en'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🇬🇧 Inglês (EN)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectLanguage('pt')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors ${
-                  selectedLang === 'pt'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🇵🇹 Português (PT)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectLanguage('fr')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors ${
-                  selectedLang === 'fr'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🇫🇷 Francês (FR)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleSelectLanguage('es')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors ${
-                  selectedLang === 'es'
-                    ? 'bg-white text-slate-900 shadow-xs font-bold'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                🇪🇸 Espanhol (ES)
-              </button>
-            </div>
+        {statusMessage && (
+          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-xs font-semibold flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{statusMessage}</span>
           </div>
-
-          {/* Translate to other custom language with AI */}
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={customLanguageName}
-              onChange={(e) => setCustomLanguageName(e.target.value)}
-              placeholder="Outro idioma (ex: Alemão, Árabe)"
-              className="text-xs px-2.5 py-1 border border-slate-200 rounded-md w-36 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-800"
-            />
-            <button
-              type="button"
-              onClick={() => handleTranslateWithAi(customLanguageName)}
-              disabled={isTranslating || !customLanguageName.trim()}
-              className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 rounded-md transition-colors shadow-xs flex items-center gap-1"
-            >
-              {isTranslating ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>A Traduzir...</span>
-                </>
-              ) : (
-                <span>Traduzir c/ IA</span>
-              )}
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Letter Canvas Container */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-2">
-        <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-100">
-          <span className="font-semibold text-slate-800 uppercase tracking-wider text-[11px]">
-            Corpo da Carta ({selectedLang === 'en' ? 'Inglês Internacional' : selectedLang === 'pt' ? 'Português' : selectedLang === 'fr' ? 'Francês' : selectedLang === 'es' ? 'Espanhol' : customLanguageName}) — Editável em Tempo Real
+      {/* Letter Editor Text Area */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+            <span>Conteúdo da Carta de Apresentação (Editável)</span>
+          </label>
+          <span className="text-[11px] text-slate-400 font-mono">
+            {letterBody.split(/\s+/).filter(Boolean).length} palavras
           </span>
-          <span>{letterBody.split('\n').length} parágrafos</span>
         </div>
 
         <textarea
-          rows={19}
+          rows={18}
           value={letterBody}
           onChange={(e) => setLetterBody(e.target.value)}
-          className="w-full text-[13.5px] leading-relaxed p-4 border border-slate-200 rounded-lg font-serif-cv text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-800"
+          className="w-full p-4 bg-slate-50/70 border border-slate-200 rounded-xl font-serif text-[14px] leading-relaxed text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all shadow-inner resize-y"
+          placeholder="O texto da carta será inserido aqui..."
         />
+
+        <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+          <span>Pode editar qualquer parágrafo diretamente antes de exportar para Word (.docx).</span>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="text-slate-700 hover:text-slate-950 font-semibold underline flex items-center gap-1"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Imprimir A4</span>
+          </button>
+        </div>
       </div>
     </div>
   );

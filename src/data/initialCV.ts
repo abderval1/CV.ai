@@ -9,7 +9,9 @@ export const GENERIC_DEFAULT_CV: CVData = {
     phone: '+244 923 000 000',
     email: 'seu.email@exemplo.com',
     linkedin: 'linkedin.com/in/seu-perfil',
-    website: 'https://seusite-ou-portfolio.com'
+    website: 'https://seusite-ou-portfolio.com',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    showPhoto: true
   },
   summary:
     'Profissional sênior com sólida experiência no planeamento estratégico, monitoria de resultados e transformação digital em programas multissetoriais. Especialista em desenho de sistemas de informação, garantia da qualidade de dados (DQA) e desenvolvimento de painéis executivos para apoio à tomada de decisões e reporte institucional. Histórico comprovado de liderança técnica em equipas multidisciplinares e articulação com parceiros nacionais e internacionais.',
@@ -137,7 +139,9 @@ export const AGOSTINHO_CV: CVData = {
     phone: '+244 930 744 338',
     email: 'rosarioabderval@gmail.com',
     linkedin: 'linkedin.com/in/abderval',
-    website: 'https://sgi-fresancamoes.com/'
+    website: 'https://sgi-fresancamoes.com/',
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    showPhoto: true
   },
   summary:
     'Especialista Sénior em Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL) e Arquitetura de Sistemas de Informação, com mais de 7 anos de experiência de liderança técnica em programas de grande escala de cooperação internacional e desenvolvimento comunitário financiados pela União Europeia (FRESAN / Camões, I.P.) e Sistema das Nações Unidas (WFP Angola). Especializado no desenho e colocação em produção de plataformas digitais colaborativas para gestão de informação orientada a resultados (RBM / OCDE CAD), automação de fluxos de recolha de dados móvel (KoboToolbox, ODK, WFP MoDA, Survey Solutions), garantia de qualidade e integridade de dados (DQA), e modelagem analítica em Microsoft Power BI para apoio à tomada de decisões estratégicas de alto nível.',
@@ -275,6 +279,101 @@ export const AGOSTINHO_CV: CVData = {
   templateStyle: 'un_classic'
 };
 
+// Tech Lead & Cloud Architect Demonstration Profile
+export const TECH_LEAD_CV: CVData = {
+  personalDetails: {
+    name: 'MANUEL SANTOS SILVA',
+    title: 'Lead Software Architect & Engineering Manager | Cloud & AI',
+    location: 'Luanda, Angola / Remoto Global',
+    phone: '+244 924 111 222',
+    email: 'manuel.silva@tech-solutions.io',
+    linkedin: 'linkedin.com/in/manuelsilva-tech',
+    website: 'https://github.com/manuelsilva-dev'
+  },
+  summary:
+    'Líder Técnico e Arquiteto de Software com 8+ anos de experiência na concepção e escalabilidade de plataformas SaaS de alta disponibilidade, arquiteturas orientadas a eventos e pipelines de inteligência artificial. Histórico comprovado de liderança de equipas de engenharia ágeis, redução de custos de infraestrutura em 40% na cloud (AWS/GCP) e aceleração de ciclos de release com rigorosos padrões de segurança DevSecOps.',
+  competencies: [
+    {
+      id: 'comp-tech-1',
+      category: 'Arquitetura de Software & Cloud',
+      description: 'Microsserviços, Kubernetes, Docker, AWS (ECS, Lambda, RDS), Terraform e arquiteturas serverless.'
+    },
+    {
+      id: 'comp-tech-2',
+      category: 'Engenharia Full Stack & APIs',
+      description: 'TypeScript, Node.js, React, Next.js, Python, PostgreSQL, Redis e desenho de APIs RESTful / GraphQL de baixa latência.'
+    },
+    {
+      id: 'comp-tech-3',
+      category: 'CI/CD & DevSecOps',
+      description: 'Pipelines automatizados no GitHub Actions, monitorização com Datadog/Prometheus e auditorias de segurança OWASP.'
+    },
+    {
+      id: 'comp-tech-4',
+      category: 'Liderança Técnica & Mentoria',
+      description: 'Gestão de equipas ágeis (Scrum/Kanban), contratação de talentos de engenharia e cultura de código limpo.'
+    }
+  ],
+  experiences: [
+    {
+      id: 'exp-tech-1',
+      company: 'Fintech Nexus International',
+      role: 'Staff Software Architect & Lead',
+      period: '2022 – Presente',
+      location: 'Luanda & Híbrido',
+      highlights: [
+        'Arquitetou a plataforma de pagamentos multimoeda processando mais de $15M/mês com 99.99% de disponibilidade.',
+        'Migrou monolito legado para microsserviços em Kubernetes, diminuindo a latência média de resposta de 420ms para 65ms.',
+        'Implementou esteiras automatizadas de CI/CD, aumentando a frequência de deploys de quinzenais para múltiplos deploys diários.',
+        'Liderou e mentorou equipa de 14 engenheiros full-stack distribuídos geograficamente.'
+      ]
+    },
+    {
+      id: 'exp-tech-2',
+      company: 'Digital Systems Enterprise',
+      role: 'Senior Full Stack Engineer',
+      period: '2019 – 2022',
+      highlights: [
+        'Desenvolveu sistemas de gestão transacional de alta concorrência em React, Node.js e PostgreSQL.',
+        'Otimizou consultas de banco de dados e camadas de cache Redis, reduzindo custos de servidores em 35%.'
+      ]
+    }
+  ],
+  educations: [
+    {
+      id: 'edu-tech-1',
+      degree: 'Mestrado em Engenharia de Software e Sistemas Distribuídos',
+      institution: 'Universidade de Tecnologia',
+      period: '2020 – 2022'
+    },
+    {
+      id: 'edu-tech-2',
+      degree: 'Licenciatura em Ciências da Computação',
+      institution: 'Faculdade de Ciências',
+      period: '2015 – 2019',
+      gpaOrHonors: 'Primeiro da Turma com Louvor'
+    }
+  ],
+  trainings: [
+    'AWS Certified Solutions Architect – Professional',
+    'Kubernetes Certified Administrator (CKA)',
+    'Enterprise Cloud Security & ISO 27001'
+  ],
+  languages: [
+    { language: 'Português', level: 'Nativo / Fluente' },
+    { language: 'Inglês', level: 'Fluência Plena (Trabalho Internacional diário)' }
+  ],
+  references: [
+    {
+      id: 'ref-tech-1',
+      name: 'Carlos Oliveira',
+      institutionAndPosition: 'Fintech Nexus / Chief Technology Officer (CTO)',
+      contact: 'carlos.oliveira@nexus.io'
+    }
+  ],
+  templateStyle: 'european_modern'
+};
+
 // Blank template for starting completely fresh
 export const BLANK_CV: CVData = {
   personalDetails: {
@@ -304,6 +403,10 @@ export const SAAS_PLANS: PricingPlan[] = [
     tagline: 'Ideal para experimentar e criar o seu primeiro currículo profissional.',
     priceMonthly: 'Grátis',
     priceYearly: 'Grátis para sempre',
+    priceMonthlyValue: 0,
+    priceYearlyValue: 0,
+    currency: 'USD',
+    creditsMonthly: 5,
     features: [
       '1 Currículo ativo',
       'Exportação para formato PDF / Impressão',
@@ -318,8 +421,12 @@ export const SAAS_PLANS: PricingPlan[] = [
     id: 'pro',
     name: 'Profissional',
     tagline: 'O plano mais escolhido por candidatos que querem garantir a vaga desejada.',
-    priceMonthly: '12 USD / Mês',
-    priceYearly: '9.500 Kz / Mês',
+    priceMonthly: '$29 / Mês',
+    priceYearly: '$240 / Ano (Poupe 25%)',
+    priceMonthlyValue: 29,
+    priceYearlyValue: 240,
+    currency: 'USD',
+    creditsMonthly: 9999,
     features: [
       'Currículos Ilimitados',
       'Geração e Otimização com IA Gemini Ilimitada',
@@ -327,7 +434,7 @@ export const SAAS_PLANS: PricingPlan[] = [
       'Radar ATS 95%+ com Inserção de Palavras-Chave em 1 Clique',
       'Cartas de Apresentação em Inglês, Português, Francês e Espanhol',
       'Importação Direta de Perfil do LinkedIn',
-      'Suporte Técnico Dedicado'
+      'Sincronização Cloud Firestore em Tempo Real'
     ],
     isPopular: true,
     ctaText: 'Subscrever Plano Pro'
@@ -336,15 +443,19 @@ export const SAAS_PLANS: PricingPlan[] = [
     id: 'executive',
     name: 'Executivo VIP',
     tagline: 'Para líderes e consultores que disputam posições de topo no mercado global.',
-    priceMonthly: '29 USD / Mês',
-    priceYearly: '24.000 Kz / Mês',
+    priceMonthly: '$49 / Mês',
+    priceYearly: '$440 / Ano (Poupe 25%)',
+    priceMonthlyValue: 49,
+    priceYearlyValue: 440,
+    currency: 'USD',
+    creditsMonthly: 9999,
     features: [
       'Tudo incluído no Plano Profissional',
+      'Modelos Oficiais Nações Unidas (P11 & UN Classic)',
+      'Scripts Python para Compilação Local Offline',
       'Auditoria Completa de Perfil LinkedIn por Especialista',
       'Revisão Humana de Candidatura Internacional (ONU / UE)',
-      'Acesso Antecipado a Novos Modelos Executivos',
-      'Geração de Proposta Comercial e Portfólio de Consultoria',
-      'Consultoria Técnica de 30 min por Mês'
+      'Consultoria Técnica e Suporte Executivo WhatsApp'
     ],
     isPopular: false,
     ctaText: 'Subscrever Executivo'

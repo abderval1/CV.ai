@@ -1,7 +1,24 @@
-import React, { useState } from 'react';
-import { CVData, Experience, Competency, Education, Reference } from '../types/cv';
-import { Plus, Trash2, ChevronDown, ChevronUp, RotateCcw, Sparkles } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { CVData, Experience, Competency, Education, Reference, TemplateStyle } from '../types/cv';
+import {
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  Sparkles,
+  Camera,
+  ShieldCheck,
+  HelpCircle,
+  Upload,
+  Check,
+  Globe
+} from 'lucide-react';
 import { GENERIC_DEFAULT_CV, AGOSTINHO_CV, BLANK_CV } from '../data/initialCV';
+import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
+import { TemplateAdvisorModal } from './TemplateAdvisorModal';
+import { PhotoManagerModal } from './PhotoManagerModal';
+import { getTemplateById } from '../data/templateCatalog';
 
 interface ContentEditorProps {
   cv: CVData;
@@ -15,6 +32,11 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   onOpenAiTailor
 }) => {
   const [activeSection, setActiveSection] = useState<string>('personal');
+  const [isAdvisorOpen, setIsAdvisorOpen] = useState<boolean>(false);
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const currentTemplate = getTemplateById(cv.templateStyle);
 
   const toggleSection = (section: string) => {
     setActiveSection(activeSection === section ? '' : section);
@@ -164,6 +186,51 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         </div>
       </div>
 
+      {/* Model & Strategy Advisory Banner */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-2.5 h-10 rounded-full shrink-0"
+            style={{ backgroundColor: currentTemplate.accentColor || '#0f172a' }}
+          />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-900">
+                {currentTemplate.name}
+              </span>
+              <span
+                className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
+                  currentTemplate.hasPhoto
+                    ? 'bg-blue-100 text-blue-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                }`}
+              >
+                {currentTemplate.hasPhoto ? '📸 Com Foto' : '🛡️ Sem Foto (ATS)'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+              {currentTemplate.whereToUse}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <TemplateSelectorDropdown
+            currentStyle={cv.templateStyle}
+            onSelectStyle={(newStyle) => onChange({ ...cv, templateStyle: newStyle })}
+            onOpenAdvisorModal={() => setIsAdvisorOpen(true)}
+          />
+          <button
+            type="button"
+            onClick={() => setIsAdvisorOpen(true)}
+            className="p-1.5 rounded-lg border border-slate-200 hover:bg-blue-50 text-slate-600 hover:text-blue-700 transition-colors"
+            title="Ver explicação de onde e quando usar cada modelo"
+          >
+            <HelpCircle className="w-4 h-4 text-blue-600" />
+          </button>
+        </div>
+      </div>
+
       {/* Accordion: 1. Informações Pessoais */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
         <button
@@ -171,7 +238,12 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           onClick={() => toggleSection('personal')}
           className="w-full px-4 py-3 flex items-center justify-between text-left font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
         >
-          <span className="text-sm">1. Dados Pessoais & Contactos</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm">1. Dados Pessoais & Contactos</span>
+            {cv.personalDetails.photoUrl && (
+              <span className="w-2 h-2 rounded-full bg-blue-500" title="Foto configurada" />
+            )}
+          </div>
           {activeSection === 'personal' ? (
             <ChevronUp className="w-4 h-4 text-slate-400" />
           ) : (
@@ -180,8 +252,58 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         </button>
 
         {activeSection === 'personal' && (
-          <div className="p-4 pt-0 border-t border-slate-100 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <div className="p-4 pt-0 border-t border-slate-100 space-y-4">
+            {/* Photo Manager Card */}
+            <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="relative shrink-0">
+                  {cv.personalDetails.photoUrl ? (
+                    <img
+                      src={cv.personalDetails.photoUrl}
+                      alt={cv.personalDetails.name}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-slate-300"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-slate-200 border border-dashed border-slate-300 flex items-center justify-center text-slate-400">
+                      <Camera className="w-5 h-5" />
+                    </div>
+                  )}
+                  {cv.personalDetails.photoUrl && cv.personalDetails.showPhoto !== false && (
+                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900">
+                      Fotografia de Perfil
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      (Europeu Europass & Criativo)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {cv.personalDetails.photoUrl
+                      ? cv.personalDetails.showPhoto !== false
+                        ? 'Foto ativa no documento'
+                        : 'Foto carregada mas oculta'
+                      : 'Nenhuma foto carregada (recomendado para ATS/EUA/UK)'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoModalOpen(true)}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>{cv.personalDetails.photoUrl ? 'Gerir Foto' : 'Adicionar Foto'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   Nome Completo
@@ -278,6 +400,24 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     onChange({
                       ...cv,
                       personalDetails: { ...cv.personalDetails, linkedin: e.target.value }
+                    })
+                  }
+                  className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Website / Portfólio / GitHub (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={cv.personalDetails.website || ''}
+                  placeholder="https://seusite-ou-portfolio.com"
+                  onChange={(e) =>
+                    onChange({
+                      ...cv,
+                      personalDetails: { ...cv.personalDetails, website: e.target.value }
                     })
                   }
                   className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800"
@@ -748,6 +888,24 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Template Advisor Modal */}
+      <TemplateAdvisorModal
+        isOpen={isAdvisorOpen}
+        onClose={() => setIsAdvisorOpen(false)}
+        currentTemplateId={cv.templateStyle}
+        onSelectTemplate={(style) => onChange({ ...cv, templateStyle: style })}
+        cv={cv}
+        onUpdateCV={onChange}
+      />
+
+      {/* Photo Manager Modal */}
+      <PhotoManagerModal
+        isOpen={isPhotoModalOpen}
+        onClose={() => setIsPhotoModalOpen(false)}
+        cv={cv}
+        onChange={onChange}
+      />
     </div>
   );
 };

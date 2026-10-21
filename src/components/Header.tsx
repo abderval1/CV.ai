@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Download, Sparkles, FolderOpen, User as UserIcon, LogOut, ChevronDown, Check } from 'lucide-react';
+import { Download, Sparkles, FolderOpen, User as UserIcon, LogOut, ChevronDown, Check, ShieldCheck, Globe } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useCurrency, CURRENCIES, SupportedCurrency } from '../context/CurrencyContext';
 
 interface HeaderProps {
   activeTab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python';
@@ -10,6 +11,8 @@ interface HeaderProps {
   onOpenAuthModal: () => void;
   onOpenPricingModal: () => void;
   onOpenMyResumesModal: () => void;
+  onOpenAdminDashboard: () => void;
+  onOpenTemplateAdvisor?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,10 +22,14 @@ export const Header: React.FC<HeaderProps> = ({
   isExportingWord,
   onOpenAuthModal,
   onOpenPricingModal,
-  onOpenMyResumesModal
+  onOpenMyResumesModal,
+  onOpenAdminDashboard,
+  onOpenTemplateAdvisor
 }) => {
   const { user, isAuthenticated, logout } = useAuth();
+  const { currency, setCurrency, config: currencyConfig } = useCurrency();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [currencyDropdownOpen, setCurrencyDropdownOpen] = useState(false);
 
   return (
     <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-40 shadow-2xs">
@@ -116,6 +123,66 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Zone 3: Actions & SaaS User Controls */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Models & Strategic Advisor Button */}
+          {onOpenTemplateAdvisor && (
+            <button
+              type="button"
+              onClick={onOpenTemplateAdvisor}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-2xs"
+              title="Catálogo & Guia: Onde e Quando Usar Cada Modelo de CV (Com/Sem Foto)"
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-600" />
+              <span>Modelos de CV</span>
+            </button>
+          )}
+
+          {/* Multi-Currency Selector Dropdown */}
+          <div className="relative hidden md:block">
+            <button
+              type="button"
+              onClick={() => setCurrencyDropdownOpen(!currencyDropdownOpen)}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors shadow-2xs"
+              title="Mudar moeda de exibição (Angola, Portugal/UE, Brasil, Global)"
+            >
+              <span>{currencyConfig.flag}</span>
+              <span className="font-mono">{currencyConfig.code} ({currencyConfig.symbol})</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {currencyDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setCurrencyDropdownOpen(false)}
+                />
+                <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1">
+                  <div className="px-3 py-1.5 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Selecionar Moeda
+                  </div>
+                  {Object.values(CURRENCIES).map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => {
+                        setCurrency(c.code);
+                        setCurrencyDropdownOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-slate-50 transition-colors ${
+                        currency === c.code ? 'font-bold text-slate-950 bg-slate-50' : 'text-slate-600'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>{c.flag}</span>
+                        <span>{c.name}</span>
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500">{c.symbol}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {/* SaaS Pricing / Subscriptions Button */}
           <button
             type="button"
@@ -126,6 +193,18 @@ export const Header: React.FC<HeaderProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
             <span className="hidden sm:inline">Planos & Preços</span>
             <span className="sm:hidden">Planos</span>
+          </button>
+
+          {/* SaaS Admin Backend Portal Access */}
+          <button
+            type="button"
+            onClick={onOpenAdminDashboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors whitespace-nowrap shadow-2xs"
+            title="Painel de Gestão SaaS & Backoffice (Base de Dados Firestore)"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-slate-900" />
+            <span className="hidden sm:inline">Painel Admin SaaS</span>
+            <span className="sm:hidden">Admin</span>
           </button>
 
           {/* Saved Resumes / Dashboard */}
@@ -178,6 +257,18 @@ export const Header: React.FC<HeaderProps> = ({
                         <span className="text-[10px] font-bold text-amber-700 capitalize">{user.plan}</span>
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        onOpenAdminDashboard();
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs font-bold text-amber-950 bg-amber-50 hover:bg-amber-100 flex items-center gap-2 border-b border-amber-200/50"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Painel de Gestão SaaS & Backoffice</span>
+                    </button>
 
                     <button
                       type="button"

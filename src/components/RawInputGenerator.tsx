@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { CVData } from '../types/cv';
-import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
+import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
 import {
   Sparkles,
   Upload,
@@ -37,6 +37,9 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const [linkedInUrl, setLinkedInUrl] = useState<string>('');
   const [showLinkedInHelper, setShowLinkedInHelper] = useState<boolean>(false);
   const [isLinkedInConnecting, setIsLinkedInConnecting] = useState<boolean>(false);
+  const [targetStandard, setTargetStandard] = useState<
+    'onu' | 'tech' | 'harvard' | 'ats' | 'europass'
+  >('onu');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -44,8 +47,8 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const candidateFileInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load Demonstration Rich Profile (Agostinho - MEAL / ONU / FRESAN)
-  const handleLoadDemoProfile = () => {
+  // Load Demonstration Rich Profile (MEAL / ONU / FRESAN)
+  const handleLoadMealProfile = () => {
     const demoText = `${AGOSTINHO_CV.personalDetails.name}
 ${AGOSTINHO_CV.personalDetails.title}
 ${AGOSTINHO_CV.personalDetails.location} | ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email} | ${AGOSTINHO_CV.personalDetails.linkedin}
@@ -65,24 +68,84 @@ ${AGOSTINHO_CV.experiences[0].highlights.map((h: string) => `- ${h}`).join('\n')
 Cargo: ${AGOSTINHO_CV.experiences[1].role} (${AGOSTINHO_CV.experiences[1].period})
 ${AGOSTINHO_CV.experiences[1].highlights.map((h: string) => `- ${h}`).join('\n')}
 
-3. ${AGOSTINHO_CV.experiences[2].company}
-Cargo: ${AGOSTINHO_CV.experiences[2].role} (${AGOSTINHO_CV.experiences[2].period})
-${AGOSTINHO_CV.experiences[2].highlights.map((h: string) => `- ${h}`).join('\n')}
-
 FORMAÇÃO ACADÉMICA:
 ${AGOSTINHO_CV.educations.map((e: any) => `- ${e.degree}, ${e.institution} (${e.period})`).join('\n')}
 
 COMPETÊNCIAS & FERRAMENTAS:
-MEAL, Logframe, PIRS, DQA, KoboToolbox, ODK, Power BI, ArcGIS, SPSS, STATA, Python, R, Gestão de Consórcios internacionais.
-
-REFERÊNCIAS:
-- Aliou Diouf Mballo (aliou.mballo@un.org, mballoaliou2000@yahoo.fr)
-- António Paulo (apaulo2007@hotmail.com)`;
+MEAL, Logframe, PIRS, DQA, KoboToolbox, ODK, Power BI, ArcGIS, SPSS, STATA, Python, R, Gestão de Consórcios internacionais.`;
 
     setCandidateRawText(demoText);
     setLinkedInUrl(AGOSTINHO_CV.personalDetails.linkedin || 'https://linkedin.com/in/abderval');
-    setSuccessMessage('Perfil de demonstração MEAL / Camões / WFP carregado! Pode agora clicar em "Gerar CV Adaptado".');
-    setTimeout(() => setSuccessMessage(null), 3500);
+    setTargetStandard('onu');
+    setSuccessMessage('Perfil MEAL & Cooperação Internacional carregado!');
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  // Load Tech Lead Profile
+  const handleLoadTechLeadProfile = () => {
+    const demoText = `${TECH_LEAD_CV.personalDetails.name}
+${TECH_LEAD_CV.personalDetails.title}
+${TECH_LEAD_CV.personalDetails.location} | ${TECH_LEAD_CV.personalDetails.phone} | ${TECH_LEAD_CV.personalDetails.email} | ${TECH_LEAD_CV.personalDetails.linkedin}
+Portfolio: ${TECH_LEAD_CV.personalDetails.website}
+
+RESUMO PROFISSIONAL:
+${TECH_LEAD_CV.summary}
+
+EXPERIÊNCIAS PROFISSIONAIS:
+1. ${TECH_LEAD_CV.experiences[0].company}
+Cargo: ${TECH_LEAD_CV.experiences[0].role} (${TECH_LEAD_CV.experiences[0].period})
+${TECH_LEAD_CV.experiences[0].highlights.map((h: string) => `- ${h}`).join('\n')}
+
+2. ${TECH_LEAD_CV.experiences[1].company}
+Cargo: ${TECH_LEAD_CV.experiences[1].role} (${TECH_LEAD_CV.experiences[1].period})
+${TECH_LEAD_CV.experiences[1].highlights.map((h: string) => `- ${h}`).join('\n')}
+
+FORMAÇÃO ACADÉMICA:
+${TECH_LEAD_CV.educations.map((e: any) => `- ${e.degree}, ${e.institution} (${e.period})`).join('\n')}
+
+COMPETÊNCIAS & STACK TÉCNICA:
+Kubernetes, Docker, AWS (ECS, Lambda), Node.js, TypeScript, React, Python, PostgreSQL, Redis, CI/CD, DevSecOps, Microserviços.`;
+
+    setCandidateRawText(demoText);
+    setLinkedInUrl(TECH_LEAD_CV.personalDetails.linkedin || 'https://linkedin.com/in/manuelsilva-tech');
+    setTargetStandard('tech');
+    setSuccessMessage('Perfil Tech Lead & Arquiteto Cloud carregado!');
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
+  // Load Finance Executive Profile
+  const handleLoadFinanceProfile = () => {
+    const demoText = `ISABEL AFONSO CARDOSO
+Diretora Financeira & Controller de Risco | CFO Corporativo
+Luanda, Angola | +244 923 888 999 | isabel.cardoso@financas.ao | linkedin.com/in/isabelcardoso-cfo
+
+RESUMO PROFISSIONAL:
+Executiva de finanças corporativas com 10+ anos de experiência na liderança de controladoria, auditoria externa, planeamento tributário e gestão de tesouraria de grande porte. Histórico comprovado de reestruturação de custos, negociação de linhas de crédito bancárias e reporte executivo segundo as normas IFRS/NIRF.
+
+EXPERIÊNCIAS PROFISSIONAIS:
+1. Grupo Empresarial Horizonte S.A.
+Cargo: Diretora de Finanças & Contabilidade (2020 – Presente)
+- Liderou equipa de 20 analistas financeiros e contabilistas gerindo orçamento anual superior a $45M USD.
+- Implementou sistema ERP SAP S/4HANA Finance, reduzindo o tempo de fecho mensal de 15 para 4 dias úteis.
+- Otimizou o capital de giro e tesouraria, reduzindo custos financeiros bancários em 28%.
+
+2. Consultoria & Auditoria Big Four
+Cargo: Gerente Sénior de Auditoria & Governação (2016 – 2020)
+- Conduziu auditorias de demonstrações financeiras em bancos comerciais e multinacionais petrolíferas.
+- Elaborou relatórios de conformidade tributária e prevenção contra branqueamento de capitais.
+
+FORMAÇÃO ACADÉMICA:
+- Mestrado Executivo em Finanças Corporativas (2018)
+- Licenciatura em Economia e Gestão de Empresas (2012)
+
+COMPETÊNCIAS CHAVE:
+IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corporativa, Análise de Risco.`;
+
+    setCandidateRawText(demoText);
+    setLinkedInUrl('https://linkedin.com/in/isabelcardoso-cfo');
+    setTargetStandard('harvard');
+    setSuccessMessage('Perfil Direção Financeira & Controladoria carregado!');
+    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   // Clear all fields to start completely fresh
@@ -318,7 +381,16 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
           rawCandidateInfo: candidateRawText,
           jobDescription,
           candidateLinkedIn: linkedInUrl,
-          targetStandard: 'ONU / União Europeia (Padrão António Paulo)'
+          targetStandard:
+            targetStandard === 'tech'
+              ? 'Big Tech & Google XYZ Formula (Quantified Accomplishments)'
+              : targetStandard === 'harvard'
+              ? 'Harvard Business School Executive & Corporate Finance'
+              : targetStandard === 'ats'
+              ? 'Universal ATS Keyword Density (Zero-Rejection)'
+              : targetStandard === 'europass'
+              ? 'Padrão Europeu Europass com Foto e CEFR (União Europeia)'
+              : 'ONU / União Europeia (RBM / Logframe Padrão António Paulo)'
         })
       });
 
@@ -337,7 +409,9 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
             phone: generatedData.personalDetails.phone || '+244 923 000 000',
             email: generatedData.personalDetails.email || 'contacto@exemplo.com',
             linkedin: generatedData.personalDetails.linkedin || linkedInUrl || 'linkedin.com/in/seu-perfil',
-            website: generatedData.personalDetails.website
+            website: generatedData.personalDetails.website,
+            photoUrl: targetStandard === 'europass' ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=face&auto=format&q=80' : undefined,
+            showPhoto: targetStandard === 'europass'
           },
           summary: generatedData.summary || GENERIC_DEFAULT_CV.summary,
           competencies:
@@ -364,7 +438,16 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
             generatedData.references && generatedData.references.length > 0
               ? generatedData.references
               : GENERIC_DEFAULT_CV.references,
-          templateStyle: 'un_classic'
+          templateStyle:
+            targetStandard === 'harvard'
+              ? 'executive_harvard'
+              : targetStandard === 'tech'
+              ? 'tech_modern'
+              : targetStandard === 'ats'
+              ? 'ats_compact'
+              : targetStandard === 'europass'
+              ? 'european_europass'
+              : 'un_classic'
         };
 
         onCVGenerated(fullCV);
@@ -392,53 +475,139 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
   return (
     <div className="space-y-6">
       {/* Introduction Card - SaaS Presentation */}
-      <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-3">
+      <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <h2 className="text-base font-bold">
-                Gerador de Currículo Estratégico com IA
+                Gerador de Currículo Estratégico & ATS Studio
               </h2>
               <p className="text-xs text-slate-300">
-                Cruze as suas informações com a vaga e gere um CV otimizado com aprovação garantida no ATS.
+                Insira as suas informações e a vaga pretendida para gerar um CV de alto impacto com pontuação máxima no ATS.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          {candidateRawText && (
             <button
               type="button"
-              onClick={handleLoadDemoProfile}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
-              title="Carregar perfil completo de demonstração (Especialista MEAL / TI / ONU)"
+              onClick={handleClearAll}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+              title="Limpar campos e começar em branco"
             >
-              <Sparkles className="w-3.5 h-3.5 fill-slate-900" />
-              <span>Carregar Exemplo Demonstrativo</span>
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Limpar Tudo</span>
             </button>
-
-            {candidateRawText && (
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 rounded-lg transition-colors"
-                title="Limpar campos e começar em branco"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Limpar</span>
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
-        <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Compatível com sistemas ATS (Taleo, Workday, SuccessFactors, UN Inspira)</span>
-          </div>
-          <span className="text-[11px] text-amber-300 font-mono">
-            Exportação em Word (.docx) & PDF A4
+        {/* Multi-Industry Exemplary Career Presets */}
+        <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
+            Exemplos Demonstrativos:
           </span>
+          <button
+            type="button"
+            onClick={handleLoadMealProfile}
+            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
+            title="Carregar perfil MEAL & Cooperação Internacional (ONU / UE)"
+          >
+            <span>🌐</span>
+            <span>MEAL & ONU/UE</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleLoadTechLeadProfile}
+            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
+            title="Carregar perfil Tech Lead & Engenharia Cloud"
+          >
+            <span>💻</span>
+            <span>Tech Lead & Cloud</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleLoadFinanceProfile}
+            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
+            title="Carregar perfil Direção Financeira & Controladoria"
+          >
+            <span>📊</span>
+            <span>Finanças & CFO</span>
+          </button>
+        </div>
+
+        {/* Target Standard Selector Bar */}
+        <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-slate-400 font-semibold">Padrão Alvo:</span>
+            <div className="flex flex-wrap items-center gap-1 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setTargetStandard('onu')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === 'onu'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Padrão RBM, Logframe e Governação Multilateral"
+              >
+                ONU / UE Clássico
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetStandard('tech')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === 'tech'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Fórmula XYZ de Impacto Quantificável (Google/Meta)"
+              >
+                Big Tech / Google
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetStandard('harvard')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === 'harvard'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Harvard Business School Executivo"
+              >
+                Harvard Executivo
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetStandard('europass')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === 'europass'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Padrão Oficial União Europeia (Com Foto e CEFR)"
+              >
+                📸 Europeu Europass
+              </button>
+              <button
+                type="button"
+                onClick={() => setTargetStandard('ats')}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === 'ats'
+                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+                title="Filtro de compatibilidade zero-rejeição para robôs ATS"
+              >
+                ATS Puro (Sem Foto)
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Workday, Taleo, UN Inspira & Greenhouse</span>
+          </div>
         </div>
       </div>
 
@@ -564,7 +733,7 @@ COMPETÊNCIAS:
             <span>{candidateRawText.length} caracteres inseridos</span>
             <button
               type="button"
-              onClick={handleLoadDemoProfile}
+              onClick={handleLoadMealProfile}
               className="text-slate-600 hover:text-slate-900 hover:underline"
             >
               Preencher com exemplo demonstrativo
@@ -620,13 +789,13 @@ COMPETÊNCIAS:
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                   }`}
                 >
-                  {job.title.includes('FRESAN')
+                  {job.id === 'job-fresan'
                     ? 'FRESAN Camões'
-                    : job.id === 'job-1'
-                    ? 'Expertise France'
-                    : job.id === 'job-2'
-                    ? 'ONU WFP'
-                    : 'Tech/Data Lead'}
+                    : job.id === 'job-tech'
+                    ? 'Google Cloud'
+                    : job.id === 'job-finance'
+                    ? 'CFO Finanças'
+                    : 'ONU Data Lead'}
                 </button>
               ))}
             </div>

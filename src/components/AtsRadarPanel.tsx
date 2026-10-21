@@ -22,19 +22,31 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   const auditResult = auditCVAgainstJob(cv, jobDescription);
 
   const handleAddKeywordToCV = (keyword: string) => {
-    // Add missing keyword to the first competency or as a new competency
     const capitalized = keyword.charAt(0).toUpperCase() + keyword.slice(1);
     const updatedCompetencies = [
       ...cv.competencies,
       {
         id: `comp-${Date.now()}`,
         category: capitalized,
-        description: `Experiência comprovada em ${keyword} aplicada a programas internacionais e padrões institucionais.`
+        description: `Experiência comprovada em ${keyword} aplicada a contextos profissionais de alto impacto e conformidade institucional.`
       }
     ];
     onChange({
       ...cv,
       competencies: updatedCompetencies
+    });
+  };
+
+  const handleAddAllMissingKeywords = () => {
+    if (auditResult.missingKeywords.length === 0) return;
+    const newItems = auditResult.missingKeywords.map((kw, i) => ({
+      id: `comp-all-${Date.now()}-${i}`,
+      category: kw.charAt(0).toUpperCase() + kw.slice(1),
+      description: `Domínio prático de ${kw} com foco em entregas estratégicas e boas práticas internacionais.`
+    }));
+    onChange({
+      ...cv,
+      competencies: [...cv.competencies, ...newItems]
     });
   };
 
@@ -107,12 +119,12 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                 title={job.title}
               >
                 {job.id === 'job-fresan'
-                  ? 'FRESAN / Camões TdR'
-                  : job.id === 'job-1'
-                  ? 'Expertise France'
-                  : job.id === 'job-2'
-                  ? 'UN WFP'
-                  : 'Tech/Data'}
+                  ? 'FRESAN Camões'
+                  : job.id === 'job-tech'
+                  ? 'Google Cloud'
+                  : job.id === 'job-finance'
+                  ? 'CFO Finanças'
+                  : 'ONU Data Lead'}
               </button>
             ))}
           </div>
@@ -132,16 +144,22 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
 
       {/* Missing Keywords Analysis */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-amber-600" />
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
               Palavras-Chave Faltantes na Candidatura ({auditResult.missingKeywords.length})
             </h3>
           </div>
-          <span className="text-[11px] text-slate-500">
-            Clique em "+" para incluir instantaneamente
-          </span>
+          {auditResult.missingKeywords.length > 0 && (
+            <button
+              type="button"
+              onClick={handleAddAllMissingKeywords}
+              className="text-[11px] font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-2.5 py-1 rounded-md transition-colors shadow-2xs"
+            >
+              + Adicionar Todas ao CV
+            </button>
+          )}
         </div>
 
         {auditResult.missingKeywords.length === 0 ? (

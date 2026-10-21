@@ -24,9 +24,17 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // Bootstrapped Admin logic (matching user email or explicitly registered in admins doc)
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email is string && request.auth.token.email.lower() == 'gugurai923@gmail.com') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'name', 'email', 'plan']) &&
-             data.id is string && data.id.size() <= 128 && data.id == request.auth.uid &&
+             data.id is string && data.id.size() <= 128 &&
              data.name is string && data.name.size() <= 120 &&
              data.email is string && data.email.size() <= 180 &&
              data.plan in ['free', 'pro', 'executive'];
@@ -35,8 +43,26 @@ service cloud.firestore {
     function isValidResume(data) {
       return data.keys().hasAll(['id', 'userId', 'title']) &&
              data.id is string && data.id.size() <= 128 &&
-             data.userId is string && data.userId.size() <= 128 && data.userId == request.auth.uid &&
+             data.userId is string && data.userId.size() <= 128 &&
              data.title is string && data.title.size() <= 150;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'orderNumber', 'userId', 'plan', 'amount', 'status']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.orderNumber is string && data.orderNumber.size() <= 60 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.plan in ['free', 'pro', 'executive'] &&
+             data.amount is number &&
+             data.status in ['paid', 'pending', 'refunded', 'failed'];
+    }
+
+    function isValidCoupon(data) {
+      return data.keys().hasAll(['id', 'code', 'discountPercent', 'active']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.code is string && data.code.size() <= 40 &&
+             data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100 &&
+             data.active is bool;
     }
 
     // Connection testing doc
@@ -44,44 +70,75 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    // Admins registry
+    match /admins/{adminId} {
+      allow read, write: if isAdmin() && isValidId(adminId);
+    }
+
     // Users collection: Private user profile, plan and credits
     match /users/{userId} {
-      allow get: if isSignedIn() && request.auth.uid == userId;
-      allow list: if false;
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(userId);
+      allow list: if isAdmin();
 
-      allow create: if isSignedIn() && 
-                       request.auth.uid == userId && 
-                       isValidUser(incoming());
+      allow create: if (
+        (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().id == request.auth.uid) ||
+        (isAdmin() && isValidUser(incoming()))
+      );
 
-      allow update: if isSignedIn() && 
-                       request.auth.uid == userId && 
-                       isValidUser(incoming()) && 
-                       incoming().id == existing().id &&
-                       incoming().email == existing().email;
+      allow update: if (
+        isAdmin() ||
+        (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().id == existing().id && incoming().email == existing().email)
+      );
 
-      allow delete: if false;
+      allow delete: if isAdmin();
 
       // User resumes subcollection
       match /resumes/{resumeId} {
-        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(resumeId);
-        allow list: if isSignedIn() && request.auth.uid == userId;
+        allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(resumeId);
+        allow list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
         allow create: if isSignedIn() && 
-                         request.auth.uid == userId && 
+                         (request.auth.uid == userId || isAdmin()) && 
                          isValidId(resumeId) && 
                          isValidResume(incoming()) &&
-                         incoming().userId == request.auth.uid;
+                         (incoming().userId == request.auth.uid || isAdmin());
 
         allow update: if isSignedIn() && 
-                         request.auth.uid == userId && 
+                         (request.auth.uid == userId || isAdmin()) && 
                          isValidId(resumeId) && 
                          isValidResume(incoming()) &&
                          incoming().userId == existing().userId;
 
         allow delete: if isSignedIn() && 
-                         request.auth.uid == userId && 
+                         (request.auth.uid == userId || isAdmin()) && 
                          isValidId(resumeId);
       }
+    }
+
+    // Orders & Transactions collection
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid)) && isValidId(orderId);
+      allow list: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid));
+
+      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && (isAdmin() || incoming().userId == request.auth.uid);
+      allow update: if isAdmin() && isValidId(orderId) && isValidOrder(incoming());
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // Discount Coupons collection
+    match /coupons/{couponId} {
+      allow get: if isSignedIn() && isValidId(couponId);
+      allow list: if isSignedIn();
+
+      allow create: if isAdmin() && isValidId(couponId) && isValidCoupon(incoming());
+      allow update: if isAdmin() && isValidId(couponId) && isValidCoupon(incoming());
+      allow delete: if isAdmin() && isValidId(couponId);
+    }
+
+    // System SaaS Plan Configurations
+    match /plansConfig/{planId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(planId);
     }
   }
 }

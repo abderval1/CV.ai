@@ -2,7 +2,7 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User profile, plan subscription status and credits",
+      "description": "User profile, role, SaaS plan subscription status and credits balance",
       "type": "object",
       "properties": {
         "id": {
@@ -21,24 +21,57 @@
           "description": "Email address of the user",
           "maxLength": 180
         },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "user"],
+          "description": "Role of the user in the SaaS platform"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended"],
+          "description": "Account status"
+        },
         "plan": {
           "type": "string",
           "enum": ["free", "pro", "executive"],
           "description": "Subscription tier of the SaaS user"
         },
+        "billingCycle": {
+          "type": "string",
+          "enum": ["monthly", "yearly"],
+          "description": "Selected billing cycle"
+        },
         "creditsRemaining": {
           "type": "number",
           "description": "AI generation credits balance"
         },
-        "createdAt": {
+        "creditsUsed": {
+          "type": "number",
+          "description": "Total AI credits consumed"
+        },
+        "totalCvGenerated": {
+          "type": "number",
+          "description": "Total number of resumes/cover letters generated"
+        },
+        "phone": {
           "type": "string",
-          "description": "Creation timestamp in ISO format",
+          "description": "Contact telephone or WhatsApp number",
           "maxLength": 50
         },
         "subscriptionExpiresAt": {
           "type": "string",
           "description": "Optional ISO expiry timestamp for active plan",
           "maxLength": 50
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp in ISO format",
+          "maxLength": 50
+        },
+        "notes": {
+          "type": "string",
+          "description": "Internal administrative notes about the customer",
+          "maxLength": 1000
         }
       },
       "required": ["id", "name", "email", "plan"]
@@ -80,16 +113,198 @@
         }
       },
       "required": ["id", "userId", "title"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Subscription payment transaction, order record and invoice",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique transaction ID",
+          "maxLength": 128
+        },
+        "orderNumber": {
+          "type": "string",
+          "description": "Human-readable invoice/order sequence number",
+          "maxLength": 60
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID of the customer",
+          "maxLength": 128
+        },
+        "userName": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 120
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Customer email",
+          "maxLength": 180
+        },
+        "plan": {
+          "type": "string",
+          "enum": ["free", "pro", "executive"],
+          "description": "Purchased subscription tier"
+        },
+        "billingCycle": {
+          "type": "string",
+          "enum": ["monthly", "yearly"],
+          "description": "Billing cadence"
+        },
+        "amount": {
+          "type": "number",
+          "description": "Price paid in nominal currency"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code (EUR, USD, AOA, CVE, BRL)",
+          "maxLength": 10
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["multicaixa", "card", "transfer", "pix", "stripe", "manual"],
+          "description": "Payment gateway or method used"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["paid", "pending", "refunded", "failed"],
+          "description": "Payment execution status"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Transaction ISO timestamp",
+          "maxLength": 50
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional order notes",
+          "maxLength": 500
+        }
+      },
+      "required": ["id", "orderNumber", "userId", "plan", "amount", "status"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Promotional discount voucher code",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Coupon ID",
+          "maxLength": 128
+        },
+        "code": {
+          "type": "string",
+          "description": "Promo code in uppercase",
+          "maxLength": 40
+        },
+        "discountPercent": {
+          "type": "number",
+          "description": "Percentage discount applied (1 to 100)"
+        },
+        "maxUses": {
+          "type": "number",
+          "description": "Maximum allowed redeems"
+        },
+        "usedCount": {
+          "type": "number",
+          "description": "Current number of redeems"
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Expiry ISO date string",
+          "maxLength": 50
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the voucher is currently active"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation ISO date",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "code", "discountPercent", "active"]
+    },
+    "PlanConfig": {
+      "title": "PlanConfig",
+      "description": "Dynamic SaaS tier pricing and feature configuration",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["free", "pro", "executive"],
+          "description": "Plan key identifier"
+        },
+        "name": {
+          "type": "string",
+          "description": "Plan display name",
+          "maxLength": 80
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Marketing description",
+          "maxLength": 160
+        },
+        "priceMonthly": {
+          "type": "string",
+          "description": "Formatted monthly price label",
+          "maxLength": 40
+        },
+        "priceYearly": {
+          "type": "string",
+          "description": "Formatted yearly price label",
+          "maxLength": 40
+        },
+        "priceMonthlyValue": {
+          "type": "number",
+          "description": "Numeric monthly price"
+        },
+        "priceYearlyValue": {
+          "type": "number",
+          "description": "Numeric yearly price"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code",
+          "maxLength": 10
+        },
+        "creditsMonthly": {
+          "type": "number",
+          "description": "Monthly credit allowance"
+        },
+        "isPopular": {
+          "type": "boolean",
+          "description": "Featured plan badge"
+        }
+      },
+      "required": ["id", "name", "priceMonthlyValue"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "UserProfile",
-      "description": "Stores user profile and SaaS subscription information"
+      "description": "Stores user profile, roles, and SaaS subscription information"
     },
     "/users/{userId}/resumes/{resumeId}": {
       "schema": "Resume",
       "description": "Subcollection of saved resumes and tailored versions created by the user"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Stores all subscription sales transactions, billing records and payment statuses"
+    },
+    "/coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Stores promotional discount coupon codes and redemption counters"
+    },
+    "/plansConfig/{planId}": {
+      "schema": "PlanConfig",
+      "description": "Stores system tier pricing, feature flags and credit allowances"
     }
   }
 }

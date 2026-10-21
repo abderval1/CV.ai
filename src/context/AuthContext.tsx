@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { User, SubscriptionPlan, SavedResume, CVData } from '../types/cv';
+import { User, SubscriptionPlan, SavedResume, CVData, BillingCycle } from '../types/cv';
 import { GENERIC_DEFAULT_CV } from '../data/initialCV';
 import {
   auth,
@@ -33,7 +33,14 @@ interface AuthContextType {
   register: (name: string, email: string, password?: string) => Promise<boolean>;
   loginWithProvider: (provider: 'google' | 'linkedin') => Promise<boolean>;
   logout: () => Promise<void>;
-  upgradePlan: (plan: SubscriptionPlan) => Promise<void>;
+  upgradePlan: (
+    plan: SubscriptionPlan,
+    meta?: {
+      billingCycle?: BillingCycle;
+      stripeSubscriptionId?: string;
+      stripeCustomerId?: string;
+    }
+  ) => Promise<void>;
   savedResumes: SavedResume[];
   saveCurrentResume: (cv: CVData, title: string, targetJob?: string) => Promise<string>;
   loadResume: (id: string) => CVData | null;
@@ -267,8 +274,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFirebaseUser(null);
   };
 
-  const upgradePlan = async (plan: SubscriptionPlan): Promise<void> => {
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const upgradePlan = async (
+    plan: SubscriptionPlan,
+    meta?: {
+      billingCycle?: BillingCycle;
+      stripeSubscriptionId?: string;
+      stripeCustomerId?: string;
+    }
+  ): Promise<void> => {
+    const isYearly = meta?.billingCycle === 'yearly';
+    const durationDays = isYearly ? 365 : 30;
+    const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
     if (auth.currentUser) {
       const uid = auth.currentUser.uid;
@@ -277,7 +293,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await updateDoc(userRef, {
           plan,
           creditsRemaining: 9999,
-          subscriptionExpiresAt: expiresAt
+          billingCycle: meta?.billingCycle || 'monthly',
+          subscriptionExpiresAt: expiresAt,
+          stripeSubscriptionId: meta?.stripeSubscriptionId || null,
+          stripeCustomerId: meta?.stripeCustomerId || null,
+          stripeStatus: 'active',
+          updatedAt: new Date().toISOString()
         });
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
@@ -291,6 +312,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: 'assinante.pro@exemplo.com',
         plan,
         creditsRemaining: 9999,
+        billingCycle: meta?.billingCycle || 'monthly',
+        stripeSubscriptionId: meta?.stripeSubscriptionId,
+        stripeCustomerId: meta?.stripeCustomerId,
+        stripeStatus: 'active',
         createdAt: new Date().toISOString(),
         subscriptionExpiresAt: expiresAt
       });
@@ -301,6 +326,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...user,
       plan,
       creditsRemaining: 9999,
+      billingCycle: meta?.billingCycle || user.billingCycle || 'monthly',
+      stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
+      stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
+      stripeStatus: 'active',
       subscriptionExpiresAt: expiresAt
     });
   };

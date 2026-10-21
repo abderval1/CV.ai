@@ -14,9 +14,18 @@ import {
 import { CVData } from '../types/cv';
 
 export async function generateWordDocument(cv: CVData): Promise<Blob> {
-  const COLOR_PRIMARY = '111827';
+  const COLOR_PRIMARY = cv.accentColor ? cv.accentColor.replace('#', '') : '111827';
   const COLOR_MUTED = '4B5563';
-  const FONT_FAMILY = cv.templateStyle === 'un_classic' ? 'Times New Roman' : 'Calibri';
+  const FONT_FAMILY =
+    cv.templateStyle === 'un_classic' ||
+    cv.templateStyle === 'executive_harvard' ||
+    cv.templateStyle === 'academic_lattes'
+      ? 'Times New Roman'
+      : cv.templateStyle === 'ats_compact'
+      ? 'Consolas'
+      : cv.templateStyle === 'creative_split'
+      ? 'Arial'
+      : 'Calibri';
 
   // Helper to create section headings with bottom border
   function createSectionHeading(title: string): Paragraph {

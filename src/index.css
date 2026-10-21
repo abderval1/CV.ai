@@ -16,6 +16,44 @@
   font-family: 'IBM Plex Mono', monospace;
 }
 
+.font-cinzel {
+  font-family: 'Cinzel', serif;
+}
+
+.font-jakarta {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Page Break Divider Visual Indicator on Screen */
+.page-break-line {
+  position: relative;
+  margin: 3.5rem 0 2.5rem 0;
+  text-align: center;
+}
+.page-break-line::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  border-top: 2px dashed #cbd5e1;
+  z-index: 1;
+}
+.page-break-line span {
+  position: relative;
+  z-index: 2;
+  background-color: #f1f5f9;
+  padding: 0.25rem 0.75rem;
+  font-size: 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  color: #64748b;
+  border-radius: 9999px;
+  border: 1px solid #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* Print styling for pristine PDF generation */
 @media print {
   body {
@@ -26,7 +64,8 @@
   }
 
   header,
-  .no-print {
+  .no-print,
+  .page-break-line {
     display: none !important;
   }
 
@@ -37,7 +76,7 @@
   .cv-a4-sheet {
     box-shadow: none !important;
     border: none !important;
-    padding: 0.5in 0.6in !important;
+    padding: 0.4in 0.5in !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -46,6 +85,6 @@
 
   @page {
     size: A4;
-    margin: 15mm 15mm 15mm 15mm;
+    margin: 12mm 12mm 12mm 12mm;
   }
 }
