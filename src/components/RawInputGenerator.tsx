@@ -47,12 +47,12 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const candidateFileInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load Demonstration Rich Profile (MEAL / ONU / FRESAN)
-  const handleLoadMealProfile = () => {
+  // Load Demonstration Rich Profile (Executive COO / Operations)
+  const handleLoadExecutiveProfile = () => {
     const demoText = `${AGOSTINHO_CV.personalDetails.name}
 ${AGOSTINHO_CV.personalDetails.title}
 ${AGOSTINHO_CV.personalDetails.location} | ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email} | ${AGOSTINHO_CV.personalDetails.linkedin}
-Website/Portfolio: ${AGOSTINHO_CV.personalDetails.website || 'https://sgi-fresancamoes.com/'}
+Website/Portfolio: ${AGOSTINHO_CV.personalDetails.website || 'https://beatrizfonseca.io'}
 
 RESUMO PROFISSIONAL:
 ${AGOSTINHO_CV.summary}
@@ -60,7 +60,6 @@ ${AGOSTINHO_CV.summary}
 EXPERIÊNCIAS PROFISSIONAIS:
 1. ${AGOSTINHO_CV.experiences[0].company}
 Cargo: ${AGOSTINHO_CV.experiences[0].role} (${AGOSTINHO_CV.experiences[0].period})
-Financiador: ${AGOSTINHO_CV.experiences[0].donor || 'União Europeia'}
 Principais entregas:
 ${AGOSTINHO_CV.experiences[0].highlights.map((h: string) => `- ${h}`).join('\n')}
 
@@ -72,12 +71,12 @@ FORMAÇÃO ACADÉMICA:
 ${AGOSTINHO_CV.educations.map((e: any) => `- ${e.degree}, ${e.institution} (${e.period})`).join('\n')}
 
 COMPETÊNCIAS & FERRAMENTAS:
-MEAL, Logframe, PIRS, DQA, KoboToolbox, ODK, Power BI, ArcGIS, SPSS, STATA, Python, R, Gestão de Consórcios internacionais.`;
+Estratégia Corporativa, M&A, Finanças Globais, Due Diligence, Governança, Power BI, IFRS, Gestão de Stakeholders.`;
 
     setCandidateRawText(demoText);
-    setLinkedInUrl(AGOSTINHO_CV.personalDetails.linkedin || 'https://linkedin.com/in/abderval');
+    setLinkedInUrl(AGOSTINHO_CV.personalDetails.linkedin || 'https://linkedin.com/in/beatriz-fonseca-exec');
     setTargetStandard('onu');
-    setSuccessMessage('Perfil MEAL & Cooperação Internacional carregado!');
+    setSuccessMessage('Perfil Liderança Executiva & Estratégia carregado!');
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
@@ -390,7 +389,7 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
               ? 'Universal ATS Keyword Density (Zero-Rejection)'
               : targetStandard === 'europass'
               ? 'Padrão Europeu Europass com Foto e CEFR (União Europeia)'
-              : 'ONU / União Europeia (RBM / Logframe Padrão António Paulo)'
+              : 'Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)'
         })
       });
 
@@ -509,12 +508,12 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
           </span>
           <button
             type="button"
-            onClick={handleLoadMealProfile}
+            onClick={handleLoadExecutiveProfile}
             className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
-            title="Carregar perfil MEAL & Cooperação Internacional (ONU / UE)"
+            title="Carregar perfil Liderança Executiva & Operações Estratégicas"
           >
-            <span>🌐</span>
-            <span>MEAL & ONU/UE</span>
+            <span>🏛️</span>
+            <span>Executivo & Operações</span>
           </button>
           <button
             type="button"
@@ -549,9 +548,9 @@ Gestão de Projetos, Análise de Dados, Planeamento Estratégico, Liderança de 
                     ? 'bg-amber-400 text-slate-950 shadow-2xs'
                     : 'text-slate-300 hover:text-white'
                 }`}
-                title="Padrão RBM, Logframe e Governação Multilateral"
+                title="Padrão Corporativo & Projetos Globais"
               >
-                ONU / UE Clássico
+                Corporativo Global
               </button>
               <button
                 type="button"
@@ -733,7 +732,7 @@ COMPETÊNCIAS:
             <span>{candidateRawText.length} caracteres inseridos</span>
             <button
               type="button"
-              onClick={handleLoadMealProfile}
+              onClick={handleLoadExecutiveProfile}
               className="text-slate-600 hover:text-slate-900 hover:underline"
             >
               Preencher com exemplo demonstrativo
@@ -789,13 +788,13 @@ COMPETÊNCIAS:
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                   }`}
                 >
-                  {job.id === 'job-fresan'
-                    ? 'FRESAN Camões'
-                    : job.id === 'job-tech'
-                    ? 'Google Cloud'
-                    : job.id === 'job-finance'
-                    ? 'CFO Finanças'
-                    : 'ONU Data Lead'}
+                  {job.id === 'job-1'
+                    ? 'COO Operações'
+                    : job.id === 'job-2'
+                    ? 'Cloud & Tech Lead'
+                    : job.id === 'job-3'
+                    ? 'VP Finanças & M&A'
+                    : 'Governança Global'}
                 </button>
               ))}
             </div>

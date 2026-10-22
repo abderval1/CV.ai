@@ -95,7 +95,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
               type="text"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Dar um nome à versão atual (ex: CV ONU WFP 2026, CV Consultoria)..."
+              placeholder="Dar um nome à versão atual (ex: CV Executivo COO 2026, CV Tech Lead, CV M&A)..."
               className="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
             <button

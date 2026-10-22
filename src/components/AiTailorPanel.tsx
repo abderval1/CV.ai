@@ -14,7 +14,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   jobDescription
 }) => {
   const [targetStandard, setTargetStandard] = useState<string>(
-    'Padrão António Paulo / ONU & União Europeia (MEAL & RBM)'
+    'Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)'
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -136,14 +136,17 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
             onChange={(e) => setTargetStandard(e.target.value)}
             className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800"
           >
-            <option value="Padrão António Paulo / ONU & União Europeia (MEAL & RBM)">
-              Padrão António Paulo / ONU & União Europeia (Foco MEAL, RBM & Indicadores)
+            <option value="Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)">
+              Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)
             </option>
-            <option value="Padrão Internacional Tech & Engenharia de Dados">
-              Padrão Internacional Tech & Engenharia de Dados (Foco Pipelines, BI & Cloud)
+            <option value="Big Tech & Engenharia de Software (Métricas de Sistema, Cloud & IA)">
+              Big Tech & Engenharia de Software (Métricas de Sistema, Cloud & IA)
             </option>
-            <option value="Padrão Corporativo & Gestão de Projetos">
-              Padrão Corporativo & Gestão de Projetos (Foco Liderança & Resultados)
+            <option value="Harvard Business School & Finanças Corporativas (EBITDA, M&A & Valuation)">
+              Harvard Business School & Finanças Corporativas (EBITDA, M&A & Valuation)
+            </option>
+            <option value="Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)">
+              Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)
             </option>
           </select>
         </div>

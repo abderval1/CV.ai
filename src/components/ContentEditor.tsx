@@ -446,7 +446,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         {activeSection === 'summary' && (
           <div className="p-4 pt-0 border-t border-slate-100 space-y-2">
             <p className="text-xs text-slate-500 mt-2">
-              Dica: O resumo deve ter 4 a 6 linhas destacando senioridade, setores-chave (MEAL, UE, ONU), metodologias e impacto comprovado.
+              Dica: O resumo deve ter 4 a 6 linhas destacando senioridade executiva, setores-chave (Operações, Big Tech, Finanças, M&A), metodologias e impacto quantificado.
             </p>
             <textarea
               rows={5}
@@ -563,7 +563,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       <input
                         type="text"
                         value={exp.company}
-                        placeholder="Organização / Empresa (ex: Camões, I.P. – FRESAN)"
+                        placeholder="Organização / Empresa (ex: OmniVanguard Holdings / Multinacional)"
                         onChange={(e) =>
                           handleUpdateExperience(expIdx, { ...exp, company: e.target.value })
                         }
@@ -574,7 +574,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                         <input
                           type="text"
                           value={exp.role}
-                          placeholder="Cargo (ex: MEAL Information Systems Specialist)"
+                          placeholder="Cargo (ex: Chief Operating Officer / VP de Operações)"
                           onChange={(e) =>
                             handleUpdateExperience(expIdx, { ...exp, role: e.target.value })
                           }
@@ -583,7 +583,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                         <input
                           type="text"
                           value={exp.period}
-                          placeholder="Período (ex: 09/2023 – 11/2023 ou 2021 – Presente)"
+                          placeholder="Período (ex: 2021 – Presente)"
                           onChange={(e) =>
                             handleUpdateExperience(expIdx, { ...exp, period: e.target.value })
                           }
@@ -594,7 +594,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       <input
                         type="text"
                         value={exp.donor || ''}
-                        placeholder="Financiador / Projeto (ex: Financed by the European Union | Co-managed by Camões...)"
+                        placeholder="Divisão / Operação / Programa Global (Opcional)"
                         onChange={(e) =>
                           handleUpdateExperience(expIdx, { ...exp, donor: e.target.value })
                         }
@@ -818,7 +818,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           onClick={() => toggleSection('references')}
           className="w-full px-4 py-3 flex items-center justify-between text-left font-semibold text-slate-900 hover:bg-slate-50 transition-colors"
         >
-          <span className="text-sm">7. Referências Profissionais (Estilo ONU)</span>
+          <span className="text-sm">7. Referências Executivas & Contatos</span>
           {activeSection === 'references' ? (
             <ChevronUp className="w-4 h-4 text-slate-400" />
           ) : (

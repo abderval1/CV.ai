@@ -118,13 +118,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                 className="px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
                 title={job.title}
               >
-                {job.id === 'job-fresan'
-                  ? 'FRESAN Camões'
-                  : job.id === 'job-tech'
-                  ? 'Google Cloud'
-                  : job.id === 'job-finance'
-                  ? 'CFO Finanças'
-                  : 'ONU Data Lead'}
+                {job.id === 'job-1'
+                  ? 'COO Operações'
+                  : job.id === 'job-2'
+                  ? 'Cloud & Tech Lead'
+                  : job.id === 'job-3'
+                  ? 'VP Finanças & M&A'
+                  : 'Governança Global'}
               </button>
             ))}
           </div>
@@ -227,7 +227,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             </span>
           </div>
           <p className="text-[11px] text-slate-600">
-            Recrutadores internacionais da ONU e UE priorizam bullets com dados concretos (ex: "mais de 100 agentes", "redução de 40% nos erros").
+            Recrutadores corporativos globais priorizam bullets com dados quantificados (ex: "mais de 120 colaboradores", "redução de 32% nos custos").
           </p>
         </div>
 

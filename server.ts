@@ -150,30 +150,30 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
       }
 
       const prompt = `
-Você é o mais conceituado consultor executivo de Recursos Humanos e Recrutamento Internacional para Nações Unidas (ONU), União Europeia, ONGs Internacionais e Multinacionais de Tecnologia.
+Você é o mais conceituado consultor executivo de Recursos Humanos e Headhunter Internacional, especializado em recrutamento de liderança para grandes multinacionais, Big Techs e empresas de consultoria global.
 
 O candidato enviou textos brutos, notas de carreira, projetos, documentos ou histórico do LinkedIn.
-Em outro campo, foi fornecida a descrição da vaga pretendida (Termos de Referência / Requisitos).
+Em outro campo, foi fornecida a descrição da vaga pretendida (Requisitos e Responsabilidades).
 
 SUA MISSÃO:
-Analisar minuciosamente os dados do candidato e GERAR UM CURRÍCULO ESTRUTURADO COMPLETO, estrategicamente adaptado e otimizado para a vaga fornecida.
-Padrão Institucional Alvo: ${targetStandard || 'ONU / União Europeia (Padrão António Paulo)'}.
+Analisar minuciosamente os dados do candidato e GERAR UM CURRÍCULO ESTRUTURADO COMPLETO, de altíssimo impacto executivo, otimizado para sistemas ATS e adaptado estrategicamente à vaga fornecida.
+Padrão Institucional Alvo: ${targetStandard || 'Padrão Corporativo Internacional & Executivo'}.
 
-DADOS BRUTOS DO CANDIDATO (Textos, Documentos, Histórico, LinkedIn):
+DADOS BRUTOS DO CANDIDATO:
 ${rawCandidateInfo || ''}
 ${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
 
-DESCRIÇÃO DA VAGA / TERMOS DE REFERÊNCIA (TdR):
-${jobDescription || 'Vaga executiva na área de MEAL, Gestão de Sistemas de Informação ou Engenharia de Dados.'}
+DESCRIÇÃO DA VAGA / REQUISITOS:
+${jobDescription || 'Posição Executiva de Liderança, Gestão de Operações, Estratégia ou Tecnologia.'}
 
 DIRETRIZES DE FORMULAÇÃO DE ALTO IMPACTO:
-1. Extraia o Nome Completo, Título Executivo (adaptado à vaga), Localização, Telefone, E-mail e LinkedIn. Se faltar algum dado de contacto, deduza ou mantenha o que existir.
-2. Resumo Executivo (Summary): Escreva um resumo sênior de 4-6 linhas destacando anos de experiência, liderança técnica, padrões internacionais e impacto comprovado alinhado aos objetivos da vaga.
-3. Competências Principais (Core Competencies): Extraia de 5 a 6 categorias de competências essenciais, cada uma com título forte e descrição com palavras-chave exatas da vaga.
-4. Experiência Profissional: Organize em ordem cronológica reversa. Para cada cargo, estruture a Organização, Cargo, Período, Financiador/Projeto (se aplicável) e crie bullet points de alto impacto usando a fórmula do Google/ONU: Ação Forte + Contexto/Ferramentas + Métrica/Resultado quantificável (redução de erros, prazos, número de utilizadores, orçamentos, etc.). Inclua links de plataformas em produção se citados.
+1. Extraia o Nome Completo, Título Profissional Executivo (adaptado à vaga), Localização, Telefone, E-mail e LinkedIn. Se faltar algum dado, estruture de forma realista.
+2. Resumo Executivo (Summary): Escreva um resumo de alto impacto de 4 a 6 linhas destacando anos de experiência, especialidade central, liderança técnica/operacional e conquistas comprovadas alinhadas aos objetivos da vaga.
+3. Competências Principais (Core Competencies): Extraia de 5 a 6 categorias de competências essenciais, cada uma com título forte e descrição contendo as palavras-chave exatas da vaga.
+4. Experiência Profissional: Organize em ordem cronológica reversa. Para cada cargo, estruture Organização, Cargo, Período, Local e crie bullet points de alto impacto aplicando a fórmula Google XYZ: Ação Forte + Contexto/Ferramentas + Métrica/Resultado quantificável (crescimento de receita, redução de custos, otimização de tempo, liderança de equipas ou entrega de projetos críticos).
 5. Formação Académica (Education): Liste graus, instituições e anos.
-6. Formação Especializada & Idiomas: Inclua metodologias, softwares e fluência nos idiomas relevantes.
-7. Referências: Estruture referências formais com Nome, Entidade/Cargo e Contacto.
+6. Formação Especializada, Certificações & Idiomas: Inclua metodologias, softwares e proficiência em idiomas.
+7. Referências: Estruture referências profissionais formais com Nome, Entidade/Cargo e Contacto.
 
 Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 {
@@ -181,7 +181,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
     "name": "Nome Completo",
     "title": "Título Profissional Executivo",
     "location": "Cidade, País",
-    "phone": "+244 ...",
+    "phone": "+...",
     "email": "email@...",
     "linkedin": "linkedin.com/in/...",
     "website": "https://..."
@@ -197,14 +197,14 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
       "role": "Cargo",
       "period": "Período",
       "location": "Local",
-      "donor": "Financiador se houver",
-      "highlights": ["Ponto de impacto 1", "Ponto de impacto 2"]
+      "donor": "Área / Unidade de Negócio",
+      "highlights": ["Ponto de impacto com métricas", "Ponto de impacto com métricas"]
     }
   ],
   "educations": [
     { "id": "edu-1", "degree": "Grau", "institution": "Universidade", "period": "Anos", "gpaOrHonors": "Honras se houver" }
   ],
-  "trainings": ["Formação 1", "Formação 2"],
+  "trainings": ["Certificação 1", "Especialização 2"],
   "languages": [
     { "language": "Idioma", "level": "Nível de proficiência" }
   ],
@@ -212,10 +212,10 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
     { "id": "ref-1", "name": "Nome", "institutionAndPosition": "Entidade e Cargo", "contact": "email ou telefone" }
   ],
   "atsInsights": {
-    "scoreEstimate": 94,
+    "scoreEstimate": 95,
     "matchedKeywords": ["palavra1", "palavra2"],
     "missingKeywords": ["palavra3"],
-    "recommendations": ["recomendação 1", "recomendação 2"]
+    "recommendations": ["recomendação estratégica 1", "recomendação estratégica 2"]
   }
 }
       `.trim();
@@ -249,38 +249,46 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
         });
       }
 
+      const candidateName = cvData?.personalDetails?.name || cvData?.name || 'Candidato Executivo';
+      const candidateTitle = cvData?.personalDetails?.title || cvData?.title || 'Especialista Sênior';
+      const candidateContacts = [
+        cvData?.personalDetails?.email || cvData?.email,
+        cvData?.personalDetails?.phone || cvData?.phone,
+        cvData?.personalDetails?.location || cvData?.location,
+        cvData?.personalDetails?.linkedin || cvData?.linkedin
+      ].filter(Boolean).join(' | ');
+
       const prompt = `
-Você é um consultor executivo sênior de Recursos Humanos especializado em candidaturas diplomáticas e de alto nível para Organizações Internacionais (ONU, União Europeia, Expertise France, Camões I.P., ONGs Globais).
+Você é um consultor executivo sênior de Recursos Humanos especializado em cartas de motivação e apresentação de alto nível para grandes corporações, empresas de consultoria e posições executivas globais.
 Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
 
 DADOS DO CANDIDATO:
-Nome: ${cvData?.name || 'Agostinho do Rosário'}
-Título: ${cvData?.title || 'Senior MEAL & Information Systems Specialist'}
-Contactos: ${cvData?.email || ''} | ${cvData?.phone || ''} | ${cvData?.location || ''} | ${cvData?.linkedin || ''}
-Organização Alvo: ${organizationName || 'Selection Committee / Human Resources Directorate'}
-Destinatário: ${recipientName || 'Dear Members of the Selection Committee'}
-Portal em Produção Relevante: https://sgi-fresancamoes.com/ (Plataforma MEAL desenvolvida para Camões, I.P. / União Europeia)
+Nome: ${candidateName}
+Título: ${candidateTitle}
+Contactos: ${candidateContacts}
+Organização Alvo: ${organizationName || 'Selection Committee / Hiring Team'}
+Destinatário: ${recipientName || 'Dear Hiring Committee'}
 
-TERMOS DE REFERÊNCIA / DESCRIÇÃO DA VAGA:
-${jobDescription || 'Senior MEAL & Information Systems Coordinator'}
+DESCRIÇÃO DA VAGA / REQUISITOS:
+${jobDescription || 'Posição de Liderança Executiva, Gestão ou Especialista Sênior'}
 
-Resumo Profissional:
+Resumo Profissional do Candidato:
 ${cvData?.summary || ''}
 
-Experiências Principais (WFP Angola, Camões I.P. / FRESAN, INE Angola):
+Experiências Principais do Candidato:
 ${JSON.stringify(cvData?.experiences || [], null, 2)}
 
 DIRETRIZES DA CARTA:
-1. Cabeçalho formal clássico internacional com data e endereço.
-2. Abertura afirmativa declarando a candidatura à posição e motivação estratégica pelo impacto.
-3. Demonstração de autoridade técnica direta: arquitetura de sistemas MEAL, recolha móvel (Kobo, ODK, Survey Solutions, MoDA), automação de validações e regras de alerta pré-análise, auditorias de qualidade de dados (DQA), e dashboards executivos em Power BI.
-4. Citação do sucesso comprovado da entrega da plataforma colaborativa do FRESAN / Camões, I.P. (https://sgi-fresancamoes.com/) financiada pela União Europeia e intervenção em consórcios com agências da ONU (WFP, FAO, PNUD).
-5. Conclusão cortês com prontidão para entrevista técnica.
+1. Cabeçalho formal executivo internacional com data e identificação.
+2. Abertura afirmativa declarando com entusiasmo a candidatura e o alinhamento com a visão da organização.
+3. Demonstração de autoridade profissional direta baseada nas realizações reais presentes no histórico do candidato (liderança de equipas, alcance de metas, eficiência operacional, projetos estratégicos).
+4. Conexão explícita entre as competências do candidato e os desafios prioritários da vaga.
+5. Conclusão cortês com convite para entrevista técnica e agradecimento.
 
 Responda ESTRITAMENTE em JSON:
 {
   "subject": "Application for the position of...",
-  "letterBody": "Full letter text formatted in clear paragraphs",
+  "letterBody": "Full letter text formatted in clear paragraphs with proper spacing",
   "keySellingPoints": ["point 1", "point 2", "point 3"]
 }
       `.trim();

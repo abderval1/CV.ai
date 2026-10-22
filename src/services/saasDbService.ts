@@ -382,22 +382,22 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       totalCvGenerated: 12,
       billingCycle: 'yearly',
       createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Economista Sénior Nações Unidas (ONU Cabo Verde)'
+      notes: 'Economista Sénior & Consultor Internacional de Mercados'
     },
     {
       id: 'usr-antonio-paulo',
-      name: 'António Paulo Mendes',
-      email: 'apaulo2007@hotmail.com',
+      name: 'Carlos Paulo Mendes',
+      email: 'c.paulo.mendes@holding.com',
       role: 'user',
       status: 'active',
       plan: 'pro',
-      phone: '+244 923 881 200',
+      phone: '+55 11 98881-2200',
       creditsRemaining: 850,
       creditsUsed: 32,
       totalCvGenerated: 8,
       billingCycle: 'monthly',
       createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Especialista em Avaliação & KoBoToolbox Angola'
+      notes: 'Diretor de Operações & Inovação'
     },
     {
       id: 'usr-claudia-santos',

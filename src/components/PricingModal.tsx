@@ -31,7 +31,7 @@ interface PricingModalProps {
   onClose: () => void;
 }
 
-// Chave Pix Oficial fornecida pelo administrador do SaaS
+// Chave Pix Oficial fornecida para recebimentos Pix
 export const OFFICIAL_PIX_KEY = 'f4693532-31da-4e95-a589-19bccab0d915';
 
 // Algoritmo CRC16/CCITT-FALSE padrão oficial do Banco Central para Pix BR Code
@@ -72,7 +72,7 @@ function generatePixBRCode(
   const country = formatField('58', 'BR');
   const name = formatField('59', merchantName.slice(0, 25));
   const city = formatField('60', merchantCity.slice(0, 15));
-  const addData = formatField('62', formatField('05', 'SAASCV'));
+  const addData = formatField('62', formatField('05', 'CVPRO'));
 
   const payloadWithoutCRC = `000201${merchantAccount}${mcc}${currencyCode}${amtFormatted}${country}${name}${city}${addData}6304`;
   const checksum = calculatePixCRC16(payloadWithoutCRC);
@@ -302,7 +302,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
     setCardNumber('4242 4242 4242 4242');
     setCardExpiry('12/28');
     setCardCvc('842');
-    setCardholderName(user?.name || 'Agostinho do Rosário');
+    setCardholderName(user?.name || 'Cliente Executivo');
     setCardError(null);
   };
 
@@ -561,8 +561,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-x-hidden overflow-y-auto">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94vh] overflow-y-auto overflow-x-hidden animate-in zoom-in-95 duration-200">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 pb-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-20">
           <div className="flex items-center gap-3">
@@ -571,7 +571,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900">Planos & Assinaturas SaaS</h2>
+                <h2 className="text-lg font-black text-slate-900">Planos & Assinaturas Profissionais</h2>
                 <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <CreditCard className="w-3 h-3 text-indigo-600" />
                   Stripe & Pix
@@ -612,7 +612,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <span className="text-xs font-semibold text-slate-600">Plano Selecionado:</span>
                 <span className="text-xs font-bold text-slate-900 capitalize">
-                  {selectedPlan === 'executive' ? 'Executivo VIP (ONU & Internacional)' : 'Profissional'}
+                  {selectedPlan === 'executive' ? 'Executivo VIP (C-Level & Global)' : 'Profissional'}
                 </span>
               </div>
 
@@ -660,7 +660,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
             </div>
 
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Acesso total liberado! O seu plano agora está gravado no Firebase e sincronizado. Pode exportar Word (.docx), gerar currículos ilimitados e auditar vagas no ATS.
+              Acesso total liberado! O seu plano foi ativado com sucesso e está sincronizado com a sua conta. Pode exportar Word (.docx), gerar currículos ilimitados e auditar vagas no ATS.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -1359,7 +1359,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200">
                   <div className="flex items-center gap-2 text-[11px] text-slate-500">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Emissão imediata de fatura e sincronização direta no Firestore.</span>
+                    <span>Emissão imediata de fatura e ativação instantânea da conta.</span>
                   </div>
 
                   <button

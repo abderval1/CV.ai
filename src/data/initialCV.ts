@@ -1,103 +1,112 @@
 import { CVData, PricingPlan } from '../types/cv';
 
-// Generic Clean Default Template for SaaS Users
+// High-Converting Modern Default Executive Profile
 export const GENERIC_DEFAULT_CV: CVData = {
   personalDetails: {
-    name: 'SEU NOME COMPLETO',
-    title: 'Especialista em Gestão de Projetos & Sistemas de Informação',
-    location: 'Luanda, Angola (Disponível para Mobilidade)',
-    phone: '+244 923 000 000',
-    email: 'seu.email@exemplo.com',
-    linkedin: 'linkedin.com/in/seu-perfil',
-    website: 'https://seusite-ou-portfolio.com',
-    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
-    showPhoto: true
+    name: 'ALEXANDRE MENDES',
+    title: 'Chief Operating Officer (COO) | Head de Operações & Transformação Digital',
+    location: 'São Paulo, Brasil (Disponibilidade para Mobilidade Global)',
+    phone: '+55 11 98765-4321',
+    email: 'alexandre.mendes@executivoglobal.com',
+    linkedin: 'linkedin.com/in/alexandre-mendes-coo',
+    website: 'https://alexandremendes.com',
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    showPhoto: false
   },
   summary:
-    'Profissional sênior com sólida experiência no planeamento estratégico, monitoria de resultados e transformação digital em programas multissetoriais. Especialista em desenho de sistemas de informação, garantia da qualidade de dados (DQA) e desenvolvimento de painéis executivos para apoio à tomada de decisões e reporte institucional. Histórico comprovado de liderança técnica em equipas multidisciplinares e articulação com parceiros nacionais e internacionais.',
+    'Executivo sênior de operações e estratégia corporativa com mais de 12 anos de experiência liderando reestruturações organizacionais, escalabilidade de produtos digitais e governança orientada a dados em corporações multinacionais e empresas de alto crescimento. Histórico comprovado de gestão de orçamentos superiores a US$ 35M, redução de despesas operacionais em até 32% e liderança de equipas multifuncionais de mais de 120 profissionais em mercados competitivos.',
   competencies: [
     {
       id: 'comp-1',
-      category: 'Gestão Orientada para Resultados (RBM)',
+      category: 'Liderança Estratégica & Gestão P&L',
       description:
-        'Desenho de Quadros Lógicos (Logframes), definição de indicadores de impacto e planos de monitoria e avaliação.'
+        'Planeamento estratégico de longo prazo, gestão integral de demonstrações financeiras (P&L), alocação de capital e governança de risco corporativo.'
     },
     {
       id: 'comp-2',
-      category: 'Sistemas Digitais & Recolha de Dados',
+      category: 'Transformação Digital & Automação de Processos',
       description:
-        'Implementação de ferramentas móveis (KoboToolbox, ODK), arquitetura de bases de dados relacionais e fluxos automatizados.'
+        'Implementação de arquiteturas de dados empresariais, migração para sistemas em nuvem, otimização de fluxos com IA e metodologias ágeis em escala.'
     },
     {
       id: 'comp-3',
-      category: 'Business Intelligence & Visualização',
+      category: 'Business Intelligence & Métricas Executivas',
       description:
-        'Construção de dashboards interativos em Power BI, análise estatística e relatórios estratégicos para liderança executiva.'
+        'Definição de OKRs e KPIs estratégicos, modelagem de painéis executivos de tomada de decisão e análise preditiva de receita e rentabilidade.'
     },
     {
       id: 'comp-4',
-      category: 'Garantia de Qualidade & Auditoria de Dados',
+      category: 'Fusões, Aquisições & Parcerias Globais',
       description:
-        'Protocolos de validação de dados em tempo real, inquéritos de campo, amostragem e integridade da informação.'
+        'Due diligence operacional em processos de M&A, integração pós-fusão de plataformas e negociação de contratos de fornecimento global.'
     },
     {
       id: 'comp-5',
-      category: 'Coordenação de Consórcios & Capacitação',
+      category: 'Desenvolvimento de Lideranças & Cultura de Alta Performance',
       description:
-        'Gestão de parcerias com entidades públicas e privadas, formação de equipas e elaboração de manuais operacionais.'
+        'Formação e retenção de executivos, alinhamento cultural entre departamentos e estruturação de planos de incentivos e retenção de talentos chave.'
     }
   ],
   experiences: [
     {
       id: 'exp-1',
-      company: 'Programa de Desenvolvimento & Resiliência Institucional',
-      role: 'Coordenador Sénior de Sistemas de Informação & MEAL',
-      period: '2022 – Presente',
-      location: 'Luanda & Províncias',
-      donor: 'Financiamento Internacional Multilateral',
+      company: 'OmniVanguard Holdings & Technologies',
+      role: 'Chief Operating Officer (COO) & Vice-Presidente de Operações',
+      period: '2021 – Presente',
+      location: 'São Paulo & Operações Globais',
       highlights: [
-        'Liderou a concepção e implementação da plataforma digital colaborativa do sistema de monitoria orientada a resultados.',
-        'Estruturou fluxos de dados de campo automatizados, reduzindo em 45% o tempo de processamento e reporte para os financiadores.',
-        'Implementou regras de validação e critérios de alerta pré-análise, assegurando a integridade dos dados antes do cálculo de indicadores.',
-        'Desenvolveu dashboards analíticos interativos em Power BI para acompanhamento em tempo real de metas operacionais.',
-        'Capacitou mais de 80 técnicos e pontos focais provinciais em recolha de dados móvel e padrões de segurança da informação.'
+        'Liderou a operação global abrangendo 4 centros regionais e mais de 140 colaboradores, alcançando crescimento de 48% na receita anual composta.',
+        'Redesenhou a cadeia de valor e processos internos, gerando poupança operacional auditada de US$ 8.4M em 18 meses.',
+        'Implantou cultura de tomada de decisão baseada em inteligência de dados, reduzindo o ciclo de lançamento de novos serviços de 9 meses para 11 semanas.',
+        'Conduziu a integração operacional de duas empresas adquiridas via M&A, unificando sistemas ERP e equipas sem qualquer interrupção de serviço aos clientes enterprise.',
+        'Aumentou o Net Promoter Score (NPS) corporativo de 54 para 81 pontos através de programas de excelência operacional e customer success.'
       ]
     },
     {
       id: 'exp-2',
-      company: 'Agência Internacional de Cooperação Técnica',
-      role: 'Especialista em Gestão de Dados & Análise Estatística',
-      period: '2019 – 2022',
-      location: 'Luanda, Angola',
-      donor: 'Operações Nacionais e Regionais',
+      company: 'Apex Global Strategic Partners',
+      role: 'Diretor de Eficiência Operacional & Projetos Especiais',
+      period: '2017 – 2021',
+      location: 'São Paulo / Lisboa',
       highlights: [
-        'Coordenou o desenho de inquéritos de campo e avaliação de impacto para beneficiários em múltiplas províncias.',
-        'Automatizou rotinas de limpeza e reconciliação de dados em Python e SQL, eliminando redundâncias e inconsistências.',
-        'Elaborou relatórios técnicos periódicos de progresso e apresentações estratégicas para o conselho diretivo.',
-        'Geriu fluxos de aquisição e logística de equipamentos de tecnologia para equipas móveis de campo.'
+        'Geriu portfólio de 16 projetos estratégicos de inovação e automação para clientes dos setores financeiro, logística e telecomunicações.',
+        'Desenvolveu modelos de simulação financeira e cenários de stress para otimização de custos fixos, com retorno sobre investimento (ROI) médio de 320%.',
+        'Estruturou o centro de excelência em governança corporativa e compliance, assegurando 100% de aprovação em auditorias externas independentes.',
+        'Coordenou equipa multidisciplinar de 35 especialistas em gestão de mudança, assegurando adoção tecnológica com taxa de adesão superior a 95%.'
+      ]
+    },
+    {
+      id: 'exp-3',
+      company: 'Continental Business Advisory',
+      role: 'Gerente Sénior de Consultoria de Gestão',
+      period: '2013 – 2017',
+      location: 'São Paulo, Brasil',
+      highlights: [
+        'Conduziu diagnósticos operacionais e reengenharia de processos para empresas listadas em bolsa.',
+        'Elaborou relatórios de recomendação estratégica e apresentações para Conselhos de Administração e comités de auditoria.'
       ]
     }
   ],
   educations: [
     {
       id: 'edu-1',
-      degree: 'Mestrado em Gestão de Sistemas de Informação / Informática Aplicada',
-      institution: 'Universidade de Referência',
-      period: '2020 – 2022'
+      degree: 'Executive MBA (Liderança Global & Finanças Corporativas)',
+      institution: 'Insead / Fundação Getulio Vargas (FGV)',
+      period: '2018 – 2020',
+      gpaOrHonors: 'Com Louvor Académico'
     },
     {
       id: 'edu-2',
-      degree: 'Licenciatura em Engenharia Informática / Ciências da Computação',
-      institution: 'Faculdade de Engenharia',
-      period: '2015 – 2019',
-      gpaOrHonors: 'Com Distinção Académica'
+      degree: 'Licenciatura em Engenharia de Produção & Gestão Industrial',
+      institution: 'Universidade de São Paulo (USP)',
+      period: '2008 – 2013'
     }
   ],
   trainings: [
-    'Gestão de Projetos e Monitoria Orientada para Resultados (Normas Internacionais)',
-    'Visualização Avançada de Dados e Modelagem DAX com Microsoft Power BI',
-    'Desenho de Inquéritos Eletrónicos e Gestão de Bases de Dados (KoboToolbox, ODK)',
-    'Segurança da Informação e Conformidade com Proteção de Dados'
+    'Certificação Executiva em Inteligência Artificial para Negócios – MIT Sloan',
+    'Governança Corporativa e Papel do Conselho de Administração – IBGC',
+    'Lean Six Sigma Black Belt – Certificação Internacional de Excelência Operacional',
+    'Gestão Estratégica de Crises & Continuidade de Negócios (ISO 22301)'
   ],
   languages: [
     {
@@ -106,226 +115,210 @@ export const GENERIC_DEFAULT_CV: CVData = {
     },
     {
       language: 'Inglês',
-      level: 'Proficiência Profissional (Relatórios e Reuniões de Trabalho)'
+      level: 'Proficiência Profissional Plena (C-Level & Negociações Internacionais)'
     },
     {
-      language: 'Francês / Espanhol',
-      level: 'Conhecimento Operacional'
+      language: 'Espanhol',
+      level: 'Fluência de Negócios'
     }
   ],
   references: [
     {
       id: 'ref-1',
-      name: 'Nome do Supervisor / Referência 1',
-      institutionAndPosition: 'Organização Internacional\nDiretor de Programa / Especialista Sénior',
-      contact: 'contacto1@organizacao.org'
+      name: 'Dr. Roberto Silveira',
+      institutionAndPosition: 'OmniVanguard Holdings\nPresidente do Conselho de Administração (Chairman)',
+      contact: 'roberto.silveira@omnivanguard.com'
     },
     {
       id: 'ref-2',
-      name: 'Nome do Supervisor / Referência 2',
-      institutionAndPosition: 'Instituição de Cooperação Técnica\nCoordenador de Monitoria & Avaliação',
-      contact: 'contacto2@organizacao.org'
+      name: 'Dra. Mariana Costa',
+      institutionAndPosition: 'Apex Global Partners\nManaging Partner & CEO',
+      contact: 'mariana.costa@apexglobal.com'
     }
   ],
-  templateStyle: 'un_classic'
+  templateStyle: 'executive_harvard'
 };
 
-// Rich Demonstration Profile (Agostinho do Rosário - MEAL, FRESAN / Camões, WFP, INE)
-export const AGOSTINHO_CV: CVData = {
+// Rich Executive Demonstration Profile (Beatriz Fonseca - VP Estratégia & Finanças)
+export const EXECUTIVE_DEMO_CV: CVData = {
   personalDetails: {
-    name: 'AGOSTINHO DO ROSÁRIO',
-    title: 'MEAL & Information Systems Specialist | Senior Data Expert',
-    location: 'Luanda, Angola',
-    phone: '+244 930 744 338',
-    email: 'rosarioabderval@gmail.com',
-    linkedin: 'linkedin.com/in/abderval',
-    website: 'https://sgi-fresancamoes.com/',
-    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
-    showPhoto: true
+    name: 'BEATRIZ FONSECA',
+    title: 'Vice-Presidente de Estratégia Corporativa & Finanças Globais',
+    location: 'Lisboa, Portugal / Disponibilidade para Viagens Internacionais',
+    phone: '+351 912 345 678',
+    email: 'beatriz.fonseca@finance-holding.com',
+    linkedin: 'linkedin.com/in/beatriz-fonseca-exec',
+    website: 'https://beatrizfonseca.io',
+    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    showPhoto: false
   },
   summary:
-    'Especialista Sénior em Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL) e Arquitetura de Sistemas de Informação, com mais de 7 anos de experiência de liderança técnica em programas de grande escala de cooperação internacional e desenvolvimento comunitário financiados pela União Europeia (FRESAN / Camões, I.P.) e Sistema das Nações Unidas (WFP Angola). Especializado no desenho e colocação em produção de plataformas digitais colaborativas para gestão de informação orientada a resultados (RBM / OCDE CAD), automação de fluxos de recolha de dados móvel (KoboToolbox, ODK, WFP MoDA, Survey Solutions), garantia de qualidade e integridade de dados (DQA), e modelagem analítica em Microsoft Power BI para apoio à tomada de decisões estratégicas de alto nível.',
+    'Líder executiva com mais de 10 anos de experiência em estruturação de capital, expansão internacional e governança financeira para corporações globais e fundos de investimento. Especialista na condução de transações complexas de M&A superiores a €120M, otimização de liquidez corporativa e reporte analítico segundo as normas IFRS/US GAAP. Reconhecida pela capacidade de integrar estratégias de negócio com ferramentas modernas de automação analítica e modelos preditivos em larga escala.',
   competencies: [
     {
       id: 'comp-1',
-      category: 'Sistemas MEAL & RBM (OCDE/CAD)',
+      category: 'Engenharia Financeira & Estruturação de Capital',
       description:
-        'Concepção de Quadros Lógicos (Logframe), Matrizes de Indicadores PIRS, Planos de Monitoria & Avaliação e relatórios de progresso para doadores internacionais (UE, ONU).'
+        'Planeamento orçamental multianual, estruturação de dívida corporativa, emissão de obrigações e gestão de risco cambial e de taxas de juro.'
     },
     {
       id: 'comp-2',
-      category: 'Arquitetura de Plataformas Digitais & Web',
+      category: 'Fusões, Aquisições (M&A) & Joint Ventures',
       description:
-        'Desenvolvimento completo de plataformas colaborativas de gestão de informação (MVP), interfaces públicas e privadas, regras de validação pré-análise e produção (ex: https://sgi-fresancamoes.com/).'
+        'Condução de processos de valuation DCF e múltiplos, coordenação de auditorias legais/financeiras e integração patrimonial.'
     },
     {
       id: 'comp-3',
-      category: 'Recolha Móvel de Dados & DQA',
+      category: 'Governança Corporativa & Compliance IFRS',
       description:
-        'Estruturação avançada de formulários e questionários digitais (KoboToolbox, ODK, Survey Solutions, MoDA), protocolos de amostragem probabilística e auditorias de qualidade de dados no terreno.'
+        'Reporte financeiro a comités de auditoria, relações com investidores (IR) e garantia de conformidade com padrões Sarbanes-Oxley (SOX).'
     },
     {
       id: 'comp-4',
-      category: 'Business Intelligence & Análise Estatística',
+      category: 'Modelagem Preditiva & Business Intelligence',
       description:
-        'Modelagem de dashboards analíticos executivos em Power BI, DAX avançado, automação de ETL em Python/R e processamento estatístico em SPSS e STATA.'
+        'Desenho de arquitetura analítica em Power BI, integração de pipelines SQL/Python e automação de reconciliações contábeis.'
     },
     {
       id: 'comp-5',
-      category: 'Sistemas de Informação Geográfica (SIG)',
+      category: 'Liderança de Negociações Internacionais',
       description:
-        'Análise espacial de vulnerabilidade alimentar, mapeamento de beneficiários e infraestruturas comunitárias em ArcGIS e QGIS.'
-    },
-    {
-      id: 'comp-6',
-      category: 'Gestão de Consórcios & Capacitação',
-      description:
-        'Coordenação técnica com ministérios centrais (INE, MINAGRIF) e parceiros de implementação; facilitação de capacitação técnica a mais de 150 pontos focais e supervisores de campo.'
+        'Articulação junto a bancos de investimento internacionais, agências multilaterais e sindicatos bancários de crédito.'
     }
   ],
   experiences: [
     {
-      id: 'exp-fresan',
-      company: 'Programa FRESAN / Camões, I.P. (Instituto da Cooperação e da Língua)',
-      role: 'Consultor Especialista em Desenvolvimento de Software & Sistemas MEAL',
-      period: '09/2023 – 11/2023',
-      location: 'Lubango, Huíla / Luanda, Angola',
-      donor: 'Financiamento: União Europeia (€65 Milhões) | Co-gestão: Camões, I.P., FAO, PNUD e Vall d’Hebron',
-      highlights: [
-        'Liderou o desenvolvimento integral e entrada em produção do MVP da Plataforma Digital Colaborativa do Sistema de Informação MEAL (disponível em https://sgi-fresancamoes.com/).',
-        'Estruturou as interfaces pública e privada para monitoria, avaliação e aprendizagem orientada para resultados, garantindo conformidade com a Política de Segurança da Informação do Camões, I.P.',
-        'Automatizou os fluxos descentralizados de receção e processamento de dados provinciais da Huíla, Namibe e Cunene, estabelecendo regras de alerta pré-análise para validação técnica da UIC.',
-        'Alinhou o sistema informático com os critérios de avaliação da OCDE/CAD (2019) e forneceu manuais e formação técnica à equipa central de gestão do programa.'
-      ]
-    },
-    {
-      id: 'exp-wfp',
-      company: 'Programa Alimentar Mundial das Nações Unidas (WFP)',
-      role: 'Especialista em Gestão de Dados VAM (Vulnerability Analysis and Mapping) & MEAL',
+      id: 'exp-1',
+      company: 'Aura Capital Global Partners',
+      role: 'Vice-Presidente de Finanças Estratégicas & Investimentos',
       period: '2021 – Presente',
-      location: 'Luanda & Missões de Campo Provinciais, Angola',
-      donor: 'Sistema das Nações Unidas / Resposta Humanitária & Resiliência',
+      location: 'Lisboa & Londres',
       highlights: [
-        'Coordenou inquéritos nacionais de segurança alimentar e nutricional de grande escala, parametrizando questionários complexos em KoboToolbox, ODK e WFP MoDA.',
-        'Desenvolveu dashboards interativos em Power BI para acompanhamento em tempo real da distribuição alimentar, assistência financeira e indicadores como FCS (Food Consumption Score) e rCSI.',
-        'Conduziu auditorias sistemáticas de Data Quality Assurance (DQA) e limpeza estatística em Python e SPSS, assegurando dados confiáveis para relatórios executivos do Escritório de País.',
-        'Formou e supervisionou mais de 100 agentes de recolha de campo e pontos focais provinciais em boas práticas de integridade de dados e proteção de informação pessoal de beneficiários.'
+        'Geriu a alocação de um fundo de investimento estratégico de €85M com taxa interna de rentabilidade (TIR) de 24.6% ao ano.',
+        'Liderou a estruturação e fecho financeiro de 3 operações de aquisição internacional totalizando €140M em valor transacionado.',
+        'Redesenhou a arquitetura de tesouraria do grupo, reduzindo despesas de juros em 22% através de estratégias ativas de hedging.',
+        'Desenvolveu modelos analíticos de avaliação de risco que anteciparam volatilidades de mercado e protegeram a carteira patrimonial.',
+        'Apresentou trimestralmente relatórios de desempenho e tesouraria para investidores institucionais e agências de rating.'
       ]
     },
     {
-      id: 'exp-ine',
-      company: 'Instituto Nacional de Estatística de Angola (INE)',
-      role: 'Especialista em Processamento de Dados & Engenharia de Sistemas',
-      period: '2019 – 2021',
-      location: 'Luanda, Angola',
-      donor: 'Governo de Angola / Banco Mundial',
+      id: 'exp-2',
+      company: 'Meridian Corporation International',
+      role: 'Diretora Sénior de Planeamento Financeiro & Análise (FP&A)',
+      period: '2017 – 2021',
+      location: 'Lisboa / Luanda / Madrid',
       highlights: [
-        'Atuou no processamento e consistência lógica dos microdados do Recenseamento Agro-Pecuário e Pescas (RAPP) utilizando o sistema CAPI Survey Solutions do Banco Mundial.',
-        'Desenvolveu algoritmos de consistência automática e reconciliação entre questionários provinciais, eliminando duplicidades e taxas de omissão.',
-        'Participou na reformulação e suporte à infraestrutura do portal oficial de difusão de estatísticas económicas e demográficas de Angola.'
+        'Supervisionou o planeamento financeiro consolidado de 5 subsidiárias com faturação combinada de €210M.',
+        'Automatizou os processos de encerramento mensal com ferramentas de BI, diminuindo o tempo de consolidação de 14 para 3 dias úteis.',
+        'Implementou programa corporativo de gestão de custos que libertou €9.2M em capital de giro em 24 meses.',
+        'Capacitou e geriu uma equipa internacional de 18 analistas e controllers seniores.'
+      ]
+    },
+    {
+      id: 'exp-3',
+      company: 'Deloitte Corporate Finance Advisory',
+      role: 'Gerente de Auditoria & Transações Financeiras',
+      period: '2014 – 2017',
+      location: 'Lisboa, Portugal',
+      highlights: [
+        'Conduziu auditorias abrangentes de demonstrações financeiras consolidadas para grupos cotados no índice PSI-20.',
+        'Elaborou relatórios de due diligence financeira e identificou contingências fiscais em transações estratégicas.'
       ]
     }
   ],
   educations: [
     {
       id: 'edu-1',
-      degree: 'Mestrado em Informática Aplicada (Especialização em Análise de Dados e Sistemas)',
-      institution: 'Universidade de Referência Internacional',
-      period: '2023 – 2025'
+      degree: 'Mestrado em Finanças e Mercados de Capitais',
+      institution: 'Nova School of Business and Economics (Nova SBE)',
+      period: '2012 – 2014',
+      gpaOrHonors: 'Média de Conclusão: 18/20 (Summa Cum Laude)'
     },
     {
       id: 'edu-2',
-      degree: 'Licenciatura em Engenharia Informática',
-      institution: 'Faculdade de Engenharia',
-      period: '2014 – 2019',
-      gpaOrHonors: 'Média de Conclusão: 4.34 / 5.0 (Excelente)'
+      degree: 'Licenciatura em Economia e Gestão de Empresas',
+      institution: 'Universidade Católica Portuguesa',
+      period: '2008 – 2012'
     }
   ],
   trainings: [
-    'Monitoria e Avaliação Orientada para Resultados (RBM) em Organizações Internacionais',
-    'Microsoft Certified: Power BI Data Analyst Associate (Modelagem DAX, Power Query & Dashboards)',
-    'Desenho de Inquéritos Complexos e Infraestrutura Eletrónica CAPI (KoboToolbox, ODK, Survey Solutions)',
-    'Gestão e Análise de Dados Espaciais em ArcGIS e QGIS para Avaliação Humanitária',
-    'Normas de Segurança da Informação e Proteção de Dados (RGPD / Normas Camões, I.P.)'
+    'Chartered Financial Analyst (CFA) – Charterholder',
+    'Modelagem Financeira Avançada e Fusões & Aquisições – Wall Street Prep',
+    'Governança de Risco em Instituições Financeiras – London Business School',
+    'Power BI & Modelagem DAX para Direção Financeira'
   ],
   languages: [
-    {
-      language: 'Português',
-      level: 'Língua Materna / Fluente'
-    },
-    {
-      language: 'Inglês',
-      level: 'Proficiência Profissional Plena (Relatórios Técnicos e Apresentações Internacionais)'
-    },
-    {
-      language: 'Francês',
-      level: 'Conhecimento Operacional'
-    }
+    { language: 'Português', level: 'Língua Materna / Fluente' },
+    { language: 'Inglês', level: 'Fluência Plena (Trabalho Executivo Internacional Diário)' },
+    { language: 'Francês', level: 'Proficiência Profissional' }
   ],
   references: [
     {
       id: 'ref-1',
-      name: 'Aliou Diouf Mballo',
-      institutionAndPosition: 'Escritório da Coordenação Residente das Nações Unidas em Cabo Verde\nEconomista Sénior',
-      contact: 'aliou.mballo@un.org | mballoaliou2000@yahoo.fr'
+      name: 'Gonçalo Vasconcelos',
+      institutionAndPosition: 'Aura Capital Global Partners\nManaging Partner & CEO',
+      contact: 'g.vasconcelos@auracapital.com'
     },
     {
       id: 'ref-2',
-      name: 'António Paulo',
-      institutionAndPosition: 'Programa FRESAN / Camões, I.P.\nCoordenador de Monitoria & Avaliação (M&A)',
-      contact: 'apaulo2007@hotmail.com'
+      name: 'Sofia Henriques',
+      institutionAndPosition: 'Meridian Corporation\nChief Financial Officer (CFO)',
+      contact: 'sofia.henriques@meridiancorp.com'
     }
   ],
-  templateStyle: 'un_classic'
+  templateStyle: 'ats_compact'
 };
+
+// Alias for backwards compatibility with any remaining references
+export const AGOSTINHO_CV: CVData = EXECUTIVE_DEMO_CV;
 
 // Tech Lead & Cloud Architect Demonstration Profile
 export const TECH_LEAD_CV: CVData = {
   personalDetails: {
     name: 'MANUEL SANTOS SILVA',
-    title: 'Lead Software Architect & Engineering Manager | Cloud & AI',
-    location: 'Luanda, Angola / Remoto Global',
-    phone: '+244 924 111 222',
-    email: 'manuel.silva@tech-solutions.io',
+    title: 'Lead Software Architect & Engineering Manager | Cloud & AI Systems',
+    location: 'São Paulo, Brasil / Trabalho Remoto Internacional',
+    phone: '+55 11 99123-4567',
+    email: 'manuel.silva@tech-systems.io',
     linkedin: 'linkedin.com/in/manuelsilva-tech',
     website: 'https://github.com/manuelsilva-dev'
   },
   summary:
-    'Líder Técnico e Arquiteto de Software com 8+ anos de experiência na concepção e escalabilidade de plataformas SaaS de alta disponibilidade, arquiteturas orientadas a eventos e pipelines de inteligência artificial. Histórico comprovado de liderança de equipas de engenharia ágeis, redução de custos de infraestrutura em 40% na cloud (AWS/GCP) e aceleração de ciclos de release com rigorosos padrões de segurança DevSecOps.',
+    'Líder Técnico e Arquiteto de Software com mais de 8 anos de experiência na concepção e escalabilidade de plataformas SaaS de alta disponibilidade, arquiteturas orientadas a eventos e integração de pipelines de inteligência artificial. Histórico comprovado de liderança de equipas de engenharia ágeis, redução de custos de infraestrutura em 42% na cloud (AWS/GCP) e aceleração de ciclos de release com rigorosos padrões de segurança DevSecOps.',
   competencies: [
     {
       id: 'comp-tech-1',
-      category: 'Arquitetura de Software & Cloud',
-      description: 'Microsserviços, Kubernetes, Docker, AWS (ECS, Lambda, RDS), Terraform e arquiteturas serverless.'
+      category: 'Arquitetura de Software & Cloud Distribuída',
+      description: 'Microsserviços, Kubernetes, Docker, AWS (ECS, Lambda, RDS), Terraform e arquiteturas serverless resilientes.'
     },
     {
       id: 'comp-tech-2',
-      category: 'Engenharia Full Stack & APIs',
-      description: 'TypeScript, Node.js, React, Next.js, Python, PostgreSQL, Redis e desenho de APIs RESTful / GraphQL de baixa latência.'
+      category: 'Engenharia Full Stack & APIs de Baixa Latência',
+      description: 'TypeScript, Node.js, React, Next.js, Python, PostgreSQL, Redis e desenho de APIs RESTful / GraphQL com SLA 99.99%.'
     },
     {
       id: 'comp-tech-3',
-      category: 'CI/CD & DevSecOps',
+      category: 'CI/CD, Observabilidade & DevSecOps',
       description: 'Pipelines automatizados no GitHub Actions, monitorização com Datadog/Prometheus e auditorias de segurança OWASP.'
     },
     {
       id: 'comp-tech-4',
-      category: 'Liderança Técnica & Mentoria',
-      description: 'Gestão de equipas ágeis (Scrum/Kanban), contratação de talentos de engenharia e cultura de código limpo.'
+      category: 'Liderança Técnica & Mentoria de Engenharia',
+      description: 'Gestão de equipas ágeis (Scrum/Kanban), contratação de talentos de engenharia e cultura de código limpo e testes automatizados.'
     }
   ],
   experiences: [
     {
       id: 'exp-tech-1',
       company: 'Fintech Nexus International',
-      role: 'Staff Software Architect & Lead',
+      role: 'Staff Software Architect & Engineering Lead',
       period: '2022 – Presente',
-      location: 'Luanda & Híbrido',
+      location: 'Remoto Global',
       highlights: [
-        'Arquitetou a plataforma de pagamentos multimoeda processando mais de $15M/mês com 99.99% de disponibilidade.',
-        'Migrou monolito legado para microsserviços em Kubernetes, diminuindo a latência média de resposta de 420ms para 65ms.',
+        'Arquitetou a plataforma de pagamentos multimoeda processando mais de $25M/mês com 99.99% de disponibilidade.',
+        'Migrou monólito legado para microsserviços em Kubernetes, diminuindo a latência média de resposta de 420ms para 58ms.',
         'Implementou esteiras automatizadas de CI/CD, aumentando a frequência de deploys de quinzenais para múltiplos deploys diários.',
-        'Liderou e mentorou equipa de 14 engenheiros full-stack distribuídos geograficamente.'
+        'Liderou e mentorou equipa de 14 engenheiros full-stack distribuídos em 4 fusos horários.'
       ]
     },
     {
@@ -335,7 +328,7 @@ export const TECH_LEAD_CV: CVData = {
       period: '2019 – 2022',
       highlights: [
         'Desenvolveu sistemas de gestão transacional de alta concorrência em React, Node.js e PostgreSQL.',
-        'Otimizou consultas de banco de dados e camadas de cache Redis, reduzindo custos de servidores em 35%.'
+        'Otimizou consultas de banco de dados e camadas de cache Redis, reduzindo custos de servidores em 38%.'
       ]
     }
   ],
@@ -349,7 +342,7 @@ export const TECH_LEAD_CV: CVData = {
     {
       id: 'edu-tech-2',
       degree: 'Licenciatura em Ciências da Computação',
-      institution: 'Faculdade de Ciências',
+      institution: 'Faculdade de Ciências da Computação',
       period: '2015 – 2019',
       gpaOrHonors: 'Primeiro da Turma com Louvor'
     }
@@ -361,7 +354,7 @@ export const TECH_LEAD_CV: CVData = {
   ],
   languages: [
     { language: 'Português', level: 'Nativo / Fluente' },
-    { language: 'Inglês', level: 'Fluência Plena (Trabalho Internacional diário)' }
+    { language: 'Inglês', level: 'Fluência Plena (Trabalho Internacional Diário)' }
   ],
   references: [
     {
@@ -371,7 +364,7 @@ export const TECH_LEAD_CV: CVData = {
       contact: 'carlos.oliveira@nexus.io'
     }
   ],
-  templateStyle: 'european_modern'
+  templateStyle: 'tech_modern'
 };
 
 // Blank template for starting completely fresh
@@ -392,7 +385,7 @@ export const BLANK_CV: CVData = {
   trainings: [],
   languages: [],
   references: [],
-  templateStyle: 'un_classic'
+  templateStyle: 'executive_harvard'
 };
 
 // SaaS Pricing Plans
@@ -420,16 +413,16 @@ export const SAAS_PLANS: PricingPlan[] = [
   {
     id: 'pro',
     name: 'Profissional',
-    tagline: 'O plano mais escolhido por candidatos que querem garantir a vaga desejada.',
+    tagline: 'O plano mais escolhido por candidatos que querem acelerar convites de entrevista.',
     priceMonthly: '$29 / Mês',
-    priceYearly: '$240 / Ano (Poupe 25%)',
+    priceYearly: '$240 / Ano (Poupe 31%)',
     priceMonthlyValue: 29,
     priceYearlyValue: 240,
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
       'Currículos Ilimitados',
-      'Geração e Otimização com IA Gemini Ilimitada',
+      'Otimização com Inteligência Artificial Ilimitada',
       'Exportação Direta em Microsoft Word (.docx)',
       'Radar ATS 95%+ com Inserção de Palavras-Chave em 1 Clique',
       'Cartas de Apresentação em Inglês, Português, Francês e Espanhol',
@@ -442,7 +435,7 @@ export const SAAS_PLANS: PricingPlan[] = [
   {
     id: 'executive',
     name: 'Executivo VIP',
-    tagline: 'Para líderes e consultores que disputam posições de topo no mercado global.',
+    tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
     priceMonthly: '$49 / Mês',
     priceYearly: '$440 / Ano (Poupe 25%)',
     priceMonthlyValue: 49,
@@ -451,11 +444,11 @@ export const SAAS_PLANS: PricingPlan[] = [
     creditsMonthly: 9999,
     features: [
       'Tudo incluído no Plano Profissional',
-      'Modelos Oficiais Nações Unidas (P11 & UN Classic)',
-      'Scripts Python para Compilação Local Offline',
+      'Todos os Modelos Executivos C-Level, Harvard e Big Tech',
+      'Scripts Python para Compilação e Automação Local',
       'Auditoria Completa de Perfil LinkedIn por Especialista',
-      'Revisão Humana de Candidatura Internacional (ONU / UE)',
-      'Consultoria Técnica e Suporte Executivo WhatsApp'
+      'Revisão Estratégica de Candidatura Internacional',
+      'Consultoria Técnica e Suporte Executivo Prioritário'
     ],
     isPopular: false,
     ctaText: 'Subscrever Executivo'
@@ -464,75 +457,80 @@ export const SAAS_PLANS: PricingPlan[] = [
 
 export const SAMPLE_JOB_OFFERS = [
   {
-    id: 'job-fresan',
-    title: 'FRESAN / Camões, I.P. - TdR Desenvolvimento Software MVP MEAL',
-    organization: 'União Europeia & Camões, I.P.',
-    description: `TERMOS DE REFERÊNCIA (TdR):
-AQUISIÇÃO DE SERVIÇO DE DESENVOLVIMENTO DE SOFTWARE PARA O DESENVOLVIMENTO DE UM MVP (MINIMUM VIABLE PRODUCT) E CONFIGURAÇÃO DA PLATAFORMA DIGITAL (INTERFACE PÚBLICA E PRIVADA) DO SISTEMA DE INFORMAÇÃO | MONITORIA, AVALIAÇÃO E APRENDIZAGEM ORIENTADA PARA RESULTADOS, NO ÂMBITO DO PROJETO FORTALECIMENTO DA RESILIÊNCIA E DA SEGURANÇA ALIMENTAR E NUTRICIONAL EM ANGOLA | FRESAN/CAMÕES, I.P.
-
-1. ENQUADRAMENTO:
-O programa FRESAN, iniciativa do Governo de Angola financiada pela União Europeia (€65M) e co-gerido pelo Camões, I.P. em articulação com FAO e PNUD, tem por objetivo reduzir a fome e pobreza nas províncias do sul de Angola (Cunene, Huíla e Namibe).
-O Sistema de Informação (SI) da Unidade de Implementação do Camões, I.P. (UIC) sediada no Lubango envolve a recolha, gestão, processamento e visualização contínua de informação para tomada de decisão e reporte institucional.
-
-2. OBJETIVOS ESPECÍFICOS DA ASSISTÊNCIA TÉCNICA:
-- Desenvolver um MVP responsivo associado à configuração da Plataforma Digital Colaborativa (interfaces pública e privada) em https://sgi-fresancamoes.com/.
-- Estruturar os fluxos automatizados de recolha e validação de dados de campo das províncias da Huíla, Namibe e Cunene.
-- Implementar regras de alerta pré-análise para apoiar a equipa de Monitoria e Avaliação (M&A).
-- Assegurar conformidade com as orientações da OCDE/CAD (2019) e com a Política de Segurança da Informação do Camões, I.P.`
-  },
-  {
     id: 'job-1',
-    title: 'Organização Internacional - Coordenador de Projetos & Sistemas MEAL',
-    organization: 'Agência Internacional de Desenvolvimento',
-    description: `Cargo: Coordenador de Sistemas de Informação e Monitoria (MEAL)
-Localização: Luanda, Angola (com deslocações provinciais)
-Tipo de Contrato: Consultoria / Contrato Internacional
+    title: 'Chief Operating Officer (COO) & Diretor de Operações Globais',
+    organization: 'Multinacional de Tecnologia & Serviços Corporativos',
+    description: `Cargo: Chief Operating Officer (COO)
+Localização: Modelo Híbrido / Internacional
+Regime: Contrato Executivo Sénior
 
 Responsabilidades Principais:
-- Liderar o desenho e implementação do Plano de Monitoria, Avaliação, Prestação de Contas e Aprendizagem (MEAL) e Quadro Lógico do projeto.
-- Conceber a arquitetura da plataforma digital colaborativa do sistema de gestão de informação.
-- Estruturar inquéritos móveis (KoboToolbox, ODK, Survey Solutions) e garantir protocolos de qualidade de dados (DQA).
-- Desenvolver dashboards executivos em Power BI para suporte a decisões estratégicas e reporte a financiadores internacionais.
-- Assegurar conformidade com normas internacionais OECD/DAC e políticas de segurança da informação.
-- Coordenar com entidades governamentais, parceiros do consórcio e equipas multidisciplinares de campo.
+- Liderar as operações globais da companhia, supervisionando processos de escalabilidade, eficiência operacional e gestão de P&L multissetorial.
+- Conceber e executar a estratégia de transformação digital e automação de fluxos corporativos com inteligência analítica.
+- Gerir orçamentos anuais consolidados superiores a US$ 30M, garantindo rigorosa governança, compliance e retorno sobre capital investido.
+- Coordenar processos de due diligence em operações de M&A e liderar a integração pós-fusão de plataformas e equipas internacionais.
+- Liderar, mentorar e desenvolver diretores funcionais (Tecnologia, Finanças, Operações e Produto), promovendo uma cultura de alta performance e excelência.
 
 Requisitos:
-- Formação superior (Mestrado preferencial) em Engenharia Informática, Gestão de Sistemas de Informação, Estatística ou áreas afins.
-- Mínimo de 3 a 5 anos de experiência comprovada em programas de cooperação internacional ou grandes projetos de desenvolvimento.
-- Domínio prático de ferramentas de BI (Power BI), recolha móvel (Kobo) e análise de dados.
-- Fluência oral e escrita em Português e Inglês.`
+- Formação superior em Engenharia, Administração ou Economia; MBA Executivo de escola de referência internacional altamente valorizado.
+- Mínimo de 8 a 10 anos de experiência comprovada em liderança de operações de grande escala.
+- Domínio de gestão financeira corporativa (P&L, EBITDA, CAPEX/OPEX) e governança baseada em dados (BI e OKRs).
+- Fluência oral e escrita em Português e Inglês (capacidade comprovada de negociação internacional).`
   },
   {
     id: 'job-2',
-    title: 'ONU / Nações Unidas - Especialista em Dados & Avaliação de Impacto',
-    organization: 'Sistema das Nações Unidas',
-    description: `Position: Senior Data & Monitoring Specialist
-Organization: United Nations Agency
-Duty Station: Country Office / Regional Bureau
+    title: 'Lead Cloud Architect & Engineering Director (SaaS & AI)',
+    organization: 'Global Tech & Cloud Enterprise',
+    description: `Cargo: Lead Cloud Architect & Diretor de Engenharia de Sistemas
+Regime: Remoto Global / Híbrido
 
-Responsibilities:
-- Lead the design, operationalization, and maintenance of project indicator tracking tables and results frameworks.
-- Oversee electronic mobile data collection pipelines, sample design, and statistical data cleaning.
-- Model executive interactive monitoring dashboards in Power BI and geospatial analysis in GIS.
-- Train and mentor provincial monitoring focal points and survey enumerators on data integrity standards.
-- Prepare technical briefing notes and annual donor analytical reports.
+Responsabilidades Principais:
+- Definir a arquitetura técnica global de produtos SaaS corporativos de alta concorrência e missão crítica.
+- Liderar a transição para ambientes multicloud (AWS/GCP), microserviços e contêineres gerenciados com Kubernetes.
+- Implementar padrões corporativos de observabilidade, segurança cibernética (OWASP, ISO 27001) e práticas ágeis DevSecOps.
+- Gerir e expandir a equipa técnica internacional de desenvolvedores, engenheiros de dados e especialistas em IA.
+- Reduzir a latência do ecossistema e otimizar custos de computação em nuvem em larga escala.
 
-Requirements:
-- Advanced degree in Computer Science, Data Engineering, Statistics, or Development Economics.
-- Minimum 4 years of relevant professional experience with UN or EU-funded interventions.
-- Professional fluency in English and Portuguese.`
+Requisitos:
+- Bacharelado ou Mestrado em Ciências da Computação, Engenharia de Software ou área equivalente.
+- Mínimo de 7 anos de experiência com sistemas distribuídos, arquitetura serverless e microsserviços.
+- Certificações de nuvem (AWS Solutions Architect Professional, CKA ou GCP Cloud Architect).
+- Fluência plena em Inglês.`
   },
   {
     id: 'job-3',
-    title: 'Empresa de Tecnologia & Dados - Arquiteto de Dados e BI Lead',
-    organization: 'Tech & Enterprise Analytics',
-    description: `Cargo: Lead de Engenharia de Dados & Business Intelligence
-Regime: Híbrido / Internacional
+    title: 'Vice-Presidente de Estratégia Corporativa & Finanças (CFO / VP Finance)',
+    organization: 'Holding de Investimentos & Private Equity',
+    description: `Cargo: Vice-Presidente de Finanças e Estratégia
+Localização: Centro Financeiro / Internacional
 
-Responsabilidades:
-- Arquitetar pipelines modernos de dados e automação de fluxos analíticos (ETL/ELT).
-- Estruturar relatórios executivos em Power BI e modelagem dimensional em SQL.
-- Liderar a transição digital e garantir governação e privacidade dos dados institucionais.
-- Colaborar estreitamente com diretores executivos na tomada de decisões estratégicas baseadas em dados.`
+Responsabilidades Principais:
+- Conduzir o planeamento financeiro estratégico de longo prazo, tesouraria corporativa, estrutura de capital e relações com investidores institucionais.
+- Liderar processos de modelagem financeira, valuation (DCF) e transações de M&A de grande porte.
+- Garantir a conformidade das demonstrações financeiras segundo as normas IFRS e US GAAP, respondendo perante o Conselho de Administração.
+- Implantar soluções modernas de BI para acompanhamento em tempo real de KPIs de margem, fluxo de caixa e rentabilidade.
+
+Requisitos:
+- Formação sólida em Economia, Finanças ou Engenharia; credencial CFA ou Mestrado em Finanças altamente valorizados.
+- Mínimo de 8 anos de experiência em bancos de investimento, consultorias estratégicas (MBB) ou direção financeira corporativa.
+- Capacidade demonstrada de liderança de equipas de alto nível e negociações com parceiros globais.`
+  },
+  {
+    id: 'job-4',
+    title: 'Diretor de Programas Estratégicos & Governança Global',
+    organization: 'Agência Multilateral & Gestão de Projetos Internacionais',
+    description: `Cargo: Diretor de Programas & Governança Estratégica
+Regime: Internacional
+
+Responsabilidades Principais:
+- Gerir portfólios multissetoriais complexos de investimento e governança orientada a resultados.
+- Coordenar sistemas de monitoria de metas de impacto, garantia de qualidade e auditoria independente.
+- Elaborar relatórios analíticos periódicos de prestação de contas para comités diretivos e parceiros institucionais.
+- Liderar equipas multidisciplinares e articulação com governos, bancos de desenvolvimento e consórcios internacionais.
+
+Requisitos:
+- Pós-graduação em Gestão de Projetos, Economia ou Relações Internacionais.
+- Experiência comprovada em programas de cooperação internacional ou gestão corporativa de grande dimensão.
+- Fluência comprovada em Inglês e Português.`
   }
 ];

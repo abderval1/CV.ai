@@ -63,7 +63,7 @@ export const PythonScriptPanel: React.FC<PythonScriptPanelProps> = ({ cv }) => {
         </div>
 
         <p className="text-xs text-slate-600">
-          Como Engenheiro Informático, podes também executar este script em 10 segundos no teu terminal para compilar o ficheiro Word (.docx) localmente com a formatação exata da ONU.
+          Como Engenheiro de Software ou Especialista Técnico, pode também executar este script em segundos no terminal para compilar o ficheiro Word (.docx) localmente com formatação executiva profissional.
         </p>
 
         {/* Instructions */}

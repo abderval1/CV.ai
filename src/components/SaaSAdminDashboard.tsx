@@ -427,7 +427,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base sm:text-lg font-bold tracking-tight">
-                  Painel de Gestão SaaS & Backoffice
+                  Painel de Gestão & Backoffice Administrativo
                 </h1>
                 <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded font-black uppercase tracking-wider">
                   Admin Master

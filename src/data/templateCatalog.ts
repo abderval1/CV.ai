@@ -255,40 +255,40 @@ export const CV_TEMPLATES: CVTemplateInfo[] = [
   },
   {
     id: 'un_classic',
-    name: 'Modelo ONU / Cooperação Internacional & ONGs (Diplomático)',
-    shortName: 'ONU & ONGs',
-    badge: '🏛️ Diplomático / ONU',
+    name: 'Modelo Corporativo & Projetos Globais (Estruturado)',
+    shortName: 'Corporativo & Projetos',
+    badge: '🏛️ Corporativo & Projetos',
     category: 'without_photo',
     hasPhoto: false,
     photoRule: 'optional',
-    photoRuleLabel: 'Padrão Oficial das Agências Internacionais',
+    photoRuleLabel: 'Padrão Formal Sem Foto / Rigor Analítico',
     photoRuleDescription:
-      'Segue as exigências dos sistemas Inspira da ONU e formulários P11. Destaca financiadores internacionais (donors) e projetos humanitários.',
-    tagline: 'O formato diplomático oficial para Nações Unidas, Banco Mundial, doadores e ONGs internacionais.',
+      'Estrutura rigorosa focada em governança, conformidade regulatória, gestão por resultados e prestação de contas executiva.',
+    tagline: 'O formato executivo para governança corporativa, projetos de grande porte e consultoria multilateral.',
     whenToUse:
-      'Candidaturas para agências da ONU (UNDP, UNICEF, OMS, WFP, ACNUR, OIT), Bancos Multilaterais (Banco Mundial, BAD, BID), ONGs Internacionais (MSF, Oxfam, Save the Children) e agências bilaterais (USAID, Camões, GIZ, FCDO).',
+      'Candidaturas para Diretorias de Projetos, Gestão de Operações Multissetoriais, Programas de Investimento, Consultorias Internacionais e Contratos Estratégicos.',
     whereToUse:
-      'África Subsaariana (Angola, Moçambique, RDC), Médio Oriente, Ásia Central, Genebra, Nova Iorque, Roma e capitais diplomáticas.',
-    regions: ['África & Lusofonia', 'Sedes da ONU (Genebra, NY, Roma)', 'América Latina & Caraíbas', 'Médio Oriente'],
+      'Mercado corporativo internacional, multinacionais de infraestrutura e serviços, grupos empresariais e agências bilaterais de cooperação.',
+    regions: ['Europa & Américas', 'África Lusófona & Global', 'Mercados Emergentes', 'Hubs Globais'],
     bestForIndustries: [
-      'Agências das Nações Unidas (ONU)',
-      'Ajuda Humanitária & Emergências',
-      'Monitoria & Avaliação de Impacto (MEAL)',
-      'Bancos Multilaterais de Desenvolvimento',
-      'Saúde Pública Global & Direitos Humanos'
+      'Governança Corporativa & Gestão de Projetos',
+      'Infraestrutura & Gestão de Contratos',
+      'Operações Multissetoriais e Auditoria',
+      'Bancos de Desenvolvimento e Financiamento Estruturado',
+      'Transformação Institucional & Compliance'
     ],
-    atsScore: 94,
-    atsRatingText: '94% ATS Score - Alinhado aos formulários PHP/P11 da ONU',
+    atsScore: 95,
+    atsRatingText: '95% ATS Score - Alinhado aos padrões de triagem de grandes corporações',
     whyPhotoOrNot:
-      'As Nações Unidas e doadores internacionais proíbem fotos para garantir estrita igualdade de tratamento em missões multinacionais e respeitar a diversidade cultural dos candidatos.',
+      'Em funções de governança e auditoria executiva, layouts textuais sóbrios sem imagens desnecessárias são valorizados pela clareza analítica e conformidade imparcial.',
     keyFeatures: [
-      'Menção explícita a Doadores e Financiadores Internacionais em cada missão (ex: Financiamento Camões / UE / USAID)',
-      'Ênfase em sistemas MEAL, Quadros Lógicos, gestão por resultados (RBM) e integridade de dados',
-      'Secção rica de idiomas com fluência em relatórios e negociações',
-      'Espaço formal para referências institucionais de alto nível com contactos de supervisores'
+      'Menção a programas de investimento e indicadores de resultado auditados',
+      'Destaque para governança corporativa, matrizes de risco e integridade de dados',
+      'Secção detalhada de idiomas com fluência técnica e negociação de contratos',
+      'Espaço formal para referências executivas com contatos institucionais diretos'
     ],
     proTip:
-      'Sempre cite os nomes dos doadores e fundos internacionais que financiaram as operações que você coordenou. No setor humanitário, isso gera confiança imediata.',
+      'Sempre quantifique os resultados dos projetos liderados em termos de orçamento gerido, prazos cumpridos e metas estratégicas atingidas.',
     accentColor: '#0369a1'
   },
   {

@@ -32,7 +32,7 @@ interface CVDocumentViewProps {
 
 const ACCENT_COLORS = [
   { id: 'slate', name: 'Grafite Executivo', hex: '#0f172a' },
-  { id: 'navy', name: 'Azul Diplomático / ONU', hex: '#1e3a8a' },
+  { id: 'navy', name: 'Azul Corporativo Global', hex: '#1e3a8a' },
   { id: 'blue', name: 'Azul Europeu Europass', hex: '#1d4ed8' },
   { id: 'emerald', name: 'Verde Esmeralda', hex: '#065f46' },
   { id: 'purple', name: 'Púrpura Criativo', hex: '#7c3aed' },
@@ -328,22 +328,27 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             </span>
           </button>
 
-          {/* Zoom In/Out */}
-          <div className="hidden lg:flex items-center gap-0.5 border border-slate-200 rounded-md bg-white p-0.5">
+          {/* Zoom In/Out - Accessible on all screen sizes */}
+          <div className="flex items-center gap-0.5 border border-slate-200 rounded-md bg-white p-0.5 shadow-2xs">
             <button
               type="button"
-              onClick={() => setZoomLevel((z) => Math.max(70, z - 10))}
+              onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
               className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
               title="Diminuir Zoom"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-mono tabular-nums text-slate-600 px-1">
-              {zoomLevel}%
-            </span>
             <button
               type="button"
-              onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
+              onClick={() => setZoomLevel(100)}
+              className="text-[11px] font-mono tabular-nums text-slate-700 hover:text-slate-950 px-1 font-semibold"
+              title="Clique para restaurar 100%"
+            >
+              {zoomLevel}%
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
               className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
               title="Aumentar Zoom"
             >
@@ -678,7 +683,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               </main>
             </article>
           ) : (
-            /* CASE 2: Single Column / Official Institutional Layouts (Europass, Harvard, ATS, ONU, Tech, etc.) */
+            /* CASE 2: Single Column / Official Executive Layouts (Europass, Harvard, ATS, Corporativo, Tech, etc.) */
             <article
               className={`cv-a4-sheet bg-white text-slate-900 shadow-xl border border-slate-300/80 p-8 sm:p-12 transition-all min-h-[1120px] relative ${
                 isClassic || isHarvard || isAcademic
