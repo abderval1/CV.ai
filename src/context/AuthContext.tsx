@@ -28,11 +28,16 @@ interface AuthContextType {
   firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isPro: boolean;
+  isExecutive: boolean;
+  hasActivePlan: boolean;
   isFirebaseConnected: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
-  register: (name: string, email: string, password?: string) => Promise<boolean>;
+  register: (name: string, email: string, password?: string, targetRole?: string) => Promise<boolean>;
+  demoLogin: (tier: 'pro' | 'executive') => Promise<void>;
   loginWithProvider: (provider: 'google' | 'linkedin') => Promise<boolean>;
   logout: () => Promise<void>;
+  updateUserProfile: (partial: Partial<User>) => Promise<void>;
+  switchDemoPlan: (plan: SubscriptionPlan) => void;
   upgradePlan: (
     plan: SubscriptionPlan,
     meta?: {
@@ -234,32 +239,103 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, _password?: string): Promise<boolean> => {
     const cleanEmail = email.trim().toLowerCase();
-    const isProEmail = cleanEmail.includes('pro');
+    const isExecEmail = cleanEmail.includes('vip') || cleanEmail.includes('exec');
+    const plan: SubscriptionPlan = isExecEmail ? 'executive' : 'pro';
     const mockUser: User = {
       id: `usr-${Date.now()}`,
       name:
         cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        'Utilizador',
+        'Assinante Profissional',
       email: cleanEmail,
-      plan: isProEmail ? 'pro' : 'free',
-      creditsRemaining: isProEmail ? 9999 : 5,
+      plan,
+      targetRole: 'Executivo de Operações & Tecnologia',
+      creditsRemaining: 9999,
+      billingCycle: 'monthly',
       createdAt: new Date().toISOString()
     };
     setUser(mockUser);
     return true;
   };
 
-  const register = async (name: string, email: string, _password?: string): Promise<boolean> => {
+  const register = async (
+    name: string,
+    email: string,
+    _password?: string,
+    targetRole?: string
+  ): Promise<boolean> => {
     const newUser: User = {
       id: `usr-${Date.now()}`,
-      name: name.trim() || 'Novo Utilizador',
+      name: name.trim() || 'Novo Assinante Pro',
       email: email.trim().toLowerCase(),
-      plan: 'free',
-      creditsRemaining: 5,
+      targetRole: targetRole?.trim() || 'Profissional Executivo',
+      plan: 'pro',
+      creditsRemaining: 9999,
+      billingCycle: 'monthly',
       createdAt: new Date().toISOString()
     };
     setUser(newUser);
     return true;
+  };
+
+  const demoLogin = async (tier: 'pro' | 'executive'): Promise<void> => {
+    const tierProfiles = {
+      pro: {
+        id: 'usr-demo-pro',
+        name: 'Mariana Duarte (Assinante Pro)',
+        email: 'mariana.pro@exemplo.com',
+        targetRole: 'Gerente de Produto & Estratégia',
+        plan: 'pro' as SubscriptionPlan,
+        creditsRemaining: 9999,
+        billingCycle: 'yearly' as BillingCycle,
+        createdAt: new Date().toISOString()
+      },
+      executive: {
+        id: 'usr-demo-vip',
+        name: 'Dr. Roberto Mendes (Executivo VIP)',
+        email: 'roberto.vip@exemplo.com',
+        targetRole: 'Chief Operating Officer (COO) / C-Level',
+        plan: 'executive' as SubscriptionPlan,
+        creditsRemaining: 9999,
+        billingCycle: 'yearly' as BillingCycle,
+        createdAt: new Date().toISOString()
+      }
+    };
+    setUser(tierProfiles[tier]);
+  };
+
+  const updateUserProfile = async (partial: Partial<User>): Promise<void> => {
+    if (!user) return;
+    const updated = { ...user, ...partial, updatedAt: new Date().toISOString() };
+    setUser(updated);
+
+    if (auth.currentUser) {
+      const uid = auth.currentUser.uid;
+      const userRef = doc(db, 'users', uid);
+      try {
+        await updateDoc(userRef, partial);
+      } catch (err) {
+        console.warn('Erro ao atualizar perfil no Firestore:', err);
+      }
+    }
+  };
+
+  const switchDemoPlan = (plan: SubscriptionPlan) => {
+    if (!user) {
+      setUser({
+        id: `usr-${Date.now()}`,
+        name: 'Utilizador Demo',
+        email: 'demo@exemplo.com',
+        plan,
+        creditsRemaining: plan === 'free' ? 5 : 9999,
+        createdAt: new Date().toISOString()
+      });
+      return;
+    }
+    setUser({
+      ...user,
+      plan,
+      creditsRemaining: plan === 'free' ? 5 : 9999
+    });
   };
 
   const logout = async (): Promise<void> => {
@@ -392,6 +468,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const isPro = Boolean(user && (user.plan === 'pro' || user.plan === 'executive'));
+  const isExecutive = Boolean(user && user.plan === 'executive');
+  const hasActivePlan = Boolean(
+    user &&
+    (user.plan === 'pro' || user.plan === 'executive') &&
+    user.status !== 'suspended'
+  );
 
   return (
     <AuthContext.Provider
@@ -400,11 +482,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firebaseUser,
         isAuthenticated: Boolean(user),
         isPro,
+        isExecutive,
+        hasActivePlan,
         isFirebaseConnected,
         login,
         register,
+        demoLogin,
         loginWithProvider,
         logout,
+        updateUserProfile,
+        switchDemoPlan,
         upgradePlan,
         savedResumes,
         saveCurrentResume,

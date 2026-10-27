@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { useCurrency } from '../context/CurrencyContext';
+import { useAuth } from '../context/AuthContext';
 import { CVData } from '../types/cv';
 import { CVHealthScoreOverview } from './CVHealthScoreOverview';
 
@@ -31,7 +32,7 @@ interface LandingHeroViewProps {
   onSelectTemplate: (templateId: string) => void;
   onOpenTemplateAdvisor: () => void;
   currentCV?: CVData;
-  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python') => void;
+  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview') => void;
 }
 
 export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
@@ -42,6 +43,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   currentCV,
   onNavigateTab
 }) => {
+  const { user, isAuthenticated } = useAuth();
   const { formatPrice } = useCurrency();
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -111,8 +113,48 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
   return (
     <div className="w-full max-w-full bg-slate-900 text-white min-h-full overflow-x-hidden overflow-y-auto selection:bg-amber-400 selection:text-slate-950">
+      {/* Area Status Notification: Clear separation of Public vs Member vs Paid space */}
+      <div className="bg-slate-950/90 border-b border-slate-800 px-4 py-2.5 text-xs text-slate-300">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
+          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span>
+              {!isAuthenticated ? (
+                <>
+                  <strong className="text-white font-bold">Área Pública de Demonstração:</strong> Teste o diagnóstico ATS e explore a vitrine de modelos. Para criar, salvar e editar os seus currículos, aceda com uma conta de assinante.
+                </>
+              ) : (
+                <>
+                  <strong className="text-white font-bold">Área do Membro:</strong> Sessão ativa para <strong className="text-amber-400">{user?.name}</strong> (Nível: {user?.plan.toUpperCase()}).
+                </>
+              )}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {!isAuthenticated ? (
+              <button
+                type="button"
+                onClick={onStartCreating}
+                className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-lg font-bold text-[11px] transition-colors"
+              >
+                Criar Conta de Assinante
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onNavigateTab?.('editor')}
+                className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-semibold text-[11px] transition-colors"
+              >
+                Abrir Meu Editor
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* 1. Hero Section: Value Proposition */}
-      <section className="relative overflow-hidden pt-12 pb-16 lg:pt-20 lg:pb-24 border-b border-slate-800">
+      <section className="relative overflow-hidden pt-10 pb-16 lg:pt-16 lg:pb-24 border-b border-slate-800">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-slate-950 pointer-events-none opacity-60" />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -143,7 +185,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 onClick={onStartCreating}
                 className="w-full sm:w-auto px-7 py-3.5 text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl transition-all shadow-lg hover:shadow-amber-400/20 flex items-center justify-center gap-2 group whitespace-nowrap"
               >
-                <span>Criar Meu Currículo Grátis</span>
+                <span>Criar Meu Currículo Profissional</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
               </button>
 
@@ -161,7 +203,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             <div className="pt-2 flex flex-wrap items-center justify-center gap-y-2 gap-x-6 text-xs text-slate-400">
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                Sem necessidade de cartão para começar
+                Planos Pro e Executivo VIP
               </span>
               <span className="flex items-center gap-1.5">
                 <CreditCard className="w-3.5 h-3.5 text-blue-400" />
@@ -446,49 +488,17 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
-          {/* Free Plan */}
-          <div className="bg-slate-950 p-6 sm:p-8 rounded-2xl border border-slate-800 flex flex-col justify-between">
-            <div className="space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Gratuito</span>
-              <div className="space-y-1">
-                <p className="text-3xl font-bold text-white font-mono">Grátis</p>
-                <p className="text-xs text-slate-500">Para sempre</p>
-              </div>
-              <ul className="space-y-2.5 text-xs text-slate-300 pt-2 border-t border-slate-800">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>1 Currículo ativo</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Exportação em PDF e Impressão</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Diagnóstico ATS Básico</span>
-                </li>
-              </ul>
-            </div>
-            <button
-              type="button"
-              onClick={onStartCreating}
-              className="mt-6 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors"
-            >
-              Começar Grátis
-            </button>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch max-w-4xl mx-auto">
           {/* Pro Plan (Most Popular) */}
           <div className="bg-slate-950 p-6 sm:p-8 rounded-2xl border-2 border-amber-400 flex flex-col justify-between relative shadow-2xl shadow-amber-400/10">
             <span className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider rounded-full">
               Mais Escolhido
             </span>
             <div className="space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Profissional</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Profissional Pro</span>
               <div className="space-y-1">
-                <p className="text-3xl font-extrabold text-white font-mono">$29 <span className="text-xs font-normal text-slate-400">/ Mês</span></p>
-                <p className="text-xs text-emerald-400">Ou $240 / Ano (Poupe 31%)</p>
+                <p className="text-3xl font-extrabold text-white font-mono">{formatPrice(29)} <span className="text-xs font-normal text-slate-400">/ Mês</span></p>
+                <p className="text-xs text-emerald-400">Ou {formatPrice(240)} / Ano (Poupe 31%)</p>
               </div>
               <ul className="space-y-2.5 text-xs text-slate-200 pt-2 border-t border-slate-800">
                 <li className="flex items-center gap-2">
@@ -524,12 +534,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
           </div>
 
           {/* Executive VIP Plan */}
-          <div className="bg-slate-950 p-6 sm:p-8 rounded-2xl border border-slate-800 flex flex-col justify-between">
+          <div className="bg-slate-950 p-6 sm:p-8 rounded-2xl border border-slate-800 flex flex-col justify-between hover:border-purple-500/50 transition-colors">
             <div className="space-y-4">
               <span className="text-xs font-bold uppercase tracking-wider text-purple-400">Executivo VIP</span>
               <div className="space-y-1">
-                <p className="text-3xl font-extrabold text-white font-mono">$49 <span className="text-xs font-normal text-slate-400">/ Mês</span></p>
-                <p className="text-xs text-purple-400">Ou $440 / Ano (Poupe 25%)</p>
+                <p className="text-3xl font-extrabold text-white font-mono">{formatPrice(49)} <span className="text-xs font-normal text-slate-400">/ Mês</span></p>
+                <p className="text-xs text-purple-400">Ou {formatPrice(440)} / Ano (Poupe 25%)</p>
               </div>
               <ul className="space-y-2.5 text-xs text-slate-300 pt-2 border-t border-slate-800">
                 <li className="flex items-center gap-2">
@@ -539,6 +549,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                   <span>Modelos Executivos C-Level & Harvard</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Simulador de Entrevista c/ Avaliação IA</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -557,9 +571,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             <button
               type="button"
               onClick={onOpenPricing}
-              className="mt-6 w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-colors"
+              className="mt-6 w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-xl transition-colors shadow-md flex items-center justify-center gap-2"
             >
-              Subscrever VIP
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Subscrever Executivo VIP</span>
             </button>
           </div>
         </div>

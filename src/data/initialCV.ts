@@ -388,32 +388,12 @@ export const BLANK_CV: CVData = {
   templateStyle: 'executive_harvard'
 };
 
-// SaaS Pricing Plans
+// SaaS Pricing Plans - Strictly Paid Plans (No Free Tier)
 export const SAAS_PLANS: PricingPlan[] = [
   {
-    id: 'free',
-    name: 'Gratuito',
-    tagline: 'Ideal para experimentar e criar o seu primeiro currículo profissional.',
-    priceMonthly: 'Grátis',
-    priceYearly: 'Grátis para sempre',
-    priceMonthlyValue: 0,
-    priceYearlyValue: 0,
-    currency: 'USD',
-    creditsMonthly: 5,
-    features: [
-      '1 Currículo ativo',
-      'Exportação para formato PDF / Impressão',
-      'Diagnóstico ATS Básico',
-      'Modelos Clássico e Moderno',
-      'Editor em tempo real'
-    ],
-    isPopular: false,
-    ctaText: 'Plano Atual'
-  },
-  {
     id: 'pro',
-    name: 'Profissional',
-    tagline: 'O plano mais escolhido por candidatos que querem acelerar convites de entrevista.',
+    name: 'Profissional Pro',
+    tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
     priceMonthly: '$29 / Mês',
     priceYearly: '$240 / Ano (Poupe 31%)',
     priceMonthlyValue: 29,
@@ -421,12 +401,12 @@ export const SAAS_PLANS: PricingPlan[] = [
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
-      'Currículos Ilimitados',
+      'Criação & Edição de Currículos Ilimitados',
       'Otimização com Inteligência Artificial Ilimitada',
-      'Exportação Direta em Microsoft Word (.docx)',
-      'Radar ATS 95%+ com Inserção de Palavras-Chave em 1 Clique',
-      'Cartas de Apresentação em Inglês, Português, Francês e Espanhol',
-      'Importação Direta de Perfil do LinkedIn',
+      'Exportação Direta em Microsoft Word (.docx) & PDF',
+      'Radar ATS 95%+ com Análise Semântica de Vagas',
+      'Cartas de Apresentação Estratégicas com IA',
+      'Extração de Dados do Perfil LinkedIn',
       'Sincronização Cloud Firestore em Tempo Real'
     ],
     isPopular: true,
@@ -443,15 +423,15 @@ export const SAAS_PLANS: PricingPlan[] = [
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
-      'Tudo incluído no Plano Profissional',
+      'Tudo incluído no Plano Profissional Pro',
+      'Simulador de Entrevista STAR com Ditado por Voz & Scoring',
       'Todos os Modelos Executivos C-Level, Harvard e Big Tech',
-      'Scripts Python para Compilação e Automação Local',
-      'Auditoria Completa de Perfil LinkedIn por Especialista',
-      'Revisão Estratégica de Candidatura Internacional',
-      'Consultoria Técnica e Suporte Executivo Prioritário'
+      'Scripts Python para Compilação e Automação Offline',
+      'Auditoria Avançada de Perfil LinkedIn',
+      'Suporte Executivo Prioritário'
     ],
     isPopular: false,
-    ctaText: 'Subscrever Executivo'
+    ctaText: 'Subscrever Executivo VIP'
   }
 ];
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { CVData, TemplateStyle } from '../types/cv';
 import {
   Download,
@@ -16,18 +16,24 @@ import {
   Sparkles,
   ExternalLink,
   ChevronRight,
-  UserCheck
+  UserCheck,
+  Lock,
+  AlertTriangle
 } from 'lucide-react';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
 import { TemplateAdvisorModal } from './TemplateAdvisorModal';
 import { PhotoManagerModal } from './PhotoManagerModal';
+import { CVWatermarkOverlay } from './CVWatermarkOverlay';
 import { getTemplateById } from '../data/templateCatalog';
+import { useAuth } from '../context/AuthContext';
 
 interface CVDocumentViewProps {
   cv: CVData;
   onChange: (updatedCV: CVData) => void;
   onExportWord: () => void;
   isExportingWord: boolean;
+  onOpenAuthModal?: (promptMessage?: string) => void;
+  onOpenPricingModal?: () => void;
 }
 
 const ACCENT_COLORS = [
@@ -44,14 +50,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   cv,
   onChange,
   onExportWord,
-  isExportingWord
+  isExportingWord,
+  onOpenAuthModal,
+  onOpenPricingModal
 }) => {
+  const { user, isAuthenticated, hasActivePlan } = useAuth();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [jsonImportSuccess, setJsonImportSuccess] = useState<string | null>(null);
   const [docLang, setDocLang] = useState<'pt' | 'en'>('pt');
+  const [density, setDensity] = useState<'compact' | 'normal' | 'relaxed'>('normal');
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState<boolean>(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
 
@@ -59,6 +69,20 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   const currentAccent = cv.accentColor || '#0f172a';
   const currentTemplate = getTemplateById(cv.templateStyle);
+
+  // Prevent unregistered users from bypassing download via Ctrl+P / Cmd+P
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+        if (!isAuthenticated) {
+          e.preventDefault();
+          onOpenAuthModal?.('O registo é obrigatório para imprimir ou descarregar o currículo em PDF.');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAuthenticated, onOpenAuthModal]);
 
   const sectionTitles = {
     summary: docLang === 'pt' ? 'Resumo Profissional' : 'Executive Summary',
@@ -76,6 +100,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const handlePrint = () => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('O registo é obrigatório para descarregar ou imprimir o seu currículo em PDF.');
+      return;
+    }
     window.print();
   };
 
@@ -115,7 +143,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(cv, null, 2));
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('O registo é obrigatório para descarregar o ficheiro de backup do currículo.');
+      return;
+    }
     const url = URL.createObjectURL(new Blob([JSON.stringify(cv, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
@@ -192,13 +223,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const isModern = cv.templateStyle === 'european_modern';
 
   // Photo Logic:
-  // Show photo only if template permits it AND user has configured a photo AND showPhoto is not false
-  const templateSupportsPhoto = isEuropass || isCreative || isMinimalist;
+  // Show photo if user has configured a photo and showPhoto is not false, on all photo-supporting models
+  const templateSupportsPhoto = isEuropass || isCreative || isMinimalist || isModern || isTech || isClassic || isAcademic;
   const hasUserPhoto = Boolean(cv.personalDetails.photoUrl);
   const shouldRenderPhoto = templateSupportsPhoto && hasUserPhoto && cv.personalDetails.showPhoto !== false;
 
-  // Has photo configured but current template strictly bans it (educational ATS alert)
-  const isPhotoSuppressedForAts = hasUserPhoto && !templateSupportsPhoto;
+  // Has photo configured but current template strictly bans it (strict US ATS / Harvard standard alert)
+  const isPhotoSuppressedForAts = hasUserPhoto && (isAts || isHarvard) && !templateSupportsPhoto;
 
   return (
     <div className="flex flex-col h-full">
@@ -311,6 +342,46 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             </button>
           </div>
 
+          {/* Density / Spacing Control (1-Page Fit) */}
+          <div className="hidden sm:flex items-center rounded-md border border-slate-200 bg-slate-100 p-0.5" title="Ajuste o espaçamento vertical para caber perfeitamente em 1 ou 2 páginas">
+            <button
+              type="button"
+              onClick={() => setDensity('compact')}
+              className={`px-2 py-1 text-[11px] rounded transition-colors ${
+                density === 'compact'
+                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+              title="Modo Compacto: ideal para enquadrar em 1 página"
+            >
+              1 Pág (Compacto)
+            </button>
+            <button
+              type="button"
+              onClick={() => setDensity('normal')}
+              className={`px-2 py-1 text-[11px] rounded transition-colors ${
+                density === 'normal'
+                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+              title="Modo Padrão: equilíbrio executivo"
+            >
+              Padrão
+            </button>
+            <button
+              type="button"
+              onClick={() => setDensity('relaxed')}
+              className={`hidden md:inline-block px-2 py-1 text-[11px] rounded transition-colors ${
+                density === 'relaxed'
+                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 font-medium'
+              }`}
+              title="Modo Arejado: espaçamento mais amplo"
+            >
+              Arejado
+            </button>
+          </div>
+
           {/* Inline Edit Toggle */}
           <button
             type="button"
@@ -390,11 +461,33 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors shadow-2xs"
-            title="Imprimir ou Guardar em PDF A4 sem marcas de água"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors shadow-2xs ${
+              !isAuthenticated
+                ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
+                : !hasActivePlan
+                ? 'bg-white border border-amber-300 text-amber-900 hover:bg-amber-50'
+                : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
+            }`}
+            title={
+              !isAuthenticated
+                ? 'Registo obrigatório para imprimir ou guardar em PDF'
+                : !hasActivePlan
+                ? 'Imprimir ou Guardar em PDF (Inclui marca de água de teste)'
+                : 'Imprimir ou Guardar em PDF A4 limpo sem marcas de água'
+            }
           >
-            <Printer className="w-3.5 h-3.5 text-slate-700" />
-            <span>PDF / Imprimir</span>
+            {!isAuthenticated ? (
+              <Lock className="w-3.5 h-3.5 text-amber-700" />
+            ) : (
+              <Printer className="w-3.5 h-3.5 text-slate-700" />
+            )}
+            <span>
+              {!isAuthenticated
+                ? 'PDF (Requer Registo)'
+                : !hasActivePlan
+                ? 'PDF (C/ Marca)'
+                : 'PDF / Imprimir'}
+            </span>
           </button>
 
           {/* Word Export Button */}
@@ -403,9 +496,19 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             onClick={onExportWord}
             disabled={isExportingWord}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 rounded-md transition-colors shadow-xs"
-            title="Exportar documento no formato nativo Microsoft Word (.docx)"
+            title={
+              !isAuthenticated
+                ? 'Registo obrigatório para exportar em formato Word (.docx)'
+                : !hasActivePlan
+                ? 'Exportar Word (com aviso de pré-visualização)'
+                : 'Exportar documento no formato nativo Microsoft Word (.docx)'
+            }
           >
-            <Download className="w-3.5 h-3.5" />
+            {!isAuthenticated ? (
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
             <span>Word (.docx)</span>
           </button>
         </div>
@@ -449,7 +552,51 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       )}
 
       {/* Document Workspace Canvas */}
-      <div className="flex-1 overflow-auto bg-slate-200/70 p-4 sm:p-6 lg:p-8 flex justify-center">
+      <div className="flex-1 overflow-auto bg-slate-200/70 p-4 sm:p-6 lg:p-8 flex flex-col items-center">
+        {/* Watermark notice above document for visitors and non-subscribers */}
+        {!hasActivePlan && (
+          <div className="no-print w-full max-w-[850px] bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3 mb-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-950 shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-bold text-slate-900">
+                  {!isAuthenticated
+                    ? 'Modo de Demonstração (Não Registado)'
+                    : 'Modo Pré-visualização (Sem Plano Ativo)'}
+                </p>
+                <p className="text-slate-600 text-[11px]">
+                  {!isAuthenticated
+                    ? 'Visitantes não podem baixar o documento. Registe-se para desbloquear downloads.'
+                    : 'Marca de água de teste ativa. Assine um plano Pro ou VIP para remover marcas d\'água.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {!isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenAuthModal?.('Crie a sua conta de assinante para desbloquear downloads.')}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors text-xs shadow-2xs whitespace-nowrap"
+                >
+                  Registar-se
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenPricingModal}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors text-xs shadow-2xs whitespace-nowrap flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Remover Marca</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div
           style={{
             transform: `scale(${zoomLevel / 100})`,
@@ -460,7 +607,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         >
           {/* CASE 1: Creative Split Two-Column Layout */}
           {isCreative ? (
-            <article className="cv-a4-sheet bg-white text-slate-900 shadow-xl border border-slate-300/80 min-h-[1120px] flex flex-col md:flex-row relative font-jakarta overflow-hidden">
+            <article className={`cv-a4-sheet bg-white text-slate-900 shadow-xl border border-slate-300/80 min-h-[1120px] flex flex-col md:flex-row relative font-jakarta overflow-hidden ${
+              density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+            }`}>
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Left Sidebar (35% width) */}
               <aside
                 className="w-full md:w-[35%] p-6 sm:p-8 text-white flex flex-col justify-between"
@@ -685,7 +835,9 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           ) : (
             /* CASE 2: Single Column / Official Executive Layouts (Europass, Harvard, ATS, Corporativo, Tech, etc.) */
             <article
-              className={`cv-a4-sheet bg-white text-slate-900 shadow-xl border border-slate-300/80 p-8 sm:p-12 transition-all min-h-[1120px] relative ${
+              className={`cv-a4-sheet bg-white text-slate-900 shadow-xl border border-slate-300/80 p-8 sm:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+                density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+              } ${
                 isClassic || isHarvard || isAcademic
                   ? 'font-serif-cv'
                   : isAts
@@ -693,6 +845,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   : 'font-jakarta'
               }`}
             >
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Header Section */}
               <header
                 className={`pb-4 ${
@@ -806,7 +959,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Photo for European Europass or Minimalist */}
+                  {/* Photo for European, Modern, Minimalist, Tech, Classic, etc. */}
                   {shouldRenderPhoto && (
                     <div className="shrink-0 flex flex-col items-center">
                       <img
@@ -815,8 +968,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         className={`w-24 h-24 sm:w-28 sm:h-28 object-cover border-2 shadow-sm ${
                           isEuropass
                             ? 'rounded-xl border-blue-600/60 p-0.5'
-                            : 'rounded-full border-slate-300'
+                            : isModern
+                            ? 'rounded-full border-slate-300'
+                            : isTech
+                            ? 'rounded-xl border-slate-400'
+                            : 'rounded-lg border-slate-200'
                         }`}
+                        style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}
                       />
                       {isEuropass && (
                         <span className="text-[10px] text-slate-400 mt-1 uppercase font-semibold">

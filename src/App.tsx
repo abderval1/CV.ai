@@ -16,15 +16,21 @@ import { MyResumesModal } from './components/MyResumesModal';
 import { SaaSAdminDashboard } from './components/SaaSAdminDashboard';
 import { TemplateAdvisorModal } from './components/TemplateAdvisorModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { UserProfileView } from './components/UserProfileView';
+import { PlanGateGuard } from './components/PlanGateGuard';
+import { InterviewSimulator } from './components/InterviewSimulator';
+import { useAuth } from './context/AuthContext';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles } from 'lucide-react';
+import { getTemplateById } from './data/templateCatalog';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, User as UserIcon } from 'lucide-react';
 
 export default function App() {
+  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan } = useAuth();
   const [cv, setCv] = useState<CVData>(GENERIC_DEFAULT_CV);
   const [jobDescription, setJobDescription] = useState<string>(
     SAMPLE_JOB_OFFERS[0].description
   );
-  const [activeTab, setActiveTab] = useState<'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python'>(
+  const [activeTab, setActiveTab] = useState<'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview' | 'profile'>(
     'home'
   );
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
@@ -36,11 +42,17 @@ export default function App() {
 
   // Modal states for SaaS
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
   const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState<boolean>(false);
+
+  const handleOpenAuth = (prompt?: string) => {
+    setAuthModalPrompt(prompt);
+    setIsAuthModalOpen(true);
+  };
 
   const [letterBody, setLetterBody] = useState<string>(
     `To: The Executive Search & Selection Committee
@@ -65,18 +77,32 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
   );
 
   const handleExportWord = async () => {
+    if (!isAuthenticated) {
+      handleOpenAuth('O registo é obrigatório para descarregar o currículo em formato Word (.docx). Registe-se ou inicie sessão para continuar.');
+      return;
+    }
     try {
       setIsExportingWord(true);
       const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo_Estrategico';
 
       if (activeTab === 'cover') {
-        const blob = await generateCoverLetterDocx(cv, letterBody);
+        const blob = await generateCoverLetterDocx(cv, letterBody, hasActivePlan);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
-        setWordNotificationMessage('Carta de Apresentação em Word (.docx) Descarregada!');
+        setWordNotificationMessage(
+          hasActivePlan
+            ? 'Carta de Apresentação em Word (.docx) Descarregada!'
+            : 'Carta de Apresentação (C/ Marca de Água) Descarregada!'
+        );
       } else {
-        const blob = await generateWordDocument(cv);
-        triggerDownload(blob, `Curriculo_${sanitizedName}.docx`);
-        setWordNotificationMessage('Currículo em Word (.docx) Descarregado!');
+        const templateInfo = getTemplateById(cv.templateStyle);
+        const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
+        const blob = await generateWordDocument(cv, hasActivePlan);
+        triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
+        setWordNotificationMessage(
+          hasActivePlan
+            ? `Currículo Word (${templateInfo.shortName}) Oficial Descarregado!`
+            : `Currículo Word (${templateInfo.shortName}) C/ Marca de Demonstração Descarregado!`
+        );
       }
 
       setWordSuccessNotification(true);
@@ -118,7 +144,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         </div>
       )}
 
-      {/* View Mode Switching: Home Landing Page vs Studio Dual-Pane */}
+      {/* View Mode Switching: Home Landing vs User Profile vs Studio Dual-Pane */}
       {activeTab === 'home' ? (
         <main className="flex-1 overflow-y-auto">
           <LandingHeroView
@@ -131,6 +157,18 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
             onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
             currentCV={cv}
             onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        </main>
+      ) : activeTab === 'profile' ? (
+        <main className="flex-1 overflow-y-auto bg-slate-50">
+          <UserProfileView
+            onNavigateTab={(tab) => setActiveTab(tab)}
+            onOpenPricing={() => setIsPricingModalOpen(true)}
+            onLoadResume={(loadedCV) => {
+              setCv(loadedCV);
+              setActiveTab('editor');
+            }}
+            currentCV={cv}
           />
         </main>
       ) : (
@@ -181,8 +219,9 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                     {activeTab === 'editor' && '1. Editor de Conteúdo & Perfil'}
                     {activeTab === 'ats' && '2. Vaga & Análise de Compatibilidade ATS'}
                     {activeTab === 'ai' && '3. Otimizador com Inteligência Artificial'}
-                    {activeTab === 'cover' && '4. Carta de Motivação para a Candidatura'}
-                    {activeTab === 'python' && '5. Compilação Offline & Automação'}
+                    {activeTab === 'interview' && '4. Simulador de Entrevista & Scoring STAR com IA'}
+                    {activeTab === 'cover' && '5. Carta de Motivação para a Candidatura'}
+                    {activeTab === 'python' && '6. Compilação Offline & Automação'}
                   </span>
                 </div>
 
@@ -194,57 +233,246 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
               {/* Active Tab Panel View */}
               <div className="p-4 sm:p-6 flex-1">
                 {activeTab === 'raw' && (
-                  <RawInputGenerator
-                    onCVGenerated={(newCV) => {
-                      setCv(newCV);
-                      setActiveTab('editor');
-                    }}
-                    currentJobDescription={jobDescription}
-                    onUpdateJobDescription={setJobDescription}
-                    onOpenPreview={() => {
-                      setMobileViewMode('preview');
-                    }}
-                  />
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Criação de CV & Importação de Dados"
+                      featureSubtitle="A criação de currículos e extração de dados do LinkedIn ou documentos é restrita a utilizadores assinantes da plataforma."
+                      featureBenefits={[
+                        'Importação inteligente de LinkedIn, PDF e Word (.docx)',
+                        'Estruturação nos padrões internacionais de recrutamento',
+                        'Acesso total aos modelos Harvard, Tech e Executivo',
+                        'Exportações ilimitadas na nuvem'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <RawInputGenerator
+                      onCVGenerated={(newCV) => {
+                        setCv(newCV);
+                        setActiveTab('editor');
+                      }}
+                      currentJobDescription={jobDescription}
+                      onUpdateJobDescription={setJobDescription}
+                      onOpenPreview={() => {
+                        setMobileViewMode('preview');
+                      }}
+                    />
+                  )
                 )}
 
                 {activeTab === 'editor' && (
-                  <ContentEditor
-                    cv={cv}
-                    onChange={setCv}
-                    onOpenAiTailor={() => setActiveTab('ai')}
-                  />
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Editor de Currículo Profissional"
+                      featureSubtitle="O editor de currículos é exclusivo para assinantes da plataforma. Crie a sua conta e assine o Plano Pro ou Executivo VIP para criar o seu currículo."
+                      featureBenefits={[
+                        'Editor em tempo real com pré-visualização A4 executiva',
+                        'Calibração de seções segundo normas ATS e C-Level',
+                        'Múltiplas versões salvas na sua conta',
+                        'Exportação em Microsoft Word (.docx) sem restrições'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <ContentEditor
+                      cv={cv}
+                      onChange={setCv}
+                      onOpenAiTailor={() => setActiveTab('ai')}
+                    />
+                  )
                 )}
 
                 {activeTab === 'ats' && (
-                  <AtsRadarPanel
-                    cv={cv}
-                    onChange={setCv}
-                    jobDescription={jobDescription}
-                    setJobDescription={setJobDescription}
-                    onOpenAiTailor={() => setActiveTab('ai')}
-                  />
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Vaga & Radar ATS Semântico"
+                      featureSubtitle="Análise profunda de compatibilidade com sistemas de recrutamento ATS (Workday, Taleo, Greenhouse e SAP SuccessFactors)."
+                      featureBenefits={[
+                        'Diagnóstico de pontuação ATS com cálculo de densidade',
+                        'Mapeamento de palavras-chave críticas da vaga',
+                        'Sugestão de termos executivos ausentes no currículo',
+                        'Sincronização com os seus currículos salvos'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : !isPro ? (
+                    <PlanGateGuard
+                      requiredTier="pro"
+                      featureTitle="Radar ATS Avançado & Análise Semântica"
+                      featureSubtitle="O Radar ATS avançado compara o seu perfil diretamente contra a descrição da vaga com inteligência artificial para garantir que o seu currículo passe pelos filtros robóticos."
+                      featureBenefits={[
+                        'Cálculo de compatibilidade percentual e densidade de palavras-chave',
+                        'Extração inteligente de competências solicitadas pelo recrutador',
+                        'Destaque de métricas quantificáveis ausentes',
+                        'Otimizações ilimitadas no Plano Profissional Pro'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <AtsRadarPanel
+                      cv={cv}
+                      onChange={setCv}
+                      jobDescription={jobDescription}
+                      setJobDescription={setJobDescription}
+                      onOpenAiTailor={() => setActiveTab('ai')}
+                    />
+                  )
                 )}
 
                 {activeTab === 'ai' && (
-                  <AiTailorPanel
-                    cv={cv}
-                    onChange={setCv}
-                    jobDescription={jobDescription}
-                  />
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Otimizador IA de Conquistas"
+                      featureSubtitle="Reescreva as suas experiências utilizando a metodologia Google XYZ e verbos de ação executivos."
+                      featureBenefits={[
+                        'Geração de realizações e balas orientadas a métricas',
+                        'Ajuste de tom formal para padrões corporativos globais',
+                        'Remoção automática de chavões e termos fracos',
+                        '5 créditos gratuitos de boas-vindas na sua conta'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : !isPro ? (
+                    <PlanGateGuard
+                      requiredTier="pro"
+                      featureTitle="Otimizador IA de Conquistas & Balas Executivas"
+                      featureSubtitle="Desbloqueie reescritas de alta precisão calibradas para vagas sênior, com verbos de ação executivos e fórmulas de impacto mensurável."
+                      featureBenefits={[
+                        'Otimizações ilimitadas de experiências profissionais',
+                        'Sugestões automáticas baseadas na descrição da vaga',
+                        'Calibração de impacto financeiro (P&L, EBITDA, OPEX)',
+                        'Exportação em Word (.docx) sem restrições'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <AiTailorPanel
+                      cv={cv}
+                      onChange={setCv}
+                      jobDescription={jobDescription}
+                    />
+                  )
+                )}
+
+                {activeTab === 'interview' && (
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Simulador de Entrevista (IA)"
+                      featureSubtitle="Simule entrevistas reais com perguntas personalizadas para a vaga e receba notas no padrão STAR."
+                      featureBenefits={[
+                        '5 perguntas técnicas e comportamentais personalizadas',
+                        'Gravação e transcrição de áudio por voz em tempo real',
+                        'Avaliação de pontos fortes e respostas recomendadas',
+                        'Treino sem estresse antes da entrevista real'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : !isExecutive ? (
+                    <PlanGateGuard
+                      requiredTier="executive"
+                      featureTitle="Simulador de Entrevista STAR com IA & Áudio"
+                      featureSubtitle="A sala de simulação de entrevistas com perguntas personalizadas e avaliação STAR é exclusiva dos assinantes Executivo VIP."
+                      featureBenefits={[
+                        'Geração de 5 perguntas comportamentais e técnicas pela IA',
+                        'Ditado por voz com reconhecimento de fala Web Speech',
+                        'Scoring STAR com nota de 0 a 100 e resposta modelo',
+                        'Treino ilimitado para qualquer descrição de vaga'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <InterviewSimulator
+                      currentCV={cv}
+                      jobDescription={jobDescription}
+                      onUpdateJobDescription={setJobDescription}
+                      onOpenPricing={() => setIsPricingModalOpen(true)}
+                    />
+                  )
                 )}
 
                 {activeTab === 'cover' && (
-                  <CoverLetterPanel
-                    cv={cv}
-                    jobDescription={jobDescription}
-                    letterBody={letterBody}
-                    setLetterBody={setLetterBody}
-                    onExportWord={handleExportWord}
-                    isExportingWord={isExportingWord}
-                  />
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Carta de Apresentação Estratégica"
+                      featureSubtitle="Crie cartas de motivação executivas sob medida para a empresa e vaga desejada."
+                      featureBenefits={[
+                        'Estrutura formal para comitês de seleção',
+                        'Conexão com os pontos fortes do seu currículo',
+                        'Exportação direta em Microsoft Word (.docx)'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : !isPro ? (
+                    <PlanGateGuard
+                      requiredTier="pro"
+                      featureTitle="Carta de Apresentação com Inteligência Artificial"
+                      featureSubtitle="Elabore cartas de apresentação persuasivas e personalizadas para cada candidatura, alinhadas à cultura corporativa."
+                      featureBenefits={[
+                        'Geração ilimitada de cartas estratégicas',
+                        'Customização para cargos de liderança e especialistas',
+                        'Exportação instantânea em Word (.docx) e PDF'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <CoverLetterPanel
+                      cv={cv}
+                      jobDescription={jobDescription}
+                      letterBody={letterBody}
+                      setLetterBody={setLetterBody}
+                      onExportWord={handleExportWord}
+                      isExportingWord={isExportingWord}
+                    />
+                  )
                 )}
 
-                {activeTab === 'python' && <PythonScriptPanel cv={cv} />}
+                {activeTab === 'python' && (
+                  !isAuthenticated ? (
+                    <PlanGateGuard
+                      requiredTier="authenticated"
+                      featureTitle="Compilação Offline Python"
+                      featureSubtitle="Exporte scripts Python para renderização e automação local de currículos."
+                      featureBenefits={[
+                        'Scripts independentes em Python',
+                        'Geração de documentos em lote',
+                        'Sem dependência de servidores web'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : !isExecutive ? (
+                    <PlanGateGuard
+                      requiredTier="executive"
+                      featureTitle="Compilação Offline & Scripts Python"
+                      featureSubtitle="Gere código Python automatizado com Jinja2 e reportlab para compilar os seus documentos 100% offline."
+                      featureBenefits={[
+                        'Código-fonte Python pronto para execução local',
+                        'Independência total de nuvem e privacidade máxima',
+                        'Automação de múltiplos formatos para empresas'
+                      ]}
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                    />
+                  ) : (
+                    <PythonScriptPanel cv={cv} />
+                  )
+                )}
               </div>
             </section>
 
@@ -254,11 +482,28 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                 mobileViewMode === 'controls' ? 'hidden lg:flex' : 'flex'
               }`}
             >
+              {!isAuthenticated && (
+                <div className="bg-amber-400 text-slate-950 px-4 py-2.5 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-slate-900" />
+                    <span>Visualização de Demonstração (Somente Leitura): Faça login para criar o seu currículo oficial.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="px-3 py-1 bg-slate-950 hover:bg-slate-800 text-white rounded-lg text-[11px] font-semibold transition-colors"
+                  >
+                    Aceder à Minha Conta
+                  </button>
+                </div>
+              )}
               <CVDocumentView
                 cv={cv}
                 onChange={setCv}
                 onExportWord={handleExportWord}
                 isExportingWord={isExportingWord}
+                onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
+                onOpenPricingModal={() => setIsPricingModalOpen(true)}
               />
             </section>
           </main>
@@ -337,7 +582,12 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
       {/* SaaS Authentication Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={() => {
+          setIsAuthModalOpen(false);
+          setAuthModalPrompt(undefined);
+        }}
+        promptMessage={authModalPrompt}
+        defaultMode={authModalPrompt ? 'register' : 'login'}
       />
 
       {/* SaaS Pricing & Subscription Upgrade Modal */}

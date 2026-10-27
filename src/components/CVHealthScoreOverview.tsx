@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
@@ -12,14 +12,15 @@ import {
   Globe,
   UserCheck,
   TrendingUp,
-  Info
+  Info,
+  PartyPopper
 } from 'lucide-react';
 import { CVData } from '../types/cv';
 import { EXECUTIVE_DEMO_CV } from '../data/initialCV';
 
 interface CVHealthScoreOverviewProps {
   currentCV?: CVData;
-  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python') => void;
+  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview') => void;
   onOpenPricing?: () => void;
 }
 
@@ -44,6 +45,100 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 }) => {
   const [profileMode, setProfileMode] = useState<'current' | 'benchmark'>('current');
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
+  const [hasCelebrated, setHasCelebrated] = useState<boolean>(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // High-performance canvas confetti animation engine
+  const triggerConfetti = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = canvas.parentElement?.clientWidth || 500;
+    canvas.height = canvas.parentElement?.clientHeight || 450;
+
+    const colors = ['#10b981', '#f59e0b', '#6366f1', '#ec4899', '#38bdf8', '#fbbf24', '#ffffff'];
+    const particles: Array<{
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      size: number;
+      color: string;
+      rotation: number;
+      rotationSpeed: number;
+      opacity: number;
+      shape: 'rect' | 'circle';
+    }> = [];
+
+    // Emit 70 particles from center-left ring area
+    const startX = canvas.width > 600 ? 120 : canvas.width / 2;
+    const startY = 160;
+
+    for (let i = 0; i < 75; i++) {
+      const angle = (Math.PI * 2 * i) / 75 + (Math.random() - 0.5) * 0.8;
+      const speed = Math.random() * 6 + 2.5;
+      particles.push({
+        x: startX,
+        y: startY,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3.5, // Initial upward burst
+        size: Math.random() * 6 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rotationSpeed: (Math.random() - 0.5) * 8,
+        opacity: 1,
+        shape: Math.random() > 0.4 ? 'rect' : 'circle'
+      });
+    }
+
+    let animationId: number;
+    let startTime: number | null = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      let alive = false;
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15; // Gravity
+        p.vx *= 0.98; // Air resistance
+        p.rotation += p.rotationSpeed;
+        p.opacity = Math.max(0, 1 - elapsed / 2800);
+
+        if (p.opacity > 0) {
+          alive = true;
+          ctx.save();
+          ctx.globalAlpha = p.opacity;
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+
+          if (p.shape === 'rect') {
+            ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.7);
+          } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      });
+
+      if (alive && elapsed < 3000) {
+        animationId = requestAnimationFrame(animate);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    };
+
+    animationId = requestAnimationFrame(animate);
+  }, []);
 
   // Evaluate whichever CV is active (User's live CV or benchmark)
   const activeCV = useMemo(() => {
@@ -322,6 +417,27 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   const warningCount = audits.filter((a) => a.status === 'warning').length;
   const missingCount = audits.filter((a) => a.status === 'missing').length;
 
+  // Auto-celebrate with confetti when user reaches high score
+  useEffect(() => {
+    if (totalScore >= 90 && !hasCelebrated) {
+      const timer = setTimeout(() => {
+        triggerConfetti();
+        setHasCelebrated(true);
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [totalScore, hasCelebrated, triggerConfetti]);
+
+  // When user switches profile mode to benchmark, celebrate the benchmark score
+  useEffect(() => {
+    if (profileMode === 'benchmark') {
+      const timer = setTimeout(() => {
+        triggerConfetti();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [profileMode, triggerConfetti]);
+
   // SVG Progress Ring calculations
   const radius = 56;
   const stroke = 8;
@@ -383,13 +499,19 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Column 1: Circular Progress Ring & High-level Verdict (5 cols) */}
           <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 flex flex-col justify-between space-y-6 shadow-xl relative overflow-hidden">
+            {/* Confetti Canvas Overlay */}
+            <canvas
+              ref={canvasRef}
+              className="pointer-events-none absolute inset-0 z-30 w-full h-full"
+            />
+
             {/* Ambient background glow */}
             <div
               className="absolute -top-16 -left-16 w-48 h-48 rounded-full pointer-events-none filter blur-3xl opacity-30"
               style={{ backgroundColor: tierInfo.ringColor }}
             />
 
-            <div className="space-y-4">
+            <div className="space-y-4 relative z-10">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
                   Índice de Otimização ATS
@@ -400,6 +522,26 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                   Grau {tierInfo.grade}
                 </span>
               </div>
+
+              {/* High Score Celebration Banner */}
+              {totalScore >= 90 && (
+                <div className="flex items-center justify-between p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center gap-2">
+                    <PartyPopper className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span className="font-semibold text-[11px] leading-tight">
+                      Aprovado no Filtro A+ dos Robôs ATS!
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={triggerConfetti}
+                    className="px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 rounded-md font-bold text-[10px] transition-colors flex items-center gap-1 shrink-0"
+                    title="Soltar confetti novamente"
+                  >
+                    <span>🎉 Celebrar</span>
+                  </button>
+                </div>
+              )}
 
               {/* Progress Ring Visual */}
               <div className="flex flex-col sm:flex-row items-center gap-6 py-2">

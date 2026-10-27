@@ -37,6 +37,31 @@
   font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
+/* Document Density Classes for 1-Page and spacious layouts */
+.cv-density-compact {
+  font-size: 0.92em;
+  line-height: 1.35 !important;
+}
+.cv-density-compact .cv-section {
+  margin-bottom: 0.75rem !important;
+}
+.cv-density-compact p,
+.cv-density-compact li {
+  line-height: 1.35 !important;
+  margin-bottom: 0.2rem !important;
+}
+.cv-density-compact ul {
+  gap: 0.2rem !important;
+}
+
+.cv-density-relaxed {
+  font-size: 1.04em;
+  line-height: 1.65 !important;
+}
+.cv-density-relaxed .cv-section {
+  margin-bottom: 1.6rem !important;
+}
+
 /* Page Break Divider Visual Indicator on Screen */
 .page-break-line {
   position: relative;
@@ -69,11 +94,23 @@
 
 /* Print styling for pristine PDF generation */
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   body {
     background: #ffffff !important;
     color: #000000 !important;
     padding: 0 !important;
     margin: 0 !important;
+  }
+
+  img {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    display: block !important;
+    max-width: 100% !important;
   }
 
   header,
@@ -99,5 +136,20 @@
   @page {
     size: A4;
     margin: 12mm 12mm 12mm 12mm;
+  }
+
+  .watermark-overlay {
+    display: flex !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 99 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .watermark-band {
+    display: block !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

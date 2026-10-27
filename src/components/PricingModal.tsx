@@ -742,25 +742,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
             </div>
 
             {/* Plans Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Plans Grid (Strictly Paid Tiers: Pro and Executive VIP) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {SAAS_PLANS.map((plan) => {
                 const isCurrent = user?.plan === plan.id;
                 const isSelected = selectedPlan === plan.id;
 
-                const displayPrice =
-                  plan.id === 'free'
-                    ? 'Grátis'
-                    : formatPrice(
-                        billingCycle === 'yearly' ? plan.priceYearlyValue : plan.priceMonthlyValue
-                      );
+                const displayPrice = formatPrice(
+                  billingCycle === 'yearly' ? plan.priceYearlyValue : plan.priceMonthlyValue
+                );
 
-                const periodSuffix =
-                  plan.id === 'free' ? '' : billingCycle === 'yearly' ? ' / ano' : ' / mês';
+                const periodSuffix = billingCycle === 'yearly' ? ' / ano' : ' / mês';
 
                 const monthlyEquivalent =
-                  plan.id === 'free'
-                    ? null
-                    : billingCycle === 'yearly'
+                  billingCycle === 'yearly'
                     ? Math.round(plan.priceYearlyValue / 12)
                     : null;
 
@@ -768,7 +763,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
                   <div
                     key={plan.id}
                     onClick={() => handleSelectPlan(plan.id)}
-                    className={`rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between relative ${
+                    className={`rounded-2xl p-6 border cursor-pointer transition-all flex flex-col justify-between relative ${
                       isSelected
                         ? 'border-indigo-600 ring-2 ring-indigo-600/30 shadow-lg bg-white'
                         : 'border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300'
@@ -782,8 +777,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
 
                     <div className="space-y-3">
                       <div>
-                        <h4 className="text-sm font-bold text-slate-900">{plan.name}</h4>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{plan.tagline}</p>
+                        <h4 className="text-base font-extrabold text-slate-900">{plan.name}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">{plan.tagline}</p>
                       </div>
 
                       <div className="pt-2 border-t border-slate-100">
@@ -797,9 +792,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
                           </span>
                         )}
                         <span className="text-[10px] text-slate-400">
-                          {plan.id === 'free'
-                            ? 'Acesso básico inicial'
-                            : 'Renovação recorrente automática'}
+                          Renovação recorrente automática (cancele quando quiser)
                         </span>
                       </div>
 

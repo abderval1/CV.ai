@@ -46,16 +46,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const planLabel =
     user.plan === 'executive'
       ? 'Executivo VIP'
-      : user.plan === 'pro'
-      ? 'Profissional Pro'
-      : 'Plano Gratuito';
+      : 'Profissional Pro';
 
   const planBadgeColor =
     user.plan === 'executive'
       ? 'bg-purple-100 text-purple-800 border-purple-200'
-      : user.plan === 'pro'
-      ? 'bg-amber-100 text-amber-800 border-amber-200'
-      : 'bg-slate-100 text-slate-700 border-slate-200';
+      : 'bg-amber-100 text-amber-800 border-amber-200';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
@@ -100,15 +96,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <p className="font-semibold text-slate-800 capitalize">
                   {user.billingCycle === 'yearly'
                     ? 'Anual (Poupe até 31%)'
-                    : user.plan === 'free'
-                    ? 'Sem Cobrança'
                     : 'Mensal'}
                 </p>
               </div>
               <div>
                 <p className="text-slate-400">Créditos de IA Mensais:</p>
                 <p className="font-semibold text-slate-800">
-                  {user.plan === 'free' ? `${user.creditsRemaining ?? 5} restantes` : 'Ilimitados (Sem Limite)'}
+                  Ilimitados (Sem Limite)
                 </p>
               </div>
             </div>
@@ -138,8 +132,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>
-                  {user.plan === 'free'
-                    ? 'Fazer Upgrade para Profissional ou VIP'
+                  {user.plan === 'pro'
+                    ? 'Fazer Upgrade para Executivo VIP'
                     : 'Gerir Assinatura ou Alterar Plano'}
                 </span>
               </button>

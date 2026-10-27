@@ -12,7 +12,11 @@ import {
   HelpCircle,
   Upload,
   Check,
-  Globe
+  Globe,
+  ArrowUp,
+  ArrowDown,
+  Copy,
+  Wand2
 } from 'lucide-react';
 import { GENERIC_DEFAULT_CV, AGOSTINHO_CV, BLANK_CV } from '../data/initialCV';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
@@ -90,6 +94,53 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     handleUpdateExperience(expIndex, { ...exp, highlights });
   };
 
+  const handleMoveExperienceUp = (index: number) => {
+    if (index === 0) return;
+    const list = [...cv.experiences];
+    const item = list[index];
+    list[index] = list[index - 1];
+    list[index - 1] = item;
+    onChange({ ...cv, experiences: list });
+  };
+
+  const handleMoveExperienceDown = (index: number) => {
+    if (index === cv.experiences.length - 1) return;
+    const list = [...cv.experiences];
+    const item = list[index];
+    list[index] = list[index + 1];
+    list[index + 1] = item;
+    onChange({ ...cv, experiences: list });
+  };
+
+  const handleDuplicateExperience = (index: number) => {
+    const item = cv.experiences[index];
+    const cloned: Experience = {
+      ...item,
+      id: `exp-${Date.now()}`,
+      role: `${item.role} (Cópia)`,
+      highlights: [...item.highlights]
+    };
+    const list = [...cv.experiences];
+    list.splice(index + 1, 0, cloned);
+    onChange({ ...cv, experiences: list });
+  };
+
+  const handleSuggestXyzBullet = (expIndex: number) => {
+    const exp = cv.experiences[expIndex];
+    const sampleBullets = [
+      `Liderou iniciativa estratégica para ${exp.company || 'a organização'}, elevando a eficiência operacional em 28% através da padronização de fluxos e automação de processos.`,
+      `Gerenciou equipa multidisciplinar de alto desempenho, reduzindo prazos de entrega em 35% com adoção de metodologias ágeis e OKRs.`,
+      `Implementou governança e controle de qualidade para ${exp.role || 'a área de atuação'}, resultando em conformidade de 99.4% nas auditorias internacionais.`,
+      `Otimizou alocação de orçamento e recursos de OPEX, gerando economia anual estimada de 22% sem impacto nas entregas centrais.`
+    ];
+    const randomBullet = sampleBullets[Math.floor(Math.random() * sampleBullets.length)];
+    const updated: Experience = {
+      ...exp,
+      highlights: [...exp.highlights, randomBullet]
+    };
+    handleUpdateExperience(expIndex, updated);
+  };
+
   // Handlers for Competencies
   const handleAddCompetency = () => {
     const newComp: Competency = {
@@ -130,6 +181,24 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
   const handleDeleteEducation = (index: number) => {
     const list = cv.educations.filter((_, i) => i !== index);
+    onChange({ ...cv, educations: list });
+  };
+
+  const handleMoveEducationUp = (index: number) => {
+    if (index === 0) return;
+    const list = [...cv.educations];
+    const item = list[index];
+    list[index] = list[index - 1];
+    list[index - 1] = item;
+    onChange({ ...cv, educations: list });
+  };
+
+  const handleMoveEducationDown = (index: number) => {
+    if (index === cv.educations.length - 1) return;
+    const list = [...cv.educations];
+    const item = list[index];
+    list[index] = list[index + 1];
+    list[index + 1] = item;
     onChange({ ...cv, educations: list });
   };
 
@@ -444,16 +513,61 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         </button>
 
         {activeSection === 'summary' && (
-          <div className="p-4 pt-0 border-t border-slate-100 space-y-2">
-            <p className="text-xs text-slate-500 mt-2">
-              Dica: O resumo deve ter 4 a 6 linhas destacando senioridade executiva, setores-chave (Operações, Big Tech, Finanças, M&A), metodologias e impacto quantificado.
-            </p>
+          <div className="p-4 pt-0 border-t border-slate-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-2">
+              <p className="text-xs text-slate-500">
+                Destaque a sua senioridade, setores-chave, competências estratégicas e métricas de impacto.
+              </p>
+              <button
+                type="button"
+                onClick={onOpenAiTailor}
+                className="px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200 flex items-center gap-1 self-start sm:self-auto shrink-0"
+              >
+                <Sparkles className="w-3 h-3 text-purple-600" />
+                <span>Otimizar c/ IA</span>
+              </button>
+            </div>
+
             <textarea
               rows={5}
               value={cv.summary}
               onChange={(e) => onChange({ ...cv, summary: e.target.value })}
-              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed"
+              placeholder="Ex: Executivo sênior com mais de 12 anos de experiência liderando operações e transformação digital..."
+              className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans"
             />
+
+            {/* Word & Character counter with ATS feedback */}
+            {(() => {
+              const words = cv.summary ? cv.summary.trim().split(/\s+/).filter(Boolean).length : 0;
+              const chars = cv.summary ? cv.summary.length : 0;
+              const isIdeal = words >= 40 && words <= 85;
+              const isShort = words < 35 && words > 0;
+              const isLong = words > 95;
+
+              return (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-100 text-slate-500">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-slate-700">{words} palavras</span>
+                    <span aria-hidden="true">·</span>
+                    <span>{chars} caracteres</span>
+                  </div>
+
+                  <div>
+                    {words === 0 ? (
+                      <span className="text-slate-400">Escreva um resumo para captar atenção em 6 segundos.</span>
+                    ) : isIdeal ? (
+                      <span className="text-emerald-700 font-medium">✓ Extensão ideal para triagem ATS</span>
+                    ) : isShort ? (
+                      <span className="text-amber-700 font-medium">Curto para robôs ATS (ideal: 40–80 palavras)</span>
+                    ) : isLong ? (
+                      <span className="text-amber-700 font-medium">Extenso (pode empurrar cargos para a 2ª página)</span>
+                    ) : (
+                      <span className="text-slate-600">Densidade satisfatória</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -602,21 +716,64 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       />
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteExperience(expIdx)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"
-                      title="Remover cargo"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {/* Experience Card Action Controls */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveExperienceUp(expIdx)}
+                        disabled={expIdx === 0}
+                        className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors rounded hover:bg-slate-200/60"
+                        title="Mover cargo para cima"
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleMoveExperienceDown(expIdx)}
+                        disabled={expIdx === cv.experiences.length - 1}
+                        className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-30 disabled:hover:text-slate-400 transition-colors rounded hover:bg-slate-200/60"
+                        title="Mover cargo para baixo"
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicateExperience(expIdx)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 transition-colors rounded hover:bg-blue-50"
+                        title="Duplicar este cargo"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteExperience(expIdx)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded hover:bg-rose-50"
+                        title="Remover cargo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Highlights Bullet points */}
                   <div className="space-y-2 pt-1 border-t border-slate-200">
-                    <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                      Realizações & Pontos de Impacto (Bullet Points)
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                        Realizações & Pontos de Impacto (Bullet Points)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleSuggestXyzBullet(expIdx)}
+                        className="text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded transition-colors flex items-center gap-1 border border-purple-200"
+                        title="Adicionar bala com método Google XYZ: 'Alcançou [X], medido por [Y], fazendo [Z]'"
+                      >
+                        <Wand2 className="w-3 h-3 text-purple-600" />
+                        <span>Sugerir Bala XYZ</span>
+                      </button>
+                    </div>
 
                     {exp.highlights.map((pt, ptIdx) => (
                       <div key={ptIdx} className="flex items-start gap-2">
@@ -640,14 +797,16 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       </div>
                     ))}
 
-                    <button
-                      type="button"
-                      onClick={() => handleAddHighlight(expIdx)}
-                      className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1 mt-1"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Adicionar Realização</span>
-                    </button>
+                    <div className="flex items-center gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAddHighlight(expIdx)}
+                        className="text-xs font-medium text-slate-600 hover:text-slate-900 flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Adicionar Realização</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -717,13 +876,34 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       className="text-xs px-2.5 py-1.5 bg-white border border-slate-200 rounded"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteEducation(idx)}
-                    className="p-1.5 text-slate-400 hover:text-rose-600"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEducationUp(idx)}
+                      disabled={idx === 0}
+                      className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-30 transition-colors"
+                      title="Mover formação para cima"
+                    >
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveEducationDown(idx)}
+                      disabled={idx === cv.educations.length - 1}
+                      className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-30 transition-colors"
+                      title="Mover formação para baixo"
+                    >
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEducation(idx)}
+                      className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                      title="Remover formação"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

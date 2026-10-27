@@ -16,15 +16,16 @@ import {
   Mail,
   Terminal,
   ShieldCheck,
-  UploadCloud
+  UploadCloud,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
 import { isUserAdmin } from '../services/saasDbService';
 
 interface HeaderProps {
-  activeTab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python';
-  setActiveTab: (tab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python') => void;
+  activeTab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview' | 'profile';
+  setActiveTab: (tab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview' | 'profile') => void;
   onExportWord: () => void;
   isExportingWord: boolean;
   onOpenAuthModal: () => void;
@@ -58,17 +59,18 @@ export const Header: React.FC<HeaderProps> = ({
   const isAdmin = isUserAdmin(user?.email, user?.role);
 
   // Tools tabs subset
-  const isToolActive = ['raw', 'ats', 'ai', 'cover', 'python'].includes(activeTab);
+  const isToolActive = ['raw', 'ats', 'ai', 'cover', 'python', 'interview'].includes(activeTab);
 
   const toolLabels: Record<string, string> = {
     raw: 'Importar Dados',
     ats: 'Radar ATS',
     ai: 'Otimizador IA',
+    interview: 'Simulador Entrevista',
     cover: 'Carta Apresentação',
     python: 'Compilação Offline'
   };
 
-  const handleSelectTool = (tab: 'raw' | 'ats' | 'ai' | 'cover' | 'python') => {
+  const handleSelectTool = (tab: 'raw' | 'ats' | 'ai' | 'cover' | 'python' | 'interview') => {
     setActiveTab(tab);
     setToolsDropdownOpen(false);
     setMobileMenuOpen(false);
@@ -129,7 +131,26 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Editor de Currículo</span>
           </button>
 
-          {/* 3. Catálogo de Modelos */}
+          {/* 3. Meu Perfil (Área do Usuário Cadastrado) */}
+          {isAuthenticated && (
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('profile');
+                setMobileMenuOpen(false);
+              }}
+              className={`transition-colors flex items-center gap-1.5 py-1 ${
+                activeTab === 'profile'
+                  ? 'text-slate-950 font-bold border-b-2 border-slate-900'
+                  : 'hover:text-slate-950'
+              }`}
+            >
+              <UserIcon className="w-3.5 h-3.5 text-blue-600" />
+              <span>Meu Perfil</span>
+            </button>
+          )}
+
+          {/* 4. Catálogo de Modelos */}
           {onOpenTemplateAdvisor && (
             <button
               type="button"
@@ -187,87 +208,134 @@ export const Header: React.FC<HeaderProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSelectTool('raw')}
-                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
                       activeTab === 'raw' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
                     }`}
                   >
-                    <UploadCloud className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold leading-tight">Importar Dados & LinkedIn</p>
-                      <p className="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Importe PDF, Word ou texto para gerar o perfil
-                      </p>
+                    <div className="flex items-start gap-2.5">
+                      <UploadCloud className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Importar Dados & LinkedIn</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          Importe PDF, Word ou link do LinkedIn
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200 shrink-0">
+                      PRO
+                    </span>
                   </button>
 
                   {/* Tool 2: Radar ATS */}
                   <button
                     type="button"
                     onClick={() => handleSelectTool('ats')}
-                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
                       activeTab === 'ats' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
                     }`}
                   >
-                    <Target className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold leading-tight">Vaga & Radar ATS</p>
-                      <p className="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Compatibilidade e palavras-chave para robôs ATS
-                      </p>
+                    <div className="flex items-start gap-2.5">
+                      <Target className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Vaga & Radar ATS</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          Compatibilidade e palavras-chave para robôs ATS
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200 shrink-0">
+                      PRO
+                    </span>
                   </button>
 
                   {/* Tool 3: Otimizador IA */}
                   <button
                     type="button"
                     onClick={() => handleSelectTool('ai')}
-                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
                       activeTab === 'ai' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
                     }`}
                   >
-                    <Bot className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold leading-tight">Otimizador IA de Conquistas</p>
-                      <p className="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Formulação executiva com métricas de impacto
-                      </p>
+                    <div className="flex items-start gap-2.5">
+                      <Bot className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Otimizador IA de Conquistas</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          Formulação executiva com métricas de impacto
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200 shrink-0">
+                      PRO
+                    </span>
                   </button>
 
-                  {/* Tool 4: Carta de Apresentação */}
+                  {/* Tool 4: Simulador de Entrevista (IA) */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTool('interview')}
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
+                      activeTab === 'interview' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <MessageSquare className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Simulador de Entrevista (IA)</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          5 perguntas técnicas & comportamentais com análise STAR
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-purple-100 text-purple-900 border border-purple-200 shrink-0">
+                      VIP
+                    </span>
+                  </button>
+
+                  {/* Tool 5: Carta de Apresentação */}
                   <button
                     type="button"
                     onClick={() => handleSelectTool('cover')}
-                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
                       activeTab === 'cover' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
                     }`}
                   >
-                    <Mail className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold leading-tight">Carta de Apresentação</p>
-                      <p className="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Gere cartas alinhadas aos requisitos da vaga
-                      </p>
+                    <div className="flex items-start gap-2.5">
+                      <Mail className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Carta de Apresentação</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          Gere cartas alinhadas aos requisitos da vaga
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-amber-100 text-amber-900 border border-amber-200 shrink-0">
+                      PRO
+                    </span>
                   </button>
 
                   <div className="border-t border-slate-100 my-1.5" />
 
-                  {/* Tool 5: Compilação Técnica Python */}
+                  {/* Tool 6: Compilação Técnica Python */}
                   <button
                     type="button"
                     onClick={() => handleSelectTool('python')}
-                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                    className={`w-full text-left px-3.5 py-2 hover:bg-slate-50 transition-colors flex items-start justify-between gap-2.5 ${
                       activeTab === 'python' ? 'bg-slate-50 font-bold text-slate-950' : 'text-slate-700'
                     }`}
                   >
-                    <Terminal className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold leading-tight">Compilação Offline (Python)</p>
-                      <p className="text-[11px] text-slate-500 font-normal mt-0.5">
-                        Exportação de script Python para compilação local
-                      </p>
+                    <div className="flex items-start gap-2.5">
+                      <Terminal className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-xs font-semibold leading-tight">Compilação Offline (Python)</p>
+                        <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                          Exportação de script Python para compilação local
+                        </p>
+                      </div>
                     </div>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded font-bold uppercase bg-purple-100 text-purple-900 border border-purple-200 shrink-0">
+                      VIP
+                    </span>
                   </button>
                 </div>
               </>
@@ -382,12 +450,12 @@ export const Header: React.FC<HeaderProps> = ({
                       type="button"
                       onClick={() => {
                         setUserDropdownOpen(false);
-                        onOpenUserProfile?.();
+                        setActiveTab('profile');
                       }}
-                      className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                      className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 flex items-center gap-2"
                     >
                       <UserIcon className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Área do Usuário & Perfil</span>
+                      <span>Meu Perfil & Assinatura</span>
                     </button>
 
                     <button
@@ -447,14 +515,24 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={onOpenAuthModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
-            >
-              <UserIcon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-              <span>Entrar</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenAuthModal}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+              >
+                <UserIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span>Entrar</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenAuthModal}
+                className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Criar Conta</span>
+              </button>
+            </div>
           )}
 
           {/* Primary Action Button: Export Word (.docx) */}
@@ -606,6 +684,22 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 type="button"
+                onClick={() => handleSelectTool('interview')}
+                className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activeTab === 'interview'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <MessageSquare className="w-4 h-4 text-emerald-500" />
+                  <span>Simulador de Entrevista (IA)</span>
+                </div>
+                <span className="text-[10px] opacity-70">5 Perguntas</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleSelectTool('cover')}
                 className={`w-full flex items-center justify-between p-2.5 rounded-lg text-xs font-semibold transition-colors ${
                   activeTab === 'cover'
@@ -679,12 +773,12 @@ export const Header: React.FC<HeaderProps> = ({
                   type="button"
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    onOpenUserProfile?.();
+                    setActiveTab('profile');
                   }}
                   className="flex-1 py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
                 >
                   <UserIcon className="w-3.5 h-3.5" />
-                  <span>Minha Conta</span>
+                  <span>Meu Perfil</span>
                 </button>
               ) : (
                 <button

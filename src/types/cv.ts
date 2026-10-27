@@ -88,6 +88,24 @@ export interface CoverLetterData {
   keySellingPoints: string[];
 }
 
+export interface InterviewQuestion {
+  id: string;
+  question: string;
+  type: 'behavioral' | 'technical' | 'situational';
+  context: string;
+  keyCriteria: string[];
+  suggestedStructure: string;
+}
+
+export interface InterviewAnswerEvaluation {
+  questionId: string;
+  score: number;
+  verdict: 'Excelente' | 'Bom' | 'Precisa Melhorar' | 'Incompleto';
+  strengths: string[];
+  improvements: string[];
+  recommendedAnswer: string;
+}
+
 export type SubscriptionPlan = 'free' | 'pro' | 'executive';
 export type UserRole = 'admin' | 'user';
 export type UserStatus = 'active' | 'suspended';
@@ -104,6 +122,8 @@ export interface User {
   plan: SubscriptionPlan;
   avatarUrl?: string;
   phone?: string;
+  targetRole?: string;
+  company?: string;
   creditsRemaining: number;
   creditsUsed?: number;
   totalCvGenerated?: number;
