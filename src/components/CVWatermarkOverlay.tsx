@@ -28,7 +28,7 @@ export const CVWatermarkOverlay: React.FC<CVWatermarkOverlayProps> = ({ isVisibl
           DOCUMENTO NÃO OFICIAL · SEM VALIDADE EXECUTIVA
         </p>
         <p className="text-[10px] sm:text-xs font-bold tracking-widest text-slate-700/55 uppercase mt-0.5">
-          CURRICULOESTRATEGICO.COM · REQUER SUBSCRIÇÃO ATIVA
+          DOWNLOADS BLOQUEADOS · REQUER SUBSCRIÇÃO PRO OU EXECUTIVA
         </p>
       </div>
 

@@ -17,7 +17,8 @@ import {
   Terminal,
   ShieldCheck,
   UploadCloud,
-  MessageSquare
+  MessageSquare,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
@@ -48,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTemplateAdvisor,
   onOpenUserProfile
 }) => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, hasActivePlan, logout } = useAuth();
   const { currency, setCurrency, config: currencyConfig } = useCurrency();
 
   const [toolsDropdownOpen, setToolsDropdownOpen] = useState(false);
@@ -540,17 +541,31 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onExportWord}
             disabled={isExportingWord}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 transition-colors rounded-lg shadow-sm whitespace-nowrap shrink-0"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-colors rounded-lg shadow-sm whitespace-nowrap shrink-0 ${
+              !isAuthenticated || !hasActivePlan
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold shadow-xs'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
+            }`}
           >
-            <Download className="w-3.5 h-3.5 shrink-0" />
+            {!isAuthenticated || !hasActivePlan ? (
+              <Lock className="w-3.5 h-3.5 shrink-0 text-slate-950" />
+            ) : (
+              <Download className="w-3.5 h-3.5 shrink-0" />
+            )}
             <span className="hidden sm:inline">
               {isExportingWord
                 ? 'A Gerar...'
+                : !isAuthenticated
+                ? 'Baixar Word (Registo)'
+                : !hasActivePlan
+                ? 'Baixar Word (Requer Plano)'
                 : activeTab === 'cover'
                 ? 'Baixar Carta (.docx)'
                 : 'Baixar Word (.docx)'}
             </span>
-            <span className="sm:hidden text-xs">Word</span>
+            <span className="sm:hidden text-xs">
+              {!isAuthenticated || !hasActivePlan ? 'Bloqueado' : 'Word'}
+            </span>
           </button>
 
           {/* Mobile Hamburger Menu Toggle Button */}

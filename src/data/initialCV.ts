@@ -401,12 +401,13 @@ export const SAAS_PLANS: PricingPlan[] = [
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
+      'Desbloqueio Imediato de Download Oficial (PDF & Word .docx)',
+      'Documentos 100% Limpos e sem Marca de Água',
       'Criação & Edição de Currículos Ilimitados',
       'Otimização com Inteligência Artificial Ilimitada',
-      'Exportação Direta em Microsoft Word (.docx) & PDF',
       'Radar ATS 95%+ com Análise Semântica de Vagas',
       'Cartas de Apresentação Estratégicas com IA',
-      'Extração de Dados do Perfil LinkedIn',
+      'Extração de Dados de PDF, Word e LinkedIn',
       'Sincronização Cloud Firestore em Tempo Real'
     ],
     isPopular: true,
@@ -424,11 +425,12 @@ export const SAAS_PLANS: PricingPlan[] = [
     creditsMonthly: 9999,
     features: [
       'Tudo incluído no Plano Profissional Pro',
+      'Downloads Ilimitados Oficiais em PDF e Word (.docx)',
       'Simulador de Entrevista STAR com Ditado por Voz & Scoring',
-      'Todos os Modelos Executivos C-Level, Harvard e Big Tech',
+      'Todos os Modelos Executivos C-Level, Harvard, Europass e Big Tech',
       'Scripts Python para Compilação e Automação Offline',
       'Auditoria Avançada de Perfil LinkedIn',
-      'Suporte Executivo Prioritário'
+      'Consultoria & Suporte Executivo Prioritário'
     ],
     isPopular: false,
     ctaText: 'Subscrever Executivo VIP'

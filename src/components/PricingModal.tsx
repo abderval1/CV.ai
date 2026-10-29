@@ -29,6 +29,7 @@ import {
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  promptMessage?: string;
 }
 
 // Chave Pix Oficial fornecida para recebimentos Pix
@@ -79,7 +80,7 @@ function generatePixBRCode(
   return `${payloadWithoutCRC}${checksum}`;
 }
 
-export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) => {
+export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, promptMessage }) => {
   const { user, upgradePlan } = useAuth();
   const { currency, setCurrency, config: currencyConfig, formatPrice } = useCurrency();
 
@@ -687,6 +688,28 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
           </div>
         ) : (
           <div className="p-5 sm:p-6 space-y-6">
+            {/* Download Locked / Action Notice Banner */}
+            {promptMessage && !upgradeSuccess && (
+              <div className="p-4 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3.5 text-amber-950 shadow-xs animate-in fade-in duration-200">
+                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 mt-0.5 shadow-xs font-black">
+                  <Lock className="w-5 h-5 text-slate-950" />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">
+                      Download Protegido por Subscrição
+                    </h4>
+                    <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                      Requer Plano Ativo
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                    {promptMessage}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Currency and Billing Cycle Bar */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-100 pb-5">
               {/* Currency Selector */}

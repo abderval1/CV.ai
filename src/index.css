@@ -39,19 +39,28 @@
 
 /* Document Density Classes for 1-Page and spacious layouts */
 .cv-density-compact {
-  font-size: 0.92em;
+  font-size: 0.90em;
   line-height: 1.35 !important;
 }
 .cv-density-compact .cv-section {
-  margin-bottom: 0.75rem !important;
+  margin-top: 0.65rem !important;
+  margin-bottom: 0.35rem !important;
+}
+.cv-density-compact .cv-section-title {
+  margin-bottom: 0.3rem !important;
+  padding-bottom: 0.15rem !important;
+}
+.cv-density-compact .cv-item {
+  margin-bottom: 0.45rem !important;
+  padding-bottom: 0.1rem !important;
 }
 .cv-density-compact p,
 .cv-density-compact li {
   line-height: 1.35 !important;
-  margin-bottom: 0.2rem !important;
+  margin-bottom: 0.15rem !important;
 }
 .cv-density-compact ul {
-  gap: 0.2rem !important;
+  gap: 0.15rem !important;
 }
 
 .cv-density-relaxed {
@@ -59,7 +68,15 @@
   line-height: 1.65 !important;
 }
 .cv-density-relaxed .cv-section {
-  margin-bottom: 1.6rem !important;
+  margin-top: 1.6rem !important;
+  margin-bottom: 1.5rem !important;
+}
+.cv-density-relaxed .cv-section-title {
+  margin-bottom: 0.85rem !important;
+  padding-bottom: 0.35rem !important;
+}
+.cv-density-relaxed .cv-item {
+  margin-bottom: 1.25rem !important;
 }
 
 /* Page Break Divider Visual Indicator on Screen */
@@ -92,18 +109,32 @@
   letter-spacing: 0.05em;
 }
 
-/* Print styling for pristine PDF generation */
+/* Print styling for pristine 1:1 PDF generation matching preview */
 @media print {
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm 10mm 12mm;
+  }
+
+  html,
+  body,
+  #root,
+  main,
+  .cv-preview-container {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
   }
 
   img {
@@ -113,29 +144,102 @@
     max-width: 100% !important;
   }
 
-  header,
+  /* Only hide top site navigation bar, not the CV header */
+  #root > header,
+  nav,
   .no-print,
   .page-break-line {
     display: none !important;
+  }
+
+  /* Candidate CV Header MUST remain visible in print/PDF */
+  .cv-header {
+    display: block !important;
+    width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cv-header-content {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+
+  .cv-photo-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+  }
+
+  .cv-photo-container img {
+    display: block !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .print-only {
     display: block !important;
   }
 
-  .cv-a4-sheet {
-    box-shadow: none !important;
-    border: none !important;
-    padding: 0.4in 0.5in !important;
+  /* Reset scale wrapper so zoom doesn't alter print dimensions */
+  .cv-scale-wrapper {
+    transform: none !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cv-a4-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    min-height: auto !important;
     page-break-after: auto;
   }
 
-  @page {
-    size: A4;
-    margin: 12mm 12mm 12mm 12mm;
+  /* Enforce Creative Split layout during print (prevents column wrap) */
+  .cv-creative-split {
+    display: flex !important;
+    flex-direction: row !important;
+    width: 100% !important;
+    min-height: auto !important;
+  }
+
+  .cv-creative-sidebar {
+    width: 34% !important;
+    min-width: 34% !important;
+    max-width: 34% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 8mm 6mm !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cv-creative-main {
+    width: 66% !important;
+    min-width: 66% !important;
+    max-width: 66% !important;
+    padding: 8mm 8mm !important;
+  }
+
+  /* Avoid orphan headers and broken job items */
+  .cv-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .cv-section-title {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
   }
 
   .watermark-overlay {

@@ -22,7 +22,7 @@ import { InterviewSimulator } from './components/InterviewSimulator';
 import { useAuth } from './context/AuthContext';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, User as UserIcon } from 'lucide-react';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, User as UserIcon, Lock } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan } = useAuth();
@@ -35,6 +35,7 @@ export default function App() {
   );
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
   const [isExportingWord, setIsExportingWord] = useState<boolean>(false);
+  const [density, setDensity] = useState<'compact' | 'normal' | 'relaxed'>('normal');
   const [wordSuccessNotification, setWordSuccessNotification] = useState<boolean>(false);
   const [wordNotificationMessage, setWordNotificationMessage] = useState<string>(
     'Ficheiro Word (.docx) Descarregado!'
@@ -44,6 +45,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
+  const [pricingPromptMessage, setPricingPromptMessage] = useState<string | undefined>(undefined);
   const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
@@ -52,6 +54,14 @@ export default function App() {
   const handleOpenAuth = (prompt?: string) => {
     setAuthModalPrompt(prompt);
     setIsAuthModalOpen(true);
+  };
+
+  const handleOpenPricingModal = (prompt?: string) => {
+    setPricingPromptMessage(
+      prompt ||
+        'Para descarregar o seu currículo em Microsoft Word (.docx) ou PDF limpo sem marcas de água, subscreva um plano Pro ou Executive.'
+    );
+    setIsPricingModalOpen(true);
   };
 
   const [letterBody, setLetterBody] = useState<string>(
@@ -81,28 +91,26 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
       handleOpenAuth('O registo é obrigatório para descarregar o currículo em formato Word (.docx). Registe-se ou inicie sessão para continuar.');
       return;
     }
+    if (!hasActivePlan) {
+      handleOpenPricingModal(
+        'Os downloads oficiais em formato Microsoft Word (.docx) e PDF de Alta Resolução são exclusivos para subscritores. Ative o seu plano para descarregar o documento oficial sem marca de água.'
+      );
+      return;
+    }
     try {
       setIsExportingWord(true);
       const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo_Estrategico';
 
       if (activeTab === 'cover') {
-        const blob = await generateCoverLetterDocx(cv, letterBody, hasActivePlan);
+        const blob = await generateCoverLetterDocx(cv, letterBody, true);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
-        setWordNotificationMessage(
-          hasActivePlan
-            ? 'Carta de Apresentação em Word (.docx) Descarregada!'
-            : 'Carta de Apresentação (C/ Marca de Água) Descarregada!'
-        );
+        setWordNotificationMessage('Carta de Apresentação em Word (.docx) Oficial Descarregada!');
       } else {
         const templateInfo = getTemplateById(cv.templateStyle);
         const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
-        const blob = await generateWordDocument(cv, hasActivePlan);
+        const blob = await generateWordDocument(cv, true, density);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
-        setWordNotificationMessage(
-          hasActivePlan
-            ? `Currículo Word (${templateInfo.shortName}) Oficial Descarregado!`
-            : `Currículo Word (${templateInfo.shortName}) C/ Marca de Demonstração Descarregado!`
-        );
+        setWordNotificationMessage(`Currículo Word (${templateInfo.shortName}) Oficial Descarregado com Sucesso!`);
       }
 
       setWordSuccessNotification(true);
@@ -124,7 +132,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         onExportWord={handleExportWord}
         isExportingWord={isExportingWord}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onOpenPricingModal={() => setIsPricingModalOpen(true)}
+        onOpenPricingModal={() => handleOpenPricingModal()}
         onOpenMyResumesModal={() => setIsMyResumesModalOpen(true)}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
@@ -438,6 +446,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                       setLetterBody={setLetterBody}
                       onExportWord={handleExportWord}
                       isExportingWord={isExportingWord}
+                      onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
                     />
                   )
                 )}
@@ -503,7 +512,9 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                 onExportWord={handleExportWord}
                 isExportingWord={isExportingWord}
                 onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
-                onOpenPricingModal={() => setIsPricingModalOpen(true)}
+                onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+                density={density}
+                onDensityChange={setDensity}
               />
             </section>
           </main>
@@ -570,10 +581,18 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
               type="button"
               onClick={handleExportWord}
               disabled={isExportingWord}
-              className="flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-lg text-[10px] font-bold text-slate-900 hover:text-slate-950 transition-colors"
+              className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-lg text-[10px] font-bold transition-colors ${
+                !hasActivePlan
+                  ? 'text-amber-800 hover:text-amber-900'
+                  : 'text-slate-900 hover:text-slate-950'
+              }`}
             >
-              <Download className="w-4 h-4 text-slate-900" />
-              <span>{isExportingWord ? 'A Gerar...' : 'Word'}</span>
+              {!hasActivePlan ? (
+                <Lock className="w-4 h-4 text-amber-700" />
+              ) : (
+                <Download className="w-4 h-4 text-slate-900" />
+              )}
+              <span>{isExportingWord ? 'A Gerar...' : !hasActivePlan ? 'Word 🔒' : 'Word'}</span>
             </button>
           </nav>
         </>
@@ -593,14 +612,18 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
       {/* SaaS Pricing & Subscription Upgrade Modal */}
       <PricingModal
         isOpen={isPricingModalOpen}
-        onClose={() => setIsPricingModalOpen(false)}
+        onClose={() => {
+          setIsPricingModalOpen(false);
+          setPricingPromptMessage(undefined);
+        }}
+        promptMessage={pricingPromptMessage}
       />
 
       {/* Dedicated User Profile & Subscription Account Area Modal */}
       <UserProfileModal
         isOpen={isUserProfileModalOpen}
         onClose={() => setIsUserProfileModalOpen(false)}
-        onOpenPricing={() => setIsPricingModalOpen(true)}
+        onOpenPricing={() => handleOpenPricingModal()}
         onOpenMyResumes={() => setIsMyResumesModalOpen(true)}
       />
 

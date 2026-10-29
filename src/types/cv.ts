@@ -52,6 +52,15 @@ export interface Reference {
   contact: string;
 }
 
+export type CVSectionKey =
+  | 'summary'
+  | 'competencies'
+  | 'experiences'
+  | 'educations'
+  | 'trainings'
+  | 'languages'
+  | 'references';
+
 export interface CVData {
   personalDetails: PersonalDetails;
   summary: string;
@@ -67,6 +76,8 @@ export interface CVData {
   templateStyle: TemplateStyle;
   accentColor?: string;
   fontFamily?: 'garamond' | 'jakarta' | 'mono' | 'cinzel';
+  sectionOrder?: CVSectionKey[];
+  sectionVisibility?: Partial<Record<CVSectionKey, boolean>>;
 }
 
 export interface AtsAuditResult {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CVData } from '../types/cv';
+import { useAuth } from '../context/AuthContext';
 import {
   Sparkles,
   Copy,
@@ -12,7 +13,8 @@ import {
   Building2,
   UserCheck,
   Send,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Lock
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 
@@ -23,6 +25,7 @@ interface CoverLetterPanelProps {
   setLetterBody: (body: string) => void;
   onExportWord?: () => void;
   isExportingWord?: boolean;
+  onOpenPricingModal?: (promptMessage?: string) => void;
 }
 
 type SupportedLanguage = 'pt' | 'en' | 'fr' | 'es';
@@ -34,8 +37,10 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   letterBody,
   setLetterBody,
   onExportWord,
-  isExportingWord = false
+  isExportingWord = false,
+  onOpenPricingModal
 }) => {
+  const { isAuthenticated, hasActivePlan } = useAuth();
   const [recipient, setRecipient] = useState<string>('Comité de Seleção e Recrutamento');
   const [targetOrg, setTargetOrg] = useState<string>('Diretoria de Recursos Humanos / Empresa Alvo');
   const [targetRole, setTargetRole] = useState<string>(
@@ -234,6 +239,12 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
   };
 
   const handleDownloadWordLocal = async () => {
+    if (!isAuthenticated || !hasActivePlan) {
+      onOpenPricingModal?.(
+        'O download oficial da Carta de Apresentação em formato Word (.docx) requer um plano Pro ou Executive ativo.'
+      );
+      return;
+    }
     if (onExportWord) {
       onExportWord();
     } else {
@@ -382,10 +393,24 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
               type="button"
               onClick={handleDownloadWordLocal}
               disabled={isExportingWord}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors shadow-2xs whitespace-nowrap"
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap ${
+                !isAuthenticated || !hasActivePlan
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
+                  : 'bg-amber-400 hover:bg-amber-300 text-slate-900'
+              }`}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Descarregar Carta Word (.docx)</span>
+              {!isAuthenticated || !hasActivePlan ? (
+                <Lock className="w-3.5 h-3.5" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {!isAuthenticated
+                  ? 'Carta Word (Requer Registo)'
+                  : !hasActivePlan
+                  ? 'Carta Word (Requer Plano)'
+                  : 'Descarregar Carta Word (.docx)'}
+              </span>
             </button>
           </div>
         </div>
@@ -421,7 +446,15 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
           <span>Pode editar qualquer parágrafo diretamente antes de exportar para Word (.docx).</span>
           <button
             type="button"
-            onClick={() => window.print()}
+            onClick={() => {
+              if (!isAuthenticated || !hasActivePlan) {
+                onOpenPricingModal?.(
+                  'A impressão e exportação oficial em PDF da Carta de Apresentação requerem um plano Pro ou Executive ativo.'
+                );
+                return;
+              }
+              window.print();
+            }}
             className="text-slate-700 hover:text-slate-950 font-semibold underline flex items-center gap-1"
           >
             <Printer className="w-3.5 h-3.5" />

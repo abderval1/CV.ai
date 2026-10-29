@@ -12,7 +12,8 @@ import {
   FolderOpen,
   LogOut,
   Zap,
-  HelpCircle
+  HelpCircle,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -30,7 +31,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onOpenPricing,
   onOpenMyResumes
 }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, hasActivePlan } = useAuth();
   const { formatPrice } = useCurrency();
   const [copiedPix, setCopiedPix] = useState(false);
   const PIX_KEY = 'f4693532-31da-4e95-a589-19bccab0d915';
@@ -46,12 +47,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const planLabel =
     user.plan === 'executive'
       ? 'Executivo VIP'
-      : 'Profissional Pro';
+      : user.plan === 'pro'
+      ? 'Profissional Pro'
+      : 'Modo Demonstração (Sem Plano)';
 
   const planBadgeColor =
     user.plan === 'executive'
       ? 'bg-purple-100 text-purple-800 border-purple-200'
-      : 'bg-amber-100 text-amber-800 border-amber-200';
+      : user.plan === 'pro'
+      ? 'bg-amber-100 text-amber-800 border-amber-200'
+      : 'bg-rose-100 text-rose-800 border-rose-200';
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
@@ -81,13 +86,38 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Assinatura Atual
+                Assinatura & Acesso
               </span>
               <span
                 className={`text-xs px-2.5 py-0.5 rounded-full font-bold border ${planBadgeColor}`}
               >
                 {planLabel}
               </span>
+            </div>
+
+            {/* Download License Permission Status */}
+            <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+              hasActivePlan
+                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50 border-amber-200 text-amber-950'
+            }`}>
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                hasActivePlan ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950 font-black'
+              }`}>
+                {hasActivePlan ? <CheckCircle2 className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />}
+              </div>
+              <div className="space-y-0.5">
+                <p className="font-bold">
+                  {hasActivePlan
+                    ? 'Downloads Oficiais Desbloqueados'
+                    : 'Downloads Bloqueados (Modo Demonstração)'}
+                </p>
+                <p className="text-[11px] leading-relaxed opacity-90">
+                  {hasActivePlan
+                    ? 'Exportações 100% limpas em Microsoft Word (.docx) e PDF de Alta Resolução sem qualquer marca de água.'
+                    : 'Sem um plano ativo, as exportações de Word e PDF estão bloqueadas e uma marca de água é exibida na pré-visualização.'}
+                </p>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs pt-1">
@@ -102,7 +132,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               <div>
                 <p className="text-slate-400">Créditos de IA Mensais:</p>
                 <p className="font-semibold text-slate-800">
-                  Ilimitados (Sem Limite)
+                  {hasActivePlan ? 'Ilimitados (Sem Limite)' : 'Demonstração'}
                 </p>
               </div>
             </div>
@@ -128,11 +158,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   onClose();
                   onOpenPricing();
                 }}
-                className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs"
+                className={`w-full py-2.5 px-4 font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 shadow-2xs ${
+                  !hasActivePlan
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold shadow-sm'
+                    : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>
-                  {user.plan === 'pro'
+                  {!hasActivePlan
+                    ? 'Ativar Plano & Desbloquear Downloads'
+                    : user.plan === 'pro'
                     ? 'Fazer Upgrade para Executivo VIP'
                     : 'Gerir Assinatura ou Alterar Plano'}
                 </span>
