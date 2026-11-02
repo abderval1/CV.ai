@@ -52,6 +52,28 @@ async function startServer() {
     });
   });
 
+  // Image proxy endpoint for CORS-free binary embedding during document exports
+  app.get('/api/proxy-image', async (req, res) => {
+    try {
+      const imageUrl = req.query.url as string;
+      if (!imageUrl || !imageUrl.startsWith('http')) {
+        return res.status(400).send('URL de imagem inválida');
+      }
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        return res.status(response.status).send('Erro ao buscar imagem externa');
+      }
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.warn('Erro ao processar proxy de imagem:', err);
+      res.status(500).send('Falha no proxy de imagem');
+    }
+  });
+
   // AI Tailor CV endpoint
   app.post('/api/tailor-cv', async (req, res) => {
     try {

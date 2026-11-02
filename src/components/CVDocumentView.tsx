@@ -19,7 +19,9 @@ import {
   ChevronRight,
   UserCheck,
   Lock,
-  AlertTriangle
+  AlertTriangle,
+  Terminal,
+  BookOpen
 } from 'lucide-react';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
 import { TemplateAdvisorModal } from './TemplateAdvisorModal';
@@ -27,6 +29,7 @@ import { PhotoManagerModal } from './PhotoManagerModal';
 import { CVWatermarkOverlay } from './CVWatermarkOverlay';
 import { getTemplateById } from '../data/templateCatalog';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 interface CVDocumentViewProps {
   cv: CVData;
@@ -60,6 +63,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   onDensityChange
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
+  const { showSuccess, showWarning, showError } = useToast();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
@@ -77,6 +81,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   const currentAccent = cv.accentColor || '#0f172a';
   const currentTemplate = getTemplateById(cv.templateStyle);
+
+  // Template Style Flags
+  const isClassic = cv.templateStyle === 'un_classic';
+  const isHarvard = cv.templateStyle === 'executive_harvard';
+  const isAts = cv.templateStyle === 'ats_compact';
+  const isEuropass = cv.templateStyle === 'european_europass';
+  const isCreative = cv.templateStyle === 'creative_split';
+  const isTech = cv.templateStyle === 'tech_modern';
+  const isMinimalist = cv.templateStyle === 'hybrid_minimalist';
+  const isAcademic = cv.templateStyle === 'academic_lattes';
+  const isModern = cv.templateStyle === 'european_modern';
 
   // Prevent non-subscribers and unregistered users from bypassing download via Ctrl+P / Cmd+P
   useEffect(() => {
@@ -101,26 +116,74 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   }, [isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal]);
 
   const sectionTitles = {
-    summary: docLang === 'pt' ? 'Resumo Profissional' : 'Executive Summary',
-    competencies: docLang === 'pt' ? 'Competências & Habilidades Chave' : 'Core Competencies & Key Skills',
-    experiences: docLang === 'pt' ? 'Experiência Profissional' : 'Professional Experience',
-    educations: docLang === 'pt' ? 'Formação Académica' : 'Education',
-    trainings: docLang === 'pt' ? 'Certificações & Formação Especializada' : 'Specialized Training & Certifications',
-    languages: docLang === 'pt' ? 'Idiomas & Proficiência' : 'Languages & Proficiency',
-    references: docLang === 'pt' ? 'Referências Profissionais' : 'Professional References',
-    tableRefName: docLang === 'pt' ? 'Nome' : 'Name',
-    tableRefInstitution: docLang === 'pt' ? 'Instituição & Cargo' : 'Institution & Position',
-    tableRefContact: docLang === 'pt' ? 'Contacto' : 'Contact',
+    summary:
+      isAcademic
+        ? (docLang === 'pt' ? 'Resumo Académico & Linhas de Investigação' : 'Academic Summary & Research Lines')
+        : isClassic
+        ? (docLang === 'pt' ? 'Resumo Executivo & Perfil Diplomático' : 'Executive Summary & Diplomatic Profile')
+        : docLang === 'pt' ? 'Resumo Profissional' : 'Executive Summary',
+    competencies:
+      isAcademic
+        ? (docLang === 'pt' ? 'Áreas de Atuação & Metodologias' : 'Research Fields & Methodologies')
+        : isClassic
+        ? (docLang === 'pt' ? 'Competências Centrais & Expertise Multilateral' : 'Core Competencies & Multilateral Expertise')
+        : docLang === 'pt' ? 'Competências & Habilidades Chave' : 'Core Competencies & Key Skills',
+    experiences:
+      isAcademic
+        ? (docLang === 'pt' ? 'Atuação Profissional, Pesquisa & Docência' : 'Professional, Research & Teaching Experience')
+        : isClassic
+        ? (docLang === 'pt' ? 'Experiência Profissional & Missões' : 'Professional Experience & Missions')
+        : docLang === 'pt' ? 'Experiência Profissional' : 'Professional Experience',
+    educations:
+      isAcademic
+        ? (docLang === 'pt' ? 'Formação Académica & Titulações' : 'Academic Qualifications & Degrees')
+        : isClassic
+        ? (docLang === 'pt' ? 'Formação Académica' : 'Academic Qualifications')
+        : docLang === 'pt' ? 'Formação Académica' : 'Education',
+    trainings:
+      isAcademic
+        ? (docLang === 'pt' ? 'Produção Científica, Certificações & Cursos' : 'Scientific Production, Certifications & Courses')
+        : isClassic
+        ? (docLang === 'pt' ? 'Certificações & Formação Especializada' : 'Certifications & Specialized Training')
+        : docLang === 'pt' ? 'Certificações & Formação Especializada' : 'Specialized Training & Certifications',
+    languages:
+      isAcademic
+        ? (docLang === 'pt' ? 'Idiomas & Proficiência Académica' : 'Academic Languages & Proficiency')
+        : isClassic
+        ? (docLang === 'pt' ? 'Idiomas Oficiais & Proficiência' : 'Official Languages & Proficiency')
+        : docLang === 'pt' ? 'Idiomas & Proficiência' : 'Languages & Proficiency',
+    references:
+      isAcademic
+        ? (docLang === 'pt' ? 'Referências Académicas & Bancas Avaliadoras' : 'Academic References & Examination Boards')
+        : isClassic
+        ? (docLang === 'pt' ? 'Referências Profissionais & Institucionais' : 'Professional & Institutional References')
+        : docLang === 'pt' ? 'Referências Profissionais' : 'Professional References',
+    tableRefName: isAcademic ? 'Nome do Avaliador / Pesquisador' : docLang === 'pt' ? 'Nome' : 'Name',
+    tableRefInstitution: isAcademic ? 'Instituição & Departamento' : docLang === 'pt' ? 'Instituição & Cargo' : 'Institution & Position',
+    tableRefContact: isAcademic ? 'Contacto Institucional' : docLang === 'pt' ? 'Contacto' : 'Contact',
     techStack: docLang === 'pt' ? 'Stack Tecnológico & Ferramentas' : 'Technical Stack & Tools',
     cefrLevel: docLang === 'pt' ? 'Quadro Europeu CEFR' : 'CEFR Framework'
   };
 
+  const getSectionPrefix = (index: number) => {
+    if (isTech) return <span className="text-teal-500 font-mono mr-1.5">&gt;</span>;
+    if (isMinimalist) return <span className="text-slate-400 font-mono text-[10px] mr-2">0{index + 1} /</span>;
+    if (isAcademic) {
+      const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][index] || `${index + 1}`;
+      return <span className="text-slate-900 font-serif font-bold mr-1.5">{roman}.</span>;
+    }
+    if (isClassic) return <span className="text-blue-900 font-serif font-bold mr-1.5">{index + 1}.</span>;
+    return null;
+  };
+
   const handlePrint = () => {
     if (!isAuthenticated) {
+      showWarning('Registo Obrigatório', 'Inicie sessão ou registe-se para imprimir ou guardar em PDF.');
       onOpenAuthModal?.('O registo é obrigatório para descarregar ou imprimir o seu currículo em PDF.');
       return;
     }
     if (!hasActivePlan) {
+      showWarning('Plano Requerido', 'A impressão e download do PDF de Alta Resolução são exclusivos para subscritores.');
       onOpenPricingModal?.(
         'A impressão e download em PDF de Alta Resolução são exclusivos para subscritores. Ative um plano para descarregar o seu documento oficial sem marca de água.'
       );
@@ -161,15 +224,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
     navigator.clipboard.writeText(text);
     setCopied(true);
+    showSuccess('Texto Copiado!', 'O texto formatado do currículo foi copiado para a área de transferência.');
     setTimeout(() => setCopied(false), 2500);
   };
 
   const handleExportJSON = () => {
     if (!isAuthenticated) {
+      showWarning('Registo Obrigatório', 'O registo é obrigatório para descarregar o backup JSON.');
       onOpenAuthModal?.('O registo é obrigatório para descarregar o ficheiro de backup do currículo.');
       return;
     }
     if (!hasActivePlan) {
+      showWarning('Plano Requerido', 'A exportação de backup requer um plano Pro ou Executive ativo.');
       onOpenPricingModal?.('A exportação do ficheiro de backup em JSON requer um plano Pro ou Executive ativo.');
       return;
     }
@@ -182,6 +248,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    showSuccess('Backup JSON Exportado!', `Ficheiro CV_${sanitizedName}_backup.json descarregado com sucesso.`);
   };
 
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -195,12 +262,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         if (parsed && parsed.personalDetails) {
           onChange(parsed);
           setJsonImportSuccess('Currículo importado do backup JSON com sucesso!');
+          showSuccess('Currículo Importado!', 'Ficheiro JSON restaurado e sincronizado no documento.');
           setTimeout(() => setJsonImportSuccess(null), 3000);
         } else {
-          alert('Arquivo JSON com estrutura inválida.');
+          showError('Ficheiro Inválido', 'O arquivo JSON selecionado não possui a estrutura correta.');
         }
       } catch {
-        alert('Erro ao processar ficheiro JSON.');
+        showError('Erro de Importação', 'Não foi possível ler o arquivo JSON selecionado.');
       }
     };
     reader.readAsText(file);
@@ -237,16 +305,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     setShowColorPicker(false);
   };
 
-  // Template Style Flags
-  const isClassic = cv.templateStyle === 'un_classic';
-  const isHarvard = cv.templateStyle === 'executive_harvard';
-  const isAts = cv.templateStyle === 'ats_compact';
-  const isEuropass = cv.templateStyle === 'european_europass';
-  const isCreative = cv.templateStyle === 'creative_split';
-  const isTech = cv.templateStyle === 'tech_modern';
-  const isMinimalist = cv.templateStyle === 'hybrid_minimalist';
-  const isAcademic = cv.templateStyle === 'academic_lattes';
-  const isModern = cv.templateStyle === 'european_modern';
 
   // Photo Logic:
   // Show photo if user has configured a photo and showPhoto is not false, on all photo-supporting models
@@ -988,12 +1046,54 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     {/* European flag/official indicator in Europass */}
                     {isEuropass && (
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-700 text-white tracking-wider uppercase">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#003399] text-white tracking-wider uppercase shadow-2xs">
                           Curriculum Vitae Europass
                         </span>
                         <span className="text-[11px] text-slate-500 font-medium">
                           Padrão Oficial da União Europeia
                         </span>
+                      </div>
+                    )}
+
+                    {/* Tech header badge */}
+                    {isTech && (
+                      <div className="flex items-center gap-1.5 mb-2 font-mono text-[11px] text-teal-700 font-semibold tracking-wide">
+                        <Terminal className="w-3.5 h-3.5 text-teal-600" />
+                        <span>// TECH LEAD & SYSTEMS ARCHITECTURE</span>
+                      </div>
+                    )}
+
+                    {/* Minimalist Nordic tag */}
+                    {isMinimalist && (
+                      <div className="text-[10px] font-mono tracking-widest uppercase text-slate-400 mb-1.5 font-semibold">
+                        CURRICULUM VITAE · PADRÃO NÓRDICO
+                      </div>
+                    )}
+
+                    {/* ATS indicator */}
+                    {isAts && (
+                      <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2 border-b border-slate-300 pb-1">
+                        [ATS COMPACT · OCR PARSER COMPLIANT]
+                      </div>
+                    )}
+
+                    {/* Academic Lattes tag */}
+                    {isAcademic && (
+                      <div className="mb-3 border-y border-slate-700/60 py-1.5 text-center font-serif">
+                        <div className="text-[11px] font-bold tracking-wider uppercase text-slate-800">
+                          PLATAFORMA LATTES · CURRÍCULO DE CIÊNCIA E TECNOLOGIA
+                        </div>
+                        <div className="text-[9.5px] text-slate-500 italic">
+                          Padrão Oficial de Investigação Científica & Docência Universitária
+                        </div>
+                      </div>
+                    )}
+
+                    {/* UN Classic Diplomatic tag */}
+                    {isClassic && (
+                      <div className="flex items-center justify-center gap-1.5 mb-2 font-serif text-[11px] text-blue-900 font-bold tracking-wider uppercase">
+                        <Globe className="w-3.5 h-3.5 text-blue-800 shrink-0" />
+                        <span>UNITED NATIONS & INTERNATIONAL COOPERATION STANDARD</span>
                       </div>
                     )}
 
@@ -1008,14 +1108,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       }
                       className={`font-bold tracking-tight uppercase ${
                         isHarvard
-                          ? 'text-2xl sm:text-3xl tracking-wide'
+                          ? 'text-2xl sm:text-3xl tracking-wide font-serif-cv'
                           : isClassic
-                          ? 'text-2xl sm:text-3xl'
+                          ? 'text-2xl sm:text-3xl font-serif-cv'
                           : isEuropass
-                          ? 'text-2xl sm:text-3xl font-extrabold'
+                          ? 'text-2xl sm:text-3xl font-extrabold text-[#003399]'
+                          : isTech
+                          ? 'text-2xl sm:text-3xl font-black font-jakarta tracking-tight'
                           : 'text-2xl sm:text-3xl tracking-tight'
                       }`}
-                      style={{ color: currentAccent }}
+                      style={{ color: isEuropass ? '#003399' : currentAccent }}
                     >
                       {cv.personalDetails.name || 'SEU NOME COMPLETO'}
                     </h1>
@@ -1030,7 +1132,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         })
                       }
                       className={`text-sm sm:text-base font-semibold mt-1 ${
-                        isHarvard ? 'text-slate-700 italic' : 'text-slate-800'
+                        isHarvard ? 'text-slate-700 italic font-serif-cv' : isTech ? 'text-teal-700 font-mono text-xs sm:text-sm' : 'text-slate-800'
                       }`}
                     >
                       {cv.personalDetails.title}
@@ -1102,25 +1204,60 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               </header>
 
               {/* Dynamic Sections Rendered According to Custom User Section Order & Visibility */}
-              {sectionOrder.map((sectionKey) => {
+              {sectionOrder.map((sectionKey, secIdx) => {
                 if (!isSectionVisible(sectionKey)) return null;
+
+                const getSectionHeaderStyle = () => {
+                  if (isHarvard) {
+                    return 'border-b border-slate-900 font-serif-cv tracking-wide text-slate-950';
+                  }
+                  if (isTech) {
+                    return 'border-b-2 font-mono text-[13px] text-teal-800 tracking-normal';
+                  }
+                  if (isMinimalist) {
+                    return 'border-b border-slate-200 tracking-widest text-slate-900 font-medium';
+                  }
+                  if (isAts) {
+                    return 'border-b border-slate-400 font-mono text-slate-900';
+                  }
+                  if (isEuropass) {
+                    return 'border-b-2 text-[#003399] font-extrabold';
+                  }
+                  return 'border-b border-slate-300';
+                };
+
+                const getSectionHeaderColor = () => {
+                  if (isHarvard || isAts) return undefined;
+                  if (isTech) return '#0d9488';
+                  if (isEuropass) return '#003399';
+                  return currentAccent;
+                };
+
+                const getSectionBorderColor = () => {
+                  if (isHarvard) return '#0f172a';
+                  if (isAts) return '#94a3b8';
+                  if (isTech) return '#0d9488';
+                  if (isEuropass) return '#003399';
+                  return currentAccent;
+                };
 
                 if (sectionKey === 'summary' && cv.summary) {
                   return (
                     <section key="summary" className="cv-section mt-5">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.summary}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.summary}</span>
                       </h2>
                       <p
                         contentEditable={isInlineEditing}
                         suppressContentEditableWarning
                         onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
-                        className="text-[13.5px] sm:text-[14px] leading-relaxed text-slate-800 text-justify"
+                        className={`text-[13.5px] sm:text-[14px] leading-relaxed text-slate-800 text-justify ${
+                          isMinimalist ? 'font-light leading-relaxed' : ''
+                        }`}
                       >
                         {cv.summary}
                       </p>
@@ -1132,63 +1269,104 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   return (
                     <section key="competencies" className="cv-section mt-5">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.competencies}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.competencies}</span>
                       </h2>
-                      <ul className="space-y-1.5 text-[13.5px] sm:text-[14px] text-slate-800">
-                        {cv.competencies.map((comp, idx) => (
-                          <li key={comp.id || idx} className="cv-item flex items-start">
-                            <span className="mr-2 text-slate-400 font-bold">•</span>
-                            <div>
-                              <strong className="font-semibold text-slate-900">{comp.category}:</strong>{' '}
-                              <span>{comp.description}</span>
+
+                      {isTech ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          {cv.competencies.map((comp, idx) => (
+                            <div key={comp.id || idx} className="p-2.5 bg-slate-50/80 border border-slate-200 rounded-lg">
+                              <span className="font-mono font-bold text-teal-800 text-[11px] block">{comp.category}</span>
+                              <span className="text-slate-700 text-[11px] leading-relaxed">{comp.description}</span>
                             </div>
-                          </li>
-                        ))}
-                      </ul>
+                          ))}
+                        </div>
+                      ) : (
+                        <ul className="space-y-1.5 text-[13.5px] sm:text-[14px] text-slate-800">
+                          {cv.competencies.map((comp, idx) => (
+                            <li key={comp.id || idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400 font-bold">•</span>
+                              <div>
+                                <strong className="font-semibold text-slate-900">{comp.category}:</strong>{' '}
+                                <span>{comp.description}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </section>
                   );
                 }
 
                 if (sectionKey === 'experiences' && cv.experiences && cv.experiences.length > 0) {
                   return (
-                    <section key="experiences" className="cv-section mt-5">
-                      <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-3 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
-                      >
-                        {sectionTitles.experiences}
-                      </h2>
-                      <div className="space-y-5">
-                        {cv.experiences.map((exp) => (
-                          <div key={exp.id} className="cv-item space-y-1">
-                            <div className="flex flex-wrap justify-between items-baseline gap-1">
-                              <span className="text-[14.5px] font-bold text-slate-950">{exp.company}</span>
-                              {exp.location && <span className="text-xs text-slate-500 font-medium">{exp.location}</span>}
+                    <React.Fragment key="experiences">
+                      <section className="cv-section mt-5">
+                        <h2
+                          className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-3 ${getSectionHeaderStyle()}`}
+                          style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
+                        >
+                          {getSectionPrefix(secIdx)}
+                          <span>{sectionTitles.experiences}</span>
+                        </h2>
+                        <div className="space-y-5">
+                          {cv.experiences.map((exp) => (
+                            <div key={exp.id} className="cv-item space-y-1">
+                              {isTech ? (
+                                <div className="flex flex-wrap justify-between items-baseline gap-1">
+                                  <span className="text-[14.5px] font-bold text-slate-950 font-jakarta">
+                                    {exp.role} <span className="text-teal-700 font-medium">@ {exp.company}</span>
+                                  </span>
+                                  <span className="font-mono text-xs text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                    {exp.period}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap justify-between items-baseline gap-1">
+                                  <span className="text-[14.5px] font-bold text-slate-950">{exp.company}</span>
+                                  {exp.location && <span className="text-xs text-slate-500 font-medium">{exp.location}</span>}
+                                </div>
+                              )}
+
+                              {!isTech && (
+                                <div className="text-[13.5px] font-semibold text-slate-800 flex flex-wrap justify-between items-center gap-1">
+                                  <span className={isHarvard ? 'italic font-serif-cv' : ''}>{exp.role}</span>
+                                  <span className="font-normal text-slate-600 text-xs sm:text-[13px] font-mono">{exp.period}</span>
+                                </div>
+                              )}
+
+                              {exp.donor && (
+                                <div className="text-xs italic text-slate-600">
+                                  {renderTextWithLinks(exp.donor)}
+                                </div>
+                              )}
+
+                              <ul className="mt-1.5 space-y-1.5 text-[13px] sm:text-[13.5px] text-slate-800">
+                                {exp.highlights.map((pt, pIdx) => (
+                                  <li key={pIdx} className="flex items-start">
+                                    <span className={`mr-2 font-bold ${isTech ? 'text-teal-600 font-mono' : 'text-slate-400'}`}>
+                                      {isTech ? '>' : '•'}
+                                    </span>
+                                    <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
-                            <div className="text-[13.5px] font-semibold text-slate-800 flex flex-wrap justify-between items-center gap-1">
-                              <span className="italic">{exp.role}</span>
-                              <span className="font-normal text-slate-600 text-xs sm:text-[13px] font-mono">{exp.period}</span>
-                            </div>
-                            {exp.donor && <div className="text-xs italic text-slate-600">{renderTextWithLinks(exp.donor)}</div>}
-                            <ul className="mt-1.5 space-y-1.5 text-[13px] sm:text-[13.5px] text-slate-800">
-                              {exp.highlights.map((pt, pIdx) => (
-                                <li key={pIdx} className="flex items-start">
-                                  <span className="mr-2 text-slate-400 font-bold">•</span>
-                                  <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
+                          ))}
+                        </div>
+                      </section>
+
+                      {/* Visual Page Break Simulation Divider on Multi-Job CVs */}
+                      {cv.experiences.length >= 3 && (
+                        <div className="page-break-line my-6 text-center no-print" aria-hidden="true">
+                          <span>Página 1 (A4) · Quebra Estimada</span>
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 }
 
@@ -1196,12 +1374,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   return (
                     <section key="educations" className="cv-section mt-6">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.educations}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.educations}</span>
                       </h2>
                       <div className="space-y-2 text-[13.5px] text-slate-800">
                         {cv.educations.map((edu) => (
@@ -1227,12 +1404,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   return (
                     <section key="trainings" className="cv-section mt-6">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.trainings}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.trainings}</span>
                       </h2>
                       <ul className="space-y-1 text-[13px] text-slate-800">
                         {cv.trainings.map((t, idx) => (
@@ -1250,12 +1426,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   return (
                     <section key="languages" className="cv-section mt-6">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-2 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.languages}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.languages}</span>
                       </h2>
                       <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-slate-800">
                         {cv.languages.map((l, idx) => (
@@ -1263,8 +1438,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                             <strong className="font-semibold text-slate-950">• {l.language}:</strong>
                             <span className="text-slate-700">{l.level}</span>
                             {isEuropass && (
-                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">
-                                {idx === 0 ? 'C2/Nativo' : idx === 1 ? 'C1/Avançado' : 'B2'}
+                              <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-100 text-blue-800 font-mono border border-blue-200">
+                                {l.level.includes('Nativo') || l.level.includes('C2') ? 'C2/Nativo' : l.level.includes('C1') ? 'C1/Avançado' : 'B2'}
                               </span>
                             )}
                           </div>
@@ -1278,12 +1453,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   return (
                     <section key="references" className="cv-section mt-6">
                       <h2
-                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-3 ${
-                          isHarvard ? 'border-b border-slate-900 font-serif-cv' : 'border-b border-slate-300'
-                        }`}
-                        style={{ color: currentAccent }}
+                        className={`cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider pb-1 mb-3 ${getSectionHeaderStyle()}`}
+                        style={{ color: getSectionHeaderColor(), borderColor: getSectionBorderColor() }}
                       >
-                        {sectionTitles.references}
+                        {getSectionPrefix(secIdx)}
+                        <span>{sectionTitles.references}</span>
                       </h2>
                       <div className="border border-slate-300 overflow-hidden text-left text-[12.5px] sm:text-[13px] rounded-xs">
                         <table className="w-full border-collapse">

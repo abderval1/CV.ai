@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SAAS_PLANS } from '../data/initialCV';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
+import { useToast } from '../context/ToastContext';
 import { SubscriptionPlan, PaymentMethod, BillingCycle } from '../types/cv';
 import { createSaaSOrder, fetchAllCoupons } from '../services/saasDbService';
 import {
@@ -83,6 +84,7 @@ function generatePixBRCode(
 export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, promptMessage }) => {
   const { user, upgradePlan } = useAuth();
   const { currency, setCurrency, config: currencyConfig, formatPrice } = useCurrency();
+  const { showSuccess, showError } = useToast();
 
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('pro');
@@ -192,6 +194,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         paymentMethodUsed: 'Stripe (Recorrente)'
       });
       setUpgradeSuccess(true);
+      showSuccess(
+        'Assinatura Stripe Ativada!',
+        `O seu plano ${plan === 'executive' ? 'Executivo VIP' : 'Profissional'} foi ativado com sucesso! O acesso total ao Editor e exportações foi liberado.`
+      );
     } catch (e) {
       console.error('Erro ao verificar retorno Stripe:', e);
     } finally {
@@ -473,6 +479,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
             paymentMethodUsed: 'Stripe (Recorrente)'
           });
           setUpgradeSuccess(true);
+          showSuccess(
+            'Pagamento Stripe Confirmado!',
+            `Assinatura do Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativada com sucesso. O seu acesso ao Editor de Currículos foi liberado!`
+          );
         }
       } else if (paymentMethod === 'pix') {
         // 2. PIX INSTANT PAYMENT
@@ -502,6 +512,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
           paymentMethodUsed: 'Pix Instantâneo (QR Code)'
         });
         setUpgradeSuccess(true);
+        showSuccess(
+          'Pagamento Pix Confirmado!',
+          `Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativado via Pix Instantâneo (R$ ${priceBRL.toFixed(2)}). Acesso ao Editor de Currículos liberado!`
+        );
       } else {
         // 3. ALTERNATIVE LOCAL PAYMENTS (Multicaixa / Transferência)
         await upgradePlan(selectedPlan, { billingCycle });
@@ -533,10 +547,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
           paymentMethodUsed: paymentMethod === 'multicaixa' ? 'Multicaixa Express' : 'Transferência Bancária'
         });
         setUpgradeSuccess(true);
+        showSuccess(
+          'Subscrição Ativada!',
+          `Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativado com sucesso. Acesso ao Editor liberado!`
+        );
       }
     } catch (err: any) {
       console.error('Falha no upgrade:', err);
       setCardError(err.message || 'Erro ao processar transação.');
+      showError('Falha no Pagamento', err.message || 'Não foi possível concluir a transação.');
     } finally {
       setIsProcessing(false);
     }

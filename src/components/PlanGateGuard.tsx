@@ -106,8 +106,10 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
             <span className="text-xs font-bold text-slate-200 capitalize bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700">
               {currentPlan === 'public'
                 ? 'Visitante (Sem Acesso)'
+                : currentPlan === 'free'
+                ? 'Gratuito (Sem Acesso)'
                 : currentPlan === 'pro'
-                ? 'Pro'
+                ? 'Plano Pro'
                 : 'Executivo VIP'}
             </span>
           </div>

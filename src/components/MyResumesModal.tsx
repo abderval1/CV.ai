@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { CVData } from '../types/cv';
 import { X, FileText, Trash2, ArrowUpRight, Plus, Check } from 'lucide-react';
 import { GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
@@ -18,6 +19,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   onLoadResume
 }) => {
   const { savedResumes, saveCurrentResume, deleteResume, firebaseUser } = useAuth();
+  const { showSuccess, showInfo, showError } = useToast();
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -30,17 +32,25 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
 
     setIsSaving(true);
     try {
-      await saveCurrentResume(currentCV, newTitle.trim(), currentCV.personalDetails.title);
+      const savedTitle = newTitle.trim();
+      await saveCurrentResume(currentCV, savedTitle, currentCV.personalDetails.title);
       setNewTitle('');
       setSaveSuccess(true);
+      showSuccess(
+        'Currículo Salvo!',
+        `"${savedTitle}" foi guardado com sucesso na sua conta.`
+      );
       setTimeout(() => setSaveSuccess(false), 2000);
+    } catch {
+      showError('Erro ao Salvar', 'Não foi possível guardar o currículo.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSelectResume = (cv: CVData) => {
+  const handleSelectResume = (cv: CVData, title?: string) => {
     onLoadResume(cv);
+    showSuccess('Currículo Carregado!', `"${title || 'Currículo'}" está pronto para edição.`);
     onClose();
   };
 
@@ -159,7 +169,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => handleSelectResume(resume.data)}
+                  onClick={() => handleSelectResume(resume.data, resume.title)}
                   className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1"
                 >
                   <span>Abrir</span>
@@ -168,7 +178,10 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                 {savedResumes.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => deleteResume(resume.id)}
+                    onClick={() => {
+                      deleteResume(resume.id);
+                      showInfo('Currículo Removido', `"${resume.title}" foi removido da sua lista.`);
+                    }}
                     className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
                     title="Eliminar versão"
                   >

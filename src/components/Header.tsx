@@ -130,6 +130,11 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <FileText className="w-3.5 h-3.5" />
             <span>Editor de Currículo</span>
+            {!hasActivePlan && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded-sm bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                <Lock className="w-2.5 h-2.5" /> Pro
+              </span>
+            )}
           </button>
 
           {/* 3. Meu Perfil (Área do Usuário Cadastrado) */}
@@ -605,14 +610,21 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectNav('editor')}
-                className={`flex items-center gap-2 p-2 rounded-lg text-xs font-semibold transition-colors ${
+                className={`flex items-center justify-between p-2 rounded-lg text-xs font-semibold transition-colors ${
                   activeTab === 'editor'
                     ? 'bg-slate-900 text-white'
                     : 'bg-slate-50 text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <FileText className="w-4 h-4 shrink-0" />
-                <span>Editor de CV</span>
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 shrink-0" />
+                  <span>Editor de CV</span>
+                </div>
+                {!hasActivePlan && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-sm flex items-center gap-0.5">
+                    <Lock className="w-2.5 h-2.5" /> Pro
+                  </span>
+                )}
               </button>
 
               {onOpenTemplateAdvisor && (

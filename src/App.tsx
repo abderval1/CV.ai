@@ -20,12 +20,14 @@ import { UserProfileView } from './components/UserProfileView';
 import { PlanGateGuard } from './components/PlanGateGuard';
 import { InterviewSimulator } from './components/InterviewSimulator';
 import { useAuth } from './context/AuthContext';
+import { useToast } from './context/ToastContext';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
 import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, User as UserIcon, Lock } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan } = useAuth();
+  const { showSuccess, showError } = useToast();
   const [cv, setCv] = useState<CVData>(GENERIC_DEFAULT_CV);
   const [jobDescription, setJobDescription] = useState<string>(
     SAMPLE_JOB_OFFERS[0].description
@@ -105,19 +107,27 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         const blob = await generateCoverLetterDocx(cv, letterBody, true);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
         setWordNotificationMessage('Carta de Apresentação em Word (.docx) Oficial Descarregada!');
+        showSuccess(
+          'Carta de Apresentação Descarregada!',
+          `O ficheiro Carta_Apresentacao_${sanitizedName}.docx foi gerado com sucesso sem marcas de água.`
+        );
       } else {
         const templateInfo = getTemplateById(cv.templateStyle);
         const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
         const blob = await generateWordDocument(cv, true, density);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
         setWordNotificationMessage(`Currículo Word (${templateInfo.shortName}) Oficial Descarregado com Sucesso!`);
+        showSuccess(
+          'Currículo Word Descarregado!',
+          `Modelo ${templateInfo.shortName} gerado com formatação nativa OpenXML e compatibilidade ATS 100%.`
+        );
       }
 
       setWordSuccessNotification(true);
       setTimeout(() => setWordSuccessNotification(false), 4000);
     } catch (err) {
       console.error('Falha ao exportar documento Word:', err);
-      alert('Não foi possível compilar o ficheiro Word. Verifique os dados inseridos.');
+      showError('Erro na Exportação', 'Não foi possível compilar o documento Word. Verifique os dados inseridos.');
     } finally {
       setIsExportingWord(false);
     }
@@ -239,13 +249,17 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
               </div>
 
               {/* Active Tab Panel View */}
-              <div className="p-4 sm:p-6 flex-1">
+              <div className={activeTab === 'editor' && hasActivePlan ? 'flex-1 flex flex-col min-h-0' : 'p-4 sm:p-6 flex-1'}>
                 {activeTab === 'raw' && (
-                  !isAuthenticated ? (
+                  !hasActivePlan ? (
                     <PlanGateGuard
-                      requiredTier="authenticated"
-                      featureTitle="Criação de CV & Importação de Dados"
-                      featureSubtitle="A criação de currículos e extração de dados do LinkedIn ou documentos é restrita a utilizadores assinantes da plataforma."
+                      requiredTier={isAuthenticated ? 'pro' : 'authenticated'}
+                      featureTitle="Criação & Importação Estruturada de CV"
+                      featureSubtitle={
+                        isAuthenticated
+                          ? "A criação de novos currículos e importação estruturada (LinkedIn, PDF e Word) é exclusiva para assinantes dos planos Pro ou Executivo VIP. Ative o seu plano para desbloquear."
+                          : "A criação de currículos e extração de dados do LinkedIn ou documentos é restrita a assinantes da plataforma. Crie a sua conta e ative o seu plano para continuar."
+                      }
                       featureBenefits={[
                         'Importação inteligente de LinkedIn, PDF e Word (.docx)',
                         'Estruturação nos padrões internacionais de recrutamento',
@@ -271,16 +285,21 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                 )}
 
                 {activeTab === 'editor' && (
-                  !isAuthenticated ? (
+                  !hasActivePlan ? (
                     <PlanGateGuard
-                      requiredTier="authenticated"
-                      featureTitle="Editor de Currículo Profissional"
-                      featureSubtitle="O editor de currículos é exclusivo para assinantes da plataforma. Crie a sua conta e assine o Plano Pro ou Executivo VIP para criar o seu currículo."
+                      requiredTier={isAuthenticated ? 'pro' : 'authenticated'}
+                      featureTitle="Editor de Currículo Profissional & Executivo"
+                      featureSubtitle={
+                        isAuthenticated
+                          ? "O editor de currículos é exclusivo para assinantes dos planos Pro ou Executivo VIP. Ative o seu plano para criar, personalizar e salvar o seu currículo oficial em tempo real."
+                          : "O editor de currículos é exclusivo para assinantes com plano ativo. Inicie a sua sessão ou cadastre-se e ative o seu plano para começar a editar."
+                      }
                       featureBenefits={[
-                        'Editor em tempo real com pré-visualização A4 executiva',
-                        'Calibração de seções segundo normas ATS e C-Level',
-                        'Múltiplas versões salvas na sua conta',
-                        'Exportação em Microsoft Word (.docx) sem restrições'
+                        'Editor em tempo real com calibração modular de seções',
+                        'Formatação rigorosa segundo normas ATS (Workday, Taleo, Greenhouse)',
+                        'Exportações ilimitadas em Word (.docx) e PDF limpo sem marcas de água',
+                        'Armazenamento seguro de múltiplas versões na nuvem',
+                        'Aplicação imediata de competências C-Level e métricas quantificáveis'
                       ]}
                       onOpenAuthModal={() => setIsAuthModalOpen(true)}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
@@ -536,13 +555,18 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                 setActiveTab('editor');
                 setMobileViewMode('controls');
               }}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-lg text-[10px] font-semibold transition-colors ${
+              className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-lg text-[10px] font-semibold transition-colors relative ${
                 activeTab === 'editor' && mobileViewMode === 'controls'
                   ? 'text-slate-950 font-bold'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Edit3 className="w-4 h-4" />
+              <div className="relative">
+                <Edit3 className="w-4 h-4" />
+                {!hasActivePlan && (
+                  <Lock className="w-2.5 h-2.5 text-amber-600 absolute -top-1 -right-2" />
+                )}
+              </div>
               <span>Editor</span>
             </button>
 
