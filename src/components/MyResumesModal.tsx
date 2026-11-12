@@ -10,15 +10,17 @@ interface MyResumesModalProps {
   onClose: () => void;
   currentCV: CVData;
   onLoadResume: (cv: CVData) => void;
+  onOpenPricingModal?: (prompt?: string) => void;
 }
 
 export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   isOpen,
   onClose,
   currentCV,
-  onLoadResume
+  onLoadResume,
+  onOpenPricingModal
 }) => {
-  const { savedResumes, saveCurrentResume, deleteResume, firebaseUser } = useAuth();
+  const { savedResumes, saveCurrentResume, deleteResume, firebaseUser, user, hasActivePlan } = useAuth();
   const { showSuccess, showInfo, showError } = useToast();
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
@@ -29,6 +31,13 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   const handleSaveCurrent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
+
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A gravação e sincronização de múltiplas versões de currículos na nuvem é exclusiva para assinantes Pro e Executivo VIP.'
+      );
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -55,11 +64,23 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   };
 
   const handleCreateNewBlank = () => {
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A criação de novos currículos a partir do zero é exclusiva para assinantes Pro e Executivo VIP.'
+      );
+      return;
+    }
     onLoadResume(BLANK_CV);
     onClose();
   };
 
   const handleLoadGenericTemplate = () => {
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A substituição e carregamento de modelos de currículo é exclusiva para assinantes Pro e Executivo VIP.'
+      );
+      return;
+    }
     onLoadResume(GENERIC_DEFAULT_CV);
     onClose();
   };
@@ -72,10 +93,10 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-900">Os Meus Currículos Salvos</h2>
-              {firebaseUser ? (
+              {user ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Firebase Cloud Sincronizado
+                  Conta Ativa: Sincronização na Nuvem
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
@@ -84,9 +105,9 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {firebaseUser
-                ? 'Os seus currículos estão armazenados com segurança no Firestore na nuvem.'
-                : 'Inicie sessão com o Google para guardar e sincronizar os seus currículos no Firebase Cloud.'}
+              {user
+                ? 'Os seus currículos estão armazenados com segurança na nuvem associados ao seu e-mail.'
+                : 'Inicie sessão ou crie uma conta para sincronizar os seus currículos permanentemente na nuvem.'}
             </p>
           </div>
           <button

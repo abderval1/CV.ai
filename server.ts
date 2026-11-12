@@ -3,8 +3,10 @@ import http from 'http';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import Stripe from 'stripe';
+import mammoth from 'mammoth';
+import { PDFParse } from 'pdf-parse';
 import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
@@ -17,13 +19,106 @@ const PORT = Number(process.env.PORT) || 3000;
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '25mb' }));
 
   // Initialize Gemini API client if key is available
   const apiKey = process.env.GEMINI_API_KEY;
   let ai: GoogleGenAI | null = null;
   if (apiKey) {
-    ai = new GoogleGenAI({ apiKey });
+    ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+
+  // Cooldown tracker (ms timestamp) to avoid re-stalling parallel/subsequent requests on congested models
+  const modelCooldownUntil = new Map<string, number>();
+
+  function parseAiJson<T = any>(raw: string | undefined): T {
+    const cleaned = (raw ?? '{}')
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+    return JSON.parse(cleaned || '{}') as T;
+  }
+
+  // Resilient Gemini call with low-latency thinking, AbortController timeout, and fast active model failover
+  async function generateContentWithRetry(
+    contents: any,
+    config?: Record<string, any>
+  ) {
+    if (!ai) {
+      throw new Error('GEMINI_API_KEY não configurada no servidor.');
+    }
+    const baseModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    const now = Date.now();
+    const healthyModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) <= now);
+    const cooledModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) > now);
+    const candidateModels = [...healthyModels, ...cooledModels];
+
+    let lastError: any = null;
+
+    for (const model of candidateModels) {
+      const controller = new AbortController();
+      const timeoutMs = model === 'gemini-3.8-flash' ? 6000 : 15000;
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const effectiveConfig: Record<string, any> = {
+          ...(config || {}),
+          abortSignal: controller.signal
+        };
+        if (model === 'gemini-3.8-flash' && !effectiveConfig.thinkingConfig) {
+          effectiveConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+        }
+
+        const raceTimeout = new Promise<never>((_, reject) => {
+          controller.signal.addEventListener(
+            'abort',
+            () => reject(new Error(`Timeout (${timeoutMs}ms) calling ${model}`)),
+            { once: true }
+          );
+        });
+
+        const result = await Promise.race([
+          ai.models.generateContent({
+            model,
+            contents,
+            config: effectiveConfig
+          }),
+          raceTimeout
+        ]);
+
+        modelCooldownUntil.delete(model);
+        return result;
+      } catch (err: any) {
+        lastError = err;
+        const msg = String(err?.message || '');
+        const isTransient =
+          err?.name === 'AbortError' ||
+          msg.includes('503') ||
+          msg.includes('UNAVAILABLE') ||
+          msg.includes('429') ||
+          msg.includes('RESOURCE_EXHAUSTED') ||
+          msg.includes('Timeout') ||
+          msg.includes('abort') ||
+          err?.status === 503 ||
+          err?.status === 429;
+        if (isTransient) {
+          modelCooldownUntil.set(model, Date.now() + 60_000);
+          continue;
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw lastError || new Error('Serviço de IA temporariamente indisponível.');
   }
 
   // Initialize Stripe client if secret key is available (Apenas 2 chaves: Secret Key e Publishable Key)
@@ -50,6 +145,91 @@ async function startServer() {
       hasApiKey: Boolean(apiKey),
       timestamp: new Date().toISOString()
     });
+  });
+
+  // Extract clean text from binary documents (PDF, DOCX, DOC, RTF)
+  app.post('/api/extract-document', async (req, res) => {
+    try {
+      const { fileName, base64Data } = req.body as {
+        fileName?: string;
+        base64Data?: string;
+      };
+
+      if (!fileName || !base64Data) {
+        return res.status(400).json({ error: 'Ficheiro inválido ou vazio.' });
+      }
+
+      const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const ext = path.extname(fileName).toLowerCase();
+
+      let extractedText = '';
+
+      if (ext === '.pdf') {
+        try {
+          const parser = new PDFParse({ data: buffer });
+          const pdfResult = await parser.getText();
+          await parser.destroy();
+          extractedText = (pdfResult.text || '').trim();
+        } catch (pdfErr) {
+          console.warn('Aviso pdf-parse:', pdfErr);
+        }
+
+        // Fallback to Gemini multimodal OCR if PDF is scanned/image-only
+        if (extractedText.length < 30 && ai) {
+          try {
+            const geminiResp = await generateContentWithRetry([
+              {
+                inlineData: {
+                  data: cleanBase64,
+                  mimeType: 'application/pdf'
+                }
+              },
+              'Extraia todo o texto deste documento PDF de forma fiel, preservando parágrafos, listas e secções, sem adicionar comentários.'
+            ]);
+            if (geminiResp.text) {
+              extractedText = geminiResp.text.trim();
+            }
+          } catch (ocrErr) {
+            console.warn('Fallback OCR Gemini falhou:', ocrErr);
+          }
+        }
+      } else if (ext === '.docx') {
+        const docxResult = await mammoth.extractRawText({ buffer });
+        extractedText = (docxResult.value || '').trim();
+      } else if (ext === '.rtf') {
+        const rawRtf = buffer.toString('utf8');
+        extractedText = rawRtf
+          .replace(/\\par[d]?/g, '\n')
+          .replace(/\{\*?\\[^{}]+}|[{}]|\\\n?[A-Za-z]+\n?(?:-?\d+)?[ ]?/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      } else if (ext === '.doc') {
+        // Legacy binary .doc: extract readable UTF-16LE or Latin1 text runs
+        const utf16Text = buffer.toString('utf16le');
+        const matches = utf16Text.match(/[\p{L}\p{N}\p{P}\p{Zs}\r\n]{12,}/gu) || [];
+        extractedText = matches
+          .join('\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      } else {
+        extractedText = buffer.toString('utf8').trim();
+      }
+
+      if (!extractedText) {
+        return res.status(422).json({
+          error:
+            'Não foi possível extrair texto legível deste ficheiro. Verifique se o documento não está protegido por palavra-passe ou tente converter para .docx / .txt.'
+        });
+      }
+
+      return res.json({ text: extractedText, fileName });
+    } catch (err: any) {
+      console.error('Erro em /api/extract-document:', err);
+      return res.status(500).json({
+        error: 'Erro ao processar o documento: ' + (err.message || 'Falha desconhecida')
+      });
+    }
   });
 
   // Image proxy endpoint for CORS-free binary embedding during document exports
@@ -134,17 +314,11 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
 }
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.25,
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const responseText = response.text?.trim() || '{}';
-      const parsedData = JSON.parse(responseText);
+      const parsedData = parseAiJson(response.text);
       return res.json(parsedData);
     } catch (err: any) {
       console.error('Erro na rota /api/tailor-cv:', err);
@@ -242,16 +416,11 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 }
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.25
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
+      const parsed = parseAiJson(response.text);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/generate-from-raw:', err);
@@ -315,16 +484,11 @@ Responda ESTRITAMENTE em JSON:
 }
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.25
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
+      const parsed = parseAiJson(response.text);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/cover-letter:', err);
@@ -337,51 +501,183 @@ Responda ESTRITAMENTE em JSON:
     try {
       const { text, targetLanguage } = req.body;
 
-      if (!text) {
-        return res.status(400).json({ error: 'Texto não fornecido.' });
+      if (!text || !String(text).trim()) {
+        return res.status(400).json({ error: 'Texto da carta não fornecido.' });
       }
 
       if (!ai) {
         return res.status(503).json({
-          error: 'Chave GEMINI_API_KEY não configurada no servidor.',
+          error: 'Serviço de tradução IA indisponível: configure GEMINI_API_KEY no servidor.',
+          fallback: true
+        });
+      }
+
+      const langMap: Record<string, string> = {
+        pt: 'Portuguese (Português Corporativo e Executivo Formal)',
+        en: 'English (International Executive & Corporate Standard)',
+        es: 'Spanish (Español Ejecutivo Internacional)',
+        fr: 'French (Français Exécutif et Formel)',
+        de: 'German (Deutsch - Formelles Geschäfts- und Führungsdeutsch)'
+      };
+      const targetLangName = langMap[String(targetLanguage || '').toLowerCase()] || targetLanguage || 'English';
+
+      const prompt = `
+You are a senior executive translator specialized in international corporate correspondence, cover letters, and motivation statements.
+Translate the entire Cover Letter below accurately and naturally into: ${targetLangName}.
+
+CRITICAL GUIDELINES:
+1. Translate EVERY single sentence and heading written by the user (subject line, header labels like "To:"/"Subject:", opening salutation, all body paragraphs, closing salutation, and job title in the signature).
+2. Preserve personal names, company/organization names, phone numbers, email addresses, URLs, acronyms (ATS, KPI, OKR, P&L, M&A, NPS, ERP, ROI), and specific numbers/metrics exactly as written.
+3. Adapt formal salutations and closings naturally to the executive conventions of ${targetLangName}.
+4. Preserve paragraph breaks and formatting structure cleanly.
+
+Cover letter text to translate:
+${text}
+
+Respond STRICTLY in valid JSON:
+{
+  "translatedText": "Full translated letter text with preserved paragraph breaks"
+}
+      `.trim();
+
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
+      });
+
+      const parsed = parseAiJson(response.text);
+      if (!parsed.translatedText) {
+        return res.status(502).json({ error: 'A IA não retornou o texto traduzido da carta.' });
+      }
+      return res.json(parsed);
+    } catch (err: any) {
+      console.error('Erro na rota /api/translate-letter:', err);
+      return res.status(500).json({ error: err.message || 'Falha ao traduzir a carta.' });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // DEDICATED FULL CV TRANSLATION ENDPOINT
+  // Translates entire CVData into target language (PT, EN, ES, FR, DE)
+  // -------------------------------------------------------------
+  app.post('/api/translate-cv', async (req, res) => {
+    try {
+      const { cvData, targetLanguage } = req.body;
+
+      if (!cvData) {
+        return res.status(400).json({ error: 'Dados do currículo não fornecidos.' });
+      }
+
+      const langMap: Record<string, string> = {
+        en: 'English (US/UK Executive Standard)',
+        es: 'Español (Estándar Ejecutivo Internacional)',
+        fr: 'Français (Norme Internationale des Cadres Dirigeants)',
+        de: 'Deutsch (Internationaler Führungs- und Akademikerstandard)',
+        pt: 'Português (Padrão Corporativo de Alta Liderança)'
+      };
+
+      const langKey = String(targetLanguage || 'en').toLowerCase();
+      const targetLangName = langMap[langKey] || targetLanguage || 'English';
+
+      if (!ai) {
+        return res.status(503).json({
+          error: 'Serviço de tradução IA indisponível: configure GEMINI_API_KEY no servidor.',
           fallback: true
         });
       }
 
       const prompt = `
-You are a senior diplomatic translator specialized in international civil service correspondence (United Nations, European Union, Diplomatic Missions).
-Translate the following formal Cover Letter / Statement of Interest into: ${targetLanguage || 'English'}.
+You are a world-class executive career consultant and international translator.
+Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName}.
 
 CRITICAL GUIDELINES:
-- Preserve official institutional nomenclature, acronyms, and standards (MEAL, SGI, WFP, FAO, UNDP, EU, OECD/DAC, Logframe, PIRS, DQA, https://sgi-fresancamoes.com/).
-- Adapt formal salutations and closings to the executive conventions of the target language (e.g., in English: "Dear Members of the Selection Committee," ... "Sincerely,"; in French: "Madame, Monsieur les Membres du Comité de Sélection," ... "Veuillez agréer, Madame, Monsieur..."; in Spanish: "Estimados Miembros del Comité de Selección," ... "Atentamente,").
-- Keep exact paragraph spacing and line breaks.
+1. Preserve Identity & Contacts: Keep personalDetails.name, phone, email, linkedin, website, photoUrl, and company/university proper brand names intact.
+2. Translate ALL Text Content Written by the User:
+   - personalDetails.title (professional title)
+   - personalDetails.location (city/country/availability phrasing, e.g., "Disponibilidade para Mobilidade Global" -> "Open to Global Relocation")
+   - summary (full executive summary)
+   - Every item in competencies: both 'category' and 'description'
+   - Every item in experiences: 'role', 'period' (e.g., "Presente" -> "Present"/"Actualidad"/"Actuel"/"Heute"), 'location', 'donor' (if present), and EVERY string inside 'highlights'
+   - Every item in educations: 'degree', 'period', 'gpaOrHonors' (if present)
+   - Every string in trainings[]
+   - Every item in languages: both 'language' name and 'level' description
+   - Every item in references: 'institutionAndPosition'
+3. Accuracy & Metrics: Keep ALL numbers, percentages, currencies, company names, and technical acronyms (P&L, KPI, OKR, ROI, NPS, M&A, ERP, AWS, Python, etc.) completely accurate.
+4. Keep array lengths, ordering, and every 'id' field identical to the input.
 
-Text to translate:
-${text}
+ORIGINAL CV DATA:
+${JSON.stringify(cvData, null, 2)}
 
-Respond STRICTLY in JSON:
-{
-  "translatedText": "Translated letter text with clean line breaks"
-}
+Respond STRICTLY in valid JSON matching the exact CVData schema.
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.2
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
-      return res.json(parsed);
+      const parsed = parseAiJson(response.text);
+
+      // Sanitize and deterministically preserve immutable identifiers and visual config
+      const mergedCV = {
+        ...cvData,
+        ...parsed,
+        personalDetails: {
+          ...cvData.personalDetails,
+          ...(parsed.personalDetails || {}),
+          name: cvData.personalDetails?.name || parsed.personalDetails?.name || '',
+          phone: cvData.personalDetails?.phone || parsed.personalDetails?.phone || '',
+          email: cvData.personalDetails?.email || parsed.personalDetails?.email || '',
+          linkedin: cvData.personalDetails?.linkedin || parsed.personalDetails?.linkedin || '',
+          website: cvData.personalDetails?.website || parsed.personalDetails?.website || '',
+          photoUrl: cvData.personalDetails?.photoUrl,
+          showPhoto: cvData.personalDetails?.showPhoto
+        },
+        competencies: Array.isArray(parsed.competencies)
+          ? parsed.competencies.map((c: any, idx: number) => ({
+              ...cvData.competencies?.[idx],
+              ...c,
+              id: cvData.competencies?.[idx]?.id || c.id || `comp-${idx + 1}`
+            }))
+          : cvData.competencies,
+        experiences: Array.isArray(parsed.experiences)
+          ? parsed.experiences.map((exp: any, idx: number) => ({
+              ...cvData.experiences?.[idx],
+              ...exp,
+              id: cvData.experiences?.[idx]?.id || exp.id || `exp-${idx + 1}`,
+              company: cvData.experiences?.[idx]?.company || exp.company || ''
+            }))
+          : cvData.experiences,
+        educations: Array.isArray(parsed.educations)
+          ? parsed.educations.map((edu: any, idx: number) => ({
+              ...cvData.educations?.[idx],
+              ...edu,
+              id: cvData.educations?.[idx]?.id || edu.id || `edu-${idx + 1}`,
+              institution: cvData.educations?.[idx]?.institution || edu.institution || ''
+            }))
+          : cvData.educations,
+        trainings: Array.isArray(parsed.trainings) ? parsed.trainings : cvData.trainings,
+        languages: Array.isArray(parsed.languages) ? parsed.languages : cvData.languages,
+        references: Array.isArray(parsed.references)
+          ? parsed.references.map((ref: any, idx: number) => ({
+              ...cvData.references?.[idx],
+              ...ref,
+              id: cvData.references?.[idx]?.id || ref.id || `ref-${idx + 1}`,
+              name: cvData.references?.[idx]?.name || ref.name || ''
+            }))
+          : cvData.references,
+        templateStyle: cvData.templateStyle,
+        accentColor: cvData.accentColor,
+        fontFamily: cvData.fontFamily,
+        sectionOrder: cvData.sectionOrder,
+        sectionVisibility: cvData.sectionVisibility
+      };
+
+      return res.json({ translatedCV: mergedCV });
     } catch (err: any) {
-      console.error('Erro na rota /api/translate-letter:', err);
-      return res.status(500).json({ error: err.message, fallback: true });
+      console.error('Erro na rota /api/translate-cv:', err);
+      return res.status(500).json({ error: err.message || 'Falha ao traduzir o currículo.' });
     }
   });
+
 
   // -------------------------------------------------------------
   // LINKEDIN PUBLIC PROFILE EXTRACTION JOB
@@ -492,16 +788,11 @@ Retorne ESTRITAMENTE em formato JSON com esta estrutura:
 }
           `.trim();
 
-          const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: prompt,
-            config: {
-              responseMimeType: 'application/json',
-              temperature: 0.3
-            }
+          const response = await generateContentWithRetry(prompt, {
+            responseMimeType: 'application/json'
           });
 
-          const extractedCV = JSON.parse(response.text?.trim() || '{}');
+          const extractedCV = parseAiJson(response.text);
           return res.json({
             jobId,
             status: 'completed',
@@ -697,16 +988,11 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
 }
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.35
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
+      const parsed = parseAiJson(response.text);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/generate-questions:', err);
@@ -784,16 +1070,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 }
       `.trim();
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.25
-        }
+      const response = await generateContentWithRetry(prompt, {
+        responseMimeType: 'application/json'
       });
 
-      const parsed = JSON.parse(response.text?.trim() || '{}');
+      const parsed = parseAiJson(response.text);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/score-answer:', err);
@@ -815,14 +1096,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       plans: {
         pro: {
           name: 'Plano Profissional',
-          monthlyUSD: 29,
-          yearlyUSD: 240,
-          savingsYearlyPercent: 31
+          monthlyUSD: 2,
+          yearlyUSD: 18,
+          savingsYearlyPercent: 25
         },
         executive: {
           name: 'Plano Executivo VIP',
-          monthlyUSD: 49,
-          yearlyUSD: 440,
+          monthlyUSD: 4,
+          yearlyUSD: 36,
           savingsYearlyPercent: 25
         }
       }
@@ -845,11 +1126,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const isYearly = billingCycle === 'yearly';
       const baseUSD = plan === 'executive'
-        ? (isYearly ? 440 : 49)
-        : (isYearly ? 240 : 29);
+        ? (isYearly ? 36 : 4)
+        : (isYearly ? 18 : 2);
 
       const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
-      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100)));
+      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
       const unitAmountCents = Math.round(finalPriceUSD * 100);
 
       const appBaseUrl = originUrl || process.env.APP_URL || `http://localhost:${PORT}`;
@@ -944,11 +1225,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const isYearly = billingCycle === 'yearly';
       const baseUSD = plan === 'executive'
-        ? (isYearly ? 440 : 49)
-        : (isYearly ? 240 : 29);
+        ? (isYearly ? 36 : 4)
+        : (isYearly ? 18 : 2);
 
       const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
-      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100)));
+      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
 
       const durationDays = isYearly ? 365 : 30;
       const nextBillingDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -1063,6 +1344,34 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
+    }
+  });
+
+  // 6. Cancel Subscription Endpoint
+  app.post('/api/stripe/cancel-subscription', async (req, res) => {
+    try {
+      const { subscriptionId } = req.body;
+      if (!subscriptionId) {
+        return res.status(400).json({ error: 'Subscription ID obrigatório.' });
+      }
+
+      if (stripeClient && !subscriptionId.startsWith('sub_demo_')) {
+        const canceled = await stripeClient.subscriptions.cancel(subscriptionId);
+        return res.json({
+          success: true,
+          status: canceled.status,
+          message: 'Assinatura cancelada com sucesso na Stripe.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        status: 'canceled',
+        message: 'Assinatura cancelada com sucesso (Modo simulação / teste).'
+      });
+    } catch (err: any) {
+      console.error('Erro ao cancelar assinatura Stripe:', err);
+      return res.status(500).json({ error: err.message || 'Erro ao cancelar assinatura.' });
     }
   });
 

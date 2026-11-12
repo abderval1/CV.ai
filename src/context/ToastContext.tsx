@@ -46,21 +46,21 @@ const ToastCard: React.FC<{ toast: ToastItem; onDismiss: (id: string) => void }>
   useEffect(() => {
     if (duration <= 0) return;
 
+    const dismissTimer = setTimeout(() => {
+      onDismiss(toast.id);
+    }, duration);
+
     const interval = 25; // 25ms tick
     const decrement = (interval / duration) * 100;
 
-    const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev <= decrement) {
-          clearInterval(timer);
-          onDismiss(toast.id);
-          return 0;
-        }
-        return prev - decrement;
-      });
+    const progressTimer = setInterval(() => {
+      setProgress((prev) => Math.max(0, prev - decrement));
     }, interval);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearTimeout(dismissTimer);
+      clearInterval(progressTimer);
+    };
   }, [duration, onDismiss, toast.id]);
 
   const typeConfig = {

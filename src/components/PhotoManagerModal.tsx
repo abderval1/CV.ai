@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { CVData } from '../types/cv';
 import { SAMPLE_AVATARS } from '../data/templateCatalog';
 import { Camera, Trash2, Check, Upload, HelpCircle, X, Sparkles } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 interface PhotoManagerModalProps {
   isOpen: boolean;
@@ -10,6 +11,49 @@ interface PhotoManagerModalProps {
   onChange: (cv: CVData) => void;
 }
 
+const resizeImageToMaxDimension = (file: File, maxDim: number = 400, quality: number = 0.88): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
   isOpen,
   onClose,
@@ -17,35 +61,36 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
   onChange
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { showSuccess, showWarning, showError } = useToast();
 
   if (!isOpen) return null;
 
   const currentPhoto = cv.personalDetails.photoUrl;
   const isPhotoVisible = cv.personalDetails.showPhoto !== false && Boolean(currentPhoto);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check size limit (max 3MB for good performance)
-    if (file.size > 3 * 1024 * 1024) {
-      alert('Por favor escolha uma foto com menos de 3MB.');
+    if (file.size > 8 * 1024 * 1024) {
+      showWarning('Ficheiro Muito Grande', 'Por favor escolha uma foto com menos de 8MB.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
+    try {
+      const optimizedBase64 = await resizeImageToMaxDimension(file);
       onChange({
         ...cv,
         personalDetails: {
           ...cv.personalDetails,
-          photoUrl: base64,
+          photoUrl: optimizedBase64,
           showPhoto: true
         }
       });
-    };
-    reader.readAsDataURL(file);
+      showSuccess('Foto Atualizada!', 'A sua fotografia foi otimizada para impressão nítida no documento.');
+    } catch {
+      showError('Erro ao Processar Foto', 'Não foi possível carregar a imagem selecionada.');
+    }
   };
 
   const handleSelectSample = (url: string) => {
@@ -200,7 +245,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                <span>Ou selecione um avatar profissional para testar:</span>
+                <span>Ou selecione um avatar executivo ilustrativo:</span>
               </span>
             </div>
 

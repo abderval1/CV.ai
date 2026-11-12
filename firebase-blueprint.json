@@ -283,6 +283,115 @@
         }
       },
       "required": ["id", "name", "priceMonthlyValue"]
+    },
+    "PromptConfig": {
+      "title": "PromptConfig",
+      "description": "No-code AI prompt template configuration",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique prompt key",
+          "maxLength": 64
+        },
+        "name": {
+          "type": "string",
+          "description": "Prompt display name",
+          "maxLength": 120
+        },
+        "category": {
+          "type": "string",
+          "description": "Task category",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "description": "Prompt description",
+          "maxLength": 300
+        },
+        "systemInstruction": {
+          "type": "string",
+          "description": "System role prompt",
+          "maxLength": 2000
+        },
+        "userPromptTemplate": {
+          "type": "string",
+          "description": "Template format with variables",
+          "maxLength": 2000
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Model temperature"
+        },
+        "preferredModel": {
+          "type": "string",
+          "description": "Preferred Gemini model",
+          "maxLength": 60
+        },
+        "fallbackModel": {
+          "type": "string",
+          "description": "Backup failover model",
+          "maxLength": 60
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update ISO timestamp",
+          "maxLength": 50
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "Admin email who updated",
+          "maxLength": 180
+        }
+      },
+      "required": ["id", "name", "systemInstruction"]
+    },
+    "SystemBanner": {
+      "title": "SystemBanner",
+      "description": "Platform announcement and notification banner",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Banner ID",
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "description": "Banner headline",
+          "maxLength": 120
+        },
+        "message": {
+          "type": "string",
+          "description": "Banner body message",
+          "maxLength": 500
+        },
+        "type": {
+          "type": "string",
+          "enum": ["info", "warning", "promo", "maintenance"],
+          "description": "Banner visual style"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether banner is visible"
+        },
+        "targetAudience": {
+          "type": "string",
+          "enum": ["all", "free_only", "paid_only"],
+          "description": "Target user segment"
+        },
+        "startsAt": {
+          "type": "string",
+          "description": "Display start timestamp",
+          "maxLength": 50
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Display end timestamp",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "title", "message", "active"]
     }
   },
   "firestore": {
@@ -305,6 +414,14 @@
     "/plansConfig/{planId}": {
       "schema": "PlanConfig",
       "description": "Stores system tier pricing, feature flags and credit allowances"
+    },
+    "/promptsConfig/{promptId}": {
+      "schema": "PromptConfig",
+      "description": "Stores no-code AI prompt templates and model routing rules"
+    },
+    "/systemBanners/{bannerId}": {
+      "schema": "SystemBanner",
+      "description": "Stores in-app broadcast alerts, maintenance and promotion banners"
     }
   }
 }

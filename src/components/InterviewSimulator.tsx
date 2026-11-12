@@ -190,18 +190,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
     }
   };
 
-  // Helper to load sample answer
-  const handleLoadSampleAnswer = () => {
-    if (!currentQ) return;
-    const sample = `Na minha experiência anterior como ${currentCV.personalDetails.title || 'Líder Executivo'}, deparei-me com uma situação crítica onde foi necessário tomar decisões rápidas sob forte pressão de tempo e restrição orçamentária. 
-Adotei uma abordagem em 3 etapas: primeiro, convoquei as partes interessadas para redefinir as prioridades essenciais; segundo, alinhei os SLAs e automatizei os relatórios de status diários; por fim, liderei a execução direta com a equipa.
-Como resultado, entregamos o projeto com 100% de conformidade regulatória, reduzindo o custo operacional em 24% e restabelecendo a confiança da diretoria.`;
 
-    setAnswers((prev) => ({
-      ...prev,
-      [currentQ.id]: sample
-    }));
-  };
 
   // Calculate Overall Simulation Progress
   const evaluatedCount = Object.keys(evaluations).length;
@@ -465,13 +454,7 @@ Como resultado, entregamos o projeto com 100% de conformidade regulatória, redu
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={handleLoadSampleAnswer}
-                      className="text-xs text-blue-600 hover:text-blue-800 font-semibold"
-                    >
-                      Preencher Exemplo
-                    </button>
+
                   </div>
                 </div>
 

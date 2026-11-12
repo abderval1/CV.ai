@@ -55,6 +55,8 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
 
   const candidateFileInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
+  const [isExtractingCandidateFile, setIsExtractingCandidateFile] = useState<boolean>(false);
+  const [isExtractingJobFile, setIsExtractingJobFile] = useState<boolean>(false);
 
   // Load Demonstration Rich Profile (Executive COO / Operations)
   const handleLoadExecutiveProfile = () => {
@@ -164,41 +166,90 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     setSuccessMessage(null);
   };
 
+  // Helper to extract clean text from TXT, MD, JSON, PDF, DOCX, DOC, or RTF
+  const extractTextFromFile = async (file: File): Promise<string> => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const plainTextExts = ['txt', 'md', 'json', 'csv'];
+
+    if (plainTextExts.includes(ext)) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve((event.target?.result as string) || '');
+        reader.onerror = () => reject(new Error('Falha ao ler ficheiro de texto.'));
+        reader.readAsText(file, 'UTF-8');
+      });
+    }
+
+    // Binary or rich document (.pdf, .docx, .doc, .rtf): send base64 to /api/extract-document
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => resolve((event.target?.result as string) || '');
+      reader.onerror = () => reject(new Error('Falha ao carregar ficheiro.'));
+      reader.readAsDataURL(file);
+    });
+
+    const response = await fetch('/api/extract-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileName: file.name,
+        base64Data
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.text) {
+      throw new Error(data.error || 'Não foi possível extrair texto deste documento.');
+    }
+
+    return data.text;
+  };
+
   // File upload reader for Candidate Text / Document
-  const handleCandidateFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCandidateFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
+    setIsExtractingCandidateFile(true);
+    setErrorMessage(null);
+    try {
+      const text = await extractTextFromFile(file);
       if (text) {
         setCandidateRawText((prev) =>
           prev ? `${prev}\n\n--- DOCUMENTO IMPORTADO (${file.name}) ---\n${text}` : text
         );
         setSuccessMessage(`Documento "${file.name}" importado com sucesso!`);
-        setTimeout(() => setSuccessMessage(null), 3000);
+        setTimeout(() => setSuccessMessage(null), 3500);
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      setErrorMessage(err.message || `Erro ao extrair texto de "${file.name}".`);
+    } finally {
+      setIsExtractingCandidateFile(false);
+      e.target.value = '';
+    }
   };
 
-  // File upload reader for Job Description Document
-  const handleJobFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // File upload reader for Job Description / TdR / ToR Document
+  const handleJobFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
+    setIsExtractingJobFile(true);
+    setErrorMessage(null);
+    try {
+      const text = await extractTextFromFile(file);
       if (text) {
         setJobDescription(text);
         onUpdateJobDescription(text);
-        setSuccessMessage(`Documento da vaga "${file.name}" importado!`);
-        setTimeout(() => setSuccessMessage(null), 3000);
+        setSuccessMessage(`Documento TdR / Vaga "${file.name}" importado com sucesso!`);
+        setTimeout(() => setSuccessMessage(null), 3500);
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      setErrorMessage(err.message || `Erro ao extrair texto de "${file.name}".`);
+    } finally {
+      setIsExtractingJobFile(false);
+      e.target.value = '';
+    }
   };
 
   // Public LinkedIn Profile Background Extraction Job
@@ -660,17 +711,22 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                   type="file"
                   ref={candidateFileInputRef}
                   onChange={handleCandidateFileUpload}
-                  accept=".txt,.md,.json,.pdf,.docx"
+                  accept=".txt,.md,.json,.pdf,.docx,.doc,.rtf"
                   className="hidden"
                 />
                 <button
                   type="button"
+                  disabled={isExtractingCandidateFile}
                   onClick={() => candidateFileInputRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
-                  title="Carregar ficheiro com o seu currículo antigo ou notas"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
+                  title="Carregar ficheiro PDF, Word (.docx) ou texto com o seu currículo ou notas"
                 >
-                  <Upload className="w-3 h-3" />
-                  <span>Importar Ficheiro</span>
+                  {isExtractingCandidateFile ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Upload className="w-3 h-3" />
+                  )}
+                  <span>{isExtractingCandidateFile ? 'A extrair...' : 'Importar Ficheiro'}</span>
                 </button>
               </div>
             </div>
@@ -720,24 +776,6 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                 </button>
               </div>
 
-              {/* Quick sample LinkedIn URLs for instant testing */}
-              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-blue-900/80">
-                <span className="font-semibold text-blue-950">Testar URL Exemplo:</span>
-                <button
-                  type="button"
-                  onClick={() => setLinkedInUrl('https://linkedin.com/in/beatriz-fonseca-exec')}
-                  className="px-1.5 py-0.5 bg-white/80 hover:bg-white rounded border border-blue-200 text-blue-800 underline"
-                >
-                  beatriz-fonseca-exec
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLinkedInUrl('https://linkedin.com/in/manuel-silva-tech')}
-                  className="px-1.5 py-0.5 bg-white/80 hover:bg-white rounded border border-blue-200 text-blue-800 underline"
-                >
-                  manuel-silva-tech
-                </button>
-              </div>
 
               {/* Background Extraction Job Tracker */}
               {linkedInJobState && (
@@ -863,13 +901,6 @@ COMPETÊNCIAS:
 
           <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
             <span>{candidateRawText.length} caracteres inseridos</span>
-            <button
-              type="button"
-              onClick={handleLoadExecutiveProfile}
-              className="text-slate-600 hover:text-slate-900 hover:underline"
-            >
-              Preencher com exemplo demonstrativo
-            </button>
           </div>
         </div>
 
@@ -889,17 +920,22 @@ COMPETÊNCIAS:
                   type="file"
                   ref={jobFileInputRef}
                   onChange={handleJobFileUpload}
-                  accept=".txt,.md,.pdf,.docx"
+                  accept=".txt,.md,.pdf,.docx,.doc,.rtf"
                   className="hidden"
                 />
                 <button
                   type="button"
+                  disabled={isExtractingJobFile}
                   onClick={() => jobFileInputRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
-                  title="Carregar ficheiro com os Termos de Referência (TdR)"
+                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
+                  title="Carregar ficheiro PDF ou Word (.docx) com os Termos de Referência (TdR / ToR)"
                 >
-                  <Upload className="w-3 h-3" />
-                  <span>Importar TdR</span>
+                  {isExtractingJobFile ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Upload className="w-3 h-3" />
+                  )}
+                  <span>{isExtractingJobFile ? 'A extrair TdR...' : 'Importar TdR'}</span>
                 </button>
               </div>
             </div>

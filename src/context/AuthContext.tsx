@@ -8,6 +8,10 @@ import {
   signInWithPopup,
   signOut,
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   handleFirestoreError,
   OperationType,
   FirebaseUser
@@ -22,17 +26,52 @@ import {
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
+import { isUserAdmin } from '../services/saasDbService';
+
+export function getAuthErrorMessage(err: any): string {
+  if (!err) return 'Ocorreu um erro inesperado.';
+  const code = err.code || '';
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+      return 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.';
+    case 'auth/user-not-found':
+      return 'Nenhuma conta encontrada com este endereço de e-mail.';
+    case 'auth/email-already-in-use':
+      return 'Este endereço de e-mail já está associado a uma conta existente. Tente iniciar sessão.';
+    case 'auth/weak-password':
+      return 'A palavra-passe deve conter pelo menos 6 caracteres.';
+    case 'auth/invalid-email':
+      return 'O formato do endereço de e-mail não é válido.';
+    case 'auth/user-disabled':
+      return 'Esta conta de utilizador foi desativada. Contacte o suporte técnico.';
+    case 'auth/too-many-requests':
+      return 'Demasiadas tentativas consecutivas. Por favor, aguarde alguns minutos antes de tentar novamente.';
+    case 'auth/popup-closed-by-user':
+      return 'A janela de autenticação foi fechada antes de concluir o processo.';
+    case 'auth/popup-blocked':
+      return 'A janela de autenticação foi bloqueada pelo navegador. Ative os pop-ups para este site.';
+    case 'auth/network-request-failed':
+      return 'Falha de comunicação de rede. Verifique a sua ligação à internet.';
+    case 'auth/operation-not-allowed':
+      return 'Método de autenticação temporariamente indisponível.';
+    default:
+      return err.message || 'Falha na autenticação. Verifique os dados inseridos e tente novamente.';
+  }
+}
 
 interface AuthContextType {
   user: User | null;
   firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
+  authLoading: boolean;
   isPro: boolean;
   isExecutive: boolean;
   hasActivePlan: boolean;
   isFirebaseConnected: boolean;
   login: (email: string, password?: string) => Promise<boolean>;
   register: (name: string, email: string, password?: string, targetRole?: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<void>;
   demoLogin: (tier: 'pro' | 'executive') => Promise<void>;
   loginWithProvider: (provider: 'google' | 'linkedin') => Promise<boolean>;
   logout: () => Promise<void>;
@@ -50,6 +89,10 @@ interface AuthContextType {
   saveCurrentResume: (cv: CVData, title: string, targetJob?: string) => Promise<string>;
   loadResume: (id: string) => CVData | null;
   deleteResume: (id: string) => Promise<void>;
+  isImpersonating: boolean;
+  originalAdminUser: User | null;
+  impersonateUser: (targetUser: User, reason: string) => Promise<void>;
+  stopImpersonating: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -59,7 +102,17 @@ const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
+  const [originalAdminUser, setOriginalAdminUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('curriculopro_impersonating_admin');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [user, setUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
@@ -130,22 +183,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const docSnap = await getDoc(userDocRef);
           if (docSnap.exists()) {
             const data = docSnap.data();
+            const isAdmin = isUserAdmin(data.email || currentFbUser.email, data.role);
             setUser({
               id: uid,
-              name: data.name || currentFbUser.displayName || 'Utilizador Google',
+              name: data.name || currentFbUser.displayName || 'Utilizador',
               email: data.email || currentFbUser.email || '',
-              avatarUrl: currentFbUser.photoURL || undefined,
-              plan: data.plan || 'free',
+              role: data.role || (isAdmin ? 'admin' : 'user'),
+              avatarUrl: currentFbUser.photoURL || data.avatarUrl || undefined,
+              plan: (data.plan as SubscriptionPlan) || 'free',
               creditsRemaining: data.creditsRemaining ?? 5,
               subscriptionExpiresAt: data.subscriptionExpiresAt,
               createdAt: data.createdAt || new Date().toISOString()
             });
           } else {
             // New user registration in Firestore
+            const cleanEmail = currentFbUser.email || '';
+            const cleanName = currentFbUser.displayName || currentFbUser.email?.split('@')[0] || 'Novo Utilizador';
+            const isAdmin = isUserAdmin(cleanEmail);
             const newUserProfile: User = {
               id: uid,
-              name: currentFbUser.displayName || currentFbUser.email?.split('@')[0] || 'Novo Utilizador',
-              email: currentFbUser.email || '',
+              name: cleanName,
+              email: cleanEmail,
+              role: isAdmin ? 'admin' : 'user',
               avatarUrl: currentFbUser.photoURL || undefined,
               plan: 'free',
               creditsRemaining: 5,
@@ -156,6 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: newUserProfile.id,
               name: newUserProfile.name,
               email: newUserProfile.email,
+              role: newUserProfile.role,
               plan: newUserProfile.plan,
               creditsRemaining: newUserProfile.creditsRemaining,
               createdAt: newUserProfile.createdAt
@@ -198,8 +258,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('Erro ao subscrever currículos do Firestore:', err);
         }
       } else {
-        // Logged out
+        // User logged out of Firebase Auth
+        setUser(null);
       }
+      setAuthLoading(false);
     });
 
     return () => {
@@ -224,83 +286,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // LinkedIn or alternative provider simulation
-    const mockUser: User = {
-      id: `usr-linkedin-${Date.now()}`,
-      name: 'Profissional LinkedIn',
-      email: 'membro.linkedin@exemplo.com',
-      plan: 'pro',
-      creditsRemaining: 50,
-      createdAt: new Date().toISOString()
-    };
-    setUser(mockUser);
-    return true;
+    return false;
   };
 
-  const login = async (email: string, _password?: string): Promise<boolean> => {
+  const login = async (email: string, password?: string): Promise<boolean> => {
+    if (!password) {
+      throw new Error('Por favor, insira a sua palavra-passe.');
+    }
     const cleanEmail = email.trim().toLowerCase();
-    const isExecEmail = cleanEmail.includes('vip') || cleanEmail.includes('exec');
-    const plan: SubscriptionPlan = isExecEmail ? 'executive' : 'pro';
-    const mockUser: User = {
-      id: `usr-${Date.now()}`,
-      name:
-        cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ||
-        'Assinante Profissional',
-      email: cleanEmail,
-      plan,
-      targetRole: 'Executivo de Operações & Tecnologia',
-      creditsRemaining: 9999,
-      billingCycle: 'monthly',
-      createdAt: new Date().toISOString()
-    };
-    setUser(mockUser);
-    return true;
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    return Boolean(cred.user);
   };
 
   const register = async (
     name: string,
     email: string,
-    _password?: string,
+    password?: string,
     targetRole?: string
   ): Promise<boolean> => {
-    const newUser: User = {
-      id: `usr-${Date.now()}`,
-      name: name.trim() || 'Novo Assinante Pro',
-      email: email.trim().toLowerCase(),
+    if (!password || password.length < 6) {
+      throw new Error('A palavra-passe deve ter pelo menos 6 caracteres.');
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim() || 'Novo Assinante';
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    const fbUser = cred.user;
+
+    try {
+      await updateProfile(fbUser, { displayName: cleanName });
+    } catch (err) {
+      console.warn('Erro ao atualizar displayName no Firebase Auth:', err);
+    }
+
+    const isAdmin = isUserAdmin(cleanEmail);
+    const newProfile: User = {
+      id: fbUser.uid,
+      name: cleanName,
+      email: cleanEmail,
+      role: isAdmin ? 'admin' : 'user',
       targetRole: targetRole?.trim() || 'Profissional Executivo',
-      plan: 'pro',
-      creditsRemaining: 9999,
-      billingCycle: 'monthly',
+      plan: 'free',
+      creditsRemaining: 5,
       createdAt: new Date().toISOString()
     };
-    setUser(newUser);
+
+    try {
+      const userDocRef = doc(db, 'users', fbUser.uid);
+      await setDoc(userDocRef, {
+        id: newProfile.id,
+        name: newProfile.name,
+        email: newProfile.email,
+        role: newProfile.role,
+        targetRole: newProfile.targetRole,
+        plan: newProfile.plan,
+        creditsRemaining: newProfile.creditsRemaining,
+        createdAt: newProfile.createdAt
+      });
+    } catch (err) {
+      console.error('Erro ao guardar perfil no Firestore:', err);
+      handleFirestoreError(err, OperationType.CREATE, `users/${fbUser.uid}`);
+    }
+
+    setUser(newProfile);
     return true;
   };
 
-  const demoLogin = async (tier: 'pro' | 'executive'): Promise<void> => {
-    const tierProfiles = {
-      pro: {
-        id: 'usr-demo-pro',
-        name: 'Mariana Duarte (Assinante Pro)',
-        email: 'mariana.pro@exemplo.com',
-        targetRole: 'Gerente de Produto & Estratégia',
-        plan: 'pro' as SubscriptionPlan,
-        creditsRemaining: 9999,
-        billingCycle: 'yearly' as BillingCycle,
-        createdAt: new Date().toISOString()
-      },
-      executive: {
-        id: 'usr-demo-vip',
-        name: 'Dr. Roberto Mendes (Executivo VIP)',
-        email: 'roberto.vip@exemplo.com',
-        targetRole: 'Chief Operating Officer (COO) / C-Level',
-        plan: 'executive' as SubscriptionPlan,
-        creditsRemaining: 9999,
-        billingCycle: 'yearly' as BillingCycle,
-        createdAt: new Date().toISOString()
-      }
-    };
-    setUser(tierProfiles[tier]);
+  const resetPassword = async (email: string): Promise<void> => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Por favor insira um endereço de e-mail válido.');
+    }
+    await sendPasswordResetEmail(auth, cleanEmail);
+  };
+
+  const demoLogin = async (_tier: 'pro' | 'executive'): Promise<void> => {
+    // Production mode: Authenticate via Google or Email/Password
+    console.info('Acesso de produção ativo. Autenticação requer credenciais reais.');
   };
 
   const updateUserProfile = async (partial: Partial<User>): Promise<void> => {
@@ -319,23 +380,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchDemoPlan = (plan: SubscriptionPlan) => {
-    if (!user) {
-      setUser({
-        id: `usr-${Date.now()}`,
-        name: 'Utilizador Demo',
-        email: 'demo@exemplo.com',
-        plan,
-        creditsRemaining: plan === 'free' ? 5 : 9999,
-        createdAt: new Date().toISOString()
-      });
-      return;
-    }
-    setUser({
-      ...user,
-      plan,
-      creditsRemaining: plan === 'free' ? 5 : 9999
-    });
+  const switchDemoPlan = (_plan: SubscriptionPlan) => {
+    // Production mode: Upgrades handled through official checkout
   };
 
   const logout = async (): Promise<void> => {
@@ -467,6 +513,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSavedResumes((prev) => prev.filter((r) => r.id !== id));
   };
 
+  const impersonateUser = async (targetUser: User, reason: string): Promise<void> => {
+    if (!user || user.role !== 'admin') {
+      console.warn('Apenas administradores podem iniciar modo de personificação.');
+      return;
+    }
+
+    // Save admin original session
+    setOriginalAdminUser(user);
+    localStorage.setItem('curriculopro_impersonating_admin', JSON.stringify(user));
+
+    // Audit log
+    try {
+      const { logImpersonationAction } = await import('../services/adminModulesService');
+      await logImpersonationAction({
+        adminId: user.id,
+        adminEmail: user.email,
+        targetUserId: targetUser.id,
+        targetUserEmail: targetUser.email,
+        action: 'started',
+        details: reason || 'Verificação de formatação e suporte técnico',
+        timestamp: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Erro ao registar log de impersonate:', e);
+    }
+
+    // Switch active user session to target
+    setUser({
+      ...targetUser,
+      notes: `[Sessão de Suporte Ativa] ${targetUser.notes || ''}`
+    });
+  };
+
+  const stopImpersonating = async (): Promise<void> => {
+    if (!originalAdminUser) return;
+
+    try {
+      const { logImpersonationAction } = await import('../services/adminModulesService');
+      if (user) {
+        await logImpersonationAction({
+          adminId: originalAdminUser.id,
+          adminEmail: originalAdminUser.email,
+          targetUserId: user.id,
+          targetUserEmail: user.email,
+          action: 'ended',
+          details: 'Sessão de suporte concluída pelo administrador',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (e) {
+      console.warn('Erro ao registar finalização de impersonate:', e);
+    }
+
+    setUser(originalAdminUser);
+    setOriginalAdminUser(null);
+    localStorage.removeItem('curriculopro_impersonating_admin');
+  };
+
   const isPro = Boolean(user && (user.plan === 'pro' || user.plan === 'executive'));
   const isExecutive = Boolean(user && user.plan === 'executive');
   const hasActivePlan = Boolean(
@@ -481,12 +585,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         firebaseUser,
         isAuthenticated: Boolean(user),
+        authLoading,
         isPro,
         isExecutive,
         hasActivePlan,
         isFirebaseConnected,
         login,
         register,
+        resetPassword,
         demoLogin,
         loginWithProvider,
         logout,
@@ -496,7 +602,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         savedResumes,
         saveCurrentResume,
         loadResume,
-        deleteResume
+        deleteResume,
+        isImpersonating: Boolean(originalAdminUser),
+        originalAdminUser,
+        impersonateUser,
+        stopImpersonating
       }}
     >
       {children}

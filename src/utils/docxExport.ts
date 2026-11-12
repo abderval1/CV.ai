@@ -10,13 +10,52 @@ import {
   AlignmentType,
   BorderStyle,
   convertInchesToTwip,
-  ImageRun
+  convertMillimetersToTwip,
+  ImageRun,
+  HeightRule,
+  Footer,
+  VerticalAlign,
+  ShadingType
 } from 'docx';
-import { CVData, CVSectionKey } from '../types/cv';
+import { CVData, CVSectionKey, TemplateStyle } from '../types/cv';
 import { DEFAULT_SECTION_ORDER } from './executivePhrasing';
+import { LanguageCode } from '../context/LanguageContext';
+import {
+  getResolvedSectionTitles,
+  COVER_CHROME_LABELS
+} from './cvDocumentLabels';
+
+const A4_WIDTH_TWIP = convertMillimetersToTwip(210);
+const A4_HEIGHT_TWIP = convertMillimetersToTwip(297);
 
 function isSecVisible(cv: CVData, key: CVSectionKey): boolean {
   return cv.sectionVisibility?.[key] !== false;
+}
+
+// Blend any 6-char hex color toward white (simulates translucent white/10 cards in Word cell shading)
+function blendHexWithWhite(hex: string, whiteRatio: number): string {
+  const clean = hex.replace('#', '');
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean.padEnd(6, '0').slice(0, 6);
+  const r = parseInt(full.slice(0, 2), 16) || 15;
+  const g = parseInt(full.slice(2, 4), 16) || 23;
+  const b = parseInt(full.slice(4, 6), 16) || 42;
+  const mix = (ch: number) =>
+    Math.min(255, Math.max(0, Math.round(ch * (1 - whiteRatio) + 255 * whiteRatio)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  return `${mix(r)}${mix(g)}${mix(b)}`;
+}
+
+// Blend any 6-char hex slightly darker or softer border color for dark sidebar dividers
+function blendHexLighter(hex: string, ratio: number): string {
+  return blendHexWithWhite(hex, ratio);
 }
 
 // Helper to safely parse Data URL or fetch remote URL into Uint8Array for docx ImageRun
@@ -40,7 +79,6 @@ async function getPhotoBytes(
     }
 
     if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://') || photoUrl.startsWith('/')) {
-      // 1. Try direct fetch with cors
       try {
         const res = await fetch(photoUrl, { mode: 'cors' });
         if (res.ok) {
@@ -50,10 +88,9 @@ async function getPhotoBytes(
           return { data: new Uint8Array(buf), type };
         }
       } catch {
-        // Direct fetch failed, proceed to backend proxy
+        // Fallback to backend proxy
       }
 
-      // 2. Try server-side proxy route to bypass client-side CORS
       try {
         const proxyRes = await fetch(`/api/proxy-image?url=${encodeURIComponent(photoUrl)}`);
         if (proxyRes.ok) {
@@ -63,10 +100,9 @@ async function getPhotoBytes(
           return { data: new Uint8Array(buf), type };
         }
       } catch {
-        // Proxy failed, proceed to canvas fallback
+        // Fallback to canvas
       }
 
-      // 3. Browser canvas fallback for remote images with crossOrigin
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         const fromCanvas = await new Promise<{ data: Uint8Array; type: 'png' | 'jpg' } | null>((resolve) => {
           const img = new Image();
@@ -123,6 +159,7 @@ interface SpacingMetrics {
   pageMarginBottom: number;
   pageMarginLeft: number;
   pageMarginRight: number;
+  headerAfter: number;
   sectionBefore: number;
   sectionAfter: number;
   itemBefore: number;
@@ -137,64 +174,68 @@ interface SpacingMetrics {
   fontSizeSubtext: number;
 }
 
+// Calibrated 1:1 with A4 screen sheet densities (p-12 = 12.7mm / 0.5in normal, compact, relaxed)
 function getSpacingMetrics(density: 'compact' | 'normal' | 'relaxed' = 'normal'): SpacingMetrics {
   if (density === 'compact') {
     return {
-      pageMarginTop: convertInchesToTwip(0.4),
-      pageMarginBottom: convertInchesToTwip(0.4),
-      pageMarginLeft: convertInchesToTwip(0.5),
-      pageMarginRight: convertInchesToTwip(0.5),
-      sectionBefore: 120, // 6pt
-      sectionAfter: 25,   // 1.25pt
-      itemBefore: 45,     // 2.25pt
-      itemAfter: 15,      // 0.75pt
-      bulletAfter: 18,    // 0.9pt
-      lineSpacing: 230,   // tight line height
-      summaryAfter: 50,
-      fontSizeTitle: 30,  // 15pt
+      pageMarginTop: convertMillimetersToTwip(9.5),
+      pageMarginBottom: convertMillimetersToTwip(9.5),
+      pageMarginLeft: convertMillimetersToTwip(11),
+      pageMarginRight: convertMillimetersToTwip(11),
+      headerAfter: 90,
+      sectionBefore: 130,
+      sectionAfter: 55,
+      itemBefore: 60,
+      itemAfter: 25,
+      bulletAfter: 28,
+      lineSpacing: 276, // ~1.15x matching .cv-density-compact 1.35 CSS
+      summaryAfter: 65,
+      fontSizeTitle: 34, // 17pt
       fontSizeSubtitle: 20, // 10pt
       fontSizeHeading: 19, // 9.5pt
-      fontSizeBody: 18.5, // 9.25pt
-      fontSizeSubtext: 16.5 // 8.25pt
+      fontSizeBody: 18, // 9pt
+      fontSizeSubtext: 16 // 8pt
     };
   }
   if (density === 'relaxed') {
     return {
-      pageMarginTop: convertInchesToTwip(0.7),
-      pageMarginBottom: convertInchesToTwip(0.7),
-      pageMarginLeft: convertInchesToTwip(0.8),
-      pageMarginRight: convertInchesToTwip(0.8),
-      sectionBefore: 220, // 11pt
-      sectionAfter: 55,   // 2.75pt
-      itemBefore: 90,     // 4.5pt
-      itemAfter: 30,      // 1.5pt
-      bulletAfter: 45,    // 2.25pt
-      lineSpacing: 275,   // 1.15x
+      pageMarginTop: convertMillimetersToTwip(16),
+      pageMarginBottom: convertMillimetersToTwip(16),
+      pageMarginLeft: convertMillimetersToTwip(16),
+      pageMarginRight: convertMillimetersToTwip(16),
+      headerAfter: 180,
+      sectionBefore: 240,
+      sectionAfter: 100,
+      itemBefore: 120,
+      itemAfter: 45,
+      bulletAfter: 55,
+      lineSpacing: 348, // ~1.45x matching .cv-density-relaxed 1.65 CSS
       summaryAfter: 120,
-      fontSizeTitle: 36,  // 18pt
-      fontSizeSubtitle: 22, // 11pt
-      fontSizeHeading: 22, // 11pt
-      fontSizeBody: 21,   // 10.5pt
-      fontSizeSubtext: 18.5 // 9.25pt
+      fontSizeTitle: 44, // 22pt
+      fontSizeSubtitle: 23, // 11.5pt
+      fontSizeHeading: 21, // 10.5pt
+      fontSizeBody: 21, // 10.5pt
+      fontSizeSubtext: 18 // 9pt
     };
   }
-  // normal (default balanced executive)
+  // Normal: mirrors web preview A4 (p-12 = 12.7mm, leading-relaxed)
   return {
-    pageMarginTop: convertInchesToTwip(0.55),
-    pageMarginBottom: convertInchesToTwip(0.55),
-    pageMarginLeft: convertInchesToTwip(0.65),
-    pageMarginRight: convertInchesToTwip(0.65),
-    sectionBefore: 160, // 8pt
-    sectionAfter: 35,   // 1.75pt
-    itemBefore: 65,     // 3.25pt
-    itemAfter: 20,      // 1pt
-    bulletAfter: 28,    // 1.4pt
-    lineSpacing: 245,   // balanced line height
-    summaryAfter: 80,
-    fontSizeTitle: 33,  // 16.5pt
+    pageMarginTop: convertMillimetersToTwip(12.7),
+    pageMarginBottom: convertMillimetersToTwip(12.7),
+    pageMarginLeft: convertMillimetersToTwip(12.7),
+    pageMarginRight: convertMillimetersToTwip(12.7),
+    headerAfter: 140,
+    sectionBefore: 190,
+    sectionAfter: 75,
+    itemBefore: 95,
+    itemAfter: 35,
+    bulletAfter: 40,
+    lineSpacing: 312, // ~1.30x matching CSS leading-relaxed
+    summaryAfter: 90,
+    fontSizeTitle: 40, // 20pt (text-2xl/3xl scaled to A4)
     fontSizeSubtitle: 21, // 10.5pt
-    fontSizeHeading: 20.5, // 10.25pt
-    fontSizeBody: 19.5, // 9.75pt
+    fontSizeHeading: 20, // 10pt
+    fontSizeBody: 19.5, // 9.75pt (~13.5px on A4)
     fontSizeSubtext: 17.5 // 8.75pt
   };
 }
@@ -202,10 +243,10 @@ function getSpacingMetrics(density: 'compact' | 'normal' | 'relaxed' = 'normal')
 function createWatermarkNotice(fontFamily: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { after: 120 },
+    spacing: { after: 140 },
     border: {
-      bottom: { style: BorderStyle.DASHED, size: 6, color: 'DC2626' },
-      top: { style: BorderStyle.DASHED, size: 6, color: 'DC2626' }
+      bottom: { style: BorderStyle.DASHED, size: 6, color: 'DC2626', space: 4 },
+      top: { style: BorderStyle.DASHED, size: 6, color: 'DC2626', space: 4 }
     },
     children: [
       new TextRun({
@@ -216,7 +257,7 @@ function createWatermarkNotice(fontFamily: string): Paragraph {
         color: 'DC2626'
       }),
       new TextRun({
-        text: '\n(Documento de demonstração com marca de água. Ative o plano Pro ou VIP em curriculoestrategico.com para a versão oficial limpa)',
+        text: '\n(Documento de demonstração com marca de água. Ative o plano Pro ou Executive para remover a marca)',
         italics: true,
         size: 15,
         font: fontFamily,
@@ -226,153 +267,941 @@ function createWatermarkNotice(fontFamily: string): Paragraph {
   });
 }
 
+function formatCefrBadge(level: string): string {
+  if (level.includes('Nativo') || level.includes('Native') || level.includes('C2') || level.includes('Muttersprache')) {
+    return '[C2/Nativo]';
+  }
+  if (level.includes('C1') || level.includes('Avançado') || level.includes('Fluent')) {
+    return '[C1/Avançado]';
+  }
+  return '[B2]';
+}
+
+// Shared 3-column bordered References table matching all Single-Column templates in CVDocumentView.tsx
+function buildReferencesTable(
+  cv: CVData,
+  m: SpacingMetrics,
+  fontFamily: string,
+  monoFont: string,
+  titles: ReturnType<typeof getResolvedSectionTitles>
+): Table {
+  const borderCell = { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' };
+  const borderHeaderBottom = { style: BorderStyle.SINGLE, size: 6, color: 'CBD5E1' };
+  const cellMargins = { top: 80, bottom: 80, left: 110, right: 110 };
+
+  const headerRow = new TableRow({
+    tableHeader: true,
+    children: [
+      { label: titles.tableRefName, pct: 30 },
+      { label: titles.tableRefInstitution, pct: 45 },
+      { label: titles.tableRefContact, pct: 25 }
+    ].map(
+      (col) =>
+        new TableCell({
+          width: { size: col.pct, type: WidthType.PERCENTAGE },
+          shading: { fill: 'F8FAFC', type: ShadingType.CLEAR },
+          margins: cellMargins,
+          borders: {
+            top: borderCell,
+            bottom: borderHeaderBottom,
+            left: borderCell,
+            right: borderCell
+          },
+          children: [
+            new Paragraph({
+              spacing: { before: 0, after: 0 },
+              children: [
+                new TextRun({
+                  text: col.label,
+                  bold: true,
+                  size: m.fontSizeSubtext,
+                  font: fontFamily,
+                  color: '0F172A'
+                })
+              ]
+            })
+          ]
+        })
+    )
+  });
+
+  const bodyRows = (cv.references || []).map((ref, idx) => {
+    const fill = idx % 2 === 1 ? 'F8FAFC' : 'FFFFFF';
+    return new TableRow({
+      cantSplit: true,
+      children: [
+        new TableCell({
+          width: { size: 30, type: WidthType.PERCENTAGE },
+          shading: { fill, type: ShadingType.CLEAR },
+          margins: cellMargins,
+          borders: { top: borderCell, bottom: borderCell, left: borderCell, right: borderCell },
+          children: [
+            new Paragraph({
+              spacing: { before: 0, after: 0 },
+              children: [
+                new TextRun({
+                  text: ref.name,
+                  bold: true,
+                  size: m.fontSizeSubtext,
+                  font: fontFamily,
+                  color: '0F172A'
+                })
+              ]
+            })
+          ]
+        }),
+        new TableCell({
+          width: { size: 45, type: WidthType.PERCENTAGE },
+          shading: { fill, type: ShadingType.CLEAR },
+          margins: cellMargins,
+          borders: { top: borderCell, bottom: borderCell, left: borderCell, right: borderCell },
+          children: [
+            new Paragraph({
+              spacing: { before: 0, after: 0 },
+              children: [
+                new TextRun({
+                  text: ref.institutionAndPosition,
+                  size: m.fontSizeSubtext,
+                  font: fontFamily,
+                  color: '334155'
+                })
+              ]
+            })
+          ]
+        }),
+        new TableCell({
+          width: { size: 25, type: WidthType.PERCENTAGE },
+          shading: { fill, type: ShadingType.CLEAR },
+          margins: cellMargins,
+          borders: { top: borderCell, bottom: borderCell, left: borderCell, right: borderCell },
+          children: [
+            new Paragraph({
+              spacing: { before: 0, after: 0 },
+              children: [
+                new TextRun({
+                  text: ref.contact,
+                  size: m.fontSizeSubtext - 0.5,
+                  font: monoFont,
+                  color: '1E293B'
+                })
+              ]
+            })
+          ]
+        })
+      ]
+    });
+  });
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [headerRow, ...bodyRows]
+  });
+}
+
 // ============================================================================
-// 1. HARVARD BUSINESS / C-LEVEL MODEL (Left-aligned, serif, borderless tables)
+// SINGLE-COLUMN EXECUTIVE ENGINE (Matches all 8 Single-Column Templates 1:1)
 // ============================================================================
-function buildHarvardDoc(
+function buildSingleColumnCVDoc(
   cv: CVData,
   hasActivePlan: boolean,
   COLOR_PRIMARY: string,
-  density: 'compact' | 'normal' | 'relaxed'
+  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
+  density: 'compact' | 'normal' | 'relaxed',
+  lang: LanguageCode
 ): Document {
-  const FONT = 'Times New Roman';
+  const style: TemplateStyle = cv.templateStyle || 'european_modern';
+  const isHarvard = style === 'executive_harvard';
+  const isEuropass = style === 'european_europass';
+  const isTech = style === 'tech_modern';
+  const isAts = style === 'ats_compact';
+  const isMinimalist = style === 'hybrid_minimalist';
+  const isAcademic = style === 'academic_lattes';
+  const isClassic = style === 'un_classic';
+  const isModern = style === 'european_modern';
+
+  const titles = getResolvedSectionTitles(lang, style);
   const m = getSpacingMetrics(density);
+
+  // Fonts matching CSS: font-serif-cv / font-mono-code / font-jakarta
+  const primaryFont =
+    isHarvard || isAcademic || isClassic
+      ? 'Times New Roman'
+      : isAts
+      ? 'Consolas'
+      : 'Calibri';
+  const serifFont = 'Times New Roman';
+  const monoFont = 'Consolas';
+
+  // Exact colors matching CVDocumentView.tsx
+  const sectionHeadingColor =
+    isHarvard || isAts
+      ? '020617'
+      : isTech
+      ? '0F766E'
+      : isEuropass
+      ? '003399'
+      : isAcademic
+      ? '0F172A'
+      : isClassic
+      ? '1E3A8A'
+      : isMinimalist
+      ? '0F172A'
+      : COLOR_PRIMARY;
+
+  const sectionBorderColor =
+    isHarvard
+      ? '0F172A'
+      : isAts
+      ? '94A3B8'
+      : isTech
+      ? '0D9488'
+      : isEuropass
+      ? '003399'
+      : isMinimalist
+      ? 'E2E8F0'
+      : isAcademic
+      ? '0F172A'
+      : isClassic
+      ? 'CBD5E1'
+      : COLOR_PRIMARY;
+
+  const nameColor = isEuropass ? '003399' : isAts ? '0F172A' : COLOR_PRIMARY;
+
+  const templateSupportsPhoto =
+    isEuropass || isMinimalist || isModern || isTech || isClassic || isAcademic;
+  const effectivePhoto = templateSupportsPhoto ? photoBytes : null;
+
   const children: (Paragraph | Table)[] = [];
 
   if (!hasActivePlan) {
-    children.push(createWatermarkNotice(FONT));
+    children.push(createWatermarkNotice(primaryFont));
   }
 
-  // Harvard Header: Strict left-aligned with bold line
-  children.push(
+  // Academic Lattes full-width boxed banner matching CVDocumentView lines 1363-1372
+  if (isAcademic) {
+    children.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 110 },
+        border: {
+          top: { style: BorderStyle.SINGLE, size: 6, color: '475569', space: 4 },
+          bottom: { style: BorderStyle.SINGLE, size: 6, color: '475569', space: 4 }
+        },
+        children: [
+          new TextRun({
+            text: 'PLATAFORMA LATTES · CURRÍCULO DE CIÊNCIA E TECNOLOGIA',
+            bold: true,
+            size: 17,
+            font: serifFont,
+            color: '1E293B'
+          }),
+          new TextRun({
+            text: '\nPadrão Oficial de Investigação Científica & Docência Universitária',
+            italics: true,
+            size: 14.5,
+            font: serifFont,
+            color: '64748B'
+          })
+        ]
+      })
+    );
+  }
+
+  // Build Header Content
+  const headerAlign = isClassic ? AlignmentType.CENTER : AlignmentType.LEFT;
+  const headerTextParagraphs: Paragraph[] = [];
+
+  if (isEuropass) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 55 },
+        children: [
+          new TextRun({
+            text: ' CURRICULUM VITAE EUROPASS ',
+            bold: true,
+            size: 16,
+            font: primaryFont,
+            color: 'FFFFFF',
+            shading: { fill: '003399', type: ShadingType.CLEAR }
+          }),
+          new TextRun({
+            text: `   ${titles.chrome.europassOfficial}`,
+            size: 16.5,
+            font: primaryFont,
+            color: '64748B'
+          })
+        ]
+      })
+    );
+  } else if (isTech) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 45 },
+        children: [
+          new TextRun({
+            text: '// TECH LEAD & SYSTEMS ARCHITECTURE',
+            bold: true,
+            size: 17,
+            font: monoFont,
+            color: '0F766E'
+          })
+        ]
+      })
+    );
+  } else if (isMinimalist) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 40 },
+        children: [
+          new TextRun({
+            text: 'CURRICULUM VITAE · PADRÃO NÓRDICO',
+            bold: true,
+            size: 15.5,
+            font: monoFont,
+            color: '94A3B8'
+          })
+        ]
+      })
+    );
+  } else if (isAts) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 55 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1', space: 3 } },
+        children: [
+          new TextRun({
+            text: '[ATS COMPACT · OCR PARSER COMPLIANT]',
+            size: 15.5,
+            font: monoFont,
+            color: '64748B'
+          })
+        ]
+      })
+    );
+  } else if (isClassic) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 50 },
+        children: [
+          new TextRun({
+            text: 'UNITED NATIONS & INTERNATIONAL COOPERATION STANDARD',
+            bold: true,
+            size: 16.5,
+            font: serifFont,
+            color: '1E3A8A'
+          })
+        ]
+      })
+    );
+  }
+
+  // Name Paragraph
+  headerTextParagraphs.push(
     new Paragraph({
-      alignment: AlignmentType.LEFT,
+      alignment: headerAlign,
       spacing: { after: 25 },
       children: [
         new TextRun({
-          text: (cv.personalDetails.name || 'SEU NOME').toUpperCase(),
+          text: (cv.personalDetails.name || 'SEU NOME COMPLETO').toUpperCase(),
           bold: true,
           size: m.fontSizeTitle,
-          font: FONT,
-          color: COLOR_PRIMARY
+          font: primaryFont,
+          color: nameColor
         })
       ]
-    }),
+    })
+  );
+
+  // Title / Role Headline
+  if (cv.personalDetails.title) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: headerAlign,
+        spacing: { after: 45 },
+        children: [
+          new TextRun({
+            text: cv.personalDetails.title,
+            bold: true,
+            italics: isHarvard,
+            size: isTech ? m.fontSizeSubtitle - 1 : m.fontSizeSubtitle,
+            font: isTech ? monoFont : primaryFont,
+            color: isTech ? '0F766E' : isHarvard ? '334155' : '1E293B'
+          })
+        ]
+      })
+    );
+  }
+
+  // Contact Line
+  const contactLineText = [
+    cv.personalDetails.location,
+    cv.personalDetails.phone,
+    cv.personalDetails.email,
+    cv.personalDetails.linkedin,
+    cv.personalDetails.website
+  ]
+    .filter(Boolean)
+    .join('  |  ');
+
+  const headerHasBottomBorder = isModern || isHarvard || isEuropass || isTech || isClassic;
+  const headerBorderSpec = isModern || isHarvard || isEuropass || isTech
+    ? { style: BorderStyle.SINGLE, size: 12, color: isTech ? '0D9488' : isEuropass ? '003399' : isHarvard ? '0F172A' : COLOR_PRIMARY, space: 8 }
+    : isClassic
+    ? { style: BorderStyle.SINGLE, size: 6, color: 'E2E8F0', space: 8 }
+    : undefined;
+
+  headerTextParagraphs.push(
     new Paragraph({
-      alignment: AlignmentType.LEFT,
-      spacing: { after: 40 },
+      alignment: headerAlign,
+      spacing: { after: effectivePhoto ? 0 : m.headerAfter },
+      border: !effectivePhoto && headerHasBottomBorder ? { bottom: headerBorderSpec } : undefined,
       children: [
         new TextRun({
-          text: cv.personalDetails.title || '',
-          italics: true,
-          bold: true,
-          size: m.fontSizeSubtitle,
-          font: FONT,
-          color: '334155'
-        })
-      ]
-    }),
-    new Paragraph({
-      alignment: AlignmentType.LEFT,
-      spacing: { after: m.summaryAfter },
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 12, color: COLOR_PRIMARY, space: 4 }
-      },
-      children: [
-        new TextRun({
-          text: [
-            cv.personalDetails.location,
-            cv.personalDetails.phone,
-            cv.personalDetails.email,
-            cv.personalDetails.linkedin,
-            cv.personalDetails.website
-          ]
-            .filter(Boolean)
-            .join('  ·  '),
+          text: contactLineText,
           size: m.fontSizeSubtext,
-          font: FONT,
+          font: primaryFont,
           color: '475569'
         })
       ]
     })
   );
 
-  function createHarvardSectionHeading(title: string): Paragraph {
+  if (effectivePhoto) {
+    const photoParagraphs: Paragraph[] = [
+      new Paragraph({
+        alignment: AlignmentType.RIGHT,
+        spacing: { after: isEuropass ? 25 : 0 },
+        children: [
+          new ImageRun({
+            data: effectivePhoto.data,
+            transformation: { width: 92, height: 92 },
+            type: effectivePhoto.type
+          })
+        ]
+      })
+    ];
+    if (isEuropass) {
+      photoParagraphs.push(
+        new Paragraph({
+          alignment: AlignmentType.RIGHT,
+          spacing: { after: 0 },
+          children: [
+            new TextRun({
+              text: titles.chrome.formalPhoto.toUpperCase(),
+              bold: true,
+              size: 14,
+              font: primaryFont,
+              color: '94A3B8'
+            })
+          ]
+        })
+      );
+    }
+
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: NO_BORDERS,
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 78, type: WidthType.PERCENTAGE },
+                borders: {
+                  ...NO_BORDERS,
+                  bottom: headerHasBottomBorder ? headerBorderSpec : NO_BORDER
+                },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: { bottom: headerHasBottomBorder ? 110 : 40 },
+                children: headerTextParagraphs
+              }),
+              new TableCell({
+                width: { size: 22, type: WidthType.PERCENTAGE },
+                borders: {
+                  ...NO_BORDERS,
+                  bottom: headerHasBottomBorder ? headerBorderSpec : NO_BORDER
+                },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: { bottom: headerHasBottomBorder ? 110 : 40 },
+                children: photoParagraphs
+              })
+            ]
+          })
+        ]
+      })
+    );
+    children.push(new Paragraph({ spacing: { before: 0, after: m.headerAfter - 40 }, children: [] }));
+  } else {
+    children.push(...headerTextParagraphs);
+  }
+
+  let visibleSectionIdx = 0;
+
+  function createSectionHeading(title: string): Paragraph {
+    const idx = visibleSectionIdx++;
+    const runs: TextRun[] = [];
+
+    if (isTech) {
+      runs.push(
+        new TextRun({
+          text: '> ',
+          bold: true,
+          size: m.fontSizeHeading,
+          font: monoFont,
+          color: '14B8A6'
+        })
+      );
+    } else if (isMinimalist) {
+      runs.push(
+        new TextRun({
+          text: `0${idx + 1} / `,
+          bold: true,
+          size: m.fontSizeHeading - 2,
+          font: monoFont,
+          color: '94A3B8'
+        })
+      );
+    } else if (isAcademic) {
+      const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][idx] || `${idx + 1}`;
+      runs.push(
+        new TextRun({
+          text: `${roman}. `,
+          bold: true,
+          size: m.fontSizeHeading,
+          font: serifFont,
+          color: '0F172A'
+        })
+      );
+    } else if (isClassic) {
+      runs.push(
+        new TextRun({
+          text: `${idx + 1}. `,
+          bold: true,
+          size: m.fontSizeHeading,
+          font: serifFont,
+          color: '1E3A8A'
+        })
+      );
+    }
+
+    runs.push(
+      new TextRun({
+        text: title.toUpperCase(),
+        bold: !isMinimalist,
+        size: isTech ? m.fontSizeHeading - 0.5 : m.fontSizeHeading,
+        font: isTech ? monoFont : primaryFont,
+        color: sectionHeadingColor
+      })
+    );
+
+    const borderSize = isTech || isEuropass ? 12 : 6;
+
     return new Paragraph({
       spacing: { before: m.sectionBefore, after: m.sectionAfter },
       keepNext: true,
       border: {
-        bottom: { style: BorderStyle.SINGLE, size: 6, color: '64748B', space: 2 }
+        bottom: { style: BorderStyle.SINGLE, size: borderSize, color: sectionBorderColor, space: 4 }
       },
-      children: [
-        new TextRun({
-          text: title.toUpperCase(),
-          bold: true,
-          size: m.fontSizeHeading,
-          font: FONT,
-          color: COLOR_PRIMARY
-        })
-      ]
+      children: runs
     });
   }
 
-  function renderHarvardSection(key: CVSectionKey): (Paragraph | Table)[] {
+  function renderSection(key: CVSectionKey): (Paragraph | Table)[] {
     if (!isSecVisible(cv, key)) return [];
+
     switch (key) {
       case 'summary':
         if (!cv.summary) return [];
         return [
-          createHarvardSectionHeading('Executive Summary'),
+          createSectionHeading(titles.summary),
           new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
             spacing: { after: m.summaryAfter, line: m.lineSpacing },
             children: [
               new TextRun({
                 text: cv.summary,
                 size: m.fontSizeBody,
-                font: FONT,
+                font: primaryFont,
                 color: '1E293B'
               })
             ]
           })
         ];
 
+      case 'competencies':
+        if (!cv.competencies || cv.competencies.length === 0) return [];
+        if (isTech) {
+          // Tech Modern 2-column bordered card grid matching CVDocumentView lines 1562-1568
+          const heading = createSectionHeading(titles.competencies);
+          const cardBorder = { style: BorderStyle.SINGLE, size: 4, color: 'E2E8F0' };
+          const cardRows: TableRow[] = [];
+          for (let i = 0; i < cv.competencies.length; i += 2) {
+            const left = cv.competencies[i];
+            const right = cv.competencies[i + 1];
+            const buildCell = (item: typeof left | undefined) =>
+              item
+                ? new TableCell({
+                    width: { size: 49, type: WidthType.PERCENTAGE },
+                    shading: { fill: 'F8FAFC', type: ShadingType.CLEAR },
+                    borders: { top: cardBorder, bottom: cardBorder, left: cardBorder, right: cardBorder },
+                    margins: { top: 80, bottom: 80, left: 110, right: 110 },
+                    children: [
+                      new Paragraph({
+                        spacing: { after: 20 },
+                        children: [
+                          new TextRun({
+                            text: item.category,
+                            bold: true,
+                            size: m.fontSizeSubtext,
+                            font: monoFont,
+                            color: '115E59'
+                          })
+                        ]
+                      }),
+                      new Paragraph({
+                        spacing: { after: 0, line: m.lineSpacing - 20 },
+                        children: [
+                          new TextRun({
+                            text: item.description,
+                            size: m.fontSizeSubtext,
+                            font: primaryFont,
+                            color: '334155'
+                          })
+                        ]
+                      })
+                    ]
+                  })
+                : new TableCell({
+                    width: { size: 49, type: WidthType.PERCENTAGE },
+                    borders: NO_BORDERS,
+                    children: [new Paragraph({ children: [] })]
+                  });
+
+            const spacerCell = new TableCell({
+              width: { size: 2, type: WidthType.PERCENTAGE },
+              borders: NO_BORDERS,
+              children: [new Paragraph({ children: [] })]
+            });
+
+            cardRows.push(
+              new TableRow({
+                cantSplit: true,
+                children: [buildCell(left), spacerCell, buildCell(right)]
+              })
+            );
+            if (i + 2 < cv.competencies.length) {
+              cardRows.push(
+                new TableRow({
+                  height: { value: 70, rule: HeightRule.EXACT },
+                  children: [
+                    new TableCell({ columnSpan: 3, borders: NO_BORDERS, children: [new Paragraph({ children: [] })] })
+                  ]
+                })
+              );
+            }
+          }
+          return [
+            heading,
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              borders: NO_BORDERS,
+              rows: cardRows
+            })
+          ];
+        } else {
+          const compItems: (Paragraph | Table)[] = [createSectionHeading(titles.competencies)];
+          cv.competencies.forEach((c) => {
+            compItems.push(
+              new Paragraph({
+                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
+                indent: { left: 240, hanging: 180 },
+                children: [
+                  new TextRun({ text: '•  ', bold: true, size: m.fontSizeBody, font: primaryFont, color: '94A3B8' }),
+                  new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: primaryFont, color: '0F172A' }),
+                  new TextRun({ text: c.description, size: m.fontSizeBody, font: primaryFont, color: '1E293B' })
+                ]
+              })
+            );
+          });
+          return compItems;
+        }
+
       case 'experiences':
         if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createHarvardSectionHeading('Professional Experience')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
+        const expItems: (Paragraph | Table)[] = [createSectionHeading(titles.experiences)];
+        cv.experiences.forEach((exp, expIdx) => {
+          if (isTech) {
+            // Tech Modern: Role @ Company (left) | [period] shaded badge (right)
+            expItems.push(
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                borders: NO_BORDERS,
+                rows: [
+                  new TableRow({
+                    cantSplit: true,
+                    children: [
+                      new TableCell({
+                        width: { size: 72, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            spacing: { before: expIdx === 0 ? 20 : m.itemBefore + 20, after: 20 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: exp.role,
+                                bold: true,
+                                size: m.fontSizeBody + 1,
+                                font: primaryFont,
+                                color: '020617'
+                              }),
+                              new TextRun({
+                                text: ` @ ${exp.company}`,
+                                bold: true,
+                                size: m.fontSizeBody + 0.5,
+                                font: primaryFont,
+                                color: '0F766E'
+                              })
+                            ]
+                          })
+                        ]
+                      }),
+                      new TableCell({
+                        width: { size: 28, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            alignment: AlignmentType.RIGHT,
+                            spacing: { before: expIdx === 0 ? 20 : m.itemBefore + 20, after: 20 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: ` ${exp.period} `,
+                                bold: true,
+                                size: m.fontSizeSubtext - 0.5,
+                                font: monoFont,
+                                color: '475569',
+                                shading: { fill: 'F1F5F9', type: ShadingType.CLEAR }
+                              })
+                            ]
+                          })
+                        ]
+                      })
+                    ]
+                  })
+                ]
+              })
+            );
+          } else {
+            // Standard 2-row header matching CVDocumentView lines 1611-1621:
+            // Row 1: Company (left, bold) | Location (right, muted)
+            // Row 2: Role (left, semibold, italic for Harvard) | Period (right, mono)
+            expItems.push(
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                borders: NO_BORDERS,
+                rows: [
+                  new TableRow({
+                    cantSplit: true,
+                    children: [
+                      new TableCell({
+                        width: { size: 68, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            spacing: { before: expIdx === 0 ? 20 : m.itemBefore + 20, after: 10 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: exp.company,
+                                bold: true,
+                                size: m.fontSizeBody + 1,
+                                font: primaryFont,
+                                color: '020617'
+                              })
+                            ]
+                          })
+                        ]
+                      }),
+                      new TableCell({
+                        width: { size: 32, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            alignment: AlignmentType.RIGHT,
+                            spacing: { before: expIdx === 0 ? 20 : m.itemBefore + 20, after: 10 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: exp.location || '',
+                                size: m.fontSizeSubtext,
+                                font: primaryFont,
+                                color: '64748B'
+                              })
+                            ]
+                          })
+                        ]
+                      })
+                    ]
+                  }),
+                  new TableRow({
+                    cantSplit: true,
+                    children: [
+                      new TableCell({
+                        width: { size: 68, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            spacing: { before: 0, after: 25 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: exp.role,
+                                bold: true,
+                                italics: isHarvard,
+                                size: m.fontSizeBody,
+                                font: primaryFont,
+                                color: '1E293B'
+                              })
+                            ]
+                          })
+                        ]
+                      }),
+                      new TableCell({
+                        width: { size: 32, type: WidthType.PERCENTAGE },
+                        borders: NO_BORDERS,
+                        children: [
+                          new Paragraph({
+                            alignment: AlignmentType.RIGHT,
+                            spacing: { before: 0, after: 25 },
+                            keepNext: true,
+                            children: [
+                              new TextRun({
+                                text: exp.period || '',
+                                size: m.fontSizeSubtext,
+                                font: monoFont,
+                                color: '475569'
+                              })
+                            ]
+                          })
+                        ]
+                      })
+                    ]
+                  })
+                ]
+              })
+            );
+          }
+
+          if (exp.donor) {
+            expItems.push(
+              new Paragraph({
+                spacing: { after: 25 },
+                keepNext: true,
+                children: [
+                  new TextRun({
+                    text: exp.donor,
+                    italics: true,
+                    size: m.fontSizeSubtext,
+                    font: primaryFont,
+                    color: '475569'
+                  })
+                ]
+              })
+            );
+          }
+
+          exp.highlights.forEach((h) => {
+            if (!h.trim()) return;
+            expItems.push(
+              new Paragraph({
+                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
+                indent: { left: 240, hanging: 180 },
+                children: [
+                  new TextRun({
+                    text: isTech ? '>  ' : '•  ',
+                    bold: true,
+                    size: m.fontSizeBody,
+                    font: isTech ? monoFont : primaryFont,
+                    color: isTech ? '0D9488' : '94A3B8'
+                  }),
+                  new TextRun({
+                    text: h,
+                    size: m.fontSizeBody - 0.5,
+                    font: primaryFont,
+                    color: '1E293B'
+                  })
+                ]
+              })
+            );
+          });
+        });
+        return expItems;
+
+      case 'educations':
+        if (!cv.educations || cv.educations.length === 0) return [];
+        const eduItems: (Paragraph | Table)[] = [createSectionHeading(titles.educations)];
+        cv.educations.forEach((edu, idx) => {
+          eduItems.push(
             new Table({
               width: { size: 100, type: WidthType.PERCENTAGE },
               borders: NO_BORDERS,
               rows: [
                 new TableRow({
+                  cantSplit: true,
                   children: [
                     new TableCell({
-                      width: { size: 70, type: WidthType.PERCENTAGE },
+                      width: { size: 75, type: WidthType.PERCENTAGE },
                       borders: NO_BORDERS,
                       children: [
                         new Paragraph({
-                          spacing: { before: m.itemBefore, after: 10 },
+                          spacing: { before: idx === 0 ? 15 : m.itemBefore, after: 20 },
                           children: [
-                            new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: FONT, color: '0F172A' }),
-                            new TextRun({ text: ` — ${exp.company}`, size: m.fontSizeBody, font: FONT, color: '334155' })
+                            new TextRun({
+                              text: edu.degree,
+                              bold: true,
+                              size: m.fontSizeBody,
+                              font: primaryFont,
+                              color: '020617'
+                            }),
+                            new TextRun({
+                              text: ` — ${edu.institution}`,
+                              size: m.fontSizeBody,
+                              font: primaryFont,
+                              color: '1E293B'
+                            }),
+                            ...(edu.gpaOrHonors
+                              ? [
+                                  new TextRun({
+                                    text: ` (${edu.gpaOrHonors})`,
+                                    italics: true,
+                                    size: m.fontSizeSubtext,
+                                    font: serifFont,
+                                    color: '475569'
+                                  })
+                                ]
+                              : [])
                           ]
                         })
                       ]
                     }),
                     new TableCell({
-                      width: { size: 30, type: WidthType.PERCENTAGE },
+                      width: { size: 25, type: WidthType.PERCENTAGE },
                       borders: NO_BORDERS,
                       children: [
                         new Paragraph({
                           alignment: AlignmentType.RIGHT,
-                          spacing: { before: m.itemBefore, after: 10 },
+                          spacing: { before: idx === 0 ? 15 : m.itemBefore, after: 20 },
                           children: [
                             new TextRun({
-                              text: exp.period ? `${exp.period}${exp.location ? ` | ${exp.location}` : ''}` : '',
+                              text: edu.period || '',
                               size: m.fontSizeSubtext,
-                              font: FONT,
-                              italics: true,
+                              font: monoFont,
                               color: '475569'
                             })
                           ]
@@ -384,139 +1213,78 @@ function buildHarvardDoc(
               ]
             })
           );
-
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 20 },
-                children: [
-                  new TextRun({ text: `Financiador/Projeto: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: FONT, color: '475569' })
-                ]
-              })
-            );
-          }
-
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createHarvardSectionHeading('Education')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              borders: NO_BORDERS,
-              rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({
-                      width: { size: 70, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                            new TextRun({ text: ` — ${edu.institution}`, size: m.fontSizeBody, font: FONT, color: '334155' })
-                          ]
-                        })
-                      ]
-                    }),
-                    new TableCell({
-                      width: { size: 30, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          alignment: AlignmentType.RIGHT,
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: edu.period, size: m.fontSizeSubtext, font: FONT, italics: true, color: '475569' })
-                          ]
-                        })
-                      ]
-                    })
-                  ]
-                })
-              ]
-            })
-          );
         });
         return eduItems;
 
       case 'trainings':
         if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createHarvardSectionHeading('Certifications & Training')];
+        const trainItems: (Paragraph | Table)[] = [createSectionHeading(titles.trainings)];
         cv.trainings.forEach((t) => {
           trainItems.push(
             new Paragraph({
-              bullet: { level: 0 },
               spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
+              indent: { left: 240, hanging: 180 },
               children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: FONT, color: '1E293B' })
+                new TextRun({ text: '•  ', bold: true, size: m.fontSizeBody, font: primaryFont, color: '94A3B8' }),
+                new TextRun({ text: t, size: m.fontSizeBody - 0.5, font: primaryFont, color: '1E293B' })
               ]
             })
           );
         });
         return trainItems;
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createHarvardSectionHeading('Key Competencies')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: FONT, color: '334155' })
-              ]
-            })
-          );
-        });
-        return compItems;
 
       case 'languages':
         if (!cv.languages || cv.languages.length === 0) return [];
         const langRuns: TextRun[] = [];
         cv.languages.forEach((l, idx) => {
           langRuns.push(
-            new TextRun({ text: `${l.language}: `, bold: true, size: m.fontSizeBody, font: FONT }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   |   ' : ''}`, size: m.fontSizeBody, font: FONT, color: '475569' })
+            new TextRun({
+              text: `• ${l.language}: `,
+              bold: true,
+              size: m.fontSizeBody - 0.5,
+              font: primaryFont,
+              color: '020617'
+            }),
+            new TextRun({
+              text: l.level,
+              size: m.fontSizeBody - 0.5,
+              font: primaryFont,
+              color: '334155'
+            })
           );
+          if (isEuropass) {
+            langRuns.push(
+              new TextRun({
+                text: ` ${formatCefrBadge(l.level)}`,
+                bold: true,
+                size: m.fontSizeSubtext - 1,
+                font: monoFont,
+                color: '1E40AF',
+                shading: { fill: 'DBEAFE', type: ShadingType.CLEAR }
+              })
+            );
+          }
+          if (idx < cv.languages.length - 1) {
+            langRuns.push(
+              new TextRun({
+                text: '     ',
+                size: m.fontSizeBody - 0.5,
+                font: primaryFont
+              })
+            );
+          }
         });
         return [
-          createHarvardSectionHeading('Languages'),
-          new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns })
+          createSectionHeading(titles.languages),
+          new Paragraph({ spacing: { after: m.summaryAfter, line: m.lineSpacing }, children: langRuns })
         ];
 
       case 'references':
         if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createHarvardSectionHeading('Professional References')];
-        cv.references.forEach((r) => {
-          refItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${r.name}`, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: ` — ${r.institutionAndPosition} (${r.contact})`, size: m.fontSizeBody, font: FONT, color: '334155' })
-              ]
-            })
-          );
-        });
-        return refItems;
+        return [
+          createSectionHeading(titles.references),
+          buildReferencesTable(cv, m, primaryFont, monoFont, titles)
+        ];
 
       default:
         return [];
@@ -527,7 +1295,7 @@ function buildHarvardDoc(
     cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
 
   effectiveOrder.forEach((secKey) => {
-    children.push(...renderHarvardSection(secKey));
+    children.push(...renderSection(secKey));
   });
 
   return new Document({
@@ -535,6 +1303,7 @@ function buildHarvardDoc(
       {
         properties: {
           page: {
+            size: { width: A4_WIDTH_TWIP, height: A4_HEIGHT_TWIP },
             margin: {
               top: m.pageMarginTop,
               bottom: m.pageMarginBottom,
@@ -550,474 +1319,52 @@ function buildHarvardDoc(
 }
 
 // ============================================================================
-// 2. OFFICIAL EUROPASS MODEL (Europass header, photo support, 2-column grid)
-// ============================================================================
-function buildEuropassDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const FONT = 'Arial';
-  const EU_BLUE = '003399';
-  const m = getSpacingMetrics(density);
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(FONT));
-  }
-
-  // Europass Blue Badge Header
-  children.push(
-    new Paragraph({
-      spacing: { after: 60 },
-      children: [
-        new TextRun({
-          text: 'curriculum vitae ',
-          bold: true,
-          size: m.fontSizeTitle - 6,
-          font: FONT,
-          color: EU_BLUE
-        }),
-        new TextRun({
-          text: 'europass',
-          bold: true,
-          size: m.fontSizeTitle - 6,
-          font: FONT,
-          color: 'EAB308'
-        }),
-        new TextRun({
-          text: '  ·  Padrão Oficial da União Europeia',
-          size: m.fontSizeSubtext,
-          font: FONT,
-          color: '64748B'
-        })
-      ]
-    })
-  );
-
-  // Europass Candidate Info + Photo Table
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 75 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.name || 'SEU NOME COMPLETO',
-              bold: true,
-              size: m.fontSizeTitle,
-              font: FONT,
-              color: EU_BLUE
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 40 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.title || '',
-              bold: true,
-              size: m.fontSizeSubtitle,
-              font: FONT,
-              color: '1E293B'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({ text: 'Endereço / Localização: ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' }),
-            new TextRun({ text: cv.personalDetails.location || '', size: m.fontSizeSubtext, font: FONT })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({ text: 'Telefone / WhatsApp: ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' }),
-            new TextRun({ text: cv.personalDetails.phone || '', size: m.fontSizeSubtext, font: FONT })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({ text: 'Correio Eletrónico: ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' }),
-            new TextRun({ text: cv.personalDetails.email || '', size: m.fontSizeSubtext, font: FONT })
-          ]
-        }),
-        cv.personalDetails.linkedin
-          ? new Paragraph({
-              spacing: { after: 30 },
-              children: [
-                new TextRun({ text: 'LinkedIn: ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' }),
-                new TextRun({ text: cv.personalDetails.linkedin, size: m.fontSizeSubtext, font: FONT })
-              ]
-            })
-          : new Paragraph({ spacing: { after: 30 }, children: [] })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 25, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { after: 20 },
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 90, height: 90 },
-                type: photoBytes.type
-              })
-            ]
-          }),
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new TextRun({ text: 'FOTO FORMAL', size: 14, font: FONT, color: '94A3B8' })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  function createEuropassHeading(title: string): Paragraph {
-    return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 10, color: EU_BLUE, space: 4 }
-      },
-      children: [
-        new TextRun({
-          text: title.toUpperCase(),
-          bold: true,
-          size: m.fontSizeHeading,
-          font: FONT,
-          color: EU_BLUE
-        })
-      ]
-    });
-  }
-
-  function renderEuropassSection(key: CVSectionKey): (Paragraph | Table)[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createEuropassHeading('Resumo Profissional'),
-          new Paragraph({
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
-          })
-        ];
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createEuropassHeading('Experiência Profissional')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              borders: NO_BORDERS,
-              rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({
-                      width: { size: 26, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: exp.period || '', bold: true, size: m.fontSizeSubtext, font: FONT, color: EU_BLUE }),
-                            new TextRun({ text: exp.location ? `\n${exp.location}` : '', size: m.fontSizeSubtext - 1, font: FONT, color: '64748B' })
-                          ]
-                        })
-                      ]
-                    }),
-                    new TableCell({
-                      width: { size: 74, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: FONT, color: '0F172A' }),
-                            new TextRun({ text: ` — ${exp.company}`, bold: true, size: m.fontSizeBody, font: FONT, color: '334155' })
-                          ]
-                        }),
-                        ...(exp.donor
-                          ? [
-                              new Paragraph({
-                                spacing: { after: 20 },
-                                children: [
-                                  new TextRun({ text: `Programa/Doador: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: FONT, color: '475569' })
-                                ]
-                              })
-                            ]
-                          : []),
-                        ...exp.highlights.map(
-                          (h) =>
-                            new Paragraph({
-                              bullet: { level: 0 },
-                              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                              children: [new TextRun({ text: h, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
-                            })
-                        )
-                      ]
-                    })
-                  ]
-                })
-              ]
-            })
-          );
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createEuropassHeading('Formação Académica')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              borders: NO_BORDERS,
-              rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({
-                      width: { size: 26, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: edu.period || '', bold: true, size: m.fontSizeSubtext, font: FONT, color: EU_BLUE })
-                          ]
-                        })
-                      ]
-                    }),
-                    new TableCell({
-                      width: { size: 74, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 15 },
-                          children: [
-                            new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                            new TextRun({ text: ` — ${edu.institution}`, size: m.fontSizeBody, font: FONT, color: '334155' })
-                          ]
-                        })
-                      ]
-                    })
-                  ]
-                })
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createEuropassHeading('Formação Complementar & Certificações')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: FONT, color: '1E293B' })
-              ]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createEuropassHeading('Competências Pessoais & Técnicas')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: FONT, color: EU_BLUE }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: FONT, color: '1E293B' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const borderEu = { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' };
-        const langRows: TableRow[] = [
-          new TableRow({
-            children: [
-              new TableCell({
-                borders: { top: borderEu, bottom: borderEu, left: borderEu, right: borderEu },
-                width: { size: 40, type: WidthType.PERCENTAGE },
-                shading: { fill: 'F1F5F9' },
-                children: [new Paragraph({ children: [new TextRun({ text: 'Língua', bold: true, size: m.fontSizeSubtext, font: FONT })] })]
-              }),
-              new TableCell({
-                borders: { top: borderEu, bottom: borderEu, left: borderEu, right: borderEu },
-                width: { size: 60, type: WidthType.PERCENTAGE },
-                shading: { fill: 'F1F5F9' },
-                children: [new Paragraph({ children: [new TextRun({ text: 'Nível CEFR / Proficiência', bold: true, size: m.fontSizeSubtext, font: FONT })] })]
-              })
-            ]
-          })
-        ];
-
-        cv.languages.forEach((l) => {
-          langRows.push(
-            new TableRow({
-              children: [
-                new TableCell({
-                  borders: { top: borderEu, bottom: borderEu, left: borderEu, right: borderEu },
-                  children: [new Paragraph({ children: [new TextRun({ text: l.language, bold: true, size: m.fontSizeSubtext, font: FONT })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderEu, bottom: borderEu, left: borderEu, right: borderEu },
-                  children: [new Paragraph({ children: [new TextRun({ text: l.level, size: m.fontSizeSubtext, font: FONT })] })]
-                })
-              ]
-            })
-          );
-        });
-
-        return [
-          createEuropassHeading('Línguas Estrangeiras (Quadro Europeu CEFR)'),
-          new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: langRows })
-        ];
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createEuropassHeading('Referências')];
-        cv.references.forEach((r) => {
-          refItems.push(
-            new Table({
-              width: { size: 100, type: WidthType.PERCENTAGE },
-              borders: NO_BORDERS,
-              rows: [
-                new TableRow({
-                  children: [
-                    new TableCell({
-                      width: { size: 30, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 10 },
-                          children: [new TextRun({ text: r.name, bold: true, size: m.fontSizeSubtext, font: FONT, color: EU_BLUE })]
-                        })
-                      ]
-                    }),
-                    new TableCell({
-                      width: { size: 70, type: WidthType.PERCENTAGE },
-                      borders: NO_BORDERS,
-                      children: [
-                        new Paragraph({
-                          spacing: { before: m.itemBefore, after: 10 },
-                          children: [
-                            new TextRun({ text: `${r.institutionAndPosition} · Contacto: `, size: m.fontSizeSubtext, font: FONT }),
-                            new TextRun({ text: r.contact, bold: true, size: m.fontSizeSubtext, font: FONT, color: '0F172A' })
-                          ]
-                        })
-                      ]
-                    })
-                  ]
-                })
-              ]
-            })
-          );
-        });
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderEuropassSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 3. CREATIVE SPLIT MODEL (Two-column layout with dark sidebar and photo)
+// CREATIVE SPLIT TWO-COLUMN ENGINE (Full-bleed colored sidebar matching screen)
 // ============================================================================
 function buildCreativeSplitDoc(
   cv: CVData,
   hasActivePlan: boolean,
   COLOR_PRIMARY: string,
   photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
+  density: 'compact' | 'normal' | 'relaxed',
+  lang: LanguageCode
 ): Document {
-  const FONT = 'Arial';
+  const FONT = 'Calibri';
+  const MONO = 'Consolas';
   const SIDEBAR_BG = COLOR_PRIMARY || '0F172A';
+  const CARD_BG = blendHexWithWhite(SIDEBAR_BG, 0.12);
+  const DIVIDER_COLOR = blendHexLighter(SIDEBAR_BG, 0.28);
+  const titles = getResolvedSectionTitles(lang, 'creative_split');
   const m = getSpacingMetrics(density);
-  const children: (Paragraph | Table)[] = [];
 
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(FONT));
-  }
-
-  // Left Sidebar Content (White text on dark background)
   const sidebarElements: Paragraph[] = [];
 
   if (photoBytes) {
     sidebarElements.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 60, after: 80 },
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 40, after: 140 },
         children: [
           new ImageRun({
             data: photoBytes.data,
-            transformation: { width: 95, height: 95 },
+            transformation: { width: 96, height: 96 },
             type: photoBytes.type
+          })
+        ]
+      })
+    );
+  } else {
+    sidebarElements.push(
+      new Paragraph({
+        spacing: { before: 20, after: 120 },
+        children: [
+          new TextRun({
+            text: ` ${titles.chrome.creativeTag.toUpperCase()} `,
+            bold: true,
+            size: 15,
+            font: FONT,
+            color: 'FFFFFF',
+            shading: { fill: CARD_BG, type: ShadingType.CLEAR }
           })
         ]
       })
@@ -1027,12 +1374,12 @@ function buildCreativeSplitDoc(
   sidebarElements.push(
     new Paragraph({
       alignment: AlignmentType.LEFT,
-      spacing: { after: 15 },
+      spacing: { after: 30 },
       children: [
         new TextRun({
           text: (cv.personalDetails.name || 'SEU NOME').toUpperCase(),
           bold: true,
-          size: m.fontSizeTitle - 6,
+          size: m.fontSizeTitle - 4,
           font: FONT,
           color: 'FFFFFF'
         })
@@ -1040,53 +1387,108 @@ function buildCreativeSplitDoc(
     }),
     new Paragraph({
       alignment: AlignmentType.LEFT,
-      spacing: { after: 100 },
+      spacing: { after: 150 },
       children: [
         new TextRun({
           text: cv.personalDetails.title || '',
-          size: m.fontSizeSubtitle - 2,
+          size: m.fontSizeSubtitle - 1,
           font: FONT,
-          color: 'CBD5E1'
+          color: 'E2E8F0'
         })
       ]
     }),
     new Paragraph({
-      spacing: { before: 60, after: 20 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '64748B' } },
+      spacing: { before: 60, after: 55 },
+      border: { top: { style: BorderStyle.SINGLE, size: 4, color: DIVIDER_COLOR, space: 8 } },
       children: [
-        new TextRun({ text: 'CONTACTOS', bold: true, size: m.fontSizeHeading - 2, font: FONT, color: 'FFFFFF' })
-      ]
-    }),
-    new Paragraph({
-      spacing: { after: 15, line: 240 },
-      children: [
-        new TextRun({ text: `${cv.personalDetails.location}\n`, size: m.fontSizeSubtext, font: FONT, color: 'E2E8F0' }),
-        new TextRun({ text: `${cv.personalDetails.phone}\n`, size: m.fontSizeSubtext, font: FONT, color: 'E2E8F0' }),
-        new TextRun({ text: `${cv.personalDetails.email}\n`, size: m.fontSizeSubtext, font: FONT, color: 'E2E8F0' }),
-        cv.personalDetails.linkedin
-          ? new TextRun({ text: `${cv.personalDetails.linkedin}\n`, size: m.fontSizeSubtext, font: FONT, color: 'E2E8F0' })
-          : new TextRun({ text: '', size: 1 })
+        new TextRun({
+          text: titles.chrome.contactsLabel.toUpperCase(),
+          bold: true,
+          size: 15,
+          font: FONT,
+          color: 'CBD5E1'
+        })
       ]
     })
   );
 
+  const contactEntries: { label: string; value?: string; mono?: boolean }[] = [
+    { label: titles.chrome.locationLabel, value: cv.personalDetails.location },
+    { label: titles.chrome.phoneLabel, value: cv.personalDetails.phone, mono: true },
+    { label: titles.chrome.emailLabel, value: cv.personalDetails.email },
+    { label: 'LinkedIn', value: cv.personalDetails.linkedin },
+    { label: titles.chrome.websiteLabel, value: cv.personalDetails.website }
+  ];
+
+  contactEntries.forEach((entry) => {
+    if (!entry.value) return;
+    sidebarElements.push(
+      new Paragraph({
+        spacing: { before: 25, after: 0 },
+        children: [
+          new TextRun({
+            text: entry.label,
+            size: 14,
+            font: FONT,
+            color: 'CBD5E1'
+          })
+        ]
+      }),
+      new Paragraph({
+        spacing: { before: 0, after: 45 },
+        children: [
+          new TextRun({
+            text: entry.value,
+            size: m.fontSizeSubtext - 0.5,
+            font: entry.mono ? MONO : FONT,
+            color: 'FFFFFF'
+          })
+        ]
+      })
+    );
+  });
+
   if (isSecVisible(cv, 'competencies') && cv.competencies && cv.competencies.length > 0) {
     sidebarElements.push(
       new Paragraph({
-        spacing: { before: 80, after: 20 },
-        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '64748B' } },
+        spacing: { before: 110, after: 60 },
+        border: { top: { style: BorderStyle.SINGLE, size: 4, color: DIVIDER_COLOR, space: 8 } },
         children: [
-          new TextRun({ text: 'COMPETÊNCIAS', bold: true, size: m.fontSizeHeading - 2, font: FONT, color: 'FFFFFF' })
+          new TextRun({
+            text: titles.chrome.skillsShort.toUpperCase(),
+            bold: true,
+            size: 15,
+            font: FONT,
+            color: 'CBD5E1'
+          })
         ]
       })
     );
     cv.competencies.forEach((c) => {
       sidebarElements.push(
         new Paragraph({
-          spacing: { after: 15, line: 230 },
+          spacing: { before: 20, after: 45, line: 255 },
+          shading: { fill: CARD_BG, type: ShadingType.CLEAR },
+          border: {
+            top: { style: BorderStyle.SINGLE, size: 6, color: CARD_BG },
+            bottom: { style: BorderStyle.SINGLE, size: 6, color: CARD_BG },
+            left: { style: BorderStyle.SINGLE, size: 6, color: CARD_BG },
+            right: { style: BorderStyle.SINGLE, size: 6, color: CARD_BG }
+          },
           children: [
-            new TextRun({ text: `• ${c.category}: `, bold: true, size: m.fontSizeSubtext, font: FONT, color: 'FFFFFF' }),
-            new TextRun({ text: c.description, size: m.fontSizeSubtext - 1, font: FONT, color: 'CBD5E1' })
+            new TextRun({
+              text: `${c.category}\n`,
+              bold: true,
+              size: m.fontSizeSubtext,
+              font: FONT,
+              color: 'FFFFFF'
+            }),
+            new TextRun({
+              text: c.description,
+              size: m.fontSizeSubtext - 1,
+              font: FONT,
+              color: 'E2E8F0'
+            })
           ]
         })
       );
@@ -1096,113 +1498,196 @@ function buildCreativeSplitDoc(
   if (isSecVisible(cv, 'languages') && cv.languages && cv.languages.length > 0) {
     sidebarElements.push(
       new Paragraph({
-        spacing: { before: 80, after: 20 },
-        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '64748B' } },
+        spacing: { before: 110, after: 55 },
+        border: { top: { style: BorderStyle.SINGLE, size: 4, color: DIVIDER_COLOR, space: 8 } },
         children: [
-          new TextRun({ text: 'IDIOMAS', bold: true, size: m.fontSizeHeading - 2, font: FONT, color: 'FFFFFF' })
+          new TextRun({
+            text: titles.chrome.languagesShort.toUpperCase(),
+            bold: true,
+            size: 15,
+            font: FONT,
+            color: 'CBD5E1'
+          })
         ]
       })
     );
     cv.languages.forEach((l) => {
       sidebarElements.push(
         new Paragraph({
-          spacing: { after: 10 },
+          spacing: { after: 30 },
           children: [
-            new TextRun({ text: `• ${l.language}: `, bold: true, size: m.fontSizeSubtext, font: FONT, color: 'FFFFFF' }),
-            new TextRun({ text: l.level, size: m.fontSizeSubtext - 1, font: FONT, color: 'CBD5E1' })
+            new TextRun({ text: `${l.language}: `, bold: true, size: m.fontSizeSubtext, font: FONT, color: 'FFFFFF' }),
+            new TextRun({ text: l.level, size: m.fontSizeSubtext - 0.5, font: FONT, color: 'E2E8F0' })
           ]
         })
       );
     });
   }
 
-  if (isSecVisible(cv, 'references') && cv.references && cv.references.length > 0) {
-    sidebarElements.push(
-      new Paragraph({
-        spacing: { before: 80, after: 20 },
-        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '64748B' } },
-        children: [
-          new TextRun({ text: 'REFERÊNCIAS', bold: true, size: m.fontSizeHeading - 2, font: FONT, color: 'FFFFFF' })
-        ]
-      })
-    );
-    cv.references.forEach((r) => {
-      sidebarElements.push(
-        new Paragraph({
-          spacing: { after: 10 },
-          children: [
-            new TextRun({ text: `• ${r.name}: `, bold: true, size: m.fontSizeSubtext, font: FONT, color: 'FFFFFF' }),
-            new TextRun({ text: `${r.institutionAndPosition} (${r.contact})`, size: m.fontSizeSubtext - 1, font: FONT, color: 'CBD5E1' })
-          ]
+  sidebarElements.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 220, after: 0 },
+      border: { top: { style: BorderStyle.SINGLE, size: 4, color: DIVIDER_COLOR, space: 8 } },
+      children: [
+        new TextRun({
+          text: titles.chrome.creativeFooter,
+          size: 14,
+          font: FONT,
+          color: 'CBD5E1'
         })
-      );
-    });
-  }
+      ]
+    })
+  );
 
-  // Right Main Column Content
-  const mainElements: Paragraph[] = [];
+  // Right Main Column (65% width) matching CVDocumentView lines 1156-1288
+  const mainElements: (Paragraph | Table)[] = [];
+
+  if (!hasActivePlan) {
+    mainElements.push(createWatermarkNotice(FONT));
+  }
 
   function createCreativeHeading(title: string): Paragraph {
     return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
+      spacing: { before: mainElements.length === 0 ? 20 : m.sectionBefore, after: m.sectionAfter },
       keepNext: true,
       border: {
-        bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY, space: 2 }
+        bottom: { style: BorderStyle.SINGLE, size: 12, color: SIDEBAR_BG, space: 4 }
       },
       children: [
         new TextRun({
           text: title.toUpperCase(),
           bold: true,
-          size: m.fontSizeHeading,
+          size: m.fontSizeHeading - 1,
           font: FONT,
-          color: COLOR_PRIMARY
+          color: SIDEBAR_BG
         })
       ]
     });
   }
 
-  function renderCreativeMainSection(key: CVSectionKey): Paragraph[] {
+  function renderCreativeMainSection(key: CVSectionKey): (Paragraph | Table)[] {
     if (!isSecVisible(cv, key)) return [];
     switch (key) {
       case 'summary':
         if (!cv.summary) return [];
         return [
-          createCreativeHeading('Perfil Profissional'),
+          createCreativeHeading(titles.summary),
           new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
             spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
+            children: [
+              new TextRun({ text: cv.summary, size: m.fontSizeBody - 0.5, font: FONT, color: '1E293B' })
+            ]
           })
         ];
 
       case 'experiences':
         if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: Paragraph[] = [createCreativeHeading('Experiência Profissional')];
-        cv.experiences.forEach((exp) => {
+        const expItems: (Paragraph | Table)[] = [createCreativeHeading(titles.experiences)];
+        cv.experiences.forEach((exp, idx) => {
           expItems.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              borders: NO_BORDERS,
+              rows: [
+                new TableRow({
+                  cantSplit: true,
+                  children: [
+                    new TableCell({
+                      width: { size: 68, type: WidthType.PERCENTAGE },
+                      borders: {
+                        ...NO_BORDERS,
+                        left: { style: BorderStyle.SINGLE, size: 10, color: 'E2E8F0' }
+                      },
+                      margins: { left: 110, top: idx === 0 ? 10 : 70 },
+                      children: [
+                        new Paragraph({
+                          spacing: { after: 10 },
+                          keepNext: true,
+                          children: [
+                            new TextRun({
+                              text: exp.company,
+                              bold: true,
+                              size: m.fontSizeBody + 0.5,
+                              font: FONT,
+                              color: '0F172A'
+                            })
+                          ]
+                        })
+                      ]
+                    }),
+                    new TableCell({
+                      width: { size: 32, type: WidthType.PERCENTAGE },
+                      borders: NO_BORDERS,
+                      margins: { top: idx === 0 ? 10 : 70 },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.RIGHT,
+                          spacing: { after: 10 },
+                          keepNext: true,
+                          children: [
+                            new TextRun({
+                              text: exp.period,
+                              size: m.fontSizeSubtext - 0.5,
+                              font: MONO,
+                              color: '64748B'
+                            })
+                          ]
+                        })
+                      ]
+                    })
+                  ]
+                })
+              ]
+            }),
             new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
+              spacing: { after: 20 },
+              keepNext: true,
+              indent: { left: 110 },
+              border: { left: { style: BorderStyle.SINGLE, size: 10, color: 'E2E8F0', space: 7 } },
               children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: FONT, color: '0F172A' }),
-                new TextRun({ text: ` — ${exp.company}`, bold: true, size: m.fontSizeBody, font: FONT, color: '475569' }),
-                new TextRun({ text: ` (${exp.period})`, italics: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' })
+                new TextRun({
+                  text: `${exp.role}${exp.location ? ` · ${exp.location}` : ''}`,
+                  bold: true,
+                  size: m.fontSizeSubtext,
+                  font: FONT,
+                  color: SIDEBAR_BG
+                })
               ]
             })
           );
+
           if (exp.donor) {
             expItems.push(
               new Paragraph({
                 spacing: { after: 15 },
-                children: [new TextRun({ text: `Programa: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' })]
+                indent: { left: 110 },
+                border: { left: { style: BorderStyle.SINGLE, size: 10, color: 'E2E8F0', space: 7 } },
+                children: [
+                  new TextRun({
+                    text: exp.donor,
+                    italics: true,
+                    size: m.fontSizeSubtext - 0.5,
+                    font: FONT,
+                    color: '64748B'
+                  })
+                ]
               })
             );
           }
-          exp.highlights.forEach((h) => {
+
+          exp.highlights.forEach((h, hIdx) => {
             if (!h.trim()) return;
             expItems.push(
               new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
+                spacing: { before: 0, after: hIdx === exp.highlights.length - 1 ? m.bulletAfter + 35 : m.bulletAfter, line: m.lineSpacing - 10 },
+                indent: { left: 260, hanging: 140 },
+                border: { left: { style: BorderStyle.SINGLE, size: 10, color: 'E2E8F0', space: 7 } },
+                children: [
+                  new TextRun({ text: '• ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '94A3B8' }),
+                  new TextRun({ text: h, size: m.fontSizeSubtext + 0.5, font: FONT, color: '334155' })
+                ]
               })
             );
           });
@@ -1211,14 +1696,44 @@ function buildCreativeSplitDoc(
 
       case 'educations':
         if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: Paragraph[] = [createCreativeHeading('Formação Académica')];
+        const eduItems: (Paragraph | Table)[] = [createCreativeHeading(titles.educations)];
         cv.educations.forEach((edu) => {
           eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: FONT, color: '334155' })
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              borders: NO_BORDERS,
+              rows: [
+                new TableRow({
+                  cantSplit: true,
+                  children: [
+                    new TableCell({
+                      width: { size: 74, type: WidthType.PERCENTAGE },
+                      borders: NO_BORDERS,
+                      children: [
+                        new Paragraph({
+                          spacing: { before: 20, after: 20 },
+                          children: [
+                            new TextRun({ text: edu.degree, bold: true, size: m.fontSizeSubtext + 0.5, font: FONT, color: '0F172A' }),
+                            new TextRun({ text: ` — ${edu.institution}`, size: m.fontSizeSubtext + 0.5, font: FONT, color: '475569' })
+                          ]
+                        })
+                      ]
+                    }),
+                    new TableCell({
+                      width: { size: 26, type: WidthType.PERCENTAGE },
+                      borders: NO_BORDERS,
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.RIGHT,
+                          spacing: { before: 20, after: 20 },
+                          children: [
+                            new TextRun({ text: edu.period, size: m.fontSizeSubtext - 0.5, font: MONO, color: '64748B' })
+                          ]
+                        })
+                      ]
+                    })
+                  ]
+                })
               ]
             })
           );
@@ -1227,19 +1742,66 @@ function buildCreativeSplitDoc(
 
       case 'trainings':
         if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trItems: Paragraph[] = [createCreativeHeading('Certificações & Cursos')];
+        const trItems: (Paragraph | Table)[] = [createCreativeHeading(titles.trainings)];
         cv.trainings.forEach((t) => {
           trItems.push(
             new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
+              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing - 10 },
+              indent: { left: 200, hanging: 150 },
               children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: FONT, color: '1E293B' })
+                new TextRun({ text: '• ', bold: true, size: m.fontSizeSubtext, font: FONT, color: '94A3B8' }),
+                new TextRun({ text: t, size: m.fontSizeSubtext + 0.5, font: FONT, color: '334155' })
               ]
             })
           );
         });
         return trItems;
+
+      case 'references':
+        if (!cv.references || cv.references.length === 0) return [];
+        const refItems: (Paragraph | Table)[] = [createCreativeHeading(titles.references)];
+        cv.references.forEach((r) => {
+          refItems.push(
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              borders: NO_BORDERS,
+              rows: [
+                new TableRow({
+                  cantSplit: true,
+                  children: [
+                    new TableCell({
+                      width: { size: 68, type: WidthType.PERCENTAGE },
+                      borders: NO_BORDERS,
+                      children: [
+                        new Paragraph({
+                          spacing: { before: 20, after: 20 },
+                          children: [
+                            new TextRun({ text: r.name, bold: true, size: m.fontSizeSubtext + 0.5, font: FONT, color: '0F172A' }),
+                            new TextRun({ text: ` — ${r.institutionAndPosition}`, size: m.fontSizeSubtext + 0.5, font: FONT, color: '475569' })
+                          ]
+                        })
+                      ]
+                    }),
+                    new TableCell({
+                      width: { size: 32, type: WidthType.PERCENTAGE },
+                      borders: NO_BORDERS,
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.RIGHT,
+                          spacing: { before: 20, after: 20 },
+                          children: [
+                            new TextRun({ text: r.contact, size: m.fontSizeSubtext - 0.5, font: MONO, color: '64748B' })
+                          ]
+                        })
+                      ]
+                    })
+                  ]
+                })
+              ]
+            })
+          );
+        });
+        return refItems;
 
       default:
         return [];
@@ -1253,22 +1815,34 @@ function buildCreativeSplitDoc(
     mainElements.push(...renderCreativeMainSection(secKey));
   });
 
-  // Create 2-column Word Table
+  if (mainElements.length === 0) {
+    mainElements.push(new Paragraph({ children: [] }));
+  }
+
+  // Full-bleed edge-to-edge 35% / 65% table matching CVDocumentView lines 1031-1289
+  const padSideV = density === 'compact' ? 380 : density === 'relaxed' ? 620 : 480;
+  const padSideH = density === 'compact' ? 300 : density === 'relaxed' ? 460 : 380;
+  const padMainV = density === 'compact' ? 400 : density === 'relaxed' ? 640 : 520;
+  const padMainH = density === 'compact' ? 420 : density === 'relaxed' ? 620 : 520;
+
   const splitTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: NO_BORDERS,
     rows: [
       new TableRow({
+        height: { value: A4_HEIGHT_TWIP, rule: HeightRule.ATLEAST },
         children: [
           new TableCell({
-            width: { size: 34, type: WidthType.PERCENTAGE },
-            shading: { fill: SIDEBAR_BG },
+            width: { size: 35, type: WidthType.PERCENTAGE },
+            shading: { fill: SIDEBAR_BG, type: ShadingType.CLEAR },
             borders: NO_BORDERS,
+            margins: { top: padSideV, bottom: padSideV, left: padSideH, right: padSideH },
             children: sidebarElements
           }),
           new TableCell({
-            width: { size: 66, type: WidthType.PERCENTAGE },
+            width: { size: 65, type: WidthType.PERCENTAGE },
             borders: NO_BORDERS,
+            margins: { top: padMainV, bottom: padMainV, left: padMainH, right: padMainH },
             children: mainElements
           })
         ]
@@ -1276,1883 +1850,71 @@ function buildCreativeSplitDoc(
     ]
   });
 
-  children.push(splitTable);
-
   return new Document({
     sections: [
       {
         properties: {
           page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
+            size: { width: A4_WIDTH_TWIP, height: A4_HEIGHT_TWIP },
+            margin: { top: 0, bottom: 0, left: 0, right: 0 }
           }
         },
-        children
+        children: [splitTable]
       }
     ]
   });
 }
 
 // ============================================================================
-// 4. TECH MODERN MODEL (Tech badges, portfolio links, clean modern sans)
-// ============================================================================
-function buildTechModernDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const FONT = 'Calibri';
-  const m = getSpacingMetrics(density);
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(FONT));
-  }
-
-  // Header Table
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 78 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          spacing: { after: 20 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.name || 'SEU NOME',
-              bold: true,
-              size: m.fontSizeTitle,
-              font: FONT,
-              color: COLOR_PRIMARY
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 35 },
-          children: [
-            new TextRun({
-              text: `// ${cv.personalDetails.title || 'Tech Lead & Software Architect'}`,
-              bold: true,
-              size: m.fontSizeSubtitle,
-              font: FONT,
-              color: '0D9488'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: m.summaryAfter },
-          children: [
-            new TextRun({
-              text: [
-                cv.personalDetails.location,
-                cv.personalDetails.phone,
-                cv.personalDetails.email,
-                cv.personalDetails.website ? `Portfolio: ${cv.personalDetails.website}` : '',
-                cv.personalDetails.linkedin ? `LinkedIn: ${cv.personalDetails.linkedin}` : ''
-              ]
-                .filter(Boolean)
-                .join('   |   '),
-              size: m.fontSizeSubtext,
-              font: FONT,
-              color: '475569'
-            })
-          ]
-        })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 22, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 88, height: 88 },
-                type: photoBytes.type
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  function createTechHeading(title: string): Paragraph {
-    return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 8, color: '0D9488', space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: `> ${title.toUpperCase()}`,
-          bold: true,
-          size: m.fontSizeHeading,
-          font: FONT,
-          color: COLOR_PRIMARY
-        })
-      ]
-    });
-  }
-
-  function renderTechSection(key: CVSectionKey): Paragraph[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createTechHeading('Architecture & Leadership Profile'),
-          new Paragraph({
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: Paragraph[] = [createTechHeading('Technical Skills & Stack')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: FONT, color: '334155' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: Paragraph[] = [createTechHeading('Professional Experience')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: FONT, color: '0F172A' }),
-                new TextRun({ text: ` @ ${exp.company}`, bold: true, size: m.fontSizeBody, font: FONT, color: '0D9488' }),
-                new TextRun({ text: `  [${exp.period}]`, size: m.fontSizeSubtext, font: FONT, color: '64748B' })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 15 },
-                children: [new TextRun({ text: `Tech Stack / Project: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: FONT, color: '64748B' })]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: FONT, color: '1E293B' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: Paragraph[] = [createTechHeading('Education & Credentials')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: FONT, color: '334155' })
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trItems: Paragraph[] = [createTechHeading('Certifications & Specializations')];
-        cv.trainings.forEach((t) => {
-          trItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: FONT, color: '1E293B' })
-              ]
-            })
-          );
-        });
-        return trItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: Paragraph[] = [createTechHeading('Languages')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `${l.language}: `, bold: true, size: m.fontSizeBody, font: FONT }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   |   ' : ''}`, size: m.fontSizeBody, font: FONT, color: '475569' })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: Paragraph[] = [createTechHeading('References & Endorsements')];
-        cv.references.forEach((r) => {
-          refItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${r.name} `, bold: true, size: m.fontSizeBody, font: FONT, color: '0F172A' }),
-                new TextRun({ text: `(${r.institutionAndPosition}) · Contact: `, size: m.fontSizeBody, font: FONT, color: '475569' }),
-                new TextRun({ text: r.contact, bold: true, size: m.fontSizeBody, font: FONT, color: '0D9488' })
-              ]
-            })
-          );
-        });
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderTechSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 5. ATS COMPACT MODEL (Strict US text-first, zero tables, monospace)
-// ============================================================================
-function buildAtsCompactDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const FONT = 'Consolas';
-  const m = getSpacingMetrics(density);
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(FONT));
-  }
-
-  // ATS Header
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 20 },
-      children: [
-        new TextRun({
-          text: (cv.personalDetails.name || 'SEU NOME').toUpperCase(),
-          bold: true,
-          size: m.fontSizeTitle - 4,
-          font: FONT,
-          color: '000000'
-        })
-      ]
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 30 },
-      children: [
-        new TextRun({
-          text: (cv.personalDetails.title || '').toUpperCase(),
-          bold: true,
-          size: m.fontSizeSubtitle - 2,
-          font: FONT,
-          color: '333333'
-        })
-      ]
-    }),
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: m.summaryAfter },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '000000' } },
-      children: [
-        new TextRun({
-          text: [
-            cv.personalDetails.location,
-            cv.personalDetails.phone,
-            cv.personalDetails.email,
-            cv.personalDetails.linkedin
-          ]
-            .filter(Boolean)
-            .join(' | '),
-          size: m.fontSizeSubtext,
-          font: FONT,
-          color: '000000'
-        })
-      ]
-    })
-  );
-
-  function createAtsHeading(title: string): Paragraph {
-    return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
-      keepNext: true,
-      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '000000' } },
-      children: [
-        new TextRun({
-          text: title.toUpperCase(),
-          bold: true,
-          size: m.fontSizeHeading,
-          font: FONT,
-          color: '000000'
-        })
-      ]
-    });
-  }
-
-  function renderAtsSection(key: CVSectionKey): Paragraph[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createAtsHeading('PROFESSIONAL SUMMARY'),
-          new Paragraph({
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: FONT, color: '000000' })]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: Paragraph[] = [createAtsHeading('CORE COMPETENCIES')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: FONT }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: FONT })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: Paragraph[] = [createAtsHeading('PROFESSIONAL EXPERIENCE')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: `${exp.role} - ${exp.company}`, bold: true, size: m.fontSizeBody, font: FONT }),
-                new TextRun({ text: ` (${exp.period})`, size: m.fontSizeSubtext, font: FONT })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 10 },
-                children: [new TextRun({ text: `Program: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: FONT })]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: FONT })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: Paragraph[] = [createAtsHeading('EDUCATION')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: `${edu.degree} - ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: FONT })
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: Paragraph[] = [createAtsHeading('CERTIFICATIONS & TRAINING')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: FONT })
-              ]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: Paragraph[] = [createAtsHeading('LANGUAGES')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `${l.language}: `, bold: true, size: m.fontSizeBody, font: FONT }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? ' | ' : ''}`, size: m.fontSizeBody, font: FONT })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: Paragraph[] = [createAtsHeading('REFERENCES')];
-        cv.references.forEach((r) => {
-          refItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${r.name} - ${r.institutionAndPosition} (${r.contact})`, size: m.fontSizeBody, font: FONT })
-              ]
-            })
-          );
-        });
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderAtsSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 6. MODERN EUROPEAN / NORDIC MINIMALIST / UN CLASSIC (Clean Header + Photo)
-// ============================================================================
-function buildModernEuropeanDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed',
-  fontFamily: string = 'Calibri'
-): Document {
-  const m = getSpacingMetrics(density);
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(fontFamily));
-  }
-
-  // Header Table with Photo
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 76 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.name || 'SEU NOME COMPLETO',
-              bold: true,
-              size: m.fontSizeTitle,
-              font: fontFamily,
-              color: COLOR_PRIMARY
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 30 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.title || '',
-              bold: true,
-              size: m.fontSizeSubtitle,
-              font: fontFamily,
-              color: '475569'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: m.summaryAfter },
-          border: { bottom: { style: BorderStyle.SINGLE, size: 8, color: COLOR_PRIMARY, space: 4 } },
-          children: [
-            new TextRun({
-              text: [
-                cv.personalDetails.location,
-                cv.personalDetails.phone,
-                cv.personalDetails.email,
-                cv.personalDetails.linkedin
-              ]
-                .filter(Boolean)
-                .join('   |   '),
-              size: m.fontSizeSubtext,
-              font: fontFamily,
-              color: '64748B'
-            })
-          ]
-        })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 24, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { after: 15 },
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 90, height: 90 },
-                type: photoBytes.type
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  function createModernSectionHeading(title: string): Paragraph {
-    return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 6, color: COLOR_PRIMARY, space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: title.toUpperCase(),
-          bold: true,
-          size: m.fontSizeHeading,
-          font: fontFamily,
-          color: COLOR_PRIMARY
-        })
-      ]
-    });
-  }
-
-  function renderModernSection(key: CVSectionKey): (Paragraph | Table)[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createModernSectionHeading('Resumo Profissional'),
-          new Paragraph({
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createModernSectionHeading('Competências & Habilidades Chave')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: COLOR_PRIMARY }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: fontFamily, color: '334155' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createModernSectionHeading('Experiência Profissional')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${exp.company}`, bold: true, size: m.fontSizeBody, font: fontFamily, color: COLOR_PRIMARY }),
-                new TextRun({ text: `  (${exp.period}${exp.location ? ` · ${exp.location}` : ''})`, size: m.fontSizeSubtext, font: fontFamily, color: '64748B' })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 20 },
-                children: [new TextRun({ text: `Projeto: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '64748B' })]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createModernSectionHeading('Formação Académica')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 15 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: fontFamily, color: '334155' })
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createModernSectionHeading('Formação Complementar & Certificações')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: t, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })
-              ]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: (Paragraph | Table)[] = [createModernSectionHeading('Idiomas & Proficiência')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `• ${l.language}: `, bold: true, size: m.fontSizeBody, font: fontFamily }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   |   ' : ''}`, size: m.fontSizeBody, font: fontFamily, color: '64748B' })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createModernSectionHeading('Referências Profissionais')];
-        const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: 'D1D5DB' };
-        const headerCells = ['Nome', 'Instituição & Cargo', 'Contacto'].map(
-          (h) =>
-            new TableCell({
-              borders: { top: borderConfig, bottom: { ...borderConfig, size: 8, color: '9CA3AF' }, left: borderConfig, right: borderConfig },
-              children: [
-                new Paragraph({
-                  spacing: { before: 40, after: 40 },
-                  children: [new TextRun({ text: h, bold: true, size: m.fontSizeSubtext, font: fontFamily, color: COLOR_PRIMARY })]
-                })
-              ]
-            })
-        );
-        const rows: TableRow[] = [new TableRow({ children: headerCells })];
-
-        cv.references.forEach((ref) => {
-          rows.push(
-            new TableRow({
-              children: [
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.name, bold: true, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.institutionAndPosition, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.contact, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                })
-              ]
-            })
-          );
-        });
-        refItems.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderModernSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 7. NORDIC MINIMALIST (Clean Asymmetric / Centered with 01 / 02 Numbered Sections)
-// ============================================================================
-function buildMinimalistDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const m = getSpacingMetrics(density);
-  const fontFamily = 'Arial';
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(fontFamily));
-  }
-
-  // Nordic Top Badge
-  children.push(
-    new Paragraph({
-      spacing: { after: 30 },
-      children: [
-        new TextRun({
-          text: 'CURRICULUM VITAE · PADRÃO NÓRDICO',
-          size: 15,
-          font: fontFamily,
-          bold: true,
-          color: '94A3B8'
-        })
-      ]
-    })
-  );
-
-  // Header with optional photo
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 76 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          spacing: { after: 15 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.name || 'SEU NOME COMPLETO',
-              bold: true,
-              size: m.fontSizeTitle,
-              font: fontFamily,
-              color: COLOR_PRIMARY
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 25 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.title || '',
-              bold: false,
-              size: m.fontSizeSubtitle,
-              font: fontFamily,
-              color: '475569'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: m.summaryAfter },
-          border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1', space: 4 } },
-          children: [
-            new TextRun({
-              text: [
-                cv.personalDetails.location,
-                cv.personalDetails.phone,
-                cv.personalDetails.email,
-                cv.personalDetails.linkedin
-              ]
-                .filter(Boolean)
-                .join('   ·   '),
-              size: m.fontSizeSubtext,
-              font: fontFamily,
-              color: '64748B'
-            })
-          ]
-        })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 24, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { after: 15 },
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 85, height: 85 },
-                type: photoBytes.type
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  let sectionCounter = 1;
-
-  function createMinimalistSectionHeading(title: string): Paragraph {
-    const numPrefix = sectionCounter < 10 ? `0${sectionCounter}` : `${sectionCounter}`;
-    sectionCounter++;
-    return new Paragraph({
-      spacing: { before: m.sectionBefore, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1', space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: `${numPrefix} / `,
-          size: m.fontSizeHeading - 1,
-          font: fontFamily,
-          bold: true,
-          color: '94A3B8'
-        }),
-        new TextRun({
-          text: title.toUpperCase(),
-          bold: true,
-          size: m.fontSizeHeading,
-          font: fontFamily,
-          color: COLOR_PRIMARY
-        })
-      ]
-    });
-  }
-
-  function renderMinimalistSection(key: CVSectionKey): (Paragraph | Table)[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createMinimalistSectionHeading('Resumo Profissional'),
-          new Paragraph({
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [
-              new TextRun({
-                text: cv.summary,
-                size: m.fontSizeBody,
-                font: fontFamily,
-                color: '334155'
-              })
-            ]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Competências & Habilidades')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: COLOR_PRIMARY }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: fontFamily, color: '334155' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Experiência Profissional')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${exp.company}`, size: m.fontSizeBody, font: fontFamily, color: COLOR_PRIMARY }),
-                new TextRun({ text: ` (${exp.period}${exp.location ? ` · ${exp.location}` : ''})`, size: m.fontSizeSubtext, font: fontFamily, color: '64748B' })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 15 },
-                children: [new TextRun({ text: `Projeto: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '64748B' })]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: fontFamily, color: '334155' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Formação Académica')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: fontFamily, color: '475569' })
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Certificações & Especializações')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [new TextRun({ text: t, size: m.fontSizeBody, font: fontFamily, color: '334155' })]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Idiomas & Proficiência')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `• ${l.language}: `, bold: true, size: m.fontSizeBody, font: fontFamily }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   ·   ' : ''}`, size: m.fontSizeBody, font: fontFamily, color: '64748B' })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createMinimalistSectionHeading('Referências Profissionais')];
-        cv.references.forEach((r) => {
-          refItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${r.name}`, bold: true, size: m.fontSizeBody, font: fontFamily }),
-                new TextRun({ text: ` — ${r.institutionAndPosition} (${r.contact})`, size: m.fontSizeBody, font: fontFamily, color: '475569' })
-              ]
-            })
-          );
-        });
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderMinimalistSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 8. ACADEMIC LATTES (CNPq / Academic Research & University Teaching Format)
-// ============================================================================
-function buildAcademicLattesDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const m = getSpacingMetrics(density);
-  const fontFamily = 'Times New Roman';
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(fontFamily));
-  }
-
-  // Official Lattes Header Box
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 20 },
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 6, color: '334155', space: 2 },
-        top: { style: BorderStyle.SINGLE, size: 6, color: '334155', space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: 'PLATAFORMA LATTES · CURRÍCULO DE CIÊNCIA E TECNOLOGIA',
-          bold: true,
-          size: 17,
-          font: fontFamily,
-          color: '1E293B'
-        }),
-        new TextRun({
-          text: '\nPadrão Oficial de Investigação Científica & Docência Universitária',
-          size: 14,
-          font: fontFamily,
-          italics: true,
-          color: '64748B'
-        })
-      ]
-    })
-  );
-
-  // Author details
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 78 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          spacing: { before: 20, after: 15 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.name || 'SEU NOME COMPLETO',
-              bold: true,
-              size: m.fontSizeTitle + 1,
-              font: fontFamily,
-              color: '0F172A'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: 25 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.title || 'Pesquisador(a) / Docente Universitário(a)',
-              bold: true,
-              italics: true,
-              size: m.fontSizeSubtitle,
-              font: fontFamily,
-              color: '334155'
-            })
-          ]
-        }),
-        new Paragraph({
-          spacing: { after: m.summaryAfter },
-          children: [
-            new TextRun({
-              text: [
-                cv.personalDetails.location,
-                cv.personalDetails.phone,
-                cv.personalDetails.email,
-                cv.personalDetails.linkedin
-              ]
-                .filter(Boolean)
-                .join('   |   '),
-              size: m.fontSizeSubtext,
-              font: fontFamily,
-              color: '475569'
-            })
-          ]
-        })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 22, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { before: 20, after: 15 },
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 90, height: 90 },
-                type: photoBytes.type
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  let romanIdx = 0;
-  const romanNumerals = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
-
-  function createAcademicSectionHeading(title: string): Paragraph {
-    const roman = romanNumerals[romanIdx] || `${romanIdx + 1}`;
-    romanIdx++;
-    return new Paragraph({
-      spacing: { before: m.sectionBefore + 20, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 8, color: '0F172A', space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: `${roman}. ${title.toUpperCase()}`,
-          bold: true,
-          size: m.fontSizeHeading,
-          font: fontFamily,
-          color: '0F172A'
-        })
-      ]
-    });
-  }
-
-  function renderAcademicSection(key: CVSectionKey): (Paragraph | Table)[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createAcademicSectionHeading('Resumo Académico & Linhas de Investigação'),
-          new Paragraph({
-            alignment: AlignmentType.JUSTIFIED,
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: fontFamily, color: '0F172A' })]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Áreas de Atuação & Metodologias')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Atuação Profissional, Pesquisa & Docência')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${exp.company}`, size: m.fontSizeBody, font: fontFamily, color: '1E293B' }),
-                new TextRun({ text: ` (${exp.period}${exp.location ? ` · ${exp.location}` : ''})`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 15 },
-                children: [new TextRun({ text: `Financiamento / Linha de Projeto: ${exp.donor}`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Formação Académica & Titulações')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: fontFamily, color: '334155' }),
-                ...(edu.gpaOrHonors ? [new TextRun({ text: ` [${edu.gpaOrHonors}]`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })] : [])
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Produção Científica, Certificações & Cursos')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [new TextRun({ text: t, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Idiomas & Proficiência Académica')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `• ${l.language}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   |   ' : ''}`, size: m.fontSizeBody, font: fontFamily, color: '475569' })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createAcademicSectionHeading('Referências Académicas & Bancas Avaliadoras')];
-        const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: '94A3B8' };
-        const headerCells = ['Nome do Avaliador / Pesquisador', 'Instituição & Departamento', 'Contacto Institucional'].map(
-          (h) =>
-            new TableCell({
-              borders: { top: borderConfig, bottom: { ...borderConfig, size: 8, color: '0F172A' }, left: borderConfig, right: borderConfig },
-              children: [
-                new Paragraph({
-                  spacing: { before: 30, after: 30 },
-                  children: [new TextRun({ text: h, bold: true, size: m.fontSizeSubtext, font: fontFamily, color: '0F172A' })]
-                })
-              ]
-            })
-        );
-        const rows: TableRow[] = [new TableRow({ children: headerCells })];
-        cv.references.forEach((ref) => {
-          rows.push(
-            new TableRow({
-              children: [
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.name, bold: true, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.institutionAndPosition, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.contact, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                })
-              ]
-            })
-          );
-        });
-        refItems.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderAcademicSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// 9. UN CLASSIC (United Nations / Multilateral Cooperation & Diplomatic Standard)
-// ============================================================================
-function buildUnClassicDoc(
-  cv: CVData,
-  hasActivePlan: boolean,
-  COLOR_PRIMARY: string,
-  photoBytes: { data: Uint8Array; type: 'png' | 'jpg' } | null,
-  density: 'compact' | 'normal' | 'relaxed'
-): Document {
-  const m = getSpacingMetrics(density);
-  const fontFamily = 'Times New Roman';
-  const children: (Paragraph | Table)[] = [];
-
-  if (!hasActivePlan) {
-    children.push(createWatermarkNotice(fontFamily));
-  }
-
-  // UN Banner
-  children.push(
-    new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 15 },
-      children: [
-        new TextRun({
-          text: 'UNITED NATIONS & INTERNATIONAL COOPERATION STANDARD',
-          bold: true,
-          size: 16,
-          font: fontFamily,
-          color: '1E3A8A'
-        })
-      ]
-    })
-  );
-
-  // Diplomatic Header
-  const headerCells: TableCell[] = [
-    new TableCell({
-      width: { size: photoBytes ? 76 : 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 15 },
-          children: [
-            new TextRun({
-              text: (cv.personalDetails.name || 'SEU NOME COMPLETO').toUpperCase(),
-              bold: true,
-              size: m.fontSizeTitle + 1,
-              font: fontFamily,
-              color: '0F172A'
-            })
-          ]
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: 20 },
-          children: [
-            new TextRun({
-              text: cv.personalDetails.title || 'Specialist / International Consultant',
-              bold: true,
-              size: m.fontSizeSubtitle,
-              font: fontFamily,
-              color: '1E3A8A'
-            })
-          ]
-        }),
-        new Paragraph({
-          alignment: AlignmentType.CENTER,
-          spacing: { after: m.summaryAfter },
-          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '1E3A8A', space: 4 } },
-          children: [
-            new TextRun({
-              text: [
-                cv.personalDetails.location,
-                cv.personalDetails.phone,
-                cv.personalDetails.email,
-                cv.personalDetails.linkedin
-              ]
-                .filter(Boolean)
-                .join('   |   '),
-              size: m.fontSizeSubtext,
-              font: fontFamily,
-              color: '475569'
-            })
-          ]
-        })
-      ]
-    })
-  ];
-
-  if (photoBytes) {
-    headerCells.push(
-      new TableCell({
-        width: { size: 24, type: WidthType.PERCENTAGE },
-        borders: NO_BORDERS,
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.RIGHT,
-            spacing: { after: 15 },
-            children: [
-              new ImageRun({
-                data: photoBytes.data,
-                transformation: { width: 90, height: 90 },
-                type: photoBytes.type
-              })
-            ]
-          })
-        ]
-      })
-    );
-  }
-
-  children.push(
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      borders: NO_BORDERS,
-      rows: [new TableRow({ children: headerCells })]
-    })
-  );
-
-  let numIdx = 1;
-
-  function createUnSectionHeading(title: string): Paragraph {
-    const headingText = `${numIdx}. ${title.toUpperCase()}`;
-    numIdx++;
-    return new Paragraph({
-      spacing: { before: m.sectionBefore + 15, after: m.sectionAfter },
-      keepNext: true,
-      border: {
-        bottom: { style: BorderStyle.SINGLE, size: 6, color: '1E3A8A', space: 2 }
-      },
-      children: [
-        new TextRun({
-          text: headingText,
-          bold: true,
-          size: m.fontSizeHeading,
-          font: fontFamily,
-          color: '1E3A8A'
-        })
-      ]
-    });
-  }
-
-  function renderUnSection(key: CVSectionKey): (Paragraph | Table)[] {
-    if (!isSecVisible(cv, key)) return [];
-    switch (key) {
-      case 'summary':
-        if (!cv.summary) return [];
-        return [
-          createUnSectionHeading('Executive Summary & Diplomatic Profile'),
-          new Paragraph({
-            alignment: AlignmentType.JUSTIFIED,
-            spacing: { after: m.summaryAfter, line: m.lineSpacing },
-            children: [new TextRun({ text: cv.summary, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-          })
-        ];
-
-      case 'competencies':
-        if (!cv.competencies || cv.competencies.length === 0) return [];
-        const compItems: (Paragraph | Table)[] = [createUnSectionHeading('Core Competencies & Multilateral Expertise')];
-        cv.competencies.forEach((c) => {
-          compItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [
-                new TextRun({ text: `${c.category}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: '1E3A8A' }),
-                new TextRun({ text: c.description, size: m.fontSizeBody, font: fontFamily, color: '334155' })
-              ]
-            })
-          );
-        });
-        return compItems;
-
-      case 'experiences':
-        if (!cv.experiences || cv.experiences.length === 0) return [];
-        const expItems: (Paragraph | Table)[] = [createUnSectionHeading('Professional Experience & Missions')];
-        cv.experiences.forEach((exp) => {
-          expItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: exp.role, bold: true, size: m.fontSizeBody + 0.5, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${exp.company}`, bold: true, size: m.fontSizeBody, font: fontFamily, color: '1E3A8A' }),
-                new TextRun({ text: ` (${exp.period}${exp.location ? ` · ${exp.location}` : ''})`, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })
-              ]
-            })
-          );
-          if (exp.donor) {
-            expItems.push(
-              new Paragraph({
-                spacing: { after: 15 },
-                children: [
-                  new TextRun({ text: `Projeto / Entidade Financiadora: `, bold: true, size: m.fontSizeSubtext, font: fontFamily, color: '1E3A8A' }),
-                  new TextRun({ text: exp.donor, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })
-                ]
-              })
-            );
-          }
-          exp.highlights.forEach((h) => {
-            if (!h.trim()) return;
-            expItems.push(
-              new Paragraph({
-                bullet: { level: 0 },
-                spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-                children: [new TextRun({ text: h, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-              })
-            );
-          });
-        });
-        return expItems;
-
-      case 'educations':
-        if (!cv.educations || cv.educations.length === 0) return [];
-        const eduItems: (Paragraph | Table)[] = [createUnSectionHeading('Academic Qualifications')];
-        cv.educations.forEach((edu) => {
-          eduItems.push(
-            new Paragraph({
-              spacing: { before: m.itemBefore, after: 10 },
-              children: [
-                new TextRun({ text: edu.degree, bold: true, size: m.fontSizeBody, font: fontFamily, color: '0F172A' }),
-                new TextRun({ text: ` — ${edu.institution} (${edu.period})`, size: m.fontSizeBody, font: fontFamily, color: '334155' }),
-                ...(edu.gpaOrHonors ? [new TextRun({ text: ` [${edu.gpaOrHonors}]`, italics: true, size: m.fontSizeSubtext, font: fontFamily, color: '475569' })] : [])
-              ]
-            })
-          );
-        });
-        return eduItems;
-
-      case 'trainings':
-        if (!cv.trainings || cv.trainings.length === 0) return [];
-        const trainItems: (Paragraph | Table)[] = [createUnSectionHeading('Certifications & Specialized Training')];
-        cv.trainings.forEach((t) => {
-          trainItems.push(
-            new Paragraph({
-              bullet: { level: 0 },
-              spacing: { before: 0, after: m.bulletAfter, line: m.lineSpacing },
-              children: [new TextRun({ text: t, size: m.fontSizeBody, font: fontFamily, color: '1E293B' })]
-            })
-          );
-        });
-        return trainItems;
-
-      case 'languages':
-        if (!cv.languages || cv.languages.length === 0) return [];
-        const langItems: (Paragraph | Table)[] = [createUnSectionHeading('Official Languages & Proficiency')];
-        const langRuns: TextRun[] = [];
-        cv.languages.forEach((l, idx) => {
-          langRuns.push(
-            new TextRun({ text: `• ${l.language}: `, bold: true, size: m.fontSizeBody, font: fontFamily, color: '1E3A8A' }),
-            new TextRun({ text: `${l.level}${idx < cv.languages.length - 1 ? '   |   ' : ''}`, size: m.fontSizeBody, font: fontFamily, color: '475569' })
-          );
-        });
-        langItems.push(new Paragraph({ spacing: { after: m.summaryAfter }, children: langRuns }));
-        return langItems;
-
-      case 'references':
-        if (!cv.references || cv.references.length === 0) return [];
-        const refItems: (Paragraph | Table)[] = [createUnSectionHeading('Professional & Institutional References')];
-        const borderConfig = { style: BorderStyle.SINGLE, size: 4, color: 'CBD5E1' };
-        const headerCells = ['Nome & Cargo', 'Organização / Agência', 'Contacto Oficial'].map(
-          (h) =>
-            new TableCell({
-              borders: { top: borderConfig, bottom: { ...borderConfig, size: 8, color: '1E3A8A' }, left: borderConfig, right: borderConfig },
-              children: [
-                new Paragraph({
-                  spacing: { before: 30, after: 30 },
-                  children: [new TextRun({ text: h, bold: true, size: m.fontSizeSubtext, font: fontFamily, color: '1E3A8A' })]
-                })
-              ]
-            })
-        );
-        const rows: TableRow[] = [new TableRow({ children: headerCells })];
-        cv.references.forEach((ref) => {
-          rows.push(
-            new TableRow({
-              children: [
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.name, bold: true, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.institutionAndPosition, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                }),
-                new TableCell({
-                  borders: { top: borderConfig, bottom: borderConfig, left: borderConfig, right: borderConfig },
-                  children: [new Paragraph({ children: [new TextRun({ text: ref.contact, size: m.fontSizeSubtext - 1, font: fontFamily })] })]
-                })
-              ]
-            })
-          );
-        });
-        refItems.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }));
-        return refItems;
-
-      default:
-        return [];
-    }
-  }
-
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
-
-  effectiveOrder.forEach((secKey) => {
-    children.push(...renderUnSection(secKey));
-  });
-
-  return new Document({
-    sections: [
-      {
-        properties: {
-          page: {
-            margin: {
-              top: m.pageMarginTop,
-              bottom: m.pageMarginBottom,
-              left: m.pageMarginLeft,
-              right: m.pageMarginRight
-            }
-          }
-        },
-        children
-      }
-    ]
-  });
-}
-
-// ============================================================================
-// MAIN WORD EXPORT DISPATCHER (Resolves Template Style, Spacing Density & Photo)
+// MAIN WORD EXPORT DISPATCHER (Resolves Template Style, Spacing Density, Lang & Photo)
 // ============================================================================
 export async function generateWordDocument(
   cv: CVData,
   hasActivePlan: boolean = true,
-  density: 'compact' | 'normal' | 'relaxed' = 'normal'
+  density: 'compact' | 'normal' | 'relaxed' = 'normal',
+  lang: LanguageCode = 'pt'
 ): Promise<Blob> {
   const COLOR_PRIMARY = cv.accentColor ? cv.accentColor.replace('#', '') : '0F172A';
 
-  // Fetch photo bytes if enabled
   const hasPhotoEnabled = cv.personalDetails.showPhoto !== false && Boolean(cv.personalDetails.photoUrl);
   const photoBytes = hasPhotoEnabled ? await getPhotoBytes(cv.personalDetails.photoUrl) : null;
 
-  let doc: Document;
-
-  switch (cv.templateStyle) {
-    case 'executive_harvard':
-      doc = buildHarvardDoc(cv, hasActivePlan, COLOR_PRIMARY, density);
-      break;
-
-    case 'european_europass':
-      doc = buildEuropassDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'creative_split':
-      doc = buildCreativeSplitDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'tech_modern':
-      doc = buildTechModernDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'ats_compact':
-      doc = buildAtsCompactDoc(cv, hasActivePlan, density);
-      break;
-
-    case 'hybrid_minimalist':
-      doc = buildMinimalistDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'academic_lattes':
-      doc = buildAcademicLattesDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'un_classic':
-      doc = buildUnClassicDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density);
-      break;
-
-    case 'european_modern':
-    default:
-      doc = buildModernEuropeanDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, 'Calibri');
-      break;
-  }
+  const doc =
+    cv.templateStyle === 'creative_split'
+      ? buildCreativeSplitDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang)
+      : buildSingleColumnCVDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang);
 
   return await Packer.toBlob(doc);
 }
 
+// ============================================================================
+// COVER LETTER WORD EXPORT (1:1 Match with CoverLetterDocumentView.tsx A4 Sheet)
+// ============================================================================
 export async function generateCoverLetterDocx(
   cv: CVData,
   letterBody: string,
-  hasActivePlan: boolean = true
+  hasActivePlan: boolean = true,
+  lang: LanguageCode = 'pt'
 ): Promise<Blob> {
-  const COLOR_PRIMARY = '111827';
-  const COLOR_MUTED = '4B5563';
-  const FONT_FAMILY = 'Times New Roman';
+  const COLOR_DARK = '020617';
+  const COLOR_SLATE = '1E293B';
+  const COLOR_MUTED = '475569';
+  const COLOR_LIGHT = '64748B';
+  const SERIF_FONT = 'Times New Roman';
+  const SANS_FONT = 'Calibri';
+  const MONO_FONT = 'Consolas';
+
+  const chrome = COVER_CHROME_LABELS[lang] || COVER_CHROME_LABELS.pt;
+  const candidateName = cv.personalDetails.name || 'Seu Nome Completo';
+  const candidateTitle = cv.personalDetails.title || 'Título Profissional Executivo';
+  const candidateContacts = [
+    cv.personalDetails.location,
+    cv.personalDetails.phone,
+    cv.personalDetails.email,
+    cv.personalDetails.linkedin
+  ]
+    .filter(Boolean)
+    .join('   |   ');
 
   const docChildren: Paragraph[] = [];
 
@@ -3160,190 +1922,233 @@ export async function generateCoverLetterDocx(
     docChildren.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        spacing: { after: 120 },
+        spacing: { after: 160 },
         border: {
-          bottom: { style: BorderStyle.DASHED, size: 6, color: 'DC2626' },
-          top: { style: BorderStyle.DASHED, size: 6, color: 'DC2626' }
+          bottom: { style: BorderStyle.DASHED, size: 6, color: 'DC2626', space: 4 },
+          top: { style: BorderStyle.DASHED, size: 6, color: 'DC2626', space: 4 }
         },
         children: [
           new TextRun({
             text: '★ PRÉ-VISUALIZAÇÃO DEMONSTRATIVA · CARTA DE APRESENTAÇÃO ★',
             bold: true,
             size: 18,
-            font: FONT_FAMILY,
+            font: SANS_FONT,
             color: 'DC2626'
           }),
           new TextRun({
             text: '\n(Documento de demonstração com marca de água. Ative o plano Pro ou VIP para a versão oficial)',
             italics: true,
             size: 15,
-            font: FONT_FAMILY,
-            color: '64748B'
+            font: SANS_FONT,
+            color: COLOR_LIGHT
           })
         ]
       })
     );
   }
 
+  // Executive Formal Left-Aligned Letterhead matching CoverLetterDocumentView lines 318-335
   docChildren.push(
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 30 },
+      alignment: AlignmentType.LEFT,
+      spacing: { after: 35 },
       children: [
         new TextRun({
-          text: (cv.personalDetails.name || 'SEU NOME').toUpperCase(),
+          text: candidateName.toUpperCase(),
           bold: true,
-          size: 32,
-          font: FONT_FAMILY,
-          color: COLOR_PRIMARY
+          size: 40, // 20pt matching text-3xl font-serif font-black
+          font: SERIF_FONT,
+          color: COLOR_DARK
         })
       ]
     }),
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 40 },
+      alignment: AlignmentType.LEFT,
+      spacing: { after: 75 },
       children: [
         new TextRun({
-          text: cv.personalDetails.title || '',
+          text: candidateTitle.toUpperCase(),
           bold: true,
-          size: 21,
-          font: FONT_FAMILY,
+          size: 20, // 10pt matching text-sm font-semibold uppercase
+          font: SANS_FONT,
           color: COLOR_MUTED
         })
       ]
     }),
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { after: 160 },
+      alignment: AlignmentType.LEFT,
+      spacing: { after: 320 }, // mb-8 gap before letter body
       border: {
         bottom: {
           style: BorderStyle.SINGLE,
-          size: 6,
-          color: 'CCCCCC',
-          space: 4
+          size: 16, // border-b-2 border-slate-900
+          color: '0F172A',
+          space: 12 // pb-5
         }
       },
       children: [
         new TextRun({
-          text: [
-            cv.personalDetails.location,
-            cv.personalDetails.phone,
-            cv.personalDetails.email,
-            cv.personalDetails.linkedin
-          ]
-            .filter(Boolean)
-            .join('  |  '),
-          size: 19,
-          font: FONT_FAMILY,
-          color: COLOR_MUTED
+          text: candidateContacts,
+          size: 17.5, // ~11px font-mono
+          font: MONO_FONT,
+          color: COLOR_LIGHT
         })
       ]
     })
   );
 
-  const paragraphs = letterBody.split('\n');
-  let currentBlock: string[] = [];
+  // Preserve exact paragraph breaks and line structure matching whitespace-pre-line + sm:text-justify
+  const isSubjectLine = (txt: string) =>
+    /^(assunto|subject|asunto|objet|betreff)\s*:/i.test(txt);
+  const isRecipientLine = (txt: string) =>
+    /^(a\/c|para|to|an|à l'attention|a la atención)\s*:/i.test(txt);
 
-  for (const line of paragraphs) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      if (currentBlock.length > 0) {
-        const textBlock = currentBlock.join(' ');
-        const isSubject = textBlock.toLowerCase().startsWith('assunto:');
-        const isAc = textBlock.toLowerCase().startsWith('a/c:');
+  const rawBlocks = (letterBody || '').replace(/\r\n/g, '\n').split(/\n{2,}/);
 
+  rawBlocks.forEach((block, blockIdx) => {
+    const lines = block
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l) => l.trim().length > 0);
+    if (lines.length === 0) return;
+
+    const joinedSingle = lines.join(' ');
+    const isFirstMetaBlock =
+      blockIdx === 0 &&
+      lines.some((l) => isRecipientLine(l.trim()) || isSubjectLine(l.trim()));
+    const isShortStandalone = lines.length === 1 && joinedSingle.length < 75;
+    const isSignatureBlock =
+      blockIdx === rawBlocks.length - 1 ||
+      (lines.length > 1 && lines.every((l) => l.trim().length < 75));
+
+    if (isFirstMetaBlock || isSignatureBlock) {
+      // Render each line cleanly preserving line breaks (recipient, subject, sign-off)
+      lines.forEach((line, lIdx) => {
+        const trimmed = line.trim();
+        const isLastLineInBlock = lIdx === lines.length - 1;
+        const isBoldLine = isSubjectLine(trimmed) || isRecipientLine(trimmed);
         docChildren.push(
           new Paragraph({
+            alignment: AlignmentType.LEFT,
             spacing: {
-              before: isSubject ? 100 : 50,
-              after: isSubject ? 100 : 80,
-              line: 260
+              before: 0,
+              after: isLastLineInBlock ? 200 : 35,
+              line: 300
             },
             children: [
               new TextRun({
-                text: textBlock,
-                bold: isSubject || isAc,
-                size: 21,
-                font: FONT_FAMILY,
-                color: COLOR_PRIMARY
-              })
-            ]
-          })
-        );
-        currentBlock = [];
-      }
-    } else {
-      if (
-        trimmed.startsWith('A/C:') ||
-        trimmed.startsWith('Assunto:') ||
-        trimmed.includes('@') ||
-        trimmed.length < 50
-      ) {
-        if (currentBlock.length > 0) {
-          docChildren.push(
-            new Paragraph({
-              spacing: { after: 60, line: 260 },
-              children: [
-                new TextRun({
-                  text: currentBlock.join(' '),
-                  size: 21,
-                  font: FONT_FAMILY,
-                  color: COLOR_PRIMARY
-                })
-              ]
-            })
-          );
-          currentBlock = [];
-        }
-        const isBold = trimmed.startsWith('A/C:') || trimmed.startsWith('Assunto:');
-        docChildren.push(
-          new Paragraph({
-            spacing: { after: trimmed.startsWith('Assunto:') ? 100 : 30, line: 250 },
-            children: [
-              new TextRun({
                 text: trimmed,
-                bold: isBold,
-                size: 21,
-                font: FONT_FAMILY,
-                color: COLOR_PRIMARY
+                bold: isBoldLine,
+                size: 21, // ~10.5pt matching 14px serif
+                font: SERIF_FONT,
+                color: isBoldLine ? COLOR_DARK : COLOR_SLATE
               })
             ]
           })
         );
-      } else {
-        currentBlock.push(trimmed);
-      }
-    }
-  }
-
-  if (currentBlock.length > 0) {
-    docChildren.push(
-      new Paragraph({
-        spacing: { after: 80, line: 260 },
-        children: [
+      });
+    } else {
+      // Standard narrative body paragraph (justified, airy 1.4x line spacing)
+      const runs: TextRun[] = [];
+      lines.forEach((line, lIdx) => {
+        const trimmed = line.trim();
+        runs.push(
           new TextRun({
-            text: currentBlock.join(' '),
+            text: trimmed,
+            bold: isSubjectLine(trimmed) || isRecipientLine(trimmed),
             size: 21,
-            font: FONT_FAMILY,
-            color: COLOR_PRIMARY
+            font: SERIF_FONT,
+            color: COLOR_SLATE
+          })
+        );
+        if (lIdx < lines.length - 1) {
+          runs.push(new TextRun({ break: 1 }));
+        }
+      });
+
+      docChildren.push(
+        new Paragraph({
+          alignment: isShortStandalone ? AlignmentType.LEFT : AlignmentType.JUSTIFIED,
+          spacing: {
+            before: 0,
+            after: 200, // space-y-4 (1rem / ~10-12pt)
+            line: 336 // leading-relaxed (1.4x in Word)
+          },
+          children: runs
+        })
+      );
+    }
+  });
+
+  // Formal Footer Sign-Off matching CoverLetterDocumentView lines 344-347
+  const footerBorderTop = { style: BorderStyle.SINGLE, size: 6, color: 'E2E8F0' };
+  const letterFooter = new Footer({
+    children: [
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: NO_BORDERS,
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: 65, type: WidthType.PERCENTAGE },
+                borders: { ...NO_BORDERS, top: footerBorderTop },
+                margins: { top: 120 },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.LEFT,
+                    children: [
+                      new TextRun({
+                        text: `${candidateName} · ${chrome.footerLabel}`,
+                        size: 16,
+                        font: MONO_FONT,
+                        color: '94A3B8'
+                      })
+                    ]
+                  })
+                ]
+              }),
+              new TableCell({
+                width: { size: 35, type: WidthType.PERCENTAGE },
+                borders: { ...NO_BORDERS, top: footerBorderTop },
+                margins: { top: 120 },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.RIGHT,
+                    children: [
+                      new TextRun({
+                        text: chrome.standardLabel,
+                        size: 16,
+                        font: MONO_FONT,
+                        color: '94A3B8'
+                      })
+                    ]
+                  })
+                ]
+              })
+            ]
           })
         ]
       })
-    );
-  }
+    ]
+  });
 
   const doc = new Document({
     sections: [
       {
         properties: {
           page: {
+            size: { width: A4_WIDTH_TWIP, height: A4_HEIGHT_TWIP },
             margin: {
-              top: convertInchesToTwip(0.65),
-              bottom: convertInchesToTwip(0.65),
-              left: convertInchesToTwip(0.75),
-              right: convertInchesToTwip(0.75)
+              top: convertMillimetersToTwip(22),
+              bottom: convertMillimetersToTwip(22),
+              left: convertMillimetersToTwip(25),
+              right: convertMillimetersToTwip(25)
             }
           }
+        },
+        footers: {
+          default: letterFooter
         },
         children: docChildren
       }

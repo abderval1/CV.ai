@@ -175,7 +175,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         userEmail: user?.email || 'cliente@exemplo.com',
         plan,
         billingCycle: cycle,
-        amount: plan === 'executive' ? (isYearly ? 440 : 49) : (isYearly ? 240 : 29),
+        amount: plan === 'executive' ? (isYearly ? 36 : 4) : (isYearly ? 18 : 2),
         currency: 'USD',
         paymentMethod: 'stripe',
         status: 'paid',
@@ -209,20 +209,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
   const basePriceUSD =
     selectedPlan === 'executive'
       ? billingCycle === 'yearly'
-        ? 440
-        : 49
+        ? 36
+        : 4
       : billingCycle === 'yearly'
-      ? 240
-      : 29;
+      ? 18
+      : 2;
 
   const discountAmountUSD = (basePriceUSD * appliedDiscount) / 100;
-  const finalPriceUSD = Math.max(0, Math.round(basePriceUSD - discountAmountUSD));
-  const convertedFinalPrice = Math.round(finalPriceUSD * currencyConfig.exchangeRateToUSD);
+  const finalPriceUSD = Math.max(0, Math.round((basePriceUSD - discountAmountUSD) * 100) / 100);
+  const convertedFinalPrice = Math.round(finalPriceUSD * currencyConfig.exchangeRateToUSD * 100) / 100;
 
   // Equivalent price in BRL (R$)
   const priceBRL = useMemo(() => {
     if (currency === 'BRL') return convertedFinalPrice;
-    return Math.round(finalPriceUSD * 5.85);
+    return Math.round(finalPriceUSD * 5.4 * 100) / 100;
   }, [currency, convertedFinalPrice, finalPriceUSD]);
 
   // Dynamic Pix BR Code payload
@@ -304,14 +304,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     setCardError(null);
   };
 
-  // Fill Stripe Test Card Helper
-  const fillTestCard = () => {
-    setCardNumber('4242 4242 4242 4242');
-    setCardExpiry('12/28');
-    setCardCvc('842');
-    setCardholderName(user?.name || 'Cliente Executivo');
-    setCardError(null);
-  };
 
   // Card Brand Detection
   const getCardBrand = (num: string) => {
@@ -415,7 +407,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
           // B) In-Modal Direct Stripe Recurring Payment
           const rawNum = cardNumber.replace(/\s+/g, '');
           if (rawNum.length < 13 && appliedDiscount < 100) {
-            setCardError('Por favor insira um número de cartão válido ou use o botão de teste.');
+            setCardError('Por favor insira um número de cartão válido.');
             setIsProcessing(false);
             return;
           }
@@ -777,13 +769,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                 >
                   <span>Anual</span>
                   <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                    Poupe até 31%
+                    Poupe 25%
                   </span>
                 </button>
               </div>
             </div>
 
-            {/* Plans Grid */}
             {/* Plans Grid (Strictly Paid Tiers: Pro and Executive VIP) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {SAAS_PLANS.map((plan) => {
@@ -798,7 +789,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
                 const monthlyEquivalent =
                   billingCycle === 'yearly'
-                    ? Math.round(plan.priceYearlyValue / 12)
+                    ? Math.round((plan.priceYearlyValue / 12) * 100) / 100
                     : null;
 
                 return (
@@ -1055,18 +1046,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
                       {stripeFlowMode === 'embedded' ? (
                         <div className="space-y-3.5">
-                          {/* Test card button helper */}
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] text-slate-500 font-medium">
-                              Dados do Cartão (Débito ou Crédito Recorrente)
+                              Dados do Cartão (Débito ou Crédito Internacional)
                             </span>
-                            <button
-                              type="button"
-                              onClick={fillTestCard}
-                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300"
-                            >
-                              Preencher Cartão de Teste Stripe (4242...)
-                            </button>
                           </div>
 
                           {/* Card Number */}
@@ -1082,7 +1065,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                                 type="text"
                                 value={cardNumber}
                                 onChange={handleCardNumberChange}
-                                placeholder="4242 4242 4242 4242"
+                                placeholder="0000 0000 0000 0000"
                                 maxLength={19}
                                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-600 focus:bg-white"
                               />

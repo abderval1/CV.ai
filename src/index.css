@@ -18,7 +18,16 @@
     max-width: 100% !important;
     width: 100% !important;
     min-height: 100vh;
+    min-height: 100dvh;
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .font-serif-cv {
@@ -114,18 +123,41 @@
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    box-shadow: none !important;
   }
 
   @page {
     size: A4 portrait;
-    margin: 10mm 12mm 10mm 12mm;
+    margin: 12.7mm;
+  }
+
+  @page compact {
+    size: A4 portrait;
+    margin: 9.5mm 11mm;
+  }
+
+  @page relaxed {
+    size: A4 portrait;
+    margin: 16mm;
+  }
+
+  @page creative {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  @page cover {
+    size: A4 portrait;
+    margin: 0;
   }
 
   html,
   body,
   #root,
   main,
-  .cv-preview-container {
+  section,
+  .cv-preview-container,
+  .cover-preview-container {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
@@ -135,6 +167,12 @@
     margin: 0 !important;
     background: #ffffff !important;
     color: #000000 !important;
+    display: block !important;
+  }
+
+  [contenteditable] {
+    outline: none !important;
+    border-color: transparent !important;
   }
 
   img {
@@ -144,7 +182,7 @@
     max-width: 100% !important;
   }
 
-  /* Only hide top site navigation bar, not the CV header */
+  /* Only hide top site navigation bar, toolbars & interactive chrome */
   #root > header,
   nav,
   .no-print,
@@ -197,6 +235,7 @@
   .cv-a4-sheet {
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -205,30 +244,59 @@
     page-break-after: auto;
   }
 
-  /* Enforce Creative Split layout during print (prevents column wrap) */
+  .cv-single-column.cv-density-compact {
+    page: compact;
+  }
+
+  .cv-single-column.cv-density-relaxed {
+    page: relaxed;
+  }
+
+  /* Enforce full-bleed Creative Split layout during print (prevents column wrap & white borders) */
   .cv-creative-split {
+    page: creative;
     display: flex !important;
     flex-direction: row !important;
-    width: 100% !important;
-    min-height: auto !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .cv-creative-sidebar {
-    width: 34% !important;
-    min-width: 34% !important;
-    max-width: 34% !important;
+    width: 35% !important;
+    min-width: 35% !important;
+    max-width: 35% !important;
     display: flex !important;
     flex-direction: column !important;
-    padding: 8mm 6mm !important;
+    justify-content: space-between !important;
+    padding: 12mm 8mm !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
   .cv-creative-main {
-    width: 66% !important;
-    min-width: 66% !important;
-    max-width: 66% !important;
-    padding: 8mm 8mm !important;
+    width: 65% !important;
+    min-width: 65% !important;
+    max-width: 65% !important;
+    padding: 12mm 11mm !important;
+  }
+
+  /* Cover letter exact 1:1 A4 page matching screen preview */
+  .cover-a4-sheet {
+    page: cover;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: 210mm !important;
+    padding: 22mm 25mm !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
   }
 
   /* Avoid orphan headers and broken job items */

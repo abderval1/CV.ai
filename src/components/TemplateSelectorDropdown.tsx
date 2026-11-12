@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TemplateStyle } from '../types/cv';
 import { CV_TEMPLATES, getTemplateById } from '../data/templateCatalog';
+import { getStoredTemplatesSync } from '../services/adminModulesService';
 import {
   ChevronDown,
   Camera,
@@ -8,7 +9,8 @@ import {
   Sparkles,
   HelpCircle,
   Check,
-  Briefcase
+  Briefcase,
+  Lock
 } from 'lucide-react';
 
 interface TemplateSelectorDropdownProps {
@@ -29,6 +31,16 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
 
   const currentTemplate = getTemplateById(currentStyle);
 
+  // Interlink with Admin Panel Template Catalog
+  const adminCatalog = getStoredTemplatesSync();
+  const adminConfigMap = new Map(adminCatalog.map((t) => [t.id, t]));
+
+  // Active templates according to admin backoffice
+  const allTemplates = CV_TEMPLATES.filter((t) => {
+    const config = adminConfigMap.get(t.id);
+    return config ? config.isActive : true;
+  });
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -39,8 +51,8 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const photoTemplates = CV_TEMPLATES.filter((t) => t.category === 'with_photo' || t.category === 'hybrid');
-  const withoutPhotoTemplates = CV_TEMPLATES.filter((t) => t.category === 'without_photo');
+  const photoTemplates = allTemplates.filter((t) => t.category === 'with_photo' || t.category === 'hybrid');
+  const withoutPhotoTemplates = allTemplates.filter((t) => t.category === 'without_photo');
 
   return (
     <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>
@@ -54,13 +66,13 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
         >
           <div className="flex items-center gap-1.5">
             {currentTemplate.hasPhoto ? (
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
             ) : (
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
             )}
-            <span className="font-bold text-slate-900">{currentTemplate.shortName}</span>
+            <span className="font-bold text-slate-900 truncate max-w-[110px] sm:max-w-none">{currentTemplate.shortName}</span>
             <span
-              className={`hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] font-bold ${
+              className={`hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] font-bold whitespace-nowrap ${
                 currentTemplate.hasPhoto
                   ? 'bg-blue-50 text-blue-700 border border-blue-200'
                   : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -69,14 +81,14 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
               {currentTemplate.hasPhoto ? 'Com Foto' : 'Sem Foto (ATS)'}
             </span>
           </div>
-          <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         {/* Quick Guide Trigger Button */}
         <button
           type="button"
           onClick={onOpenAdvisorModal}
-          className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 bg-white rounded-lg transition-colors flex items-center gap-1"
+          className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 bg-white rounded-lg transition-colors flex items-center gap-1 shrink-0"
           title="Ver guia de quando e onde usar cada modelo de currículo"
         >
           <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
@@ -86,7 +98,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute left-0 mt-1.5 w-80 sm:w-96 rounded-xl bg-white shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute left-0 mt-1.5 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] rounded-xl bg-white shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           <div className="p-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
             <div>
               <div className="text-xs font-bold flex items-center gap-1.5">
@@ -134,13 +146,24 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-bold text-slate-900 truncate">
                             {item.name}
                           </span>
                           <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-blue-100 text-blue-800">
                             {item.atsScore}% ATS
                           </span>
+                          {adminConfigMap.get(item.id)?.tierRequired && (
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
+                              adminConfigMap.get(item.id)?.tierRequired === 'executive'
+                                ? 'bg-purple-100 text-purple-800'
+                                : adminConfigMap.get(item.id)?.tierRequired === 'pro'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : adminConfigMap.get(item.id)?.tierRequired === 'pro' ? 'Pro' : 'Grátis'}
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
                           {item.regions.join(' · ')}
@@ -180,13 +203,24 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                       }`}
                     >
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-xs font-bold text-slate-900 truncate">
                             {item.name}
                           </span>
                           <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-emerald-100 text-emerald-800">
                             {item.atsScore}% ATS
                           </span>
+                          {adminConfigMap.get(item.id)?.tierRequired && (
+                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
+                              adminConfigMap.get(item.id)?.tierRequired === 'executive'
+                                ? 'bg-purple-100 text-purple-800'
+                                : adminConfigMap.get(item.id)?.tierRequired === 'pro'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : adminConfigMap.get(item.id)?.tierRequired === 'pro' ? 'Pro' : 'Grátis'}
+                            </span>
+                          )}
                         </div>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
                           {item.regions.join(' · ')}

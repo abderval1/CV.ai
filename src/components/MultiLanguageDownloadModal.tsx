@@ -1,0 +1,422 @@
+import React, { useState } from 'react';
+import { CVData } from '../types/cv';
+import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { generateWordDocument } from '../utils/docxExport';
+import { getTemplateById } from '../data/templateCatalog';
+import {
+  X,
+  Globe,
+  Sparkles,
+  Download,
+  Printer,
+  FileText,
+  CheckCircle2,
+  ArrowRight,
+  Loader2,
+  Lock,
+  RefreshCw
+} from 'lucide-react';
+
+interface MultiLanguageDownloadModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  cv: CVData;
+  onApplyTranslatedCV: (translated: CVData) => void;
+  onOpenPricingModal?: (prompt?: string) => void;
+  onOpenAuthModal?: (prompt?: string) => void;
+  density?: 'compact' | 'normal' | 'relaxed';
+}
+
+export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProps> = ({
+  isOpen,
+  onClose,
+  cv,
+  onApplyTranslatedCV,
+  onOpenPricingModal,
+  onOpenAuthModal,
+  density = 'normal'
+}) => {
+  const { t, setLanguage } = useLanguage();
+  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { showSuccess, showError, showWarning } = useToast();
+
+  const [selectedLang, setSelectedLang] = useState<LanguageCode>('en');
+  const [isTranslating, setIsTranslating] = useState<boolean>(false);
+  const [translatedCV, setTranslatedCV] = useState<CVData | null>(null);
+  const [isExportingWord, setIsExportingWord] = useState<boolean>(false);
+  const [lastTranslatedLang, setLastTranslatedLang] = useState<LanguageCode | null>(null);
+
+  if (!isOpen) return null;
+
+  const handleTranslate = async (targetLang: LanguageCode) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('O registo é obrigatório para traduzir o currículo.');
+      return;
+    }
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A tradução executiva multilíngue com IA (inglês, espanhol, francês, alemão) é exclusiva para subscritores Pro e Executivo VIP.'
+      );
+      return;
+    }
+
+    setIsTranslating(true);
+    try {
+      const response = await fetch('/api/translate-cv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cvData: cv,
+          targetLanguage: targetLang
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status} ao comunicar com o servidor.`);
+      }
+
+      const data = await response.json();
+      if (data.translatedCV) {
+        // Merge keeping styling and order intact
+        const merged: CVData = {
+          ...cv,
+          ...data.translatedCV,
+          templateStyle: cv.templateStyle,
+          accentColor: cv.accentColor,
+          fontFamily: cv.fontFamily,
+          sectionOrder: cv.sectionOrder,
+          sectionVisibility: cv.sectionVisibility
+        };
+        setTranslatedCV(merged);
+        setLastTranslatedLang(targetLang);
+        showSuccess(
+          t('cvLang.translationReady', 'Tradução Concluída!'),
+          `Currículo adaptado para ${SUPPORTED_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang}.`
+        );
+      } else {
+        throw new Error('Resposta de tradução inválida.');
+      }
+    } catch (err: any) {
+      console.error('Falha ao traduzir CV:', err);
+      showError(
+        'Erro na Tradução',
+        err.message || 'Não foi possível traduzir o currículo. Tente novamente mais tarde.'
+      );
+    } finally {
+      setIsTranslating(false);
+    }
+  };
+
+  const handleDownloadWord = async (docToExport: CVData, targetLang: LanguageCode) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para exportar o currículo.'));
+      return;
+    }
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em Word requer um plano ativo.'));
+      return;
+    }
+
+    try {
+      setIsExportingWord(true);
+      const templateInfo = getTemplateById(docToExport.templateStyle);
+      const sanitizedName = docToExport.personalDetails.name.trim().replace(/\s+/g, '_') || 'Resume';
+      const langUpper = targetLang.toUpperCase();
+      const blob = await generateWordDocument(docToExport, true, density, targetLang);
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `CV_${sanitizedName}_${langUpper}_${templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showSuccess(
+        'Word Descarregado!',
+        `Ficheiro no idioma ${langUpper} exportado com formatação nativa OpenXML.`
+      );
+    } catch (err: any) {
+      console.error('Falha ao exportar docx:', err);
+      showError('Erro ao Descarregar Word', 'Não foi possível compilar o documento.');
+    } finally {
+      setIsExportingWord(false);
+    }
+  };
+
+  const handlePrintPDF = (docToPrint: CVData) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para imprimir ou guardar em PDF.'));
+      return;
+    }
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em PDF requer um plano ativo.'));
+      return;
+    }
+
+    // Apply the translated CV and language to the main app and trigger window.print()
+    setLanguage(selectedLang);
+    onApplyTranslatedCV(docToPrint);
+    onClose();
+    setTimeout(() => {
+      window.print();
+    }, 450);
+  };
+
+  const activeDoc = (lastTranslatedLang === selectedLang && translatedCV) ? translatedCV : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col my-8">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-medium shadow-2xs">
+              <Globe className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                {t('cvLang.modalTitle', 'Baixar Currículo em Outro Idioma')}
+              </h2>
+              <p className="text-xs text-slate-500">
+                {t('cvLang.modalSubtitle', 'Tradução executiva completa para processos seletivos internacionais')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
+          {/* Target Language Selection */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2.5">
+              {t('cvLang.selectLang', 'Selecione o idioma de destino:')}
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {SUPPORTED_LANGUAGES.map((lang) => {
+                const isSelected = selectedLang === lang.code;
+                const hasTranslation = lastTranslatedLang === lang.code && translatedCV;
+                return (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    onClick={() => setSelectedLang(lang.code)}
+                    className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${
+                      isSelected
+                        ? 'border-slate-900 bg-slate-50 text-slate-950 font-semibold shadow-2xs ring-1 ring-slate-900/10'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl leading-none">{lang.flag}</span>
+                      <div>
+                        <div className="text-xs font-medium">{lang.name}</div>
+                        <div className="text-[10px] text-slate-500">{lang.code.toUpperCase()}</div>
+                      </div>
+                    </div>
+                    {hasTranslation && (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Translation Trigger or Status */}
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200/80 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-slate-700" />
+                <span className="text-xs font-semibold text-slate-800">
+                  {lastTranslatedLang === selectedLang && translatedCV
+                    ? `Tradução para ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name} Ativa`
+                    : `Pronto para traduzir para ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={isTranslating}
+                onClick={() => handleTranslate(selectedLang)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 rounded-md shadow-2xs transition-colors"
+              >
+                {isTranslating ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>{t('cvLang.translating', 'Traduzindo com IA...')}</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>
+                      {lastTranslatedLang === selectedLang && translatedCV
+                        ? 'Atualizar Tradução'
+                        : t('cvLang.translateAction', 'Traduzir com IA')}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Preserva títulos executivos alinhados aos padrões do mercado alvo, reformula as realizações com verbos fortes e mantém 100% de precisão em métricas e palavras-chave ATS.
+            </p>
+          </div>
+
+          {/* Preview of Translated Content if ready */}
+          {activeDoc && (
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  {t('cvLang.previewTranslated', 'Pré-visualização do Documento')}
+                </span>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name} ({selectedLang.toUpperCase()})
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div>
+                  <span className="font-medium text-slate-900">{activeDoc.personalDetails.name}</span>
+                  <span className="text-slate-500 ml-2">· {activeDoc.personalDetails.title}</span>
+                </div>
+                {activeDoc.summary && (
+                  <p className="text-slate-600 line-clamp-2 italic bg-slate-50 p-2 rounded text-[11px]">
+                    "{activeDoc.summary}"
+                  </p>
+                )}
+                {activeDoc.experiences?.[0] && (
+                  <div className="text-[11px] text-slate-600">
+                    <span className="font-semibold text-slate-800">{activeDoc.experiences[0].role}</span>
+                    <span className="text-slate-400"> @ </span>
+                    <span className="text-slate-700">{activeDoc.experiences[0].company}</span>
+                    <span className="text-slate-400"> ({activeDoc.experiences[0].period})</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Download Options */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2.5">
+              {t('cvLang.translationReady', 'Opções de Exportação:')}
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Word Button */}
+              <button
+                type="button"
+                disabled={isExportingWord}
+                onClick={() => handleDownloadWord(activeDoc || cv, selectedLang)}
+                className={`flex items-center justify-between p-3.5 rounded-lg border text-left transition-colors shadow-2xs ${
+                  !isAuthenticated || !hasActivePlan
+                    ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 text-amber-950'
+                    : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center font-semibold">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold">
+                      {isExportingWord ? t('nav.downloading', 'A exportar...') : t('cvLang.downloadDocx', 'Baixar Word (.docx)')}
+                    </div>
+                    <div className="text-[10px] text-slate-500">Formatação nativa OpenXML</div>
+                  </div>
+                </div>
+                {!isAuthenticated || !hasActivePlan ? (
+                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                )}
+              </button>
+
+              {/* PDF / Print Button */}
+              <button
+                type="button"
+                onClick={() => handlePrintPDF(activeDoc || cv)}
+                className={`flex items-center justify-between p-3.5 rounded-lg border text-left transition-colors shadow-2xs ${
+                  !isAuthenticated || !hasActivePlan
+                    ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 text-amber-950'
+                    : 'border-slate-900 bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-md bg-slate-800 text-white flex items-center justify-center font-semibold">
+                    <Printer className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold">
+                      {t('cvLang.downloadPdf', 'Baixar / Imprimir PDF')}
+                    </div>
+                    <div className="text-[10px] text-slate-300">Layout A4 vetorial sem marcas</div>
+                  </div>
+                </div>
+                {!isAuthenticated || !hasActivePlan ? (
+                  <Lock className="w-3.5 h-3.5 text-amber-700" />
+                ) : (
+                  <ArrowRight className="w-3.5 h-3.5 text-white/80" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Load into Editor Action */}
+          {activeDoc && (
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+              <span className="text-xs text-slate-500">
+                Deseja continuar editando este currículo no idioma selecionado?
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setLanguage(selectedLang);
+                  onApplyTranslatedCV(activeDoc);
+                  onClose();
+                  showSuccess(
+                    'Currículo Carregado no Editor',
+                    `O editor principal agora exibe a versão traduzida em ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name}.`
+                  );
+                }}
+                className="text-xs font-semibold text-slate-900 hover:text-slate-700 underline underline-offset-4"
+              >
+                {t('cvLang.applyToEditor', 'Carregar no Editor Principal')} →
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+          <div className="text-[11px] text-slate-500">
+            {hasActivePlan ? (
+              <span className="text-emerald-700 font-medium">✓ Downloads e traduções ilimitadas no seu plano</span>
+            ) : (
+              <span className="text-amber-800 font-medium">Downloads oficiais requerem plano Pro ou Executivo</span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
+          >
+            {t('common.close', 'Fechar')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

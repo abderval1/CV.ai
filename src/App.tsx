@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { CVData } from './types/cv';
 import { GENERIC_DEFAULT_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
 import { Header } from './components/Header';
@@ -8,7 +8,7 @@ import { ContentEditor } from './components/ContentEditor';
 import { AtsRadarPanel } from './components/AtsRadarPanel';
 import { AiTailorPanel } from './components/AiTailorPanel';
 import { CoverLetterPanel } from './components/CoverLetterPanel';
-import { PythonScriptPanel } from './components/PythonScriptPanel';
+import { CoverLetterDocumentView } from './components/CoverLetterDocumentView';
 import { RawInputGenerator } from './components/RawInputGenerator';
 import { AuthModal } from './components/AuthModal';
 import { PricingModal } from './components/PricingModal';
@@ -19,20 +19,72 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { UserProfileView } from './components/UserProfileView';
 import { PlanGateGuard } from './components/PlanGateGuard';
 import { InterviewSimulator } from './components/InterviewSimulator';
+import { SystemNotificationBanner } from './components/SystemNotificationBanner';
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
+import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/LanguageContext';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, User as UserIcon, Lock } from 'lucide-react';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut } from 'lucide-react';
 
 export default function App() {
-  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan } = useAuth();
-  const { showSuccess, showError } = useToast();
-  const [cv, setCv] = useState<CVData>(GENERIC_DEFAULT_CV);
-  const [jobDescription, setJobDescription] = useState<string>(
-    SAMPLE_JOB_OFFERS[0].description
-  );
-  const [activeTab, setActiveTab] = useState<'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview' | 'profile'>(
+  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating } = useAuth();
+  const { showSuccess, showError, showInfo } = useToast();
+  const { language: appLanguage, setLanguage } = useLanguage();
+
+  const [cv, setCv] = useState<CVData>(() => {
+    try {
+      const saved = localStorage.getItem('curriculo_draft_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.personalDetails?.name) {
+          return parsed;
+        }
+      }
+    } catch {
+      // Fallback to default
+    }
+    return GENERIC_DEFAULT_CV;
+  });
+
+  const [jobDescription, setJobDescription] = useState<string>(() => {
+    try {
+      const savedJob = localStorage.getItem('curriculo_job_draft_v1');
+      if (savedJob && savedJob.trim().length > 10) {
+        return savedJob;
+      }
+    } catch {
+      // Fallback
+    }
+    return SAMPLE_JOB_OFFERS[0].description;
+  });
+
+  // Debounced auto-save of active draft to localStorage
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('curriculo_draft_v1', JSON.stringify(cv));
+        localStorage.setItem('curriculo_job_draft_v1', jobDescription);
+      } catch (e) {
+        console.warn('Falha ao gravar rascunho local:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [cv, jobDescription]);
+
+  // Online / Offline network awareness
+  useEffect(() => {
+    const handleOnline = () => showSuccess('Ligação Restabelecida', 'A ligação à internet foi recuperada.');
+    const handleOffline = () => showError('Modo Offline', 'Sem internet. O seu trabalho continua guardado no navegador.');
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+  const [activeTab, setActiveTab] = useState<'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview' | 'profile'>(
     'home'
   );
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
@@ -66,27 +118,241 @@ export default function App() {
     setIsPricingModalOpen(true);
   };
 
-  const [letterBody, setLetterBody] = useState<string>(
-    `To: The Executive Search & Selection Committee
-Corporate Leadership Team
-Subject: Application for Executive Leadership / Strategic Operations Role
+  const [letterBody, setLetterBodyState] = useState<string>(() => {
+    try {
+      const savedLetter = localStorage.getItem('curriculo_letter_draft_v1');
+      if (savedLetter && savedLetter.trim().length > 10) {
+        return savedLetter;
+      }
+    } catch {
+      // Fallback
+    }
+    return `Para: Comité de Seleção Executiva
+Diretoria de Liderança Corporativa
+Assunto: Candidatura para Posição de Liderança Executiva / Direção de Operações
 
-Dear Members of the Selection Committee,
+Exmos. Senhores Membros do Comité de Seleção,
 
-It is with strong enthusiasm and professional commitment that I submit my application for this executive position. With progressive experience in driving operational excellence, digital transformation, and strategic P&L management, I bring a proven track record of quantifiable achievements across competitive global markets.
+É com elevado entusiasmo e sólido compromisso profissional que apresento a minha candidatura para esta posição executiva. Com trajetória progressiva na condução de excelência operacional, transformação digital e gestão estratégica de P&L, trago um histórico comprovado de resultados quantificáveis em mercados globais competitivos.
 
-In my recent leadership assignments, I was responsible for architecting enterprise-grade workflows, scaling cross-functional teams, and delivering multi-million dollar operational optimizations. My background combines deep analytical rigor with hands-on expertise in Business Intelligence, automated governance, and strategic stakeholder alignment.
+Nas minhas atribuições recentes de liderança, fui responsável por arquitetar fluxos de trabalho de nível corporativo, escalar equipas multifuncionais e entregar otimizações operacionais milionárias. O meu percurso combina rigor analítico aprofundado com domínio prático em Business Intelligence, governança automatizada e alinhamento estratégico com stakeholders.
 
-Furthermore, my approach aligns with international corporate governance standards and modern management frameworks, enabling board members and executive stakeholders to make agile, evidence-backed decisions.
+Adicionalmente, a minha abordagem está alinhada com os padrões internacionais de governança corporativa e metodologias modernas de gestão, capacitando conselhos de administração e lideranças executivas a tomarem decisões ágeis e orientadas por dados.
 
-Driven by the strategic vision and continuous growth of your organization, I welcome the opportunity to discuss my qualifications and how I can deliver immediate value during a strategic interview.
+Motivado pela visão estratégica e pelo crescimento contínuo da vossa organização, coloco-me à disposição para detalhar as minhas qualificações e demonstrar como posso gerar valor imediato numa entrevista estratégica.
 
-Sincerely,
+Atenciosamente,
 
-${cv.personalDetails.name || 'Seu Nome'}
-${cv.personalDetails.title || 'Chief Operating Officer (COO) | Head de Operações'}
-${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email || 'contacto@exemplo.com'}`
-  );
+${GENERIC_DEFAULT_CV.personalDetails.name}
+${GENERIC_DEFAULT_CV.personalDetails.title}
+${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetails.email}`;
+  });
+
+  // Track which language the active CV & Cover Letter content are currently written in,
+  // plus a per-language translation cache to avoid redundant calls or drift when toggling back.
+  const initialContentLang = ((): LanguageCode => {
+    try {
+      const saved = localStorage.getItem('curriculo_content_lang_v1') as LanguageCode;
+      if (saved && SUPPORTED_LANGUAGES.some((l) => l.code === saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'pt';
+  })();
+
+  const activeContentLangRef = useRef<LanguageCode>(initialContentLang);
+  const lastEditedLangRef = useRef<LanguageCode>(initialContentLang);
+  const latestStateRef = useRef<{ cv: CVData; letterBody: string }>({ cv, letterBody });
+  latestStateRef.current = { cv, letterBody };
+
+  const translationCacheRef = useRef<Partial<Record<LanguageCode, { cv: CVData; letterBody: string }>>>({
+    [initialContentLang]: { cv, letterBody }
+  });
+  const translationReqIdRef = useRef<number>(0);
+  const [isTranslatingContent, setIsTranslatingContent] = useState<boolean>(false);
+  const [translatingTargetLang, setTranslatingTargetLang] = useState<LanguageCode | null>(null);
+
+  // Persist letterBody draft alongside cv draft
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('curriculo_letter_draft_v1', letterBody);
+      } catch (e) {
+        console.warn('Falha ao gravar rascunho da carta:', e);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [letterBody]);
+
+  // Wrap CV and Cover Letter setters so manual edits update the active language cache and invalidate stale translations
+  const updateCvWithCache = useCallback((updater: CVData | ((prev: CVData) => CVData)) => {
+    setCv((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      const lang = activeContentLangRef.current;
+      lastEditedLangRef.current = lang;
+      latestStateRef.current = {
+        cv: next,
+        letterBody: latestStateRef.current.letterBody
+      };
+      translationCacheRef.current = {
+        [lang]: {
+          cv: next,
+          letterBody: translationCacheRef.current[lang]?.letterBody ?? latestStateRef.current.letterBody
+        }
+      };
+      return next;
+    });
+  }, []);
+
+  const updateLetterWithCache = useCallback((nextBody: string) => {
+    setLetterBodyState(nextBody);
+    const lang = activeContentLangRef.current;
+    lastEditedLangRef.current = lang;
+    latestStateRef.current = {
+      cv: latestStateRef.current.cv,
+      letterBody: nextBody
+    };
+    translationCacheRef.current = {
+      [lang]: {
+        cv: translationCacheRef.current[lang]?.cv ?? latestStateRef.current.cv,
+        letterBody: nextBody
+      }
+    };
+  }, []);
+
+  // Translate BOTH CV content and Cover Letter content whenever any language selector is clicked
+  const handleSwitchLanguage = useCallback(async (targetLang: LanguageCode) => {
+    setLanguage(targetLang);
+
+    const currentLang = activeContentLangRef.current;
+    const { cv: latestCv, letterBody: latestLetter } = latestStateRef.current;
+    // Save current state under current content language if not yet stored
+    if (!translationCacheRef.current[currentLang]) {
+      translationCacheRef.current[currentLang] = { cv: latestCv, letterBody: latestLetter };
+    }
+
+    const langInfo = SUPPORTED_LANGUAGES.find((l) => l.code === targetLang);
+    const langLabel = langInfo?.nativeName || targetLang.toUpperCase();
+
+    // Instant switch if we already have an up-to-date cached version for targetLang
+    const cached = translationCacheRef.current[targetLang];
+    if (cached) {
+      activeContentLangRef.current = targetLang;
+      try {
+        localStorage.setItem('curriculo_content_lang_v1', targetLang);
+      } catch {
+        // ignore
+      }
+      if (targetLang !== currentLang) {
+        setCv({
+          ...cached.cv,
+          templateStyle: latestCv.templateStyle,
+          accentColor: latestCv.accentColor,
+          fontFamily: latestCv.fontFamily,
+          sectionOrder: latestCv.sectionOrder,
+          sectionVisibility: latestCv.sectionVisibility
+        });
+        setLetterBodyState(cached.letterBody);
+        showInfo('Idioma Alterado', `Currículo e carta exibidos em ${langLabel}.`);
+      }
+      return;
+    }
+
+    // Use the cleanest un-drifted source snapshot (last manually edited language if available)
+    const sourceEntry =
+      translationCacheRef.current[lastEditedLangRef.current] ||
+      translationCacheRef.current[currentLang] || { cv: latestCv, letterBody: latestLetter };
+
+    const reqId = ++translationReqIdRef.current;
+    setIsTranslatingContent(true);
+    setTranslatingTargetLang(targetLang);
+
+    try {
+      const hasLetter = Boolean(sourceEntry.letterBody && sourceEntry.letterBody.trim().length > 0);
+
+      const cvPromise = fetch('/api/translate-cv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cvData: sourceEntry.cv,
+          targetLanguage: targetLang
+        })
+      }).then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || `Erro ${res.status} ao traduzir o currículo.`);
+        }
+        if (!data.translatedCV) {
+          throw new Error('Resposta inválida ao traduzir o currículo.');
+        }
+        return data.translatedCV as CVData;
+      });
+
+      const letterPromise = hasLetter
+        ? fetch('/api/translate-letter', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: sourceEntry.letterBody,
+              targetLanguage: targetLang
+            })
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data.error || `Erro ${res.status} ao traduzir a carta.`);
+            }
+            return (data.translatedText as string) || sourceEntry.letterBody;
+          })
+        : Promise.resolve(sourceEntry.letterBody);
+
+      const [translatedCVRaw, translatedLetter] = await Promise.all([cvPromise, letterPromise]);
+
+      // Ignore stale response if user switched to another language in the meantime
+      if (reqId !== translationReqIdRef.current) return;
+
+      const mergedCV: CVData = {
+        ...sourceEntry.cv,
+        ...translatedCVRaw,
+        templateStyle: sourceEntry.cv.templateStyle,
+        accentColor: sourceEntry.cv.accentColor,
+        fontFamily: sourceEntry.cv.fontFamily,
+        sectionOrder: sourceEntry.cv.sectionOrder,
+        sectionVisibility: sourceEntry.cv.sectionVisibility
+      };
+
+      translationCacheRef.current[targetLang] = {
+        cv: mergedCV,
+        letterBody: translatedLetter
+      };
+      activeContentLangRef.current = targetLang;
+      try {
+        localStorage.setItem('curriculo_content_lang_v1', targetLang);
+      } catch {
+        // ignore
+      }
+
+      setCv(mergedCV);
+      setLetterBodyState(translatedLetter);
+      showSuccess(
+        'Conteúdo Traduzido!',
+        `Currículo e Carta de Apresentação traduzidos para ${langLabel}.`
+      );
+    } catch (err: any) {
+      if (reqId !== translationReqIdRef.current) return;
+      console.error('Erro ao traduzir conteúdo:', err);
+      showError(
+        'Erro na Tradução do Conteúdo',
+        err?.message || 'Não foi possível traduzir o conteúdo neste momento. Tente novamente.'
+      );
+    } finally {
+      if (reqId === translationReqIdRef.current) {
+        setIsTranslatingContent(false);
+        setTranslatingTargetLang(null);
+      }
+    }
+  }, [cv, letterBody, setLanguage, showError, showInfo, showSuccess]);
 
   const handleExportWord = async () => {
     if (!isAuthenticated) {
@@ -104,7 +370,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
       const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo_Estrategico';
 
       if (activeTab === 'cover') {
-        const blob = await generateCoverLetterDocx(cv, letterBody, true);
+        const blob = await generateCoverLetterDocx(cv, letterBody, true, appLanguage);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
         setWordNotificationMessage('Carta de Apresentação em Word (.docx) Oficial Descarregada!');
         showSuccess(
@@ -114,7 +380,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
       } else {
         const templateInfo = getTemplateById(cv.templateStyle);
         const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
-        const blob = await generateWordDocument(cv, true, density);
+        const blob = await generateWordDocument(cv, true, density, appLanguage);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
         setWordNotificationMessage(`Currículo Word (${templateInfo.shortName}) Oficial Descarregado com Sucesso!`);
         showSuccess(
@@ -133,8 +399,41 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
     }
   };
 
+  const isStudioMode = activeTab !== 'home' && activeTab !== 'profile';
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col text-slate-900 selection:bg-slate-900 selection:text-white w-full max-w-full overflow-x-hidden">
+    <div
+      className={`${
+        isStudioMode ? 'h-dvh overflow-hidden' : 'min-h-dvh'
+      } bg-slate-100 flex flex-col text-slate-900 selection:bg-slate-900 selection:text-white w-full max-w-full overflow-x-hidden`}
+    >
+      {/* Impersonation Active Banner */}
+      {isImpersonating && (
+        <div className="no-print bg-purple-950 text-purple-100 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800 z-50 shadow-md">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>
+              <strong>Modo de Personificação Ativo:</strong> A navegar como{' '}
+              <span className="font-semibold text-white underline">{user?.name}</span> ({user?.email}).
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={stopImpersonating}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-bold text-white transition-colors shadow-xs"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sair e Voltar ao Admin
+          </button>
+        </div>
+      )}
+
+      {/* Broadcast System Banner (Admin Configurable) */}
+      <SystemNotificationBanner
+        onOpenPricing={() => handleOpenPricingModal()}
+        onNavigateTab={(tab) => setActiveTab(tab as any)}
+      />
+
       {/* Top Bar Navigation Contract with SaaS actions */}
       <Header
         activeTab={activeTab}
@@ -147,6 +446,8 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
         onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
+        onSelectLanguage={handleSwitchLanguage}
+        isTranslatingContent={isTranslatingContent}
       />
 
       {/* Word Export Floating Toast Notification */}
@@ -169,7 +470,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
             onStartCreating={() => setActiveTab('raw')}
             onOpenPricing={() => setIsPricingModalOpen(true)}
             onSelectTemplate={(templateId) => {
-              setCv((prev) => ({ ...prev, templateStyle: templateId as any }));
+              updateCvWithCache((prev) => ({ ...prev, templateStyle: templateId as any }));
               setActiveTab('editor');
             }}
             onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
@@ -183,73 +484,132 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
             onNavigateTab={(tab) => setActiveTab(tab)}
             onOpenPricing={() => setIsPricingModalOpen(true)}
             onLoadResume={(loadedCV) => {
-              setCv(loadedCV);
+              updateCvWithCache(loadedCV);
               setActiveTab('editor');
             }}
             currentCV={cv}
+            onOpenAuth={() => handleOpenAuth()}
           />
         </main>
       ) : (
         <>
           {/* Mobile Toggle Bar for Studio */}
-          <div className="no-print lg:hidden bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between">
+          <div className="no-print shrink-0 lg:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between">
             <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg w-full">
               <button
                 type="button"
                 onClick={() => setMobileViewMode('controls')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
                   mobileViewMode === 'controls'
                     ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600'
                 }`}
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>Configurações & Painel</span>
+                <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                <span>Editor & Painel</span>
               </button>
               <button
                 type="button"
                 onClick={() => setMobileViewMode('preview')}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors ${
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
                   mobileViewMode === 'preview'
                     ? 'bg-white text-slate-900 shadow-xs font-semibold'
                     : 'text-slate-600'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Ver Currículo A4</span>
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span>{activeTab === 'cover' ? 'Ver Carta A4' : 'Ver Currículo A4'}</span>
               </button>
             </div>
           </div>
 
-          {/* Main Studio Dual-Pane Layout */}
-          <main className="flex-1 flex flex-col lg:flex-row overflow-hidden h-[calc(100vh-4rem)] pb-14 lg:pb-0">
+          {/* Main Studio Dual-Pane Layout (Bounded cleanly via flex-1 min-h-0 so footers never clip) */}
+          <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             {/* Left Side: Control Deck / Tool Tabs */}
             <section
-              className={`w-full lg:w-[46%] xl:w-[42%] 2xl:w-[38%] border-r border-slate-200 bg-slate-50 flex flex-col overflow-y-auto no-print ${
+              className={`w-full lg:w-[46%] xl:w-[42%] 2xl:w-[38%] flex-1 lg:flex-none min-h-0 border-r border-slate-200 bg-slate-50 flex flex-col overflow-hidden no-print ${
                 mobileViewMode === 'preview' ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {/* Section Breadcrumb & Status */}
-              <div className="px-4 sm:px-6 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-slate-900">
-                    {activeTab === 'raw' && '0. Importar Informações, Documentos & LinkedIn'}
-                    {activeTab === 'editor' && '1. Editor de Conteúdo & Perfil'}
-                    {activeTab === 'ats' && '2. Vaga & Análise de Compatibilidade ATS'}
-                    {activeTab === 'ai' && '3. Otimizador com Inteligência Artificial'}
-                    {activeTab === 'interview' && '4. Simulador de Entrevista & Scoring STAR com IA'}
-                    {activeTab === 'cover' && '5. Carta de Motivação para a Candidatura'}
-                    {activeTab === 'python' && '6. Compilação Offline & Automação'}
-                  </span>
-                </div>
+              {/* Studio Primary Mode Switcher */}
+              <div className="px-3 sm:px-4 py-2 bg-white border-b border-slate-200 flex items-center justify-between gap-2 shrink-0 min-w-0">
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto no-scrollbar w-full min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('editor')}
+                    className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'editor'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-700 shrink-0" />
+                    <span>Currículo</span>
+                  </button>
 
-                <span className="text-[11px] text-slate-500 font-mono">
-                  {cv.experiences.length} Cargos · {cv.competencies.length} Competências
-                </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('cover')}
+                    className={`flex-1 sm:flex-initial px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'cover'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Carta</span>
+                    <span className="hidden xl:inline">de Apresentação</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ats')}
+                    className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'ats'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <Target className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Radar ATS</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('ai')}
+                    className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'ai'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span>Otimizar IA</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('raw')}
+                    className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'raw'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                    <span>Importar</span>
+                  </button>
+                </div>
               </div>
 
               {/* Active Tab Panel View */}
-              <div className={activeTab === 'editor' && hasActivePlan ? 'flex-1 flex flex-col min-h-0' : 'p-4 sm:p-6 flex-1'}>
+              <div
+                className={
+                  activeTab === 'editor'
+                    ? 'flex-1 flex flex-col min-h-0 overflow-hidden'
+                    : 'p-4 sm:p-6 flex-1 min-h-0 overflow-y-auto'
+                }
+              >
                 {activeTab === 'raw' && (
                   !hasActivePlan ? (
                     <PlanGateGuard
@@ -272,7 +632,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                   ) : (
                     <RawInputGenerator
                       onCVGenerated={(newCV) => {
-                        setCv(newCV);
+                        updateCvWithCache(newCV);
                         setActiveTab('editor');
                       }}
                       currentJobDescription={jobDescription}
@@ -288,18 +648,18 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                   !hasActivePlan ? (
                     <PlanGateGuard
                       requiredTier={isAuthenticated ? 'pro' : 'authenticated'}
-                      featureTitle="Editor de Currículo Profissional & Executivo"
+                      featureTitle="Editor Estratégico de Currículo & Construtor ATS"
                       featureSubtitle={
                         isAuthenticated
-                          ? "O editor de currículos é exclusivo para assinantes dos planos Pro ou Executivo VIP. Ative o seu plano para criar, personalizar e salvar o seu currículo oficial em tempo real."
-                          : "O editor de currículos é exclusivo para assinantes com plano ativo. Inicie a sua sessão ou cadastre-se e ative o seu plano para começar a editar."
+                          ? "A edição de campos, preenchimento guiado e estruturação do currículo passo a passo é exclusiva para assinantes Pro e Executivo VIP. Ative o seu plano para começar a editar o seu currículo e salvá-lo na nuvem."
+                          : "Crie a sua conta e ative o plano Pro ou Executivo VIP para aceder ao editor oficial, personalizar experiências com a fórmula Google XYZ e salvar na nuvem."
                       }
                       featureBenefits={[
-                        'Editor em tempo real com calibração modular de seções',
-                        'Formatação rigorosa segundo normas ATS (Workday, Taleo, Greenhouse)',
-                        'Exportações ilimitadas em Word (.docx) e PDF limpo sem marcas de água',
-                        'Armazenamento seguro de múltiplas versões na nuvem',
-                        'Aplicação imediata de competências C-Level e métricas quantificáveis'
+                        'Preenchimento guiado passo a passo de todas as seções',
+                        'Dicas de especialistas e verbos de ação para aprovação em robôs ATS',
+                        'Formulação de impactos com a metodologia Google XYZ',
+                        'Armazenamento seguro em tempo real na nuvem',
+                        'Exportação oficial sem marcas de água em Word (.docx) e PDF'
                       ]}
                       onOpenAuthModal={() => setIsAuthModalOpen(true)}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
@@ -307,8 +667,10 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                   ) : (
                     <ContentEditor
                       cv={cv}
-                      onChange={setCv}
+                      onChange={updateCvWithCache}
                       onOpenAiTailor={() => setActiveTab('ai')}
+                      onOpenCoverLetter={() => setActiveTab('cover')}
+                      onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
                     />
                   )
                 )}
@@ -345,7 +707,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                   ) : (
                     <AtsRadarPanel
                       cv={cv}
-                      onChange={setCv}
+                      onChange={updateCvWithCache}
                       jobDescription={jobDescription}
                       setJobDescription={setJobDescription}
                       onOpenAiTailor={() => setActiveTab('ai')}
@@ -385,7 +747,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                   ) : (
                     <AiTailorPanel
                       cv={cv}
-                      onChange={setCv}
+                      onChange={updateCvWithCache}
                       jobDescription={jobDescription}
                     />
                   )
@@ -462,43 +824,13 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
                       cv={cv}
                       jobDescription={jobDescription}
                       letterBody={letterBody}
-                      setLetterBody={setLetterBody}
+                      setLetterBody={updateLetterWithCache}
                       onExportWord={handleExportWord}
                       isExportingWord={isExportingWord}
                       onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+                      onSelectLanguage={handleSwitchLanguage}
+                      isTranslatingContent={isTranslatingContent}
                     />
-                  )
-                )}
-
-                {activeTab === 'python' && (
-                  !isAuthenticated ? (
-                    <PlanGateGuard
-                      requiredTier="authenticated"
-                      featureTitle="Compilação Offline Python"
-                      featureSubtitle="Exporte scripts Python para renderização e automação local de currículos."
-                      featureBenefits={[
-                        'Scripts independentes em Python',
-                        'Geração de documentos em lote',
-                        'Sem dependência de servidores web'
-                      ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
-                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
-                    />
-                  ) : !isExecutive ? (
-                    <PlanGateGuard
-                      requiredTier="executive"
-                      featureTitle="Compilação Offline & Scripts Python"
-                      featureSubtitle="Gere código Python automatizado com Jinja2 e reportlab para compilar os seus documentos 100% offline."
-                      featureBenefits={[
-                        'Código-fonte Python pronto para execução local',
-                        'Independência total de nuvem e privacidade máxima',
-                        'Automação de múltiplos formatos para empresas'
-                      ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
-                      onOpenPricingModal={() => setIsPricingModalOpen(true)}
-                    />
-                  ) : (
-                    <PythonScriptPanel cv={cv} />
                   )
                 )}
               </div>
@@ -506,40 +838,61 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
 
             {/* Right Side: High-Fidelity A4 Document Canvas */}
             <section
-              className={`flex-1 flex flex-col h-full overflow-hidden bg-slate-200/70 ${
+              className={`flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-slate-200/70 ${
                 mobileViewMode === 'controls' ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {!isAuthenticated && (
-                <div className="bg-amber-400 text-slate-950 px-4 py-2.5 text-xs font-bold flex flex-wrap items-center justify-between gap-2 shadow-xs shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-slate-900" />
-                    <span>Visualização de Demonstração (Somente Leitura): Faça login para criar o seu currículo oficial.</span>
+              {!hasActivePlan && (
+                <div className="bg-amber-50 border-b border-amber-200/80 text-amber-950 px-3 sm:px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                    <span className="font-medium text-amber-900">
+                      {!isAuthenticated
+                        ? "Modo Pré-visualização: Visualização do modelo A4. A edição de dados, importação e downloads oficiais em Word (.docx) e PDF são exclusivos para assinantes Pro e Executivo VIP."
+                        : "Plano Gratuito: Visualização do modelo A4. A edição de campos, personalização e downloads oficiais em Word (.docx) e PDF requerem a ativação de um plano Pro ou Executivo VIP."}
+                    </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsAuthModalOpen(true)}
-                    className="px-3 py-1 bg-slate-950 hover:bg-slate-800 text-white rounded-lg text-[11px] font-semibold transition-colors"
+                    onClick={() => (!isAuthenticated ? handleOpenAuth('Crie a sua conta gratuita para guardar e exportar os seus currículos.') : setIsPricingModalOpen(true))}
+                    className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-semibold transition-colors ml-auto shadow-2xs whitespace-nowrap shrink-0"
                   >
-                    Aceder à Minha Conta
+                    {!isAuthenticated ? 'Criar Conta' : 'Ativar Plano Pro'}
                   </button>
                 </div>
               )}
-              <CVDocumentView
-                cv={cv}
-                onChange={setCv}
-                onExportWord={handleExportWord}
-                isExportingWord={isExportingWord}
-                onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
-                onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
-                density={density}
-                onDensityChange={setDensity}
-              />
+              {activeTab === 'cover' ? (
+                <CoverLetterDocumentView
+                  cv={cv}
+                  letterBody={letterBody}
+                  onExportWord={handleExportWord}
+                  isExportingWord={isExportingWord}
+                  onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
+                  onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+                  onSelectLanguage={handleSwitchLanguage}
+                  isTranslatingContent={isTranslatingContent}
+                  translatingTargetLang={translatingTargetLang}
+                />
+              ) : (
+                <CVDocumentView
+                  cv={cv}
+                  onChange={updateCvWithCache}
+                  onExportWord={handleExportWord}
+                  isExportingWord={isExportingWord}
+                  onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
+                  onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+                  density={density}
+                  onDensityChange={setDensity}
+                  onSelectLanguage={handleSwitchLanguage}
+                  isTranslatingContent={isTranslatingContent}
+                  translatingTargetLang={translatingTargetLang}
+                />
+              )}
             </section>
           </main>
 
-          {/* Mobile Bottom Thumb Navigation */}
-          <nav className="no-print lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1 flex items-center justify-around shadow-lg">
+          {/* Mobile Bottom Thumb Navigation (Shrink-0 flex child so it never covers sticky editor footers) */}
+          <nav className="no-print lg:hidden shrink-0 z-30 bg-white border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-xs">
             <button
               type="button"
               onClick={() => setActiveTab('home')}
@@ -564,7 +917,7 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
               <div className="relative">
                 <Edit3 className="w-4 h-4" />
                 {!hasActivePlan && (
-                  <Lock className="w-2.5 h-2.5 text-amber-600 absolute -top-1 -right-2" />
+                  <Lock className="w-2.5 h-2.5 text-amber-700 absolute -top-1 -right-2" />
                 )}
               </div>
               <span>Editor</span>
@@ -573,17 +926,17 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
             <button
               type="button"
               onClick={() => {
-                setActiveTab('ats');
+                setActiveTab('cover');
                 setMobileViewMode('controls');
               }}
               className={`flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-lg text-[10px] font-semibold transition-colors ${
-                activeTab === 'ats' && mobileViewMode === 'controls'
+                activeTab === 'cover' && mobileViewMode === 'controls'
                   ? 'text-slate-950 font-bold'
                   : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Target className="w-4 h-4" />
-              <span>Radar ATS</span>
+              <Mail className="w-4 h-4 text-amber-600" />
+              <span>Carta</span>
             </button>
 
             <button
@@ -656,7 +1009,8 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         isOpen={isMyResumesModalOpen}
         onClose={() => setIsMyResumesModalOpen(false)}
         currentCV={cv}
-        onLoadResume={(loadedCV) => setCv(loadedCV)}
+        onLoadResume={(loadedCV) => updateCvWithCache(loadedCV)}
+        onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
       />
 
       {/* SaaS Admin Backend Portal & Database Management */}
@@ -670,9 +1024,10 @@ ${cv.personalDetails.phone || '+55 11 98765-4321'} | ${cv.personalDetails.email 
         isOpen={isTemplateAdvisorOpen}
         onClose={() => setIsTemplateAdvisorOpen(false)}
         currentTemplateId={cv.templateStyle}
-        onSelectTemplate={(newStyle) => setCv((prev) => ({ ...prev, templateStyle: newStyle }))}
+        onSelectTemplate={(newStyle) => updateCvWithCache((prev) => ({ ...prev, templateStyle: newStyle }))}
         cv={cv}
-        onUpdateCV={setCv}
+        onUpdateCV={updateCvWithCache}
+        onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
       />
     </div>
   );

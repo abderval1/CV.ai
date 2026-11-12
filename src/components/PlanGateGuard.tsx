@@ -30,7 +30,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
   onOpenAuthModal,
   onOpenPricingModal
 }) => {
-  const { user, isAuthenticated, demoLogin } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const isExecutiveRequired = requiredTier === 'executive';
   const isProRequired = requiredTier === 'pro';
@@ -171,23 +171,6 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
             </button>
           )}
 
-          {/* Quick Demo Switcher (Simulação Imediata para Testes) */}
-          <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1 font-medium">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Acesso Rápido de Teste:
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => demoLogin(badgeConfig.targetPlan)}
-                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition-colors border border-slate-700 text-[10px]"
-                title="Ativar este plano imediatamente para teste nesta sessão"
-              >
-                Simular Acesso {badgeConfig.targetPlan.toUpperCase()}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

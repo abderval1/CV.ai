@@ -18,7 +18,7 @@ export const CVWatermarkOverlay: React.FC<CVWatermarkOverlayProps> = ({ isVisibl
           CURRÍCULO ESTRATÉGICO · PRÉ-VISUALIZAÇÃO
         </p>
         <p className="text-[9px] sm:text-[11px] font-bold tracking-widest text-slate-600/50 uppercase mt-0.5">
-          DOCUMENTO DEMONSTRATIVO · ATIVE UM PLANO PRO PARA REMOVER A MARCA D'ÁGUA
+          DOCUMENTO NÃO LICENCIADO · ATIVE UM PLANO PRO PARA REMOVER A MARCA D'ÁGUA
         </p>
       </div>
 

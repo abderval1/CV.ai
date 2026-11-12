@@ -26,36 +26,40 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useLanguage } from '../context/LanguageContext';
 import { CVData, SubscriptionPlan, SavedResume } from '../types/cv';
 import { generateWordDocument, triggerDownload } from '../utils/docxExport';
 import { OFFICIAL_PIX_KEY } from './PricingModal';
 
 interface UserProfileViewProps {
-  onNavigateTab: (tab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'python' | 'interview') => void;
+  onNavigateTab: (tab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview') => void;
   onOpenPricing: () => void;
   onLoadResume: (cv: CVData) => void;
   currentCV: CVData;
+  onOpenAuth?: () => void;
 }
 
 export const UserProfileView: React.FC<UserProfileViewProps> = ({
   onNavigateTab,
   onOpenPricing,
   onLoadResume,
-  currentCV
+  currentCV,
+  onOpenAuth
 }) => {
   const {
     user,
     isAuthenticated,
     isPro,
     isExecutive,
+    hasActivePlan,
     logout,
     updateUserProfile,
-    switchDemoPlan,
     savedResumes,
     saveCurrentResume,
     deleteResume
   } = useAuth();
   const { formatPrice } = useCurrency();
+  const { language: appLang } = useLanguage();
 
   const [activeSubTab, setActiveSubTab] = useState<'overview' | 'resumes' | 'settings'>('overview');
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
@@ -76,18 +80,27 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
           <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mx-auto">
             <Lock className="w-8 h-8 text-slate-900" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">Área do Usuário Reservada</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Área do Utilizador Reservada</h2>
           <p className="text-sm text-slate-600 max-w-md mx-auto">
-            Faça login ou crie a sua conta profissional para aceder aos seus currículos salvos, créditos de inteligência artificial e dados de assinatura.
+            Inicie sessão ou crie a sua conta profissional para aceder aos seus currículos guardados, créditos de inteligência artificial e dados de subscrição.
           </p>
           <div className="pt-4 flex items-center justify-center gap-3">
             <button
               type="button"
               onClick={() => onNavigateTab('home')}
-              className="py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+              className="py-2.5 px-5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors"
             >
               Voltar ao Início
             </button>
+            {onOpenAuth && (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="py-2.5 px-5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+              >
+                Iniciar Sessão / Criar Conta
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -126,7 +139,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   };
 
   const handleExportWordResume = async (resume: SavedResume) => {
-    const blob = await generateWordDocument(resume.data);
+    const blob = await generateWordDocument(resume.data, true, 'normal', appLang);
     triggerDownload(blob, `Curriculo_${resume.title.replace(/\s+/g, '_')}.docx`);
   };
 
@@ -164,6 +177,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <h1 className="text-xl sm:text-2xl font-black tracking-tight">{user.name}</h1>
+                  {user.email?.toLowerCase() === 'gugurai923@gmail.com' || user.role === 'admin' ? (
+                    <span className="text-xs px-3 py-0.5 rounded-full font-black uppercase tracking-wider bg-rose-500 text-white shadow-xs border border-rose-400 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>Admin Geral</span>
+                    </span>
+                  ) : null}
                   <span
                     className={`text-xs px-3 py-0.5 rounded-full font-extrabold uppercase border flex items-center gap-1.5 ${planBadgeStyle}`}
                   >
@@ -202,36 +221,23 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Quick Simulation Bar (Allows testing Pro and Executive VIP instantly) */}
-          <div className="mt-6 pt-4 border-t border-slate-800/90 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-slate-400 text-[11px] flex items-center gap-1 font-medium">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Alternar Nível de Assinatura (Simulação):
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => switchDemoPlan('pro')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                  user.plan === 'pro'
-                    ? 'bg-amber-400 text-slate-950 border-amber-400 shadow-sm'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                }`}
-              >
-                1. Assinante Pro ($29/mês)
-              </button>
-              <button
-                type="button"
-                onClick={() => switchDemoPlan('executive')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors ${
-                  user.plan === 'executive'
-                    ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                }`}
-              >
-                2. Executivo VIP ($49/mês)
-              </button>
+          {/* Real Subscription Summary Bar */}
+          <div className="mt-6 pt-4 border-t border-slate-800/90 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-slate-300">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Plano Contratado: <strong className="text-white capitalize">{user.plan === 'executive' ? 'Executivo VIP' : user.plan === 'pro' ? 'Profissional Pro' : 'Gratuito'}</strong></span>
+              <span aria-hidden="true" className="text-slate-600">·</span>
+              <span className="text-slate-400">Ciclo {user.billingCycle === 'yearly' ? 'Anual' : 'Mensal'}</span>
             </div>
+
+            <button
+              type="button"
+              onClick={onOpenPricing}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 transition-colors shadow-xs flex items-center gap-1.5"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{user.plan === 'pro' ? 'Fazer Upgrade para VIP' : 'Gerir Plano & Faturas'}</span>
+            </button>
           </div>
         </div>
 

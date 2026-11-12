@@ -61,6 +61,11 @@ export type CVSectionKey =
   | 'languages'
   | 'references';
 
+export interface LanguageItem {
+  language: string;
+  level: string;
+}
+
 export interface CVData {
   personalDetails: PersonalDetails;
   summary: string;
@@ -68,10 +73,7 @@ export interface CVData {
   experiences: Experience[];
   educations: Education[];
   trainings: string[];
-  languages: {
-    language: string;
-    level: string;
-  }[];
+  languages: LanguageItem[];
   references: Reference[];
   templateStyle: TemplateStyle;
   accentColor?: string;

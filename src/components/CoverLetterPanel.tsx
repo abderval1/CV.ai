@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage, LanguageCode } from '../context/LanguageContext';
 import {
   Sparkles,
   Copy,
@@ -8,12 +9,6 @@ import {
   Printer,
   Loader2,
   Download,
-  Languages,
-  Globe,
-  Building2,
-  UserCheck,
-  Send,
-  SlidersHorizontal,
   Lock
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
@@ -26,9 +21,11 @@ interface CoverLetterPanelProps {
   onExportWord?: () => void;
   isExportingWord?: boolean;
   onOpenPricingModal?: (promptMessage?: string) => void;
+  onSelectLanguage?: (lang: LanguageCode) => void;
+  isTranslatingContent?: boolean;
 }
 
-type SupportedLanguage = 'pt' | 'en' | 'fr' | 'es';
+type SupportedLanguage = 'pt' | 'en' | 'fr' | 'es' | 'de';
 type LetterTone = 'executive' | 'un_diplomatic' | 'tech' | 'corporate';
 
 export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
@@ -38,24 +35,38 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   setLetterBody,
   onExportWord,
   isExportingWord = false,
-  onOpenPricingModal
+  onOpenPricingModal,
+  onSelectLanguage,
+  isTranslatingContent = false
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
+  const { language: appLanguage } = useLanguage();
   const [recipient, setRecipient] = useState<string>('Comité de Seleção e Recrutamento');
   const [targetOrg, setTargetOrg] = useState<string>('Diretoria de Recursos Humanos / Empresa Alvo');
   const [targetRole, setTargetRole] = useState<string>(
     cv.personalDetails.title || 'Cargo Pretendido'
   );
-  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>('pt');
-  const [letterTone, setLetterTone] = useState<LetterTone>('executive');
+  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>(appLanguage || 'pt');
+  const [letterTone] = useState<LetterTone>('executive');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (appLanguage) {
+      setLetterLanguage(appLanguage);
+    }
+  }, [appLanguage]);
+
+  const handleLanguageClick = (lang: SupportedLanguage) => {
+    setLetterLanguage(lang);
+    onSelectLanguage?.(lang);
+  };
+
   // Dynamic template generator based on user's actual profile and inputs
   const buildDynamicLetter = (
     lang: SupportedLanguage,
-    tone: LetterTone,
+    _tone: LetterTone,
     candName: string,
     candTitle: string,
     candPhone: string,
@@ -66,7 +77,9 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
     role: string,
     topExp?: string
   ): string => {
-    const today = new Date().toLocaleDateString(lang === 'en' ? 'en-US' : lang === 'fr' ? 'fr-FR' : 'pt-PT', {
+    const locale =
+      lang === 'en' ? 'en-US' : lang === 'fr' ? 'fr-FR' : lang === 'de' ? 'de-DE' : lang === 'es' ? 'es-ES' : 'pt-PT';
+    const today = new Date().toLocaleDateString(locale, {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -140,6 +153,28 @@ ${candTitle || 'Profesional Ejecutivo'}
 ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
     }
 
+    if (lang === 'de') {
+      return `An: ${rec}
+${org}
+${candLocation || 'Berlin, Deutschland'} | ${today}
+
+Betreff: Bewerbung als ${role}
+
+Sehr geehrte Mitglieder des Auswahlausschusses,
+
+mit großem Interesse und höchstem professionellem Engagement reiche ich meine Bewerbung für die Position als ${role} ein. Mit meiner langjährigen Führungserfahrung in der strategischen Umsetzung, Prozessoptimierung und Leitung interdisziplinärer Teams bringe ich eine nachweisbare Erfolgsbilanz messbarer Resultate in komplexen Unternehmensstrukturen mit.
+
+In meiner bisherigen Tätigkeit als ${candTitle}${topExp ? `, insbesondere bei ${topExp}` : ''} habe ich strategische Initiativen vorangetrieben, Arbeitsabläufe effizienter gestaltet und höchste internationale Qualitäts- und Governance-Standards sichergestellt.
+
+Überzeugt von der Vision und dem nachhaltigen Wachstum von ${org} stehe ich kurzfristig zur Verfügung und freue mich auf ein persönliches Gespräch.
+
+Mit freundlichen Grüßen
+
+${candName || 'Ihr Name'}
+${candTitle || 'Führungskraft'}
+${candPhone || '+49 170 0000000'} | ${candEmail || 'kontakt@beispiel.de'}`;
+    }
+
     // Default: Portuguese
     return `A/C: ${rec}
 ${org}
@@ -194,6 +229,8 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
               ? 'Français (Francês Diplomático)'
               : letterLanguage === 'es'
               ? 'Español (Espanhol Internacional)'
+              : letterLanguage === 'de'
+              ? 'Deutsch (Alemão Corporativo Formal)'
               : 'Português (Institucional)'
         })
       });
@@ -249,7 +286,7 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
       onExportWord();
     } else {
       try {
-        const blob = await generateCoverLetterDocx(cv, letterBody);
+        const blob = await generateCoverLetterDocx(cv, letterBody, true, letterLanguage);
         const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta';
         triggerDownload(blob, `Carta_Apresentacao_${nameClean}.docx`);
       } catch (err) {
@@ -273,44 +310,31 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
             </p>
           </div>
 
-          {/* Language Selector */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg shrink-0">
-            <button
-              type="button"
-              onClick={() => setLetterLanguage('pt')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                letterLanguage === 'pt' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              🇵🇹 PT
-            </button>
-            <button
-              type="button"
-              onClick={() => setLetterLanguage('en')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                letterLanguage === 'en' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              🇬🇧 EN
-            </button>
-            <button
-              type="button"
-              onClick={() => setLetterLanguage('fr')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                letterLanguage === 'fr' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              🇫🇷 FR
-            </button>
-            <button
-              type="button"
-              onClick={() => setLetterLanguage('es')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                letterLanguage === 'es' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-              }`}
-            >
-              🇪🇸 ES
-            </button>
+          {/* Language Selector (translates existing letter + CV content immediately) */}
+          <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg shrink-0">
+            {([
+              { code: 'pt', flag: '🇵🇹', label: 'PT' },
+              { code: 'en', flag: '🇬🇧', label: 'EN' },
+              { code: 'es', flag: '🇪🇸', label: 'ES' },
+              { code: 'fr', flag: '🇫🇷', label: 'FR' },
+              { code: 'de', flag: '🇩🇪', label: 'DE' }
+            ] as const).map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                disabled={isTranslatingContent}
+                onClick={() => handleLanguageClick(item.code)}
+                className={`px-2 py-1 text-xs font-semibold rounded-md transition-colors disabled:opacity-60 flex items-center gap-1 ${
+                  letterLanguage === item.code ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>{item.flag}</span>
+                <span>{item.label}</span>
+              </button>
+            ))}
+            {isTranslatingContent && (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 mx-1" />
+            )}
           </div>
         </div>
 

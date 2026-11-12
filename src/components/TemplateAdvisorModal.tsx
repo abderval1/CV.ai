@@ -17,6 +17,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+import { useAuth } from '../context/AuthContext';
+
 interface TemplateAdvisorModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -24,6 +26,7 @@ interface TemplateAdvisorModalProps {
   onSelectTemplate: (templateId: TemplateStyle) => void;
   cv: CVData;
   onUpdateCV: (cv: CVData) => void;
+  onOpenPricingModal?: (prompt?: string) => void;
 }
 
 export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
@@ -32,8 +35,10 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   currentTemplateId,
   onSelectTemplate,
   cv,
-  onUpdateCV
+  onUpdateCV,
+  onOpenPricingModal
 }) => {
+  const { hasActivePlan } = useAuth();
   const [filter, setFilter] = useState<'all' | 'with_photo' | 'without_photo' | 'executive'>('all');
   const [selectedTemplateForDetail, setSelectedTemplateForDetail] = useState<CVTemplateInfo>(
     CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]
@@ -56,6 +61,13 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   });
 
   const handleApply = (id: TemplateStyle) => {
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A aplicação de modelos executivos internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro e Executivo VIP.'
+      );
+      onClose();
+      return;
+    }
     onSelectTemplate(id);
     onClose();
   };

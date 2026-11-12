@@ -21,15 +21,21 @@ import {
   Lock,
   AlertTriangle,
   Terminal,
-  BookOpen
+  BookOpen,
+  Sliders,
+  Palette,
+  Loader2
 } from 'lucide-react';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
 import { TemplateAdvisorModal } from './TemplateAdvisorModal';
 import { PhotoManagerModal } from './PhotoManagerModal';
+import { MultiLanguageDownloadModal } from './MultiLanguageDownloadModal';
 import { CVWatermarkOverlay } from './CVWatermarkOverlay';
 import { getTemplateById } from '../data/templateCatalog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage, LanguageCode } from '../context/LanguageContext';
+import { SECTION_TITLES_BY_LANG, getResolvedSectionTitles } from '../utils/cvDocumentLabels';
 
 interface CVDocumentViewProps {
   cv: CVData;
@@ -40,6 +46,9 @@ interface CVDocumentViewProps {
   onOpenPricingModal?: (promptMessage?: string) => void;
   density?: 'compact' | 'normal' | 'relaxed';
   onDensityChange?: (density: 'compact' | 'normal' | 'relaxed') => void;
+  onSelectLanguage?: (lang: LanguageCode) => void;
+  isTranslatingContent?: boolean;
+  translatingTargetLang?: LanguageCode | null;
 }
 
 const ACCENT_COLORS = [
@@ -60,18 +69,30 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   onOpenAuthModal,
   onOpenPricingModal,
   density = 'normal',
-  onDensityChange
+  onDensityChange,
+  onSelectLanguage,
+  isTranslatingContent = false,
+  translatingTargetLang = null
 }) => {
-  const { user, isAuthenticated, hasActivePlan } = useAuth();
+  const { isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
+  const { language: appLang, setLanguage, t } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [jsonImportSuccess, setJsonImportSuccess] = useState<string | null>(null);
-  const [docLang, setDocLang] = useState<'pt' | 'en'>('pt');
+  const [docLang, setDocLang] = useState<LanguageCode>(appLang || 'pt');
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState<boolean>(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
+  const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
+  const [customizationMenuOpen, setCustomizationMenuOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (appLang) {
+      setDocLang(appLang);
+    }
+  }, [appLang]);
 
   const setDensity = (newDensity: 'compact' | 'normal' | 'relaxed') => {
     onDensityChange?.(newDensity);
@@ -115,55 +136,9 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal]);
 
-  const sectionTitles = {
-    summary:
-      isAcademic
-        ? (docLang === 'pt' ? 'Resumo Académico & Linhas de Investigação' : 'Academic Summary & Research Lines')
-        : isClassic
-        ? (docLang === 'pt' ? 'Resumo Executivo & Perfil Diplomático' : 'Executive Summary & Diplomatic Profile')
-        : docLang === 'pt' ? 'Resumo Profissional' : 'Executive Summary',
-    competencies:
-      isAcademic
-        ? (docLang === 'pt' ? 'Áreas de Atuação & Metodologias' : 'Research Fields & Methodologies')
-        : isClassic
-        ? (docLang === 'pt' ? 'Competências Centrais & Expertise Multilateral' : 'Core Competencies & Multilateral Expertise')
-        : docLang === 'pt' ? 'Competências & Habilidades Chave' : 'Core Competencies & Key Skills',
-    experiences:
-      isAcademic
-        ? (docLang === 'pt' ? 'Atuação Profissional, Pesquisa & Docência' : 'Professional, Research & Teaching Experience')
-        : isClassic
-        ? (docLang === 'pt' ? 'Experiência Profissional & Missões' : 'Professional Experience & Missions')
-        : docLang === 'pt' ? 'Experiência Profissional' : 'Professional Experience',
-    educations:
-      isAcademic
-        ? (docLang === 'pt' ? 'Formação Académica & Titulações' : 'Academic Qualifications & Degrees')
-        : isClassic
-        ? (docLang === 'pt' ? 'Formação Académica' : 'Academic Qualifications')
-        : docLang === 'pt' ? 'Formação Académica' : 'Education',
-    trainings:
-      isAcademic
-        ? (docLang === 'pt' ? 'Produção Científica, Certificações & Cursos' : 'Scientific Production, Certifications & Courses')
-        : isClassic
-        ? (docLang === 'pt' ? 'Certificações & Formação Especializada' : 'Certifications & Specialized Training')
-        : docLang === 'pt' ? 'Certificações & Formação Especializada' : 'Specialized Training & Certifications',
-    languages:
-      isAcademic
-        ? (docLang === 'pt' ? 'Idiomas & Proficiência Académica' : 'Academic Languages & Proficiency')
-        : isClassic
-        ? (docLang === 'pt' ? 'Idiomas Oficiais & Proficiência' : 'Official Languages & Proficiency')
-        : docLang === 'pt' ? 'Idiomas & Proficiência' : 'Languages & Proficiency',
-    references:
-      isAcademic
-        ? (docLang === 'pt' ? 'Referências Académicas & Bancas Avaliadoras' : 'Academic References & Examination Boards')
-        : isClassic
-        ? (docLang === 'pt' ? 'Referências Profissionais & Institucionais' : 'Professional & Institutional References')
-        : docLang === 'pt' ? 'Referências Profissionais' : 'Professional References',
-    tableRefName: isAcademic ? 'Nome do Avaliador / Pesquisador' : docLang === 'pt' ? 'Nome' : 'Name',
-    tableRefInstitution: isAcademic ? 'Instituição & Departamento' : docLang === 'pt' ? 'Instituição & Cargo' : 'Institution & Position',
-    tableRefContact: isAcademic ? 'Contacto Institucional' : docLang === 'pt' ? 'Contacto' : 'Contact',
-    techStack: docLang === 'pt' ? 'Stack Tecnológico & Ferramentas' : 'Technical Stack & Tools',
-    cefrLevel: docLang === 'pt' ? 'Quadro Europeu CEFR' : 'CEFR Framework'
-  };
+  // Comprehensive 5-language section titles & template chrome labels (shared with Word export)
+  const currentTitles = SECTION_TITLES_BY_LANG[docLang] || SECTION_TITLES_BY_LANG.pt;
+  const sectionTitles = getResolvedSectionTitles(docLang, cv.templateStyle);
 
   const getSectionPrefix = (index: number) => {
     if (isTech) return <span className="text-teal-500 font-mono mr-1.5">&gt;</span>;
@@ -193,6 +168,19 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const handleCopyPlainText = () => {
+    if (!isAuthenticated) {
+      showWarning('Registo Obrigatório', 'Inicie sessão ou crie uma conta para copiar o texto formatado.');
+      onOpenAuthModal?.('O registo é obrigatório para copiar o texto do currículo.');
+      return;
+    }
+    if (!hasActivePlan) {
+      showWarning('Plano Requerido', 'A cópia do texto formatado requer um plano Pro ou Executive ativo.');
+      onOpenPricingModal?.(
+        'A extração e cópia do texto completo do currículo para formulários e candidaturas requer um plano Pro ou Executivo VIP ativo.'
+      );
+      return;
+    }
+
     const text = [
       cv.personalDetails.name,
       cv.personalDetails.title,
@@ -255,6 +243,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!isAuthenticated) {
+      showWarning('Registo Obrigatório', 'Inicie sessão para importar backups.');
+      onOpenAuthModal?.('O registo é obrigatório para restaurar backups do currículo.');
+      return;
+    }
+    if (!hasActivePlan) {
+      showWarning('Plano Requerido', 'A importação de backups JSON requer um plano Pro ou Executive ativo.');
+      onOpenPricingModal?.('A importação e restauração de backups é exclusiva para assinantes Pro e Executivo VIP.');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
@@ -297,10 +296,22 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const setStyle = (style: TemplateStyle) => {
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A alteração de modelos de currículo e acesso aos designs internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro e Executivo VIP.'
+      );
+      return;
+    }
     onChange({ ...cv, templateStyle: style });
   };
 
   const setAccentColor = (hex: string) => {
+    if (!hasActivePlan) {
+      onOpenPricingModal?.(
+        'A personalização de cores executivas e tom corporativo é exclusiva para assinantes dos planos Pro ou Executivo VIP.'
+      );
+      return;
+    }
     onChange({ ...cv, accentColor: hex });
     setShowColorPicker(false);
   };
@@ -324,260 +335,333 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       {/* Top Controls Toolbar for the Document Preview */}
-      <div className="no-print bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
-        {/* Left Side: Modern Template Selector Dropdown & Advisor Trigger */}
-        <div className="flex items-center gap-2">
+      <div className="no-print shrink-0 bg-white border-b border-slate-200 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+        {/* Left Side: Template Selector & Grouped Settings Popover */}
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <TemplateSelectorDropdown
             currentStyle={cv.templateStyle}
             onSelectStyle={setStyle}
             onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
           />
 
-          {/* Photo Manager Button */}
-          <button
-            type="button"
-            onClick={() => setIsPhotoModalOpen(true)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-              shouldRenderPhoto
-                ? 'bg-blue-50 border-blue-300 text-blue-900'
-                : hasUserPhoto
-                ? 'bg-slate-50 border-slate-300 text-slate-700'
-                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-            title="Adicionar ou alterar fotografia do currículo"
-          >
-            <Camera className="w-3.5 h-3.5 text-blue-600" />
-            <span className="hidden sm:inline">
-              {hasUserPhoto ? (shouldRenderPhoto ? 'Foto Ativa' : 'Foto Ocultada') : 'Adicionar Foto'}
-            </span>
-            {hasUserPhoto && (
-              <span className={`w-1.5 h-1.5 rounded-full ${shouldRenderPhoto ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            )}
-          </button>
-        </div>
-
-        {/* Right Side: View and Export Options */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {/* Accent Color Picker Popover */}
+          {/* Unified Document Customization & Layout Popover (Ajustes) */}
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowColorPicker(!showColorPicker)}
-              className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors shadow-2xs"
-              title="Cor de Destaque do Documento"
+              onClick={() => setCustomizationMenuOpen(!customizationMenuOpen)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+                customizationMenuOpen
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Ajustes de Fotografia, Cor, Espaçamento, Zoom, Edição Direta e Backup"
             >
+              <Sliders className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Ajustes</span>
               <span
-                className="w-3.5 h-3.5 rounded-full border border-black/10 shrink-0"
+                className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
                 style={{ backgroundColor: currentAccent }}
               />
-              <span className="hidden xl:inline text-[11px]">Cor</span>
             </button>
 
-            {showColorPicker && (
+            {customizationMenuOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setShowColorPicker(false)} />
-                <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in duration-100">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-1">
-                    Tom Executivo
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setCustomizationMenuOpen(false)}
+                />
+                <div className="absolute left-0 sm:left-auto sm:right-0 lg:left-0 mt-1.5 w-76 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-1 space-y-3">
+                  {/* Layout: Density & Zoom */}
+                  <div className="pb-2.5 border-b border-slate-100 space-y-2">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Enquadramento &amp; Visualização
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-700 font-medium">Espaçamento</span>
+                      <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!hasActivePlan) {
+                              onOpenPricingModal?.(
+                                'A calibração inteligente de espaçamento para ajuste em 1 página é exclusiva dos assinantes Pro ou Executivo VIP.'
+                              );
+                              return;
+                            }
+                            setDensity('compact');
+                          }}
+                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                            density === 'compact'
+                              ? 'bg-white text-slate-950 font-semibold shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          1 Pág
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!hasActivePlan) {
+                              onOpenPricingModal?.(
+                                'O ajuste de densidade e espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
+                              );
+                              return;
+                            }
+                            setDensity('normal');
+                          }}
+                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                            density === 'normal'
+                              ? 'bg-white text-slate-950 font-semibold shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Padrão
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-700 font-medium">Zoom A4</span>
+                      <div className="flex items-center gap-0.5 border border-slate-200 rounded-lg bg-slate-50 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
+                          className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+                          title="Diminuir Zoom"
+                        >
+                          <ZoomOut className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setZoomLevel(100)}
+                          className="text-[11px] font-mono tabular-nums text-slate-800 px-1.5 font-semibold"
+                          title="Restaurar 100%"
+                        >
+                          {zoomLevel}%
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
+                          className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+                          title="Aumentar Zoom"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {ACCENT_COLORS.map((col) => (
-                      <button
-                        key={col.id}
-                        type="button"
-                        onClick={() => setAccentColor(col.hex)}
-                        className="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-slate-50 text-slate-800"
-                      >
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="w-3 h-3 rounded-full shrink-0"
-                            style={{ backgroundColor: col.hex }}
-                          />
-                          <span>{col.name}</span>
+
+                  {/* Photo Management Section */}
+                  <div className="pb-2.5 border-b border-slate-100">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Fotografia Executiva
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Camera className="w-4 h-4 text-slate-600" />
+                        <span className="text-xs text-slate-700 font-medium">
+                          {hasUserPhoto
+                            ? shouldRenderPhoto
+                              ? 'Foto ativa'
+                              : 'Foto oculta'
+                            : 'Sem foto carregada'}
                         </span>
-                        {currentAccent === col.hex && <Check className="w-3 h-3 text-slate-900" />}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomizationMenuOpen(false);
+                          if (!hasActivePlan) {
+                            onOpenPricingModal?.(
+                              'O upload e gestão de fotografia executiva é exclusivo para assinantes dos planos Pro ou Executivo VIP.'
+                            );
+                            return;
+                          }
+                          setIsPhotoModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                      >
+                        {hasUserPhoto ? 'Alterar' : 'Adicionar'}
                       </button>
-                    ))}
+                    </div>
+                  </div>
+
+                  {/* Accent Color Section */}
+                  <div className="pb-2.5 border-b border-slate-100">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Cor de Destaque
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5 pt-0.5">
+                      {ACCENT_COLORS.map((col) => (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => setAccentColor(col.hex)}
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 relative ${
+                            currentAccent === col.hex ? 'ring-2 ring-slate-900 ring-offset-2 scale-105' : ''
+                          }`}
+                          style={{ backgroundColor: col.hex }}
+                          title={col.name}
+                        >
+                          {currentAccent === col.hex && <Check className="w-3.5 h-3.5 text-white" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Inline Editing Toggle */}
+                  <div className="pb-2.5 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!hasActivePlan) {
+                          onOpenPricingModal?.(
+                            'A edição direta no documento A4 é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
+                          );
+                          return;
+                        }
+                        setIsInlineEditing(!isInlineEditing);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                        isInlineEditing
+                          ? 'bg-amber-50 border-amber-300 text-amber-950 font-semibold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {isInlineEditing ? <Eye className="w-3.5 h-3.5 text-amber-700" /> : <Edit3 className="w-3.5 h-3.5 text-slate-600" />}
+                        <span>{isInlineEditing ? 'Edição Direta: Ativa' : 'Editar Clicando no A4'}</span>
+                      </span>
+                      <span className={`w-2 h-2 rounded-full ${isInlineEditing ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                    </button>
+                  </div>
+
+                  {/* Utilities: Plain Text & JSON Backup */}
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCopyPlainText();
+                        setCustomizationMenuOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Copy className="w-3.5 h-3.5 text-slate-500" />
+                        <span>Copiar Texto Puro</span>
+                      </span>
+                      {copied && <Check className="w-3.5 h-3.5 text-emerald-600" />}
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleExportJSON();
+                          setCustomizationMenuOpen(false);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                      >
+                        <Download className="w-3 h-3 text-slate-500" />
+                        <span>Backup JSON</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          fileInputRef.current?.click();
+                          setCustomizationMenuOpen(false);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                      >
+                        <Download className="w-3 h-3 text-slate-500 rotate-180" />
+                        <span>Restaurar</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
             )}
           </div>
+        </div>
 
-          {/* Document Language Toggle (PT / EN) */}
-          <div className="flex items-center rounded-md border border-slate-200 bg-slate-100 p-0.5">
-            <button
-              type="button"
-              onClick={() => setDocLang('pt')}
-              className={`px-2 py-1 text-[11px] font-bold rounded transition-colors ${
-                docLang === 'pt'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              title="Cabeçalhos e termos do documento em Português"
+        {/* Hidden JSON file input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleImportJSON}
+          accept=".json"
+          className="hidden"
+        />
+
+        {/* Right Side: Document Language & Clean Export Actions */}
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          {/* Document Language Toggle (PT / EN / ES / FR / DE) */}
+          <div className="flex items-center gap-1 shrink-0">
+            <div
+              className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0"
+              title="Traduzir conteúdo completo do currículo e carta de apresentação"
             >
-              PT
-            </button>
-            <button
-              type="button"
-              onClick={() => setDocLang('en')}
-              className={`px-2 py-1 text-[11px] font-bold rounded transition-colors ${
-                docLang === 'en'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}
-              title="Document headers and terms in English (International standard)"
-            >
-              EN
-            </button>
+              {(['pt', 'en', 'es', 'fr', 'de'] as const).map((lang) => {
+                const isTargetLoading = isTranslatingContent && translatingTargetLang === lang;
+                return (
+                  <button
+                    key={lang}
+                    type="button"
+                    disabled={isTranslatingContent}
+                    onClick={() => {
+                      setDocLang(lang);
+                      if (onSelectLanguage) {
+                        onSelectLanguage(lang);
+                      } else {
+                        setLanguage(lang);
+                      }
+                    }}
+                    className={`px-1.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-md transition-colors flex items-center gap-1 disabled:opacity-60 ${
+                      docLang === lang
+                        ? 'bg-white text-slate-950 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                    title={`Traduzir CV e Carta para ${lang.toUpperCase()}`}
+                  >
+                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />}
+                    <span>{lang.toUpperCase()}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {isTranslatingContent && (
+              <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span className="hidden sm:inline">{currentTitles.translatingLabel}</span>
+              </span>
+            )}
           </div>
-
-          {/* Density / Spacing Control (1-Page Fit) */}
-          <div className="hidden sm:flex items-center rounded-md border border-slate-200 bg-slate-100 p-0.5" title="Ajuste o espaçamento vertical para caber perfeitamente em 1 ou 2 páginas">
-            <button
-              type="button"
-              onClick={() => setDensity('compact')}
-              className={`px-2 py-1 text-[11px] rounded transition-colors ${
-                density === 'compact'
-                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 font-medium'
-              }`}
-              title="Modo Compacto: ideal para enquadrar em 1 página"
-            >
-              1 Pág (Compacto)
-            </button>
-            <button
-              type="button"
-              onClick={() => setDensity('normal')}
-              className={`px-2 py-1 text-[11px] rounded transition-colors ${
-                density === 'normal'
-                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 font-medium'
-              }`}
-              title="Modo Padrão: equilíbrio executivo"
-            >
-              Padrão
-            </button>
-            <button
-              type="button"
-              onClick={() => setDensity('relaxed')}
-              className={`hidden md:inline-block px-2 py-1 text-[11px] rounded transition-colors ${
-                density === 'relaxed'
-                  ? 'bg-white text-slate-950 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 font-medium'
-              }`}
-              title="Modo Arejado: espaçamento mais amplo"
-            >
-              Arejado
-            </button>
-          </div>
-
-          {/* Inline Edit Toggle */}
-          <button
-            type="button"
-            onClick={() => setIsInlineEditing(!isInlineEditing)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors ${
-              isInlineEditing
-                ? 'bg-amber-50 border-amber-300 text-amber-900 font-semibold'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-            title="Ativar/desativar edição direta clicando no texto do documento"
-          >
-            {isInlineEditing ? <Eye className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">
-              {isInlineEditing ? 'Pré-visualizar' : 'Editar no Documento'}
-            </span>
-          </button>
-
-          {/* Zoom In/Out - Accessible on all screen sizes */}
-          <div className="flex items-center gap-0.5 border border-slate-200 rounded-md bg-white p-0.5 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
-              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-              title="Diminuir Zoom"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel(100)}
-              className="text-[11px] font-mono tabular-nums text-slate-700 hover:text-slate-950 px-1 font-semibold"
-              title="Clique para restaurar 100%"
-            >
-              {zoomLevel}%
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
-              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-              title="Aumentar Zoom"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Copy Plain Text */}
-          <button
-            type="button"
-            onClick={handleCopyPlainText}
-            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-md transition-colors shadow-2xs"
-            title="Copiar texto puro para formulários de candidatura online"
-          >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-            <span className="hidden md:inline">{copied ? 'Copiado!' : 'Copiar Texto'}</span>
-          </button>
-
-          {/* JSON Backup / Restore */}
-          <button
-            type="button"
-            onClick={handleExportJSON}
-            className="hidden xl:flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-md transition-colors"
-            title="Descarregar cópia de segurança em formato JSON"
-          >
-            <Download className="w-3 h-3 text-slate-500" />
-            <span>JSON</span>
-          </button>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleImportJSON}
-            accept=".json"
-            className="hidden"
-          />
 
           {/* Print / Save PDF Button */}
           <button
             type="button"
             onClick={handlePrint}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors shadow-2xs ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
               !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
-                : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
+                ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
             }`}
             title={
               !isAuthenticated
                 ? 'Registo obrigatório para imprimir ou guardar em PDF'
                 : !hasActivePlan
                 ? 'Requer ativação de Plano (Pro ou Executive) para descarregar em PDF'
-                : 'Imprimir ou Guardar em PDF A4 limpo sem marcas de água'
+                : 'Imprimir ou Guardar em PDF A4 limpo'
             }
           >
             {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-amber-700" />
+              <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
             ) : (
-              <Printer className="w-3.5 h-3.5 text-slate-700" />
+              <Printer className="w-3.5 h-3.5 text-slate-700 shrink-0" />
             )}
-            <span>
-              {!isAuthenticated
-                ? 'PDF (Requer Registo)'
-                : !hasActivePlan
-                ? 'PDF (Requer Plano)'
-                : 'PDF / Imprimir'}
-            </span>
+            <span>PDF</span>
           </button>
 
           {/* Word Export Button */}
@@ -597,9 +681,9 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               onExportWord();
             }}
             disabled={isExportingWord}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-md transition-colors shadow-xs ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
               !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold shadow-sm'
+                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
             }`}
             title={
@@ -611,43 +695,25 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             }
           >
             {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-slate-950" />
+              <Lock className="w-3.5 h-3.5 text-slate-950 shrink-0" />
             ) : (
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span>
-              {!isAuthenticated
-                ? 'Word (Requer Registo)'
-                : !hasActivePlan
-                ? 'Word (Requer Plano)'
-                : 'Word (.docx)'}
-            </span>
+            <span>Word (.docx)</span>
+          </button>
+
+          {/* Multi-Language Pack Download Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsMultiLangModalOpen(true)}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 whitespace-nowrap"
+            title={t('doc.downloadMultilangDesc', 'Traduzir e descarregar o currículo em Inglês, Espanhol, Francês ou Alemão')}
+          >
+            <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <span className="hidden 2xl:inline">Pacote</span>
           </button>
         </div>
       </div>
-
-      {/* Download Locked Notice Banner when user does not have active plan */}
-      {!hasActivePlan && (
-        <div className="no-print bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-3 text-amber-950">
-          <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>
-              <strong>Downloads Bloqueados (Modo Demonstração):</strong> Para descarregar o seu currículo em <strong>PDF de Alta Resolução</strong> ou <strong>Microsoft Word (.docx)</strong> sem marca de água, ative o seu plano Pro ou Executive.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              onOpenPricingModal?.(
-                'Desbloqueie o download oficial sem marca de água em Microsoft Word (.docx) e PDF de Alta Resolução.'
-              )
-            }
-            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-md shadow-xs text-xs transition-colors whitespace-nowrap ml-auto"
-          >
-            Ativar Plano & Desbloquear Downloads →
-          </button>
-        </div>
-      )}
 
       {/* Strategic Educational Banner when photo is suppressed in strict ATS models */}
       {isPhotoSuppressedForAts && (
@@ -687,54 +753,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       )}
 
       {/* Document Workspace Canvas */}
-      <div className="cv-preview-container flex-1 overflow-auto bg-slate-200/70 p-4 sm:p-6 lg:p-8 flex flex-col items-center">
-        {/* Watermark notice above document for visitors and non-subscribers */}
-        {!hasActivePlan && (
-          <div className="no-print w-full max-w-[850px] bg-amber-500/10 border border-amber-500/25 rounded-2xl p-3 mb-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-amber-950 shadow-2xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="font-bold text-slate-900">
-                  {!isAuthenticated
-                    ? 'Modo de Demonstração (Não Registado)'
-                    : 'Modo Pré-visualização (Sem Plano Ativo)'}
-                </p>
-                <p className="text-slate-600 text-[11px]">
-                  {!isAuthenticated
-                    ? 'Visitantes não podem baixar o documento. Registe-se para desbloquear downloads.'
-                    : 'Marca de água de teste ativa. Assine um plano Pro ou VIP para remover marcas d\'água.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {!isAuthenticated ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenAuthModal?.('Crie a sua conta de assinante para desbloquear downloads.')}
-                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors text-xs shadow-2xs whitespace-nowrap"
-                >
-                  Registar-se
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onOpenPricingModal?.(
-                      'Remova a marca d\'água e desbloqueie exportações oficiais ativando o seu plano Pro ou Executive.'
-                    )
-                  }
-                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-lg transition-colors text-xs shadow-2xs whitespace-nowrap flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-slate-950" />
-                  <span>Remover Marca</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+      <div className="cv-preview-container flex-1 min-h-0 overflow-auto bg-slate-200/70 p-2.5 sm:p-6 lg:p-8 flex flex-col items-center">
 
         <div
           style={{
@@ -742,11 +761,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             transformOrigin: 'top center',
             transition: 'transform 0.15s ease-out'
           }}
-          className="cv-scale-wrapper w-full max-w-[850px]"
+          className="cv-scale-wrapper w-full max-w-[210mm] md:w-[210mm]"
         >
           {/* CASE 1: Creative Split Two-Column Layout */}
           {isCreative ? (
-            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-xl border border-slate-300/80 min-h-[1120px] flex flex-col md:flex-row relative font-jakarta overflow-hidden ${
+            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[1120px] flex flex-col md:flex-row relative font-jakarta overflow-hidden ${
               density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
             }`}>
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
@@ -767,7 +786,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
                   ) : (
                     <div className="mb-4 inline-block px-3 py-1 bg-white/10 rounded-full text-[11px] font-bold tracking-wider uppercase">
-                      Criativo & Inovação
+                      {currentTitles.creativeTag}
                     </div>
                   )}
 
@@ -802,18 +821,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   {/* Sidebar Contact Block */}
                   <div className="mt-6 pt-5 border-t border-white/20 space-y-2.5 text-xs text-white/90">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">
-                      Contactos & Redes
+                      {currentTitles.contactsLabel}
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">Localização</span>
+                      <span className="block text-[10px] text-white/60">{currentTitles.locationLabel}</span>
                       <span className="font-medium">{cv.personalDetails.location}</span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">Telefone / WhatsApp</span>
+                      <span className="block text-[10px] text-white/60">{currentTitles.phoneLabel}</span>
                       <span className="font-medium font-mono">{cv.personalDetails.phone}</span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">E-mail</span>
+                      <span className="block text-[10px] text-white/60">{currentTitles.emailLabel}</span>
                       <span className="font-medium break-all">{cv.personalDetails.email}</span>
                     </div>
                     {cv.personalDetails.linkedin && (
@@ -824,7 +843,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     )}
                     {cv.personalDetails.website && (
                       <div>
-                        <span className="block text-[10px] text-white/60">Website / Portfólio</span>
+                        <span className="block text-[10px] text-white/60">{currentTitles.websiteLabel}</span>
                         <span className="font-medium break-all">{cv.personalDetails.website}</span>
                       </div>
                     )}
@@ -834,7 +853,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   {cv.competencies && cv.competencies.length > 0 && (
                     <div className="mt-6 pt-5 border-t border-white/20">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-2.5">
-                        Competências & Tools
+                        {currentTitles.skillsShort}
                       </div>
                       <div className="space-y-2">
                         {cv.competencies.map((c, i) => (
@@ -851,7 +870,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   {cv.languages && cv.languages.length > 0 && (
                     <div className="mt-6 pt-5 border-t border-white/20">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-2">
-                        Idiomas
+                        {currentTitles.languagesShort}
                       </div>
                       <div className="space-y-1.5 text-xs">
                         {cv.languages.map((l, i) => (
@@ -866,7 +885,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-white/20 text-[10px] text-white/60 text-center">
-                  Modelo Criativo Split · 2026
+                  {currentTitles.creativeFooter}
                 </div>
               </aside>
 
@@ -1008,7 +1027,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           ) : (
             /* CASE 2: Single Column / Official Executive Layouts (Europass, Harvard, ATS, Corporativo, Tech, etc.) */
             <article
-              className={`cv-a4-sheet cv-single-column bg-white text-slate-900 shadow-xl border border-slate-300/80 p-8 sm:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+              className={`cv-a4-sheet cv-single-column bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
                 density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
               } ${
                 isClassic || isHarvard || isAcademic
@@ -1050,7 +1069,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           Curriculum Vitae Europass
                         </span>
                         <span className="text-[11px] text-slate-500 font-medium">
-                          Padrão Oficial da União Europeia
+                          {currentTitles.europassOfficial}
                         </span>
                       </div>
                     )}
@@ -1195,7 +1214,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       />
                       {isEuropass && (
                         <span className="text-[10px] text-slate-400 mt-1 uppercase font-semibold">
-                          Foto Formal
+                          {currentTitles.formalPhoto}
                         </span>
                       )}
                     </div>
@@ -1363,7 +1382,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       {/* Visual Page Break Simulation Divider on Multi-Job CVs */}
                       {cv.experiences.length >= 3 && (
                         <div className="page-break-line my-6 text-center no-print" aria-hidden="true">
-                          <span>Página 1 (A4) · Quebra Estimada</span>
+                          <span>{currentTitles.pageBreakEstimate}</span>
                         </div>
                       )}
                     </React.Fragment>
@@ -1511,6 +1530,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         onSelectTemplate={setStyle}
         cv={cv}
         onUpdateCV={onChange}
+        onOpenPricingModal={(msg) => onOpenPricingModal?.(msg)}
       />
 
       {/* Photo Manager Modal */}
@@ -1519,6 +1539,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         onClose={() => setIsPhotoModalOpen(false)}
         cv={cv}
         onChange={onChange}
+      />
+
+      {/* Multi-Language CV Download Modal */}
+      <MultiLanguageDownloadModal
+        isOpen={isMultiLangModalOpen}
+        onClose={() => setIsMultiLangModalOpen(false)}
+        cv={cv}
+        onApplyTranslatedCV={onChange}
+        onOpenPricingModal={onOpenPricingModal}
+        onOpenAuthModal={onOpenAuthModal}
+        density={density}
       />
     </div>
   );

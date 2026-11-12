@@ -7,6 +7,7 @@ import {
   deleteDoc,
   getDoc,
   query,
+  where,
   orderBy,
   limit
 } from 'firebase/firestore';
@@ -172,7 +173,7 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     userEmail: order.userEmail || '',
     plan: order.plan || 'pro',
     billingCycle: order.billingCycle || 'monthly',
-    amount: order.amount ?? 29,
+    amount: order.amount ?? 2,
     currency: order.currency || 'USD',
     paymentMethod: order.paymentMethod || 'stripe',
     status: order.status || 'paid',
@@ -204,10 +205,159 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
       }
     }
 
+    // Save to local cache for instant retrieval across browser sessions
+    saveOrderToLocalCache(newOrder);
+
     return newOrder;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
+    saveOrderToLocalCache(newOrder);
     return newOrder;
+  }
+}
+
+const LOCAL_STORAGE_ORDERS_KEY = 'curriculopro_local_orders';
+
+export function saveOrderToLocalCache(order: SaaSOrder) {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
+    const list: SaaSOrder[] = raw ? JSON.parse(raw) : [];
+    const exists = list.some((o) => o.id === order.id || o.orderNumber === order.orderNumber);
+    if (!exists) {
+      list.unshift(order);
+      localStorage.setItem(LOCAL_STORAGE_ORDERS_KEY, JSON.stringify(list.slice(0, 50)));
+    }
+  } catch (e) {
+    console.warn('Erro ao guardar pedido em cache local:', e);
+  }
+}
+
+export function getLocalCachedOrders(userId?: string, userEmail?: string): SaaSOrder[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_ORDERS_KEY);
+    if (!raw) return [];
+    const list: SaaSOrder[] = JSON.parse(raw);
+    if (!userId && !userEmail) return list;
+    return list.filter(
+      (o) =>
+        (userId && o.userId === userId) ||
+        (userEmail && o.userEmail?.toLowerCase() === userEmail.toLowerCase())
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchUserOrders(userId: string, userEmail?: string): Promise<SaaSOrder[]> {
+  const localOrders = getLocalCachedOrders(userId, userEmail);
+  const ordersMap = new Map<string, SaaSOrder>();
+  localOrders.forEach((o) => ordersMap.set(o.id, o));
+
+  try {
+    const ordersCol = collection(db, 'orders');
+    // 1. Query by userId directly from Firestore
+    if (userId) {
+      const qUserId = query(ordersCol, where('userId', '==', userId), limit(50));
+      const snapUserId = await getDocs(qUserId);
+      snapUserId.docs.forEach((d) => {
+        const data = d.data();
+        const order: SaaSOrder = {
+          id: d.id,
+          orderNumber: data.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
+          userId: data.userId || userId,
+          userName: data.userName || 'Cliente',
+          userEmail: data.userEmail || userEmail || '',
+          plan: data.plan || 'pro',
+          billingCycle: data.billingCycle || 'monthly',
+          amount: Number(data.amount) || 0,
+          currency: data.currency || 'USD',
+          paymentMethod: data.paymentMethod || 'stripe',
+          status: (data.status as OrderStatus) || 'paid',
+          stripeSubscriptionId: data.stripeSubscriptionId,
+          stripePaymentIntentId: data.stripePaymentIntentId,
+          receiptUrl: data.receiptUrl,
+          createdAt: data.createdAt || new Date().toISOString(),
+          notes: data.notes || ''
+        };
+        ordersMap.set(order.id, order);
+        saveOrderToLocalCache(order);
+      });
+    }
+
+    // 2. Query by userEmail if present to link any guest or pre-login sessions
+    if (userEmail && userEmail.includes('@')) {
+      try {
+        const qEmail = query(ordersCol, where('userEmail', '==', userEmail), limit(50));
+        const snapEmail = await getDocs(qEmail);
+        snapEmail.docs.forEach((d) => {
+          const data = d.data();
+          const order: SaaSOrder = {
+            id: d.id,
+            orderNumber: data.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
+            userId: data.userId || userId,
+            userName: data.userName || 'Cliente',
+            userEmail: data.userEmail || userEmail,
+            plan: data.plan || 'pro',
+            billingCycle: data.billingCycle || 'monthly',
+            amount: Number(data.amount) || 0,
+            currency: data.currency || 'USD',
+            paymentMethod: data.paymentMethod || 'stripe',
+            status: (data.status as OrderStatus) || 'paid',
+            stripeSubscriptionId: data.stripeSubscriptionId,
+            stripePaymentIntentId: data.stripePaymentIntentId,
+            receiptUrl: data.receiptUrl,
+            createdAt: data.createdAt || new Date().toISOString(),
+            notes: data.notes || ''
+          };
+          ordersMap.set(order.id, order);
+          saveOrderToLocalCache(order);
+        });
+      } catch (e) {
+        console.warn('Consulta secundária de pedidos por email:', e);
+      }
+    }
+  } catch (error) {
+    console.warn('Aviso ao consultar pedidos no Firestore, utilizando cache:', error);
+  }
+
+  const allOrders = Array.from(ordersMap.values());
+  return allOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+export async function cancelUserSubscription(
+  userId: string,
+  subscriptionId?: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    if (subscriptionId) {
+      try {
+        await fetch('/api/stripe/cancel-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId })
+        });
+      } catch (e) {
+        console.warn('Falha na chamada da API Stripe de cancelamento:', e);
+      }
+    }
+
+    const userDocRef = doc(db, 'users', userId);
+    await updateDoc(userDocRef, {
+      stripeStatus: 'canceled',
+      notes: `Assinatura cancelada pelo cliente em ${new Date().toLocaleDateString('pt-PT')}`,
+      updatedAt: new Date().toISOString()
+    });
+
+    return {
+      success: true,
+      message: 'Assinatura cancelada com sucesso. O seu plano permanecerá válido até ao final do período pago.'
+    };
+  } catch (err: any) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    return {
+      success: false,
+      message: err.message || 'Não foi possível cancelar a assinatura no momento.'
+    };
   }
 }
 
@@ -450,7 +600,7 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'aliou.mballo@un.org',
       plan: 'executive',
       billingCycle: 'yearly',
-      amount: 440,
+      amount: 36,
       currency: 'USD',
       paymentMethod: 'card',
       status: 'paid',
@@ -465,7 +615,7 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'apaulo2007@hotmail.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 29,
+      amount: 2,
       currency: 'USD',
       paymentMethod: 'multicaixa',
       status: 'paid',
@@ -480,7 +630,7 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'c.santos.varela@empresa.ao',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 29,
+      amount: 2,
       currency: 'USD',
       paymentMethod: 'transfer',
       status: 'paid',
@@ -495,7 +645,7 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'apaulo2007@hotmail.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 29,
+      amount: 2,
       currency: 'USD',
       paymentMethod: 'multicaixa',
       status: 'paid',
@@ -510,7 +660,7 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'helena.silveira@outlook.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 29,
+      amount: 2,
       currency: 'USD',
       paymentMethod: 'pix',
       status: 'paid',

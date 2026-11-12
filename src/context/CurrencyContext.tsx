@@ -11,6 +11,11 @@ export interface CurrencyConfig {
   format: (amountInUSD: number) => string;
 }
 
+const formatDecimal = (val: number) => {
+  const rounded = Math.round(val * 100) / 100;
+  return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(2);
+};
+
 export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
   USD: {
     code: 'USD',
@@ -18,7 +23,7 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     name: 'Dólar Americano',
     flag: '🇺🇸',
     exchangeRateToUSD: 1,
-    format: (amt) => `$${Math.round(amt)}`
+    format: (amt) => `$${formatDecimal(amt)}`
   },
   EUR: {
     code: 'EUR',
@@ -26,7 +31,7 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     name: 'Euro (Portugal / UE)',
     flag: '🇪🇺',
     exchangeRateToUSD: 0.92,
-    format: (amt) => `€${Math.round(amt * 0.92)}`
+    format: (amt) => `€${formatDecimal(amt * 0.92)}`
   },
   AOA: {
     code: 'AOA',
@@ -42,7 +47,7 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
     name: 'Real (Brasil)',
     flag: '🇧🇷',
     exchangeRateToUSD: 5.4,
-    format: (amt) => `R$ ${Math.round(amt * 5.4)}`
+    format: (amt) => `R$ ${formatDecimal(amt * 5.4)}`
   }
 };
 

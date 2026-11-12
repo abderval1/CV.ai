@@ -117,11 +117,11 @@ service cloud.firestore {
 
     // Orders & Transactions collection
     match /orders/{orderId} {
-      allow get: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid)) && isValidId(orderId);
-      allow list: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid));
+      allow get: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid) || (resource.data.userEmail == request.auth.token.email)) && isValidId(orderId);
+      allow list: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid) || (resource.data.userEmail == request.auth.token.email));
 
       allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && (isAdmin() || incoming().userId == request.auth.uid);
-      allow update: if isAdmin() && isValidId(orderId) && isValidOrder(incoming());
+      allow update: if isSignedIn() && isValidId(orderId) && (isAdmin() || (existing().userId == request.auth.uid));
       allow delete: if isAdmin() && isValidId(orderId);
     }
 
@@ -139,6 +139,62 @@ service cloud.firestore {
     match /plansConfig/{planId} {
       allow read: if true;
       allow write: if isAdmin() && isValidId(planId);
+    }
+
+    // AI Prompts Configuration (No-Code Prompt Management)
+    match /promptsConfig/{promptId} {
+      allow read: if isAdmin() && isValidId(promptId);
+      allow write: if isAdmin() && isValidId(promptId);
+    }
+
+    // System Broadcast Banners
+    match /systemBanners/{bannerId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(bannerId);
+    }
+
+    // System Settings & Routing
+    match /systemSettings/{settingId} {
+      allow read, write: if isAdmin() && isValidId(settingId);
+    }
+
+    // Plan Quotas
+    match /planQuotas/{quotaId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(quotaId);
+    }
+
+    // Template Catalog Admin Config
+    match /templateCatalogConfig/{templateId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(templateId);
+    }
+
+    // Profession Snippet Library
+    match /professionSnippets/{snippetId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(snippetId);
+    }
+
+    // System Locales
+    match /systemLocales/{localeId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(localeId);
+    }
+
+    // Technical Generation Error Logs
+    match /generationErrorLogs/{logId} {
+      allow read, write: if isAdmin() && isValidId(logId);
+    }
+
+    // GDPR / LGPD Requests
+    match /gdprRequests/{requestId} {
+      allow read, write: if isAdmin() && isValidId(requestId);
+    }
+
+    // Impersonation Audit Logs
+    match /impersonationAuditLogs/{logId} {
+      allow read, write: if isAdmin() && isValidId(logId);
     }
   }
 }
