@@ -254,3 +254,49 @@ export const DEFAULT_RBAC_PERMISSIONS: AdminRolePermission[] = [
     canProcessGdpr: false
   }
 ];
+
+// -------------------------------------------------------------
+// 7. Planos Editáveis ao Vivo, Telemetria Frontend & Governança Global
+// -------------------------------------------------------------
+export interface EditablePlanConfig {
+  id: 'pro' | 'executive';
+  name: string;
+  tagline: string;
+  priceMonthlyValue: number;
+  priceYearlyValue: number;
+  badgeText: string;
+  isPopular: boolean;
+  active: boolean;
+  features: string[];
+  updatedAt: string;
+}
+
+export interface PlatformSettingsConfig {
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+  allowNewRegistrations: boolean;
+  requirePaidPlanForExport: boolean;
+  enableAiFeaturesGlobally: boolean;
+  maxDailyFreeAiCalls: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface FrontendTelemetryData {
+  resumesStartedCount: number;
+  checkoutOpenedCount: number;
+  wordExportsCount: number;
+  aiCallsCount: number;
+  estimatedTokensUsed: number;
+  templateSelections: Record<string, number>;
+  languageSelections: Record<string, number>;
+  featureUsage: {
+    aiTailor: number;
+    atsRadar: number;
+    coverLetter: number;
+    interviewSim: number;
+    rawImport: number;
+  };
+  lastUpdated: string;
+}
+

@@ -1,21 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth, getAuthErrorMessage } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
 import {
   X,
   Lock,
   Mail,
   User as UserIcon,
   ArrowRight,
-  Linkedin,
   Eye,
   EyeOff,
   Briefcase,
   CheckCircle2,
-  ShieldCheck,
-  Sparkles,
-  Zap,
-  KeyRound,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  KeyRound
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -33,12 +32,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onRegistrationSuccess,
   promptMessage
 }) => {
-  const { login, register, loginWithProvider, resetPassword } = useAuth();
+  const { login, register, loginWithProvider, resetPassword, completePasswordReset } = useAuth();
+  const { showSuccess } = useToast();
+
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(defaultMode);
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [targetRole, setTargetRole] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [agreeTerms, setAgreeTerms] = useState<boolean>(true);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
@@ -46,9 +48,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
 
+  // 2-step password reset state for backend recovery code flow
+  const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
+  const [resetCode, setResetCode] = useState<string>('');
+  const [issuedResetHint, setIssuedResetHint] = useState<string | null>(null);
+  const [newResetPassword, setNewResetPassword] = useState<string>('');
+
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
+
+  // Always synchronize active tab & reset transient errors whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setMode(defaultMode);
+      setError(null);
+      setSuccessInfo(null);
+      setPassword('');
+      setConfirmPassword('');
+      setResetStep('request');
+      setResetCode('');
+      setIssuedResetHint(null);
+      setNewResetPassword('');
+      setLoading(false);
+    }
+  }, [isOpen, defaultMode]);
+
   if (!isOpen) return null;
 
-  // Simple password strength calculation
+  const allowNewRegistrations = platformSettings.allowNewRegistrations !== false;
+
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, text: '', color: '' };
     let score = 0;
@@ -69,27 +102,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setError(null);
     setSuccessInfo(null);
 
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('Por favor insira um endereço de e-mail válido.');
+      return;
+    }
+
     if (mode === 'forgot') {
-      if (!email.trim() || !email.includes('@')) {
-        setError('Por favor insira um endereço de e-mail válido.');
+      if (resetStep === 'request') {
+        setLoading(true);
+        try {
+          const result = await resetPassword(cleanEmail);
+          if (result.mode === 'backend_code') {
+            setResetStep('verify');
+            setIssuedResetHint(result.verificationCode || null);
+            setSuccessInfo(
+              result.verificationCode
+                ? `Código de verificação gerado: ${result.verificationCode}. Insira-o abaixo com a sua nova palavra-passe.`
+                : result.message
+            );
+          } else {
+            setSuccessInfo(result.message);
+          }
+        } catch (err: any) {
+          setError(getAuthErrorMessage(err));
+        } finally {
+          setLoading(false);
+        }
         return;
       }
+
+      if (!resetCode.trim() || newResetPassword.length < 6) {
+        setError('Insira o código de 6 dígitos e uma nova palavra-passe com pelo menos 6 caracteres.');
+        return;
+      }
+
       setLoading(true);
       try {
-        await resetPassword(email);
-        setSuccessInfo(
-          'Enviámos um link para redefinir a sua palavra-passe. Verifique a sua caixa de entrada e pasta de spam.'
-        );
+        await completePasswordReset(cleanEmail, resetCode, newResetPassword);
+        showSuccess('Palavra-passe Redefinida', 'A sua sessão foi iniciada automaticamente.');
+        onClose();
       } catch (err: any) {
         setError(getAuthErrorMessage(err));
       } finally {
         setLoading(false);
       }
-      return;
-    }
-
-    if (!email.trim() || !email.includes('@')) {
-      setError('Por favor insira um endereço de e-mail corporativo ou pessoal válido.');
       return;
     }
 
@@ -99,8 +156,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (mode === 'register') {
+      if (!allowNewRegistrations) {
+        setError('Novos registos encontram-se temporariamente pausados pela administração da plataforma. Contas existentes podem entrar normalmente.');
+        return;
+      }
       if (!name.trim()) {
         setError('Por favor insira o seu nome completo.');
+        return;
+      }
+      if (confirmPassword !== password) {
+        setError('As palavras-passe não coincidem. Verifique os dois campos.');
         return;
       }
       if (!agreeTerms) {
@@ -112,9 +177,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
     try {
       if (mode === 'login') {
-        await login(email, password);
+        await login(cleanEmail, password, rememberMe);
+        showSuccess('Sessão Iniciada', 'Bem-vindo de volta ao Currículo Estratégico.');
       } else {
-        await register(name, email, password, targetRole);
+        await register(name.trim(), cleanEmail, password, targetRole.trim(), rememberMe);
+        showSuccess('Conta Criada com Sucesso', 'Bem-vindo! Os seus créditos iniciais foram ativados.');
         onRegistrationSuccess?.();
       }
       onClose();
@@ -128,9 +195,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleProviderLogin = async (provider: 'google' | 'linkedin') => {
     setLoading(true);
     setError(null);
+    setSuccessInfo(null);
     try {
-      await loginWithProvider(provider);
-      onClose();
+      const ok = await loginWithProvider(provider);
+      if (ok) {
+        showSuccess('Autenticação Google Concluída', 'Sessão sincronizada com sucesso.');
+        onClose();
+      }
     } catch (err: any) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -147,6 +218,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             type="button"
             onClick={onClose}
             className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+            aria-label="Fechar janela de autenticação"
           >
             <X className="w-5 h-5" />
           </button>
@@ -165,8 +237,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
           <p className="text-xs text-slate-300 mt-1">
             {mode === 'login' && 'Aceda aos seus currículos, simulação de entrevistas e relatórios ATS.'}
-            {mode === 'register' && 'Registe-se para desbloquear a criação e otimização executiva de currículos.'}
-            {mode === 'forgot' && 'Insira o seu e-mail cadastrado para redefinir as suas credenciais.'}
+            {mode === 'register' && 'Registe-se para guardar currículos na nuvem e desbloquear recursos executivos.'}
+            {mode === 'forgot' && 'Recupere o acesso à sua conta de forma rápida e segura.'}
           </p>
 
           {promptMessage && (
@@ -184,6 +256,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onClick={() => {
                   setMode('login');
                   setError(null);
+                  setSuccessInfo(null);
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'login'
@@ -198,6 +271,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onClick={() => {
                   setMode('register');
                   setError(null);
+                  setSuccessInfo(null);
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'register'
@@ -213,6 +287,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Form Body */}
         <div className="p-6 sm:p-8 space-y-4 max-h-[75vh] overflow-y-auto">
+          {mode === 'register' && !allowNewRegistrations && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-xl flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Novos cadastros temporariamente pausados</p>
+                <p className="text-[11px] mt-0.5">
+                  A criação de novas contas foi desativada temporariamente pelo administrador. Se já possui conta, alterne para "Iniciar Sessão".
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -223,46 +309,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {successInfo && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-start gap-2 animate-in fade-in">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <span>{successInfo}</span>
+              <div className="space-y-1">
+                <span>{successInfo}</span>
+                {issuedResetHint && (
+                  <div className="font-mono text-xs font-bold bg-white/90 px-2.5 py-1 rounded border border-emerald-300 inline-block">
+                    Código: {issuedResetHint}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* Social Logins */}
           {mode !== 'forgot' && (
             <div className="space-y-2">
-              <div>
-                <button
-                  type="button"
-                  onClick={() => handleProviderLogin('google')}
-                  disabled={loading}
-                  className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-300 hover:bg-slate-50 rounded-xl text-xs font-bold text-slate-800 transition-colors shadow-2xs"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                    />
-                  </svg>
-                  <span>Continuar com a Conta Google</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleProviderLogin('google')}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 border border-slate-300 hover:bg-slate-50 disabled:opacity-50 rounded-xl text-xs font-bold text-slate-800 transition-colors shadow-2xs"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>Continuar com a Conta Google</span>
+              </button>
 
               <div className="relative flex items-center justify-center my-3">
                 <div className="border-t border-slate-200 w-full" />
                 <span className="bg-white px-3 text-[10px] font-bold text-slate-400 absolute uppercase tracking-wider">
-                  ou com e-mail corporativo
+                  ou com e-mail e palavra-passe
                 </span>
               </div>
             </div>
@@ -281,6 +372,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <input
                       type="text"
                       required
+                      autoComplete="name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Ex: João da Silva Santos"
@@ -316,13 +408,62 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <input
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={mode === 'forgot' && resetStep === 'verify'}
                   placeholder="seu.email@exemplo.com"
-                  className="w-full text-xs pl-9 pr-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 transition-all"
+                  className="w-full text-xs pl-9 pr-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:bg-slate-50 transition-all"
                 />
               </div>
             </div>
+
+            {mode === 'forgot' && resetStep === 'verify' && (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Código de Verificação (6 dígitos)
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value)}
+                      placeholder="Ex: 482910"
+                      className="w-full text-xs font-mono pl-9 pr-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Nova Palavra-passe
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="new-password"
+                      value={newResetPassword}
+                      onChange={(e) => setNewResetPassword(e.target.value)}
+                      placeholder="Mínimo de 6 caracteres"
+                      className="w-full text-xs pl-9 pr-10 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-slate-400 hover:text-slate-700"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {mode !== 'forgot' && (
               <div>
@@ -334,6 +475,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Mínimo de 6 caracteres"
@@ -343,6 +485,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-3 text-slate-400 hover:text-slate-700"
+                    aria-label="Mostrar ou ocultar palavra-passe"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -376,6 +519,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
+            {mode === 'register' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Confirmar Palavra-passe
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repita a palavra-passe"
+                    className={`w-full text-xs pl-9 pr-3.5 py-2.5 border rounded-xl focus:outline-none focus:ring-2 transition-all ${
+                      confirmPassword && confirmPassword !== password
+                        ? 'border-rose-300 focus:ring-rose-500'
+                        : 'border-slate-200 focus:ring-slate-900'
+                    }`}
+                  />
+                </div>
+                {confirmPassword && confirmPassword !== password && (
+                  <p className="text-[10px] text-rose-600 font-semibold mt-1">
+                    As palavras-passe não coincidem.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Checkboxes & Helpers */}
             {mode === 'login' && (
               <div className="flex items-center justify-between text-xs pt-1">
@@ -386,12 +558,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="rounded text-slate-900 focus:ring-slate-900"
                   />
-                  <span>Lembrar-me neste dispositivo</span>
+                  <span>Manter sessão iniciada</span>
                 </label>
 
                 <button
                   type="button"
-                  onClick={() => setMode('forgot')}
+                  onClick={() => {
+                    setMode('forgot');
+                    setResetStep('request');
+                    setError(null);
+                    setSuccessInfo(null);
+                  }}
                   className="text-slate-600 hover:text-slate-950 font-semibold underline"
                 >
                   Esqueceu a senha?
@@ -417,17 +594,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (mode === 'register' && !allowNewRegistrations)}
               className={`w-full py-3 px-4 ${
                 mode === 'register' ? 'bg-amber-400 hover:bg-amber-300 text-slate-950' : 'bg-slate-900 hover:bg-slate-800 text-white'
               } disabled:opacity-50 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md mt-3`}
             >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>
-                {mode === 'login' && 'Entrar na Plataforma'}
-                {mode === 'register' && 'Cadastrar & Aceder à Plataforma'}
-                {mode === 'forgot' && 'Enviar Link de Redefinição'}
+                {loading
+                  ? 'A processar...'
+                  : mode === 'login'
+                  ? 'Entrar na Plataforma'
+                  : mode === 'register'
+                  ? 'Criar Conta & Entrar'
+                  : resetStep === 'verify'
+                  ? 'Confirmar Nova Palavra-passe'
+                  : 'Enviar Código / Link de Redefinição'}
               </span>
-              <ArrowRight className="w-4 h-4" />
+              {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
           </form>
 
@@ -438,6 +622,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={() => {
                   setMode('login');
+                  setResetStep('request');
                   setError(null);
                   setSuccessInfo(null);
                 }}
@@ -447,7 +632,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           )}
-
         </div>
       </div>
     </div>

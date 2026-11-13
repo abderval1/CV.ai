@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 import { COVER_CHROME_LABELS } from '../utils/cvDocumentLabels';
+import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
 
 interface CoverLetterDocumentViewProps {
   cv: CVData;
@@ -46,16 +47,26 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isExportingLocal, setIsExportingLocal] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
+
+  const exportRequiresPaidPlan = platformSettings.requirePaidPlanForExport !== false;
+  const canExportClean = exportRequiresPaidPlan ? isAuthenticated && hasActivePlan : true;
 
   const chrome = COVER_CHROME_LABELS[appLang] || COVER_CHROME_LABELS.pt;
 
   const handleCopy = () => {
-    if (!isAuthenticated) {
+    if (exportRequiresPaidPlan && !isAuthenticated) {
       showWarning('Registo Obrigatório', 'Faça login para copiar o texto da carta.');
       onOpenAuthModal?.('O registo é obrigatório para copiar a sua carta de apresentação.');
       return;
     }
-    if (!hasActivePlan) {
+    if (!canExportClean) {
       showWarning('Plano Requerido', 'A cópia do texto da carta requer um plano Pro ou Executive ativo.');
       onOpenPricingModal?.(
         'A cópia do texto completo da carta de apresentação é exclusiva para assinantes Pro e Executivo VIP.'
@@ -69,12 +80,12 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   };
 
   const handlePrint = () => {
-    if (!isAuthenticated) {
+    if (exportRequiresPaidPlan && !isAuthenticated) {
       showWarning('Registo Obrigatório', 'Faça login para imprimir ou descarregar a sua carta em PDF.');
       onOpenAuthModal?.('O registo é obrigatório para imprimir ou guardar a sua carta em PDF.');
       return;
     }
-    if (!hasActivePlan) {
+    if (!canExportClean) {
       showWarning('Plano Requerido', 'A exportação oficial da carta requer um plano Pro ou Executivo VIP ativo.');
       onOpenPricingModal?.(
         'A impressão e download da Carta de Apresentação sem marca de água são exclusivos para subscritores.'
@@ -85,11 +96,11 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   };
 
   const handleDownloadWord = async () => {
-    if (!isAuthenticated) {
+    if (exportRequiresPaidPlan && !isAuthenticated) {
       onOpenAuthModal?.('Faça login para descarregar a sua carta oficial em formato Word (.docx).');
       return;
     }
-    if (!hasActivePlan) {
+    if (!canExportClean) {
       onOpenPricingModal?.(
         'O download da Carta de Apresentação em formato Word (.docx) requer um plano Pro ou Executive ativo.'
       );

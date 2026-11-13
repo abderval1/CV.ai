@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Lock,
   Sparkles,
@@ -6,12 +6,11 @@ import {
   ShieldCheck,
   CheckCircle2,
   ArrowRight,
-  UserCheck,
-  Zap,
-  Star
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { SubscriptionPlan } from '../types/cv';
+import { useCurrency } from '../context/CurrencyContext';
+import { getStoredPlansSync } from '../services/adminModulesService';
 
 interface PlanGateGuardProps {
   requiredTier: 'authenticated' | 'pro' | 'executive';
@@ -31,6 +30,20 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
   onOpenPricingModal
 }) => {
   const { user, isAuthenticated } = useAuth();
+  const { formatPrice } = useCurrency();
+  const [livePlans, setLivePlans] = useState(() => getStoredPlansSync());
+
+  useEffect(() => {
+    const syncHandler = () => setLivePlans(getStoredPlansSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
+
+  const proPlanConfig = livePlans.find((p) => p.id === 'pro');
+  const execPlanConfig = livePlans.find((p) => p.id === 'executive');
+
+  const proPriceMonthly = proPlanConfig?.priceMonthlyValue ?? 2;
+  const execPriceMonthly = execPlanConfig?.priceMonthlyValue ?? 4;
 
   const isExecutiveRequired = requiredTier === 'executive';
   const isProRequired = requiredTier === 'pro';
@@ -46,7 +59,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
     targetPlan: 'pro' | 'executive';
   } = isExecutiveRequired
     ? {
-        label: 'Exclusivo Executivo VIP',
+        label: `Exclusivo ${execPlanConfig?.name || 'Executivo VIP'}`,
         bg: 'from-purple-900/40 via-slate-900 to-slate-900 border-purple-500/30',
         iconBg: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-purple-500/30',
         btnBg: 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white',
@@ -54,7 +67,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
       }
     : isProRequired
     ? {
-        label: 'Exclusivo Plano Profissional Pro',
+        label: `Exclusivo ${proPlanConfig?.name || 'Plano Profissional Pro'}`,
         bg: 'from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/30',
         iconBg: 'bg-gradient-to-tr from-amber-500 to-yellow-500 text-slate-950 shadow-amber-500/30',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
@@ -109,8 +122,8 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
                 : currentPlan === 'free'
                 ? 'Gratuito (Sem Acesso)'
                 : currentPlan === 'pro'
-                ? 'Plano Pro'
-                : 'Executivo VIP'}
+                ? proPlanConfig?.name || 'Plano Pro'
+                : execPlanConfig?.name || 'Executivo VIP'}
             </span>
           </div>
         </div>
@@ -152,7 +165,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
                 onClick={onOpenPricingModal}
                 className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-all border border-slate-700 flex items-center justify-center gap-2"
               >
-                <span>Ver Planos de Assinatura</span>
+                <span>Ver Planos ({formatPrice(proPriceMonthly)}+)</span>
               </button>
             </div>
           ) : (
@@ -164,13 +177,12 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
               <Sparkles className="w-4 h-4" />
               <span>
                 {isExecutiveRequired
-                  ? 'Fazer Upgrade para o Executivo VIP'
-                  : 'Fazer Upgrade para o Plano Pro'}
+                  ? `Fazer Upgrade para ${execPlanConfig?.name || 'Executivo VIP'} — ${formatPrice(execPriceMonthly)}/mês`
+                  : `Fazer Upgrade para ${proPlanConfig?.name || 'Plano Pro'} — ${formatPrice(proPriceMonthly)}/mês`}
               </span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           )}
-
         </div>
       </div>
     </div>

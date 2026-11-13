@@ -1,5 +1,7 @@
 import express from 'express';
 import http from 'http';
+import crypto from 'crypto';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -51,12 +53,19 @@ async function startServer() {
   // Resilient Gemini call with low-latency thinking, AbortController timeout, and fast active model failover
   async function generateContentWithRetry(
     contents: any,
-    config?: Record<string, any>
+    config?: Record<string, any>,
+    routingOverride?: { preferredModel?: string; fallbackModel?: string }
   ) {
     if (!ai) {
       throw new Error('GEMINI_API_KEY não configurada no servidor.');
     }
-    const baseModels = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    const defaultOrder = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    const customOrder = [
+      routingOverride?.preferredModel,
+      routingOverride?.fallbackModel,
+      ...defaultOrder
+    ].filter((m): m is string => Boolean(m));
+    const baseModels = Array.from(new Set(customOrder));
     const now = Date.now();
     const healthyModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) <= now);
     const cooledModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) > now);
@@ -257,7 +266,7 @@ async function startServer() {
   // AI Tailor CV endpoint
   app.post('/api/tailor-cv', async (req, res) => {
     try {
-      const { cvData, jobDescription, targetStandard } = req.body;
+      const { cvData, jobDescription, targetStandard, adminPromptConfig } = req.body;
 
       if (!cvData) {
         return res.status(400).json({ error: 'Dados do currículo não fornecidos.' });
@@ -270,9 +279,13 @@ async function startServer() {
         });
       }
 
+      const customInstructionBlock = adminPromptConfig?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+        : '';
+
       const prompt = `
 Você é um consultor executivo sênior de Recursos Humanos e Headhunter Internacional especializado em contratações de liderança para grandes corporações multinacionais, empresas de consultoria estratégica e empresas de tecnologia globais.
-
+${customInstructionBlock}
 Sua missão é reescrever e otimizar estrategicamente os componentes deste currículo para maximizar a taxa de aprovação nos sistemas de triagem ATS (Applicant Tracking Systems como Workday, Greenhouse, Taleo e Lever) e impressionar recrutadores e diretores executivos.
 
 PADRÃO SOLICITADO: ${targetStandard || 'Padrão Corporativo Internacional & Executivo'}
@@ -314,9 +327,16 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsedData = parseAiJson(response.text);
       return res.json(parsedData);
@@ -332,7 +352,7 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
   // Generate full structured CV from raw inputs & target job description
   app.post('/api/generate-from-raw', async (req, res) => {
     try {
-      const { rawCandidateInfo, jobDescription, candidateLinkedIn, targetStandard } = req.body;
+      const { rawCandidateInfo, jobDescription, candidateLinkedIn, targetStandard, adminPromptConfig } = req.body;
 
       if (!rawCandidateInfo && !candidateLinkedIn) {
         return res.status(400).json({ error: 'Nenhuma informação do candidato foi fornecida.' });
@@ -345,9 +365,13 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
         });
       }
 
+      const customInstructionBlock = adminPromptConfig?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+        : '';
+
       const prompt = `
 Você é o mais conceituado consultor executivo de Recursos Humanos e Headhunter Internacional, especializado em recrutamento de liderança para grandes multinacionais, Big Techs e empresas de consultoria global.
-
+${customInstructionBlock}
 O candidato enviou textos brutos, notas de carreira, projetos, documentos ou histórico do LinkedIn.
 Em outro campo, foi fornecida a descrição da vaga pretendida (Requisitos e Responsabilidades).
 
@@ -416,9 +440,16 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
       return res.json(parsed);
@@ -431,7 +462,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
   // AI Cover Letter endpoint with language support
   app.post('/api/cover-letter', async (req, res) => {
     try {
-      const { cvData, jobDescription, recipientName, organizationName, language } = req.body;
+      const { cvData, jobDescription, recipientName, organizationName, language, adminPromptConfig } = req.body;
 
       if (!ai) {
         return res.status(503).json({
@@ -451,7 +482,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 
       const prompt = `
 Você é um consultor executivo sênior de Recursos Humanos especializado em cartas de motivação e apresentação de alto nível para grandes corporações, empresas de consultoria e posições executivas globais.
-Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
+${adminPromptConfig?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n` : ''}Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
 
 DADOS DO CANDIDATO:
 Nome: ${candidateName}
@@ -484,9 +515,16 @@ Responda ESTRITAMENTE em JSON:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
       return res.json(parsed);
@@ -499,7 +537,7 @@ Responda ESTRITAMENTE em JSON:
   // Dedicated AI Translation endpoint for Cover Letters & CV text
   app.post('/api/translate-letter', async (req, res) => {
     try {
-      const { text, targetLanguage } = req.body;
+      const { text, targetLanguage, adminPromptConfig } = req.body;
 
       if (!text || !String(text).trim()) {
         return res.status(400).json({ error: 'Texto da carta não fornecido.' });
@@ -523,7 +561,7 @@ Responda ESTRITAMENTE em JSON:
 
       const prompt = `
 You are a senior executive translator specialized in international corporate correspondence, cover letters, and motivation statements.
-Translate the entire Cover Letter below accurately and naturally into: ${targetLangName}.
+${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Translate the entire Cover Letter below accurately and naturally into: ${targetLangName}.
 
 CRITICAL GUIDELINES:
 1. Translate EVERY single sentence and heading written by the user (subject line, header labels like "To:"/"Subject:", opening salutation, all body paragraphs, closing salutation, and job title in the signature).
@@ -540,9 +578,16 @@ Respond STRICTLY in valid JSON:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
       if (!parsed.translatedText) {
@@ -561,7 +606,7 @@ Respond STRICTLY in valid JSON:
   // -------------------------------------------------------------
   app.post('/api/translate-cv', async (req, res) => {
     try {
-      const { cvData, targetLanguage } = req.body;
+      const { cvData, targetLanguage, adminPromptConfig } = req.body;
 
       if (!cvData) {
         return res.status(400).json({ error: 'Dados do currículo não fornecidos.' });
@@ -587,7 +632,7 @@ Respond STRICTLY in valid JSON:
 
       const prompt = `
 You are a world-class executive career consultant and international translator.
-Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName}.
+${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName}.
 
 CRITICAL GUIDELINES:
 1. Preserve Identity & Contacts: Keep personalDetails.name, phone, email, linkedin, website, photoUrl, and company/university proper brand names intact.
@@ -610,9 +655,16 @@ ${JSON.stringify(cvData, null, 2)}
 Respond STRICTLY in valid JSON matching the exact CVData schema.
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
 
@@ -910,7 +962,7 @@ Retorne ESTRITAMENTE em formato JSON com esta estrutura:
   // -------------------------------------------------------------
   app.post('/api/interview/generate-questions', async (req, res) => {
     try {
-      const { jobDescription, cvData } = req.body;
+      const { jobDescription, cvData, adminPromptConfig } = req.body;
 
       if (!ai) {
         // High quality fallback questions based on job or executive standards
@@ -962,7 +1014,7 @@ Retorne ESTRITAMENTE em formato JSON com esta estrutura:
 
       const prompt = `
 Você é um Diretor de RH e Headhunter Executivo especialista em simulação de entrevistas de alta contratação para posições corporativas internacionais, Big Tech e liderança executiva.
-
+${adminPromptConfig?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n` : ''}
 Com base na descrição da vaga e no perfil do candidato abaixo, gere EXATAMENTE 5 perguntas de entrevista personalizadas, combinando perguntas comportamentais (baseadas no método STAR) e técnicas/situacionais desafiadoras.
 
 DESCRIÇÃO DA VAGA:
@@ -988,9 +1040,16 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
       return res.json(parsed);
@@ -1002,7 +1061,7 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
 
   app.post('/api/interview/score-answer', async (req, res) => {
     try {
-      const { question, answer, jobDescription } = req.body;
+      const { question, answer, jobDescription, adminPromptConfig } = req.body;
 
       if (!answer || answer.trim().length < 15) {
         return res.json({
@@ -1039,8 +1098,13 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
         });
       }
 
+      const customInstructionBlock = adminPromptConfig?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+        : '';
+
       const prompt = `
 Você é um Avaliador de Entrevistas Executivas de topo (Top Executive Interview Coach).
+${customInstructionBlock}
 Analise a resposta do candidato para a pergunta formulada, considerando a descrição da vaga e as melhores práticas do método STAR (Situação, Tarefa, Ação, Resultado) e Google XYZ (Realizou X, medido por Y, fazendo Z).
 
 PERGUNTA:
@@ -1070,9 +1134,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 }
       `.trim();
 
-      const response = await generateContentWithRetry(prompt, {
-        responseMimeType: 'application/json'
-      });
+      const response = await generateContentWithRetry(
+        prompt,
+        {
+          responseMimeType: 'application/json',
+          ...(typeof adminPromptConfig?.temperature === 'number'
+            ? { temperature: adminPromptConfig.temperature }
+            : {})
+        },
+        adminPromptConfig
+      );
 
       const parsed = parseAiJson(response.text);
       return res.json(parsed);
@@ -1372,6 +1443,773 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     } catch (err: any) {
       console.error('Erro ao cancelar assinatura Stripe:', err);
       return res.status(500).json({ error: err.message || 'Erro ao cancelar assinatura.' });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // 7. ADMIN NO-CODE PROMPT LIVE TESTER ENDPOINT
+  // -------------------------------------------------------------
+  app.post('/api/admin/test-prompt', async (req, res) => {
+    const startedAt = Date.now();
+    try {
+      const { systemInstruction, userPromptTemplate, sampleInput, temperature, preferredModel, fallbackModel } = req.body;
+      if (!ai) {
+        return res.json({
+          output: `[Modo Simulação Offline - GEMINI_API_KEY ausente]\nSystem: ${systemInstruction || 'N/A'}\nPrompt aplicado ao input: "${sampleInput || 'Exemplo padrão'}"\nResultado: Perfil otimizado com métricas quantificáveis e foco executivo.`,
+          modelUsed: preferredModel || 'gemini-3.8-flash',
+          latencyMs: Date.now() - startedAt,
+          estimatedTokens: 320
+        });
+      }
+
+      const fullPrompt = `${systemInstruction ? `INSTRUÇÃO DE SISTEMA:\n${systemInstruction}\n\n` : ''}TEMPLATE DO PROMPT:\n${userPromptTemplate || ''}\n\nDADOS DE TESTE DO ADMIN:\n${sampleInput || 'Gerente de Operações com 10 anos de experiência em logística e redução de custos.'}`;
+      const response = await generateContentWithRetry(
+        fullPrompt,
+        {
+          ...(typeof temperature === 'number' ? { temperature } : {})
+        },
+        { preferredModel, fallbackModel }
+      );
+
+      const textOut = response.text || '';
+      const latencyMs = Date.now() - startedAt;
+      const estimatedTokens = Math.ceil((fullPrompt.length + textOut.length) / 4);
+
+      return res.json({
+        output: textOut,
+        modelUsed: preferredModel || 'gemini-3.8-flash',
+        latencyMs,
+        estimatedTokens
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/admin/test-prompt:', err);
+      return res.status(500).json({
+        error: err?.message || 'Falha ao executar teste do prompt.',
+        latencyMs: Date.now() - startedAt
+      });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // 8. FULL-STACK HYBRID AUTHENTICATION API (/api/auth/*)
+  // -------------------------------------------------------------
+  const AUTH_DATA_DIR = path.resolve(__dirname, '.data');
+  const AUTH_STORE_FILE = path.join(AUTH_DATA_DIR, 'auth-users.json');
+  const AUTH_SECRET_FILE = path.join(AUTH_DATA_DIR, 'auth-secret.key');
+
+  const ADMIN_EMAILS_BACKEND = new Set([
+    'gugurai923@gmail.com',
+    'admin@curriculoestrategico.com',
+    'mballoaliou2000@yahoo.fr'
+  ]);
+
+  interface BackendUserRecord {
+    id: string;
+    name: string;
+    email: string;
+    passwordHash?: string;
+    passwordSalt?: string;
+    role: 'admin' | 'user';
+    status: 'active' | 'suspended';
+    plan: 'free' | 'pro' | 'executive';
+    targetRole?: string;
+    phone?: string;
+    company?: string;
+    avatarUrl?: string;
+    creditsRemaining: number;
+    creditsUsed: number;
+    totalCvGenerated: number;
+    billingCycle: 'monthly' | 'yearly';
+    subscriptionExpiresAt?: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    stripeStatus?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
+    authProviders: Array<'password' | 'google'>;
+    firebaseUid?: string;
+    createdAt: string;
+    updatedAt: string;
+    lastLoginAt?: string;
+  }
+
+  interface PasswordResetRecord {
+    email: string;
+    codeHash: string;
+    expiresAt: number;
+    attempts: number;
+  }
+
+  interface AuthStoreData {
+    users: Record<string, BackendUserRecord>;
+    resetTokens: Record<string, PasswordResetRecord>;
+  }
+
+  function ensureAuthSecret(): string {
+    if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16) {
+      return process.env.AUTH_SECRET;
+    }
+    try {
+      if (!fs.existsSync(AUTH_DATA_DIR)) {
+        fs.mkdirSync(AUTH_DATA_DIR, { recursive: true });
+      }
+      if (fs.existsSync(AUTH_SECRET_FILE)) {
+        const existingSecret = fs.readFileSync(AUTH_SECRET_FILE, 'utf8').trim();
+        if (existingSecret.length >= 32) return existingSecret;
+      }
+      const generated = crypto.randomBytes(48).toString('hex');
+      fs.writeFileSync(AUTH_SECRET_FILE, generated, { mode: 0o600 });
+      return generated;
+    } catch {
+      return crypto.createHash('sha256').update(process.cwd() + ':cv-studio-fallback-secret').digest('hex');
+    }
+  }
+
+  const AUTH_TOKEN_SECRET = ensureAuthSecret();
+
+  function loadAuthStore(): AuthStoreData {
+    try {
+      if (fs.existsSync(AUTH_STORE_FILE)) {
+        const raw = fs.readFileSync(AUTH_STORE_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && parsed.users) {
+          return {
+            users: parsed.users || {},
+            resetTokens: parsed.resetTokens || {}
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso ao ler auth store, iniciando store limpo:', e);
+    }
+    return { users: {}, resetTokens: {} };
+  }
+
+  const authStore: AuthStoreData = loadAuthStore();
+
+  function persistAuthStore() {
+    try {
+      if (!fs.existsSync(AUTH_DATA_DIR)) {
+        fs.mkdirSync(AUTH_DATA_DIR, { recursive: true });
+      }
+      const tmpPath = `${AUTH_STORE_FILE}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify(authStore, null, 2), { mode: 0o600 });
+      fs.renameSync(tmpPath, AUTH_STORE_FILE);
+    } catch (e) {
+      console.warn('Aviso ao gravar auth store em disco:', e);
+    }
+  }
+
+  function hashPassword(password: string, existingSalt?: string): { hash: string; salt: string } {
+    const salt = existingSalt || crypto.randomBytes(16).toString('hex');
+    const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+    return { hash: derived, salt };
+  }
+
+  function verifyPasswordHash(password: string, storedHash: string, storedSalt: string): boolean {
+    try {
+      const derived = crypto.scryptSync(password, storedSalt, 64);
+      const storedBuf = Buffer.from(storedHash, 'hex');
+      if (derived.length !== storedBuf.length) return false;
+      return crypto.timingSafeEqual(derived, storedBuf);
+    } catch {
+      return false;
+    }
+  }
+
+  function signSessionToken(payload: { uid: string; email: string; role: string; exp: number }): string {
+    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(encoded).digest('base64url');
+    return `${encoded}.${sig}`;
+  }
+
+  function verifySessionToken(token: string): { uid: string; email: string; role: string; exp: number } | null {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 2) return null;
+      const [encoded, providedSig] = parts;
+      const expectedSig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(encoded).digest('base64url');
+      const a = Buffer.from(providedSig, 'utf8');
+      const b = Buffer.from(expectedSig, 'utf8');
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+      const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+      if (!payload?.uid || !payload?.exp || Date.now() > payload.exp) return null;
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+    const result: Record<string, string> = {};
+    if (!cookieHeader) return result;
+    cookieHeader.split(';').forEach((pair) => {
+      const idx = pair.indexOf('=');
+      if (idx > 0) {
+        const key = pair.slice(0, idx).trim();
+        const val = pair.slice(idx + 1).trim();
+        result[key] = decodeURIComponent(val);
+      }
+    });
+    return result;
+  }
+
+  function extractTokenFromRequest(req: express.Request): string | null {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authHeader.slice(7).trim();
+    }
+    const cookies = parseCookies(req.headers.cookie);
+    return cookies['ce_session'] || null;
+  }
+
+  function setSessionCookie(req: express.Request, res: express.Response, token: string, rememberMe = true) {
+    const isSecure =
+      req.secure ||
+      req.headers['x-forwarded-proto'] === 'https' ||
+      process.env.NODE_ENV === 'production';
+    const maxAgeMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    res.cookie('ce_session', token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isSecure,
+      maxAge: maxAgeMs,
+      path: '/'
+    });
+  }
+
+  function sanitizeUser(record: BackendUserRecord) {
+    return {
+      id: record.id,
+      name: record.name,
+      email: record.email,
+      role: record.role,
+      status: record.status,
+      plan: record.plan,
+      targetRole: record.targetRole,
+      phone: record.phone,
+      company: record.company,
+      avatarUrl: record.avatarUrl,
+      creditsRemaining: record.creditsRemaining,
+      creditsUsed: record.creditsUsed,
+      totalCvGenerated: record.totalCvGenerated,
+      billingCycle: record.billingCycle,
+      subscriptionExpiresAt: record.subscriptionExpiresAt,
+      stripeCustomerId: record.stripeCustomerId,
+      stripeSubscriptionId: record.stripeSubscriptionId,
+      stripeStatus: record.stripeStatus,
+      createdAt: record.createdAt
+    };
+  }
+
+  function findBackendUserByEmail(email: string): BackendUserRecord | undefined {
+    const clean = email.trim().toLowerCase();
+    return Object.values(authStore.users).find((u) => u.email.toLowerCase() === clean);
+  }
+
+  // Lightweight per-IP rate limiter for auth endpoints
+  const authRateLimit = new Map<string, { count: number; resetAt: number }>();
+  function checkAuthRateLimit(req: express.Request, maxRequests = 30, windowMs = 60_000): boolean {
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'local');
+    const now = Date.now();
+    const cur = authRateLimit.get(ip);
+    if (!cur || now > cur.resetAt) {
+      authRateLimit.set(ip, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+    cur.count += 1;
+    return cur.count <= maxRequests;
+  }
+
+  app.post('/api/auth/register', (req, res) => {
+    try {
+      if (!checkAuthRateLimit(req, 20, 60_000)) {
+        return res.status(429).json({
+          code: 'auth/too-many-requests',
+          error: 'Demasiadas tentativas consecutivas. Aguarde um minuto antes de tentar novamente.'
+        });
+      }
+
+      const { name, email, password, targetRole, rememberMe = true } = req.body || {};
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanName = String(name || '').trim();
+      const cleanPassword = String(password || '');
+
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({
+          code: 'auth/invalid-email',
+          error: 'O formato do endereço de e-mail não é válido.'
+        });
+      }
+
+      if (!cleanPassword || cleanPassword.length < 6) {
+        return res.status(400).json({
+          code: 'auth/weak-password',
+          error: 'A palavra-passe deve conter pelo menos 6 caracteres.'
+        });
+      }
+
+      const existing = findBackendUserByEmail(cleanEmail);
+      if (existing) {
+        return res.status(409).json({
+          code: 'auth/email-already-in-use',
+          error: 'Este endereço de e-mail já está associado a uma conta existente. Tente iniciar sessão.'
+        });
+      }
+
+      const isAdmin = ADMIN_EMAILS_BACKEND.has(cleanEmail);
+      const uid = `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+      const { hash, salt } = hashPassword(cleanPassword);
+      const nowIso = new Date().toISOString();
+
+      const newUser: BackendUserRecord = {
+        id: uid,
+        name: cleanName || cleanEmail.split('@')[0] || 'Novo Assinante',
+        email: cleanEmail,
+        passwordHash: hash,
+        passwordSalt: salt,
+        role: isAdmin ? 'admin' : 'user',
+        status: 'active',
+        plan: isAdmin ? 'executive' : 'free',
+        targetRole: targetRole ? String(targetRole).trim() : 'Profissional Executivo',
+        creditsRemaining: isAdmin ? 9999 : 5,
+        creditsUsed: 0,
+        totalCvGenerated: 0,
+        billingCycle: isAdmin ? 'yearly' : 'monthly',
+        authProviders: ['password'],
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastLoginAt: nowIso
+      };
+
+      authStore.users[uid] = newUser;
+      persistAuthStore();
+
+      const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const token = signSessionToken({
+        uid: newUser.id,
+        email: newUser.email,
+        role: newUser.role,
+        exp: Date.now() + ttlMs
+      });
+
+      setSessionCookie(req, res, token, Boolean(rememberMe));
+
+      return res.status(201).json({
+        success: true,
+        user: sanitizeUser(newUser),
+        token
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/register:', err);
+      return res.status(500).json({ error: 'Falha ao registar conta no servidor.' });
+    }
+  });
+
+  app.post('/api/auth/login', (req, res) => {
+    try {
+      if (!checkAuthRateLimit(req, 30, 60_000)) {
+        return res.status(429).json({
+          code: 'auth/too-many-requests',
+          error: 'Demasiadas tentativas consecutivas. Aguarde um minuto antes de tentar novamente.'
+        });
+      }
+
+      const { email, password, rememberMe = true } = req.body || {};
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanPassword = String(password || '');
+
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({
+          code: 'auth/invalid-email',
+          error: 'O formato do endereço de e-mail não é válido.'
+        });
+      }
+
+      if (!cleanPassword) {
+        return res.status(400).json({
+          code: 'auth/missing-password',
+          error: 'Por favor, insira a sua palavra-passe.'
+        });
+      }
+
+      const userRecord = findBackendUserByEmail(cleanEmail);
+      if (!userRecord || !userRecord.passwordHash || !userRecord.passwordSalt) {
+        return res.status(401).json({
+          code: 'auth/invalid-credential',
+          error: 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
+        });
+      }
+
+      const isValid = verifyPasswordHash(cleanPassword, userRecord.passwordHash, userRecord.passwordSalt);
+      if (!isValid) {
+        return res.status(401).json({
+          code: 'auth/invalid-credential',
+          error: 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
+        });
+      }
+
+      if (userRecord.status === 'suspended') {
+        return res.status(403).json({
+          code: 'auth/user-disabled',
+          error: 'Esta conta foi suspensa pela administração. Contacte o suporte.'
+        });
+      }
+
+      const isAdmin = ADMIN_EMAILS_BACKEND.has(cleanEmail);
+      if (isAdmin && userRecord.role !== 'admin') {
+        userRecord.role = 'admin';
+      }
+      userRecord.lastLoginAt = new Date().toISOString();
+      userRecord.updatedAt = userRecord.lastLoginAt;
+      persistAuthStore();
+
+      const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const token = signSessionToken({
+        uid: userRecord.id,
+        email: userRecord.email,
+        role: userRecord.role,
+        exp: Date.now() + ttlMs
+      });
+
+      setSessionCookie(req, res, token, Boolean(rememberMe));
+
+      return res.json({
+        success: true,
+        user: sanitizeUser(userRecord),
+        token
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/login:', err);
+      return res.status(500).json({ error: 'Falha ao iniciar sessão no servidor.' });
+    }
+  });
+
+  app.post('/api/auth/sync-firebase', (req, res) => {
+    try {
+      const {
+        uid,
+        email,
+        name,
+        avatarUrl,
+        provider = 'google',
+        targetRole,
+        plan,
+        creditsRemaining,
+        rememberMe = true
+      } = req.body || {};
+
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanUid = String(uid || '').trim();
+      if (!cleanUid || !cleanEmail) {
+        return res.status(400).json({ error: 'Dados Firebase obrigatórios ausentes.' });
+      }
+
+      const isAdmin = ADMIN_EMAILS_BACKEND.has(cleanEmail);
+      const nowIso = new Date().toISOString();
+
+      let record = authStore.users[cleanUid] || findBackendUserByEmail(cleanEmail);
+      if (!record) {
+        record = {
+          id: cleanUid,
+          name: String(name || cleanEmail.split('@')[0] || 'Utilizador').trim(),
+          email: cleanEmail,
+          role: isAdmin ? 'admin' : 'user',
+          status: 'active',
+          plan: plan || (isAdmin ? 'executive' : 'free'),
+          targetRole: targetRole || 'Profissional Executivo',
+          avatarUrl: avatarUrl || undefined,
+          creditsRemaining: creditsRemaining ?? (isAdmin ? 9999 : 5),
+          creditsUsed: 0,
+          totalCvGenerated: 0,
+          billingCycle: isAdmin ? 'yearly' : 'monthly',
+          authProviders: [provider === 'password' ? 'password' : 'google'],
+          firebaseUid: cleanUid,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          lastLoginAt: nowIso
+        };
+        authStore.users[record.id] = record;
+      } else {
+        if (record.status === 'suspended') {
+          return res.status(403).json({
+            code: 'auth/user-disabled',
+            error: 'Esta conta foi suspensa pela administração. Contacte o suporte.'
+          });
+        }
+        record.firebaseUid = cleanUid;
+        if (name && (!record.name || record.name === 'Utilizador')) record.name = String(name).trim();
+        if (avatarUrl) record.avatarUrl = avatarUrl;
+        if (targetRole && !record.targetRole) record.targetRole = targetRole;
+        if (isAdmin) record.role = 'admin';
+        const provKey = provider === 'password' ? 'password' : 'google';
+        if (!record.authProviders.includes(provKey)) {
+          record.authProviders.push(provKey);
+        }
+        record.lastLoginAt = nowIso;
+        record.updatedAt = nowIso;
+      }
+
+      persistAuthStore();
+
+      const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const token = signSessionToken({
+        uid: record.id,
+        email: record.email,
+        role: record.role,
+        exp: Date.now() + ttlMs
+      });
+
+      setSessionCookie(req, res, token, Boolean(rememberMe));
+
+      return res.json({
+        success: true,
+        user: sanitizeUser(record),
+        token
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/sync-firebase:', err);
+      return res.status(500).json({ error: 'Falha ao sincronizar sessão Firebase.' });
+    }
+  });
+
+  app.get('/api/auth/me', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      if (!token) {
+        return res.json({ authenticated: false, user: null });
+      }
+      const payload = verifySessionToken(token);
+      if (!payload) {
+        return res.json({ authenticated: false, user: null });
+      }
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.json({ authenticated: false, user: null });
+      }
+      return res.json({
+        authenticated: true,
+        user: sanitizeUser(userRecord)
+      });
+    } catch {
+      return res.json({ authenticated: false, user: null });
+    }
+  });
+
+  app.post('/api/auth/logout', (_req, res) => {
+    res.clearCookie('ce_session', { path: '/' });
+    return res.json({ success: true });
+  });
+
+  app.patch('/api/auth/profile', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload) {
+        return res.status(401).json({ error: 'Sessão expirada ou inválida. Inicie sessão novamente.' });
+      }
+
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord) {
+        return res.status(404).json({ error: 'Utilizador não encontrado.' });
+      }
+
+      const { name, targetRole, phone, company } = req.body || {};
+      if (typeof name === 'string' && name.trim()) userRecord.name = name.trim().slice(0, 120);
+      if (typeof targetRole === 'string') userRecord.targetRole = targetRole.trim().slice(0, 150);
+      if (typeof phone === 'string') userRecord.phone = phone.trim().slice(0, 50);
+      if (typeof company === 'string') userRecord.company = company.trim().slice(0, 120);
+      userRecord.updatedAt = new Date().toISOString();
+
+      persistAuthStore();
+      return res.json({ success: true, user: sanitizeUser(userRecord) });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/profile:', err);
+      return res.status(500).json({ error: 'Erro ao atualizar perfil no servidor.' });
+    }
+  });
+
+  app.post('/api/auth/sync-plan', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload) {
+        return res.status(401).json({ error: 'Sessão inválida.' });
+      }
+
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord) {
+        return res.status(404).json({ error: 'Utilizador não encontrado.' });
+      }
+
+      const {
+        plan,
+        billingCycle,
+        creditsRemaining,
+        subscriptionExpiresAt,
+        stripeCustomerId,
+        stripeSubscriptionId,
+        stripeStatus
+      } = req.body || {};
+
+      if (plan && ['free', 'pro', 'executive'].includes(plan)) userRecord.plan = plan;
+      if (billingCycle && ['monthly', 'yearly'].includes(billingCycle)) userRecord.billingCycle = billingCycle;
+      if (typeof creditsRemaining === 'number') userRecord.creditsRemaining = creditsRemaining;
+      if (typeof subscriptionExpiresAt === 'string') userRecord.subscriptionExpiresAt = subscriptionExpiresAt;
+      if (typeof stripeCustomerId === 'string') userRecord.stripeCustomerId = stripeCustomerId;
+      if (typeof stripeSubscriptionId === 'string') userRecord.stripeSubscriptionId = stripeSubscriptionId;
+      if (typeof stripeStatus === 'string') userRecord.stripeStatus = stripeStatus as any;
+      userRecord.updatedAt = new Date().toISOString();
+
+      persistAuthStore();
+      return res.json({ success: true, user: sanitizeUser(userRecord) });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/auth/change-password', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload) {
+        return res.status(401).json({ error: 'Sessão expirada. Inicie sessão novamente.' });
+      }
+
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord) {
+        return res.status(404).json({ error: 'Conta não encontrada.' });
+      }
+
+      const { currentPassword, newPassword } = req.body || {};
+      if (!newPassword || String(newPassword).length < 6) {
+        return res.status(400).json({ error: 'A nova palavra-passe deve ter pelo menos 6 caracteres.' });
+      }
+
+      if (userRecord.passwordHash && userRecord.passwordSalt) {
+        if (!currentPassword || !verifyPasswordHash(String(currentPassword), userRecord.passwordHash, userRecord.passwordSalt)) {
+          return res.status(401).json({ error: 'A palavra-passe atual está incorreta.' });
+        }
+      }
+
+      const { hash, salt } = hashPassword(String(newPassword));
+      userRecord.passwordHash = hash;
+      userRecord.passwordSalt = salt;
+      if (!userRecord.authProviders.includes('password')) {
+        userRecord.authProviders.push('password');
+      }
+      userRecord.updatedAt = new Date().toISOString();
+      persistAuthStore();
+
+      return res.json({ success: true, message: 'Palavra-passe atualizada com sucesso.' });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/change-password:', err);
+      return res.status(500).json({ error: 'Falha ao atualizar palavra-passe.' });
+    }
+  });
+
+  app.post('/api/auth/forgot-password', (req, res) => {
+    try {
+      if (!checkAuthRateLimit(req, 10, 60_000)) {
+        return res.status(429).json({ error: 'Demasiados pedidos de recuperação. Aguarde um minuto.' });
+      }
+
+      const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ error: 'Insira um endereço de e-mail válido.' });
+      }
+
+      const userRecord = findBackendUserByEmail(cleanEmail);
+      if (!userRecord) {
+        return res.status(404).json({
+          code: 'auth/user-not-found',
+          error: 'Nenhuma conta encontrada com este endereço de e-mail.'
+        });
+      }
+
+      const code = String(crypto.randomInt(100000, 999999));
+      const codeHash = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(`${cleanEmail}:${code}`).digest('hex');
+
+      authStore.resetTokens[cleanEmail] = {
+        email: cleanEmail,
+        codeHash,
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        attempts: 0
+      };
+      persistAuthStore();
+
+      return res.json({
+        success: true,
+        mode: 'backend_code',
+        verificationCode: code,
+        message: 'Código de verificação de 6 dígitos gerado com validade de 15 minutos.'
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/forgot-password:', err);
+      return res.status(500).json({ error: 'Erro ao iniciar recuperação de palavra-passe.' });
+    }
+  });
+
+  app.post('/api/auth/reset-password', (req, res) => {
+    try {
+      const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
+      const code = String(req.body?.code || '').trim();
+      const newPassword = String(req.body?.newPassword || '');
+
+      if (!cleanEmail || !code || newPassword.length < 6) {
+        return res.status(400).json({ error: 'Preencha o e-mail, o código de 6 dígitos e uma nova palavra-passe (mín. 6 caracteres).' });
+      }
+
+      const resetRec = authStore.resetTokens[cleanEmail];
+      if (!resetRec || Date.now() > resetRec.expiresAt) {
+        return res.status(400).json({ error: 'Código de recuperação inválido ou expirado. Solicite um novo código.' });
+      }
+
+      resetRec.attempts += 1;
+      if (resetRec.attempts > 5) {
+        delete authStore.resetTokens[cleanEmail];
+        persistAuthStore();
+        return res.status(429).json({ error: 'Limite de tentativas excedido. Solicite um novo código.' });
+      }
+
+      const expectedHash = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(`${cleanEmail}:${code}`).digest('hex');
+      const a = Buffer.from(resetRec.codeHash, 'utf8');
+      const b = Buffer.from(expectedHash, 'utf8');
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        persistAuthStore();
+        return res.status(400).json({ error: 'Código de verificação incorreto.' });
+      }
+
+      const userRecord = findBackendUserByEmail(cleanEmail);
+      if (!userRecord) {
+        return res.status(404).json({ error: 'Conta não encontrada.' });
+      }
+
+      const { hash, salt } = hashPassword(newPassword);
+      userRecord.passwordHash = hash;
+      userRecord.passwordSalt = salt;
+      if (!userRecord.authProviders.includes('password')) {
+        userRecord.authProviders.push('password');
+      }
+      userRecord.updatedAt = new Date().toISOString();
+      delete authStore.resetTokens[cleanEmail];
+      persistAuthStore();
+
+      const token = signSessionToken({
+        uid: userRecord.id,
+        email: userRecord.email,
+        role: userRecord.role,
+        exp: Date.now() + 30 * 24 * 60 * 60 * 1000
+      });
+      setSessionCookie(req, res, token, true);
+
+      return res.json({
+        success: true,
+        user: sanitizeUser(userRecord),
+        token,
+        message: 'Palavra-passe redefinida e sessão iniciada com sucesso!'
+      });
+    } catch (err: any) {
+      console.error('Erro em /api/auth/reset-password:', err);
+      return res.status(500).json({ error: 'Falha ao redefinir palavra-passe.' });
     }
   });
 

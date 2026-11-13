@@ -12,6 +12,12 @@ import {
   Lock
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
+import {
+  getStoredPromptSync,
+  getStoredPlatformSettingsSync,
+  trackFrontendTelemetry,
+  logGenerationError
+} from '../services/adminModulesService';
 
 interface CoverLetterPanelProps {
   cv: CVData;
@@ -51,6 +57,13 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
 
   useEffect(() => {
     if (appLanguage) {
@@ -199,10 +212,16 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
 
   // Generate Letter with AI
   const handleGenerateWithAI = async () => {
+    if (platformSettings.enableAiFeaturesGlobally === false) {
+      setStatusMessage('Os recursos de IA estão temporariamente pausados pela administração da plataforma.');
+      return;
+    }
+
     setIsGenerating(true);
     setStatusMessage(null);
 
     const topExpName = cv.experiences[0]?.company;
+    const adminPromptConfig = getStoredPromptSync('coverLetter');
 
     try {
       const response = await fetch('/api/cover-letter', {
@@ -231,7 +250,8 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
               ? 'Español (Espanhol Internacional)'
               : letterLanguage === 'de'
               ? 'Deutsch (Alemão Corporativo Formal)'
-              : 'Português (Institucional)'
+              : 'Português (Institucional)',
+          adminPromptConfig
         })
       });
 
@@ -243,10 +263,19 @@ ${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
       if (data && data.letterBody) {
         setLetterBody(data.letterBody);
         setStatusMessage('Carta de apresentação gerada com inteligência artificial!');
+        trackFrontendTelemetry({ type: 'ai_called', feature: 'coverLetter', tokens: 1200 });
       } else {
         throw new Error('Formato inválido retornado.');
       }
-    } catch {
+    } catch (err: any) {
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: cv.personalDetails.email || 'anonymous',
+        operationType: 'gemini_ai_call',
+        errorMessage: `[CoverLetter] ${err?.message || 'Fallback local aplicado'}`,
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        resolved: false
+      });
       // Heuristic dynamic fallback tailored to user's real data
       const generated = buildDynamicLetter(
         letterLanguage,

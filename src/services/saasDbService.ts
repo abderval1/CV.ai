@@ -452,6 +452,45 @@ export async function deleteCoupon(couponId: string): Promise<void> {
   }
 }
 
+export async function incrementCouponUsage(couponId: string, currentUsed: number): Promise<void> {
+  try {
+    const couponDocRef = doc(db, 'coupons', couponId);
+    await updateDoc(couponDocRef, {
+      usedCount: (currentUsed || 0) + 1,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.warn('Erro ao incrementar contagem do cupom:', error);
+  }
+}
+
+export async function anonymizeUserRecord(userId: string): Promise<void> {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await updateDoc(userDocRef, {
+      name: 'Utilizador Anonimizado (RGPD)',
+      email: `anon-${userId.slice(0, 8)}@eliminado.rgpd`,
+      phone: '',
+      status: 'suspended',
+      plan: 'free',
+      creditsRemaining: 0,
+      notes: `Conta anonimizada conforme Art. 17 RGPD em ${new Date().toISOString()}`,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  }
+}
+
+export async function deleteUserAccountRecord(userId: string): Promise<void> {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    await deleteDoc(userDocRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+  }
+}
+
 // -------------------------------------------------------------
 // SEED REALISTIC SAAS DEMO DATA
 // -------------------------------------------------------------

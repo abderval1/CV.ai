@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
 import { useToast } from '../context/ToastContext';
 import { SubscriptionPlan, PaymentMethod, BillingCycle } from '../types/cv';
-import { createSaaSOrder, fetchAllCoupons } from '../services/saasDbService';
+import { createSaaSOrder, fetchAllCoupons, incrementCouponUsage } from '../services/saasDbService';
+import { getStoredPlansSync, trackFrontendTelemetry } from '../services/adminModulesService';
 import {
   X,
   Check,
@@ -127,9 +128,39 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     paymentMethodUsed?: string;
   } | null>(null);
 
-  // Check URL params for Stripe Checkout return
+  const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
+
+  useEffect(() => {
+    const syncPlans = () => setAdminPlans(getStoredPlansSync());
+    window.addEventListener('admin-config-updated', syncPlans);
+    window.addEventListener('storage', syncPlans);
+    return () => {
+      window.removeEventListener('admin-config-updated', syncPlans);
+      window.removeEventListener('storage', syncPlans);
+    };
+  }, []);
+
+  const mergedPlans = useMemo(() => {
+    const adminMap = new Map(adminPlans.map((p) => [p.id, p]));
+    return SAAS_PLANS.map((basePlan) => {
+      const cfg = adminMap.get(basePlan.id as 'pro' | 'executive');
+      if (!cfg) return basePlan;
+      return {
+        ...basePlan,
+        name: cfg.name || basePlan.name,
+        tagline: cfg.tagline || basePlan.tagline,
+        priceMonthlyValue: cfg.priceMonthlyValue,
+        priceYearlyValue: cfg.priceYearlyValue,
+        isPopular: cfg.isPopular,
+        features: cfg.features && cfg.features.length > 0 ? cfg.features : basePlan.features
+      };
+    });
+  }, [adminPlans]);
+
+  // Check URL params for Stripe Checkout return & track checkout funnel
   useEffect(() => {
     if (!isOpen) return;
+    trackFrontendTelemetry({ type: 'checkout_opened' });
 
     const queryParams = new URLSearchParams(window.location.search);
     const stripeStatus = queryParams.get('stripe_status');
@@ -205,15 +236,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     }
   };
 
-  // Base price in USD
+  const activePlanObj = mergedPlans.find((p) => p.id === selectedPlan) || mergedPlans[0];
   const basePriceUSD =
-    selectedPlan === 'executive'
-      ? billingCycle === 'yearly'
-        ? 36
-        : 4
-      : billingCycle === 'yearly'
-      ? 18
-      : 2;
+    billingCycle === 'yearly'
+      ? activePlanObj?.priceYearlyValue ?? (selectedPlan === 'executive' ? 36 : 18)
+      : activePlanObj?.priceMonthlyValue ?? (selectedPlan === 'executive' ? 4 : 2);
 
   const discountAmountUSD = (basePriceUSD * appliedDiscount) / 100;
   const finalPriceUSD = Math.max(0, Math.round((basePriceUSD - discountAmountUSD) * 100) / 100);
@@ -334,8 +361,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
       const matched = coupons.find((c) => c.code.toUpperCase() === codeClean && c.active);
 
       if (matched) {
-        setAppliedDiscount(matched.discountPercent);
-        setCouponSuccess(`Cupom "${matched.code}" aplicado! Desconto de ${matched.discountPercent}%.`);
+        const isExpired = matched.expiresAt && new Date(matched.expiresAt).getTime() < Date.now();
+        const isLimitReached = matched.maxUses > 0 && matched.usedCount >= matched.maxUses;
+        if (isExpired) {
+          setCouponError('Este código promocional já expirou.');
+          setAppliedDiscount(0);
+        } else if (isLimitReached) {
+          setCouponError('Este cupom atingiu o limite máximo de utilizações.');
+          setAppliedDiscount(0);
+        } else {
+          setAppliedDiscount(matched.discountPercent);
+          setCouponSuccess(`Cupom "${matched.code}" aplicado! Desconto de ${matched.discountPercent}%.`);
+          incrementCouponUsage(matched.id, matched.usedCount);
+        }
       } else {
         if (codeClean === 'LANCAMENTO50' || codeClean === 'PROMO50') {
           setAppliedDiscount(50);
@@ -777,7 +815,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
             {/* Plans Grid (Strictly Paid Tiers: Pro and Executive VIP) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {SAAS_PLANS.map((plan) => {
+              {mergedPlans.map((plan) => {
                 const isCurrent = user?.plan === plan.id;
                 const isSelected = selectedPlan === plan.id;
 

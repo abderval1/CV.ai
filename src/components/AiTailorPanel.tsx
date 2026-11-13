@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { Sparkles, Check, ArrowRight, Loader2, AlertCircle, Copy, Plus, Wand2 } from 'lucide-react';
+import {
+  getStoredPromptSync,
+  getStoredPlatformSettingsSync,
+  trackFrontendTelemetry,
+  logGenerationError
+} from '../services/adminModulesService';
 
 interface AiTailorPanelProps {
   cv: CVData;
@@ -21,6 +27,13 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [tailoredResult, setTailoredResult] = useState<any | null>(null);
   const [appliedSuccess, setAppliedSuccess] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
 
   // Google XYZ Builder State
   const [xyzAccomplished, setXyzAccomplished] = useState<string>(
@@ -80,9 +93,16 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   };
 
   const handleRunAiOptimization = async () => {
+    if (platformSettings.enableAiFeaturesGlobally === false) {
+      setErrorMsg('Os recursos de Inteligência Artificial estão temporariamente pausados pela administração da plataforma.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg(null);
     setAppliedSuccess(false);
+
+    const adminPromptConfig = getStoredPromptSync('experienceOptimizer');
 
     try {
       const response = await fetch('/api/tailor-cv', {
@@ -91,7 +111,8 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
         body: JSON.stringify({
           cvData: cv,
           jobDescription,
-          targetStandard
+          targetStandard,
+          adminPromptConfig
         })
       });
 
@@ -101,8 +122,17 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 
       const data = await response.json();
       setTailoredResult(data);
+      trackFrontendTelemetry({ type: 'ai_called', feature: 'aiTailor', tokens: 1650 });
     } catch (err: any) {
       console.warn('API error, applying intelligent heuristic optimizer:', err);
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: cv.personalDetails.email || 'anonymous',
+        operationType: 'gemini_ai_call',
+        errorMessage: `[AiTailor] ${err?.message || 'Falha na chamada Gemini'}`,
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        resolved: false
+      });
 
       // Heuristic Fallback Tailoring (guarantees dynamic robustness for any candidate and role)
       const isTech = targetStandard.toLowerCase().includes('tech') || (cv.personalDetails.title && cv.personalDetails.title.toLowerCase().includes('tech'));

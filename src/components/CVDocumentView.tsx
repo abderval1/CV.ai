@@ -36,6 +36,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
 import { SECTION_TITLES_BY_LANG, getResolvedSectionTitles } from '../utils/cvDocumentLabels';
+import { getStoredPlatformSettingsSync, logGenerationError } from '../services/adminModulesService';
 
 interface CVDocumentViewProps {
   cv: CVData;
@@ -87,6 +88,20 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
   const [customizationMenuOpen, setCustomizationMenuOpen] = useState<boolean>(false);
+  const [, setAdminConfigVersion] = useState<number>(0);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => {
+      setAdminConfigVersion((v) => v + 1);
+      setPlatformSettings(getStoredPlatformSettingsSync());
+    };
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
+
+  const exportRequiresPaidPlan = platformSettings.requirePaidPlanForExport !== false;
+  const canExportClean = exportRequiresPaidPlan ? isAuthenticated && hasActivePlan : true;
 
   useEffect(() => {
     if (appLang) {
@@ -118,12 +133,12 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
-        if (!isAuthenticated) {
+        if (exportRequiresPaidPlan && !isAuthenticated) {
           e.preventDefault();
           onOpenAuthModal?.('O registo é obrigatório para imprimir ou descarregar o currículo em PDF.');
           return;
         }
-        if (!hasActivePlan) {
+        if (exportRequiresPaidPlan && !hasActivePlan) {
           e.preventDefault();
           onOpenPricingModal?.(
             'A impressão e download do currículo em PDF de Alta Resolução são exclusivos para assinantes. Ative o seu plano para desbloquear documentos 100% limpos e sem marca de água.'
@@ -134,7 +149,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal]);
+  }, [exportRequiresPaidPlan, isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal]);
 
   // Comprehensive 5-language section titles & template chrome labels (shared with Word export)
   const currentTitles = SECTION_TITLES_BY_LANG[docLang] || SECTION_TITLES_BY_LANG.pt;
@@ -152,28 +167,38 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const handlePrint = () => {
-    if (!isAuthenticated) {
+    if (exportRequiresPaidPlan && !isAuthenticated) {
       showWarning('Registo Obrigatório', 'Inicie sessão ou registe-se para imprimir ou guardar em PDF.');
       onOpenAuthModal?.('O registo é obrigatório para descarregar ou imprimir o seu currículo em PDF.');
       return;
     }
-    if (!hasActivePlan) {
+    if (!canExportClean) {
       showWarning('Plano Requerido', 'A impressão e download do PDF de Alta Resolução são exclusivos para subscritores.');
       onOpenPricingModal?.(
         'A impressão e download em PDF de Alta Resolução são exclusivos para subscritores. Ative um plano para descarregar o seu documento oficial sem marca de água.'
       );
       return;
     }
-    window.print();
+    try {
+      window.print();
+    } catch (err: any) {
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: cv.personalDetails.email || 'anonymous',
+        operationType: 'pdf_export',
+        errorMessage: err?.message || 'Falha ao acionar impressão PDF',
+        resolved: false
+      });
+    }
   };
 
   const handleCopyPlainText = () => {
-    if (!isAuthenticated) {
+    if (exportRequiresPaidPlan && !isAuthenticated) {
       showWarning('Registo Obrigatório', 'Inicie sessão ou crie uma conta para copiar o texto formatado.');
       onOpenAuthModal?.('O registo é obrigatório para copiar o texto do currículo.');
       return;
     }
-    if (!hasActivePlan) {
+    if (!canExportClean) {
       showWarning('Plano Requerido', 'A cópia do texto formatado requer um plano Pro ou Executive ativo.');
       onOpenPricingModal?.(
         'A extração e cópia do texto completo do currículo para formulários e candidaturas requer um plano Pro ou Executivo VIP ativo.'

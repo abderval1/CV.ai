@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CVData, InterviewQuestion, InterviewAnswerEvaluation } from '../types/cv';
 import { SAMPLE_JOB_OFFERS } from '../data/initialCV';
 import {
+  getStoredPromptSync,
+  getStoredPlatformSettingsSync,
+  trackFrontendTelemetry,
+  logGenerationError
+} from '../services/adminModulesService';
+import {
   Sparkles,
   MessageSquare,
   CheckCircle2,
@@ -14,9 +20,6 @@ import {
   Mic,
   MicOff,
   ThumbsUp,
-  FileText,
-  RotateCcw,
-  Check,
   Send,
   HelpCircle,
   Lightbulb
@@ -45,6 +48,13 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState<boolean>(false);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
 
   // Speech Recognition States (Web Speech API)
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -107,15 +117,22 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
   // Generate 5 questions via API
   const handleGenerateQuestions = async () => {
+    if (platformSettings.enableAiFeaturesGlobally === false) {
+      setErrorMessage('O gerador de entrevistas por IA encontra-se temporariamente pausado pela administração.');
+      return;
+    }
+
     setIsGeneratingQuestions(true);
     setErrorMessage(null);
+    const adminPromptConfig = getStoredPromptSync('interviewSim');
     try {
       const res = await fetch('/api/interview/generate-questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobDescription: activeJobDesc,
-          cvData: currentCV
+          cvData: currentCV,
+          adminPromptConfig
         })
       });
 
@@ -125,12 +142,21 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         setCurrentQuestionIndex(0);
         setAnswers({});
         setEvaluations({});
+        trackFrontendTelemetry({ type: 'ai_called', feature: 'interviewSim', tokens: 1500 });
       } else {
         throw new Error('Formato de perguntas inválido retornado pelo servidor.');
       }
     } catch (err: any) {
       console.error('Falha ao gerar perguntas:', err);
       setErrorMessage(err.message || 'Erro ao gerar perguntas de entrevista.');
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: currentCV.personalDetails.email || 'anonymous',
+        operationType: 'gemini_ai_call',
+        errorMessage: `[InterviewQuestions] ${err?.message || 'Erro ao gerar perguntas'}`,
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        resolved: false
+      });
     } finally {
       setIsGeneratingQuestions(false);
     }
@@ -138,7 +164,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
   // Auto-generate on first load if empty
   useEffect(() => {
-    if (questions.length === 0) {
+    if (questions.length === 0 && platformSettings.enableAiFeaturesGlobally !== false) {
       handleGenerateQuestions();
     }
   }, []);
@@ -150,6 +176,10 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   // Handle Score Answer
   const handleScoreAnswer = async () => {
     if (!currentQ) return;
+    if (platformSettings.enableAiFeaturesGlobally === false) {
+      setErrorMessage('A avaliação por IA encontra-se temporariamente pausada pela administração.');
+      return;
+    }
     if (!currentAnswer.trim() || currentAnswer.trim().length < 15) {
       setErrorMessage('Por favor elabore uma resposta mais detalhada (mínimo 15 caracteres) antes de avaliar.');
       return;
@@ -157,6 +187,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
     setIsEvaluating(true);
     setErrorMessage(null);
+    const adminPromptConfig = getStoredPromptSync('interviewSim');
 
     try {
       const res = await fetch('/api/interview/score-answer', {
@@ -166,7 +197,8 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
           question: currentQ,
           answer: currentAnswer,
           jobDescription: activeJobDesc,
-          cvData: currentCV
+          cvData: currentCV,
+          adminPromptConfig
         })
       });
 
@@ -182,9 +214,18 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
           recommendedAnswer: data.recommendedAnswer || ''
         }
       }));
+      trackFrontendTelemetry({ type: 'ai_called', feature: 'interviewSim', tokens: 1100 });
     } catch (err: any) {
       console.error('Falha ao avaliar resposta:', err);
       setErrorMessage('Erro ao avaliar resposta. Tente novamente.');
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: currentCV.personalDetails.email || 'anonymous',
+        operationType: 'gemini_ai_call',
+        errorMessage: `[InterviewScore] ${err?.message || 'Erro ao avaliar resposta'}`,
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        resolved: false
+      });
     } finally {
       setIsEvaluating(false);
     }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CVData,
   Experience,
@@ -33,7 +33,8 @@ import {
   Save,
   RefreshCw,
   Award,
-  Palette
+  Palette,
+  BookOpen
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -42,6 +43,8 @@ import { TemplateAdvisorModal } from './TemplateAdvisorModal';
 import { PhotoManagerModal } from './PhotoManagerModal';
 import { ExpertTip } from './ExpertTip';
 import { DEFAULT_SECTION_ORDER, SECTION_METADATA } from '../utils/executivePhrasing';
+import { getStoredSnippetsSync, trackFrontendTelemetry } from '../services/adminModulesService';
+import { ProfessionSnippetExample } from '../types/adminModules';
 
 interface ContentEditorProps {
   cv: CVData;
@@ -104,9 +107,61 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [collapsedExps, setCollapsedExps] = useState<Record<number, boolean>>({});
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [snippets, setSnippets] = useState<ProfessionSnippetExample[]>(() => getStoredSnippetsSync());
+  const [showSnippetPicker, setShowSnippetPicker] = useState<boolean>(false);
+
+  useEffect(() => {
+    const syncSnippets = () => setSnippets(getStoredSnippetsSync());
+    window.addEventListener('admin-config-updated', syncSnippets);
+    window.addEventListener('storage', syncSnippets);
+    return () => {
+      window.removeEventListener('admin-config-updated', syncSnippets);
+      window.removeEventListener('storage', syncSnippets);
+    };
+  }, []);
 
   const { saveCurrentResume, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError } = useToast();
+
+  const handleApplySnippetSummary = (snip: ProfessionSnippetExample) => {
+    onChange({
+      ...cv,
+      personalDetails: {
+        ...cv.personalDetails,
+        title: snip.sampleTitle || cv.personalDetails.title
+      },
+      summary: snip.sampleSummary || cv.summary
+    });
+    setShowSnippetPicker(false);
+    showSuccess('Exemplo Aplicado', `Título e resumo preenchidos com o modelo "${snip.profession}".`);
+  };
+
+  const handleApplySnippetBullets = (snip: ProfessionSnippetExample) => {
+    if (!snip.sampleBullets || snip.sampleBullets.length === 0) return;
+    if (cv.experiences.length === 0) {
+      onChange({
+        ...cv,
+        experiences: [
+          {
+            id: `exp-${Date.now()}`,
+            company: 'Empresa de Referência',
+            role: snip.sampleTitle || snip.profession,
+            period: '2022 – Presente',
+            location: 'Lisboa / Remoto',
+            highlights: [...snip.sampleBullets]
+          }
+        ]
+      });
+    } else {
+      const updatedExps = [...cv.experiences];
+      updatedExps[0] = {
+        ...updatedExps[0],
+        highlights: [...snip.sampleBullets, ...updatedExps[0].highlights]
+      };
+      onChange({ ...cv, experiences: updatedExps });
+    }
+    showSuccess('Conquistas Inseridas', `Realizações de "${snip.profession}" adicionadas ao cargo.`);
+  };
 
   const handleSaveProgress = async () => {
     if (!isAuthenticated) {
@@ -671,7 +726,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
             {/* Group 1B: Resumo Profissional Executivo */}
             <div className="p-4 sm:p-5 space-y-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Wand2 className="w-4 h-4 text-indigo-600" />
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
@@ -684,15 +739,67 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={onOpenAiTailor}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Otimizar com IA</span>
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {snippets.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSnippetPicker((prev) => !prev)}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Exemplos ({snippets.length})</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onOpenAiTailor}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Otimizar com IA</span>
+                  </button>
+                </div>
               </div>
+
+              {showSnippetPicker && snippets.length > 0 && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-700 uppercase tracking-wider">
+                      Biblioteca de Exemplos por Profissão
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSnippetPicker(false)}
+                      className="text-slate-500 hover:text-slate-800 font-medium"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                    {snippets.map((snip) => (
+                      <div
+                        key={snip.id}
+                        className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-col justify-between gap-1.5 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-slate-900 truncate">{snip.profession}</span>
+                            <span className="text-[10px] font-mono text-slate-500 shrink-0">{snip.area}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5">{snip.sampleSummary}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleApplySnippetSummary(snip)}
+                          className="w-full py-1 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold rounded-md transition-colors"
+                        >
+                          Usar Título &amp; Resumo
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <textarea
                 rows={4}
@@ -721,7 +828,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         {/* ========================================================================= */}
         {currentStep.id === 'career' && (
           <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden animate-in fade-in duration-150">
-            <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex items-center justify-between gap-2">
+            <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <Briefcase className="w-4 h-4 text-slate-700 shrink-0" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 truncate">
@@ -734,6 +841,16 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                {snippets.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSnippetPicker((prev) => !prev)}
+                    className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Modelos de Conquistas</span>
+                  </button>
+                )}
                 {cv.experiences.length > 1 && (
                   <button
                     type="button"
@@ -753,6 +870,35 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 </button>
               </div>
             </div>
+
+            {showSnippetPicker && snippets.length > 0 && (
+              <div className="px-4 sm:px-5 py-3 bg-slate-50 border-b border-slate-200 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider">
+                    Inserir Realizações Prontas por Profissão
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowSnippetPicker(false)}
+                    className="text-slate-500 hover:text-slate-900 font-medium"
+                  >
+                    Fechar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {snippets.map((snip) => (
+                    <button
+                      key={snip.id}
+                      type="button"
+                      onClick={() => handleApplySnippetBullets(snip)}
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-900 hover:text-white border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-800 transition-colors"
+                    >
+                      + {snip.profession} ({snip.sampleBullets.length} métricas)
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {cv.experiences.length === 0 ? (
               <div className="p-8 text-center">
@@ -1326,7 +1472,10 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   </div>
                   <TemplateSelectorDropdown
                     currentStyle={cv.templateStyle}
-                    onSelectStyle={(newStyle) => onChange({ ...cv, templateStyle: newStyle })}
+                    onSelectStyle={(newStyle) => {
+                      trackFrontendTelemetry({ type: 'template_selected', templateStyle: newStyle });
+                      onChange({ ...cv, templateStyle: newStyle });
+                    }}
                     onOpenAdvisorModal={() => setIsAdvisorOpen(true)}
                   />
                 </div>

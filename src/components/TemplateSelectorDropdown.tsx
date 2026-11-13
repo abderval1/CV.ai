@@ -30,15 +30,24 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentTemplate = getTemplateById(currentStyle);
+  const [adminCatalog, setAdminCatalog] = useState(() => getStoredTemplatesSync());
 
-  // Interlink with Admin Panel Template Catalog
-  const adminCatalog = getStoredTemplatesSync();
+  useEffect(() => {
+    const syncHandler = () => setAdminCatalog(getStoredTemplatesSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
+
   const adminConfigMap = new Map(adminCatalog.map((t) => [t.id, t]));
 
-  // Active templates according to admin backoffice
+  // Active templates ordered according to admin backoffice
   const allTemplates = CV_TEMPLATES.filter((t) => {
     const config = adminConfigMap.get(t.id);
     return config ? config.isActive : true;
+  }).sort((a, b) => {
+    const ordA = adminConfigMap.get(a.id)?.displayOrder ?? 999;
+    const ordB = adminConfigMap.get(b.id)?.displayOrder ?? 999;
+    return ordA - ordB;
   });
 
   useEffect(() => {

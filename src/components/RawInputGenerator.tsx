@@ -1,6 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { CVData } from '../types/cv';
-import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
+import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV } from '../data/initialCV';
+import {
+  getStoredPromptSync,
+  getStoredPlatformSettingsSync,
+  trackFrontendTelemetry,
+  logGenerationError
+} from '../services/adminModulesService';
 import {
   Sparkles,
   Upload,
@@ -11,9 +17,7 @@ import {
   AlertCircle,
   Linkedin,
   HelpCircle,
-  RotateCcw,
   Trash2,
-  ArrowRight,
   ShieldCheck
 } from 'lucide-react';
 
@@ -52,6 +56,13 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
 
   const candidateFileInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
@@ -450,9 +461,19 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       return;
     }
 
+    if (platformSettings.enableAiFeaturesGlobally === false) {
+      const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription);
+      onCVGenerated(fallbackCV);
+      setSuccessMessage('A IA externa está pausada pelo administrador; estruturação local aplicada com sucesso!');
+      setTimeout(() => onOpenPreview(), 900);
+      return;
+    }
+
     setIsGenerating(true);
     setErrorMessage(null);
     setSuccessMessage(null);
+
+    const adminPromptConfig = getStoredPromptSync('resumeSummary');
 
     try {
       const response = await fetch('/api/generate-from-raw', {
@@ -471,7 +492,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               ? 'Universal ATS Keyword Density (Zero-Rejection)'
               : targetStandard === 'europass'
               ? 'Padrão Europeu Europass com Foto e CEFR (União Europeia)'
-              : 'Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)'
+              : 'Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)',
+          adminPromptConfig
         })
       });
 
@@ -480,6 +502,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       }
 
       const generatedData = await response.json();
+      trackFrontendTelemetry({ type: 'ai_called', feature: 'rawImport', tokens: 2100 });
 
       if (generatedData && generatedData.personalDetails) {
         const fullCV: CVData = {
@@ -541,6 +564,14 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       }
     } catch (err: any) {
       console.warn('API indisponível ou em fallback, acionando gerador estruturado inteligente:', err);
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: 'raw-generator@client',
+        operationType: 'gemini_ai_call',
+        errorMessage: `[RawInputGenerator] ${err?.message || 'Fallback acionado'}`,
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        resolved: false
+      });
       // Smart client-side fallback parsing the actual candidate's input
       const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription);
       onCVGenerated(fallbackCV);

@@ -25,7 +25,23 @@ import { useToast } from './context/ToastContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/LanguageContext';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut } from 'lucide-react';
+import { isUserAdmin } from './services/saasDbService';
+import {
+  fetchPlatformSettings,
+  fetchEditablePlans,
+  fetchSystemLocales,
+  fetchAdminTemplates,
+  fetchPromptsConfig,
+  fetchPlanQuotas,
+  fetchProfessionSnippets,
+  fetchSystemBanners,
+  getStoredPlatformSettingsSync,
+  getStoredPromptSync,
+  trackFrontendTelemetry,
+  logGenerationError,
+  emitAdminConfigUpdated
+} from './services/adminModulesService';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut, Wrench } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating } = useAuth();
@@ -98,15 +114,47 @@ export default function App() {
   // Modal states for SaaS
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalPrompt, setAuthModalPrompt] = useState<string | undefined>(undefined);
+  const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
   const [pricingPromptMessage, setPricingPromptMessage] = useState<string | undefined>(undefined);
   const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+  const resumeStartedTrackedRef = useRef<boolean>(false);
 
-  const handleOpenAuth = (prompt?: string) => {
+  // Hydrate Admin Governance, Editable Plans, Prompts, Templates, Locales & Banners from Firestore on app boot
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      fetchPlatformSettings(),
+      fetchEditablePlans(),
+      fetchSystemLocales(),
+      fetchAdminTemplates(),
+      fetchPromptsConfig(),
+      fetchPlanQuotas(),
+      fetchProfessionSnippets(),
+      fetchSystemBanners()
+    ])
+      .then(([settings]) => {
+        if (!mounted) return;
+        setPlatformSettings(settings);
+        emitAdminConfigUpdated('hydrate');
+      })
+      .catch((err) => console.warn('Erro ao hidratar configurações do Admin:', err));
+
+    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => {
+      mounted = false;
+      window.removeEventListener('admin-config-updated', syncHandler);
+    };
+  }, []);
+
+  const handleOpenAuth = (prompt?: string, mode: 'login' | 'register' = prompt ? 'register' : 'login') => {
     setAuthModalPrompt(prompt);
+    setAuthDefaultMode(mode);
     setIsAuthModalOpen(true);
   };
 
@@ -222,9 +270,18 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     };
   }, []);
 
+  // Track resume_started once user enters studio editing flow
+  useEffect(() => {
+    if (!resumeStartedTrackedRef.current && (activeTab === 'editor' || activeTab === 'raw')) {
+      resumeStartedTrackedRef.current = true;
+      trackFrontendTelemetry({ type: 'resume_started' });
+    }
+  }, [activeTab]);
+
   // Translate BOTH CV content and Cover Letter content whenever any language selector is clicked
   const handleSwitchLanguage = useCallback(async (targetLang: LanguageCode) => {
     setLanguage(targetLang);
+    trackFrontendTelemetry({ type: 'language_switched', language: targetLang });
 
     const currentLang = activeContentLangRef.current;
     const { cv: latestCv, letterBody: latestLetter } = latestStateRef.current;
@@ -269,6 +326,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     setIsTranslatingContent(true);
     setTranslatingTargetLang(targetLang);
 
+    const adminTranslateConfig = getStoredPromptSync('translateDoc');
+
     try {
       const hasLetter = Boolean(sourceEntry.letterBody && sourceEntry.letterBody.trim().length > 0);
 
@@ -277,7 +336,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cvData: sourceEntry.cv,
-          targetLanguage: targetLang
+          targetLanguage: targetLang,
+          adminPromptConfig: adminTranslateConfig
         })
       }).then(async (res) => {
         const data = await res.json().catch(() => ({}));
@@ -296,7 +356,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               text: sourceEntry.letterBody,
-              targetLanguage: targetLang
+              targetLanguage: targetLang,
+              adminPromptConfig: adminTranslateConfig
             })
           }).then(async (res) => {
             const data = await res.json().catch(() => ({}));
@@ -342,6 +403,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     } catch (err: any) {
       if (reqId !== translationReqIdRef.current) return;
       console.error('Erro ao traduzir conteúdo:', err);
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: user?.email || cv.personalDetails.email || 'anonymous',
+        operationType: 'translation_api',
+        errorMessage: `[Translation:${targetLang}] ${err?.message || 'Erro de tradução'}`,
+        modelUsed: adminTranslateConfig?.preferredModel || 'gemini-3.1-flash-lite',
+        resolved: false
+      });
       showError(
         'Erro na Tradução do Conteúdo',
         err?.message || 'Não foi possível traduzir o conteúdo neste momento. Tente novamente.'
@@ -352,14 +421,15 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setTranslatingTargetLang(null);
       }
     }
-  }, [cv, letterBody, setLanguage, showError, showInfo, showSuccess]);
+  }, [cv, letterBody, setLanguage, showError, showInfo, showSuccess, user?.email]);
 
   const handleExportWord = async () => {
-    if (!isAuthenticated) {
+    const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
+    if (requirePaidPlanForExport && !isAuthenticated) {
       handleOpenAuth('O registo é obrigatório para descarregar o currículo em formato Word (.docx). Registe-se ou inicie sessão para continuar.');
       return;
     }
-    if (!hasActivePlan) {
+    if (requirePaidPlanForExport && !hasActivePlan) {
       handleOpenPricingModal(
         'Os downloads oficiais em formato Microsoft Word (.docx) e PDF de Alta Resolução são exclusivos para subscritores. Ative o seu plano para descarregar o documento oficial sem marca de água.'
       );
@@ -372,6 +442,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       if (activeTab === 'cover') {
         const blob = await generateCoverLetterDocx(cv, letterBody, true, appLanguage);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
+        trackFrontendTelemetry({ type: 'word_exported' });
         setWordNotificationMessage('Carta de Apresentação em Word (.docx) Oficial Descarregada!');
         showSuccess(
           'Carta de Apresentação Descarregada!',
@@ -382,6 +453,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
         const blob = await generateWordDocument(cv, true, density, appLanguage);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
+        trackFrontendTelemetry({ type: 'word_exported', templateStyle: cv.templateStyle });
         setWordNotificationMessage(`Currículo Word (${templateInfo.shortName}) Oficial Descarregado com Sucesso!`);
         showSuccess(
           'Currículo Word Descarregado!',
@@ -391,8 +463,15 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
       setWordSuccessNotification(true);
       setTimeout(() => setWordSuccessNotification(false), 4000);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Falha ao exportar documento Word:', err);
+      logGenerationError({
+        timestamp: new Date().toISOString(),
+        userEmail: user?.email || cv.personalDetails.email || 'anonymous',
+        operationType: 'docx_export',
+        errorMessage: `[WordExport] ${err?.message || 'Erro desconhecido ao compilar .docx'}`,
+        resolved: false
+      });
       showError('Erro na Exportação', 'Não foi possível compilar o documento Word. Verifique os dados inseridos.');
     } finally {
       setIsExportingWord(false);
@@ -400,6 +479,49 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   };
 
   const isStudioMode = activeTab !== 'home' && activeTab !== 'profile';
+  const isAdminViewer = isUserAdmin(user?.email, user?.role);
+
+  if (platformSettings.maintenanceMode && !isAdminViewer) {
+    return (
+      <div className="min-h-dvh bg-slate-950 text-white flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center space-y-5 shadow-2xl">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+            <Wrench className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+              Manutenção Programada
+            </span>
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              Plataforma Temporariamente em Atualização
+            </h1>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              {platformSettings.maintenanceMessage ||
+                'Estamos a realizar melhorias programadas nos servidores. Voltamos em instantes.'}
+            </p>
+          </div>
+          <div className="pt-2 border-t border-slate-800 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => handleOpenAuth('Acesso reservado a administradores durante manutenção.', 'login')}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition-colors"
+            >
+              Acesso Administrador
+            </button>
+          </div>
+        </div>
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => {
+            setIsAuthModalOpen(false);
+            setAuthModalPrompt(undefined);
+          }}
+          promptMessage={authModalPrompt}
+          defaultMode="login"
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -407,6 +529,25 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         isStudioMode ? 'h-dvh overflow-hidden' : 'min-h-dvh'
       } bg-slate-100 flex flex-col text-slate-900 selection:bg-slate-900 selection:text-white w-full max-w-full overflow-x-hidden`}
     >
+      {/* Admin Maintenance Mode Active Alert */}
+      {platformSettings.maintenanceMode && isAdminViewer && (
+        <div className="no-print bg-amber-950 text-amber-100 px-4 py-1.5 text-xs flex items-center justify-between border-b border-amber-800 z-50">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>
+              <strong>Modo de Manutenção ATIVO:</strong> Utilizadores comuns estão bloqueados. Apenas administradores conseguem aceder.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAdminDashboardOpen(true)}
+            className="px-2.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[11px]"
+          >
+            Gerir no Admin
+          </button>
+        </div>
+      )}
+
       {/* Impersonation Active Banner */}
       {isImpersonating && (
         <div className="no-print bg-purple-950 text-purple-100 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800 z-50 shadow-md">
@@ -440,7 +581,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setActiveTab={setActiveTab}
         onExportWord={handleExportWord}
         isExportingWord={isExportingWord}
-        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
         onOpenPricingModal={() => handleOpenPricingModal()}
         onOpenMyResumesModal={() => setIsMyResumesModalOpen(true)}
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
@@ -626,7 +767,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Acesso total aos modelos Harvard, Tech e Executivo',
                         'Exportações ilimitadas na nuvem'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -661,7 +802,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Armazenamento seguro em tempo real na nuvem',
                         'Exportação oficial sem marcas de água em Word (.docx) e PDF'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -687,7 +828,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Sugestão de termos executivos ausentes no currículo',
                         'Sincronização com os seus currículos salvos'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : !isPro ? (
@@ -701,7 +842,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Destaque de métricas quantificáveis ausentes',
                         'Otimizações ilimitadas no Plano Profissional Pro'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -727,7 +868,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Remoção automática de chavões e termos fracos',
                         '5 créditos gratuitos de boas-vindas na sua conta'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : !isPro ? (
@@ -741,7 +882,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Calibração de impacto financeiro (P&L, EBITDA, OPEX)',
                         'Exportação em Word (.docx) sem restrições'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -765,7 +906,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Avaliação de pontos fortes e respostas recomendadas',
                         'Treino sem estresse antes da entrevista real'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : !isExecutive ? (
@@ -779,7 +920,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Scoring STAR com nota de 0 a 100 e resposta modelo',
                         'Treino ilimitado para qualquer descrição de vaga'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -803,7 +944,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Conexão com os pontos fortes do seu currículo',
                         'Exportação direta em Microsoft Word (.docx)'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : !isPro ? (
@@ -816,7 +957,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Customização para cargos de liderança e especialistas',
                         'Exportação instantânea em Word (.docx) e PDF'
                       ]}
-                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                      onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
                     />
                   ) : (
@@ -983,7 +1124,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           setAuthModalPrompt(undefined);
         }}
         promptMessage={authModalPrompt}
-        defaultMode={authModalPrompt ? 'register' : 'login'}
+        defaultMode={authDefaultMode}
       />
 
       {/* SaaS Pricing & Subscription Upgrade Modal */}

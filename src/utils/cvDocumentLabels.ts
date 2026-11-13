@@ -269,19 +269,36 @@ export const SECTION_TITLES_BY_LANG: Record<LanguageCode, CVLocaleStrings> = {
   }
 };
 
+function getAdminLocaleOverride(lang: LanguageCode): Partial<Record<
+  'sectionSummary' | 'sectionExperiences' | 'sectionEducations' | 'sectionCompetencies' | 'sectionLanguages' | 'sectionTrainings' | 'sectionReferences',
+  string
+>> | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem('curriculopro_locales');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.find((l: any) => l?.languageCode === lang) || null;
+  } catch {
+    return null;
+  }
+}
+
 export function getResolvedSectionTitles(lang: LanguageCode, templateStyle: TemplateStyle) {
   const cur = SECTION_TITLES_BY_LANG[lang] || SECTION_TITLES_BY_LANG.pt;
+  const adminOverride = getAdminLocaleOverride(lang);
   const isAcademic = templateStyle === 'academic_lattes';
   const isClassic = templateStyle === 'un_classic';
 
   return {
-    summary: isAcademic ? cur.summaryAcademic : isClassic ? cur.summaryClassic : cur.summary,
-    competencies: isAcademic ? cur.competenciesAcademic : isClassic ? cur.competenciesClassic : cur.competencies,
-    experiences: isAcademic ? cur.experiencesAcademic : isClassic ? cur.experiencesClassic : cur.experiences,
-    educations: isAcademic ? cur.educationsAcademic : cur.educations,
-    trainings: isAcademic ? cur.trainingsAcademic : cur.trainings,
-    languages: isAcademic ? cur.languagesAcademic : cur.languages,
-    references: isAcademic ? cur.referencesAcademic : cur.references,
+    summary: adminOverride?.sectionSummary || (isAcademic ? cur.summaryAcademic : isClassic ? cur.summaryClassic : cur.summary),
+    competencies: adminOverride?.sectionCompetencies || (isAcademic ? cur.competenciesAcademic : isClassic ? cur.competenciesClassic : cur.competencies),
+    experiences: adminOverride?.sectionExperiences || (isAcademic ? cur.experiencesAcademic : isClassic ? cur.experiencesClassic : cur.experiences),
+    educations: adminOverride?.sectionEducations || (isAcademic ? cur.educationsAcademic : cur.educations),
+    trainings: adminOverride?.sectionTrainings || (isAcademic ? cur.trainingsAcademic : cur.trainings),
+    languages: adminOverride?.sectionLanguages || (isAcademic ? cur.languagesAcademic : cur.languages),
+    references: adminOverride?.sectionReferences || (isAcademic ? cur.referencesAcademic : cur.references),
     tableRefName: isAcademic ? cur.tableRefNameAcademic : cur.tableRefName,
     tableRefInstitution: isAcademic ? cur.tableRefInstitutionAcademic : cur.tableRefInstitution,
     tableRefContact: isAcademic ? cur.tableRefContactAcademic : cur.tableRefContact,

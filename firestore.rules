@@ -87,7 +87,14 @@ service cloud.firestore {
 
       allow update: if (
         isAdmin() ||
-        (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().id == existing().id && incoming().email == existing().email)
+        (
+          isSignedIn() &&
+          request.auth.uid == userId &&
+          isValidUser(incoming()) &&
+          incoming().id == existing().id &&
+          incoming().email == existing().email &&
+          (!('role' in incoming()) || incoming().role == existing().get('role', 'user'))
+        )
       );
 
       allow delete: if isAdmin();
@@ -153,9 +160,11 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidId(bannerId);
     }
 
-    // System Settings & Routing
+    // System Settings & Routing (editablePlans and platformGovernance readable by frontend; aiRouting & all writes strictly Admin)
     match /systemSettings/{settingId} {
-      allow read, write: if isAdmin() && isValidId(settingId);
+      allow get: if isValidId(settingId) && (settingId in ['editablePlans', 'platformGovernance'] || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin() && isValidId(settingId);
     }
 
     // Plan Quotas
@@ -182,9 +191,10 @@ service cloud.firestore {
       allow write: if isAdmin() && isValidId(localeId);
     }
 
-    // Technical Generation Error Logs
+    // Technical Generation Error Logs (clients can log failures, only Admins can read/resolve/delete)
     match /generationErrorLogs/{logId} {
-      allow read, write: if isAdmin() && isValidId(logId);
+      allow read, update, delete: if isAdmin() && isValidId(logId);
+      allow create: if isSignedIn() && isValidId(logId) && incoming().keys().hasAll(['id', 'timestamp', 'operationType', 'errorMessage', 'resolved']);
     }
 
     // GDPR / LGPD Requests

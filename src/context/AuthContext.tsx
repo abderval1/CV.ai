@@ -6,12 +6,21 @@ import {
   db,
   googleProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  buildFirestoreErrorInfo,
   handleFirestoreError,
   OperationType,
   FirebaseUser
@@ -28,11 +37,58 @@ import {
 } from 'firebase/firestore';
 import { isUserAdmin } from '../services/saasDbService';
 
+const LOCAL_STORAGE_USER_KEY = 'curriculopro_user_session';
+const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
+const AUTH_TOKEN_KEY = 'curriculopro_auth_token';
+
+function getStoredAuthToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setStoredAuthToken(token: string | null, rememberMe = true) {
+  try {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+    if (token) {
+      if (rememberMe) {
+        localStorage.setItem(AUTH_TOKEN_KEY, token);
+      } else {
+        sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+async function apiAuthFetch(url: string, options: RequestInit = {}) {
+  const token = getStoredAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {})
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers
+  });
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
 export function getAuthErrorMessage(err: any): string {
   if (!err) return 'Ocorreu um erro inesperado.';
   const code = err.code || '';
   switch (code) {
     case 'auth/invalid-credential':
+    case 'auth/invalid-login-credentials':
     case 'auth/wrong-password':
       return 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.';
     case 'auth/user-not-found':
@@ -44,20 +100,39 @@ export function getAuthErrorMessage(err: any): string {
     case 'auth/invalid-email':
       return 'O formato do endereço de e-mail não é válido.';
     case 'auth/user-disabled':
-      return 'Esta conta de utilizador foi desativada. Contacte o suporte técnico.';
+      return 'Esta conta de utilizador foi desativada ou suspensa. Contacte o suporte técnico.';
     case 'auth/too-many-requests':
       return 'Demasiadas tentativas consecutivas. Por favor, aguarde alguns minutos antes de tentar novamente.';
     case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
       return 'A janela de autenticação foi fechada antes de concluir o processo.';
     case 'auth/popup-blocked':
-      return 'A janela de autenticação foi bloqueada pelo navegador. Ative os pop-ups para este site.';
+      return 'A janela de autenticação foi bloqueada pelo navegador. Permita pop-ups ou utilize o acesso por e-mail.';
+    case 'auth/unauthorized-domain':
+      return 'Este domínio não está autorizado para autenticação Google. Utilize e-mail e palavra-passe abaixo.';
+    case 'auth/account-exists-with-different-credential':
+      return 'Já existe uma conta registada com este e-mail através de outro método de entrada.';
+    case 'auth/requires-recent-login':
+      return 'Por segurança, termine a sessão e volte a entrar antes de alterar a palavra-passe.';
     case 'auth/network-request-failed':
-      return 'Falha de comunicação de rede. Verifique a sua ligação à internet.';
+      return 'Falha de comunicação de rede. Verifique a sua ligação à internet e tente novamente.';
     case 'auth/operation-not-allowed':
-      return 'Método de autenticação temporariamente indisponível.';
-    default:
-      return err.message || 'Falha na autenticação. Verifique os dados inseridos e tente novamente.';
+    case 'auth/configuration-not-found':
+      return 'Método de autenticação não configurado no provedor externo.';
+    default: {
+      const msg = String(err.message || '');
+      if (msg.startsWith('{') && msg.includes('"operationType"')) {
+        return 'Não foi possível sincronizar o perfil com a nuvem neste momento. Tente novamente em instantes.';
+      }
+      return msg || 'Falha na autenticação. Verifique os dados inseridos e tente novamente.';
+    }
   }
+}
+
+export interface ResetPasswordResult {
+  mode: 'firebase_email' | 'backend_code';
+  verificationCode?: string;
+  message: string;
 }
 
 interface AuthContextType {
@@ -69,9 +144,17 @@ interface AuthContextType {
   isExecutive: boolean;
   hasActivePlan: boolean;
   isFirebaseConnected: boolean;
-  login: (email: string, password?: string) => Promise<boolean>;
-  register: (name: string, email: string, password?: string, targetRole?: string) => Promise<boolean>;
-  resetPassword: (email: string) => Promise<void>;
+  login: (email: string, password?: string, rememberMe?: boolean) => Promise<boolean>;
+  register: (
+    name: string,
+    email: string,
+    password?: string,
+    targetRole?: string,
+    rememberMe?: boolean
+  ) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<ResetPasswordResult>;
+  completePasswordReset: (email: string, code: string, newPassword: string) => Promise<boolean>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   demoLogin: (tier: 'pro' | 'executive') => Promise<void>;
   loginWithProvider: (provider: 'google' | 'linkedin') => Promise<boolean>;
   logout: () => Promise<void>;
@@ -97,8 +180,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_USER_KEY = 'curriculopro_user_session';
-const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
+const FIREBASE_EMAIL_UNAVAILABLE_CODES = new Set([
+  'auth/operation-not-allowed',
+  'auth/configuration-not-found',
+  'auth/network-request-failed',
+  'auth/internal-error'
+]);
+
+const FIREBASE_LOGIN_FALLBACK_CODES = new Set([
+  ...FIREBASE_EMAIL_UNAVAILABLE_CODES,
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+  'auth/user-not-found',
+  'auth/wrong-password'
+]);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -141,6 +236,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const resumesUnsubRef = useRef<Unsubscribe | null>(null);
+  const authSyncLockRef = useRef<boolean>(false);
 
   // Sync user state with localStorage
   useEffect(() => {
@@ -164,7 +260,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [savedResumes]);
 
-  // Listen to Firebase Auth state
+  // Handle redirect auth result if Google popup fell back to redirect
+  useEffect(() => {
+    getRedirectResult(auth).catch((err) => {
+      if (err?.code) {
+        console.warn('Aviso getRedirectResult:', err.code);
+      }
+    });
+  }, []);
+
+  // Listen to Firebase Auth state & sync seamlessly with Firestore + Backend session
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentFbUser) => {
       setFirebaseUser(currentFbUser);
@@ -175,93 +280,168 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resumesUnsubRef.current = null;
       }
 
-      if (currentFbUser) {
-        const uid = currentFbUser.uid;
-        const userDocRef = doc(db, 'users', uid);
-
-        try {
-          const docSnap = await getDoc(userDocRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            const isAdmin = isUserAdmin(data.email || currentFbUser.email, data.role);
-            setUser({
-              id: uid,
-              name: data.name || currentFbUser.displayName || 'Utilizador',
-              email: data.email || currentFbUser.email || '',
-              role: data.role || (isAdmin ? 'admin' : 'user'),
-              avatarUrl: currentFbUser.photoURL || data.avatarUrl || undefined,
-              plan: (data.plan as SubscriptionPlan) || 'free',
-              creditsRemaining: data.creditsRemaining ?? 5,
-              subscriptionExpiresAt: data.subscriptionExpiresAt,
-              createdAt: data.createdAt || new Date().toISOString()
-            });
-          } else {
-            // New user registration in Firestore
-            const cleanEmail = currentFbUser.email || '';
-            const cleanName = currentFbUser.displayName || currentFbUser.email?.split('@')[0] || 'Novo Utilizador';
-            const isAdmin = isUserAdmin(cleanEmail);
-            const newUserProfile: User = {
-              id: uid,
-              name: cleanName,
-              email: cleanEmail,
-              role: isAdmin ? 'admin' : 'user',
-              avatarUrl: currentFbUser.photoURL || undefined,
-              plan: 'free',
-              creditsRemaining: 5,
-              createdAt: new Date().toISOString()
-            };
-
-            await setDoc(userDocRef, {
-              id: newUserProfile.id,
-              name: newUserProfile.name,
-              email: newUserProfile.email,
-              role: newUserProfile.role,
-              plan: newUserProfile.plan,
-              creditsRemaining: newUserProfile.creditsRemaining,
-              createdAt: newUserProfile.createdAt
-            });
-
-            setUser(newUserProfile);
+      try {
+        if (currentFbUser) {
+          // Wait briefly if register() is actively creating the initial Firestore profile
+          if (authSyncLockRef.current) {
+            return;
           }
 
-          setIsFirebaseConnected(true);
-        } catch (err) {
-          console.error('Erro ao ler/escrever perfil no Firestore:', err);
-          handleFirestoreError(err, OperationType.GET, `users/${uid}`);
-        }
+          const uid = currentFbUser.uid;
+          const userDocRef = doc(db, 'users', uid);
+          const cleanEmail = (currentFbUser.email || '').trim().toLowerCase();
+          const defaultAdmin = isUserAdmin(cleanEmail);
 
-        // Attach listener for user's resumes subcollection
-        try {
-          const resumesColRef = collection(db, 'users', uid, 'resumes');
-          resumesUnsubRef.current = onSnapshot(
-            resumesColRef,
-            (snapshot) => {
-              if (!snapshot.empty) {
-                const cloudResumes: SavedResume[] = snapshot.docs.map((docItem) => {
-                  const d = docItem.data();
-                  return {
-                    id: docItem.id,
-                    title: d.title || 'Currículo',
-                    targetJob: d.targetJob || 'Vaga Executiva',
-                    updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
-                    data: (d.data as CVData) || GENERIC_DEFAULT_CV
-                  };
-                });
-                setSavedResumes(cloudResumes);
+          let hydratedUser: User = {
+            id: uid,
+            name: currentFbUser.displayName || cleanEmail.split('@')[0] || 'Utilizador',
+            email: cleanEmail,
+            role: defaultAdmin ? 'admin' : 'user',
+            status: 'active',
+            avatarUrl: currentFbUser.photoURL || undefined,
+            plan: defaultAdmin ? 'executive' : 'free',
+            creditsRemaining: defaultAdmin ? 9999 : 5,
+            createdAt: new Date().toISOString()
+          };
+
+          try {
+            const docSnap = await getDoc(userDocRef);
+            if (docSnap.exists()) {
+              const data = docSnap.data();
+              if (data.status === 'suspended') {
+                await signOut(auth).catch(() => {});
+                setStoredAuthToken(null);
+                setUser(null);
+                return;
               }
-            },
-            (error) => {
-              handleFirestoreError(error, OperationType.GET, `users/${uid}/resumes`);
+              const isAdmin = isUserAdmin(data.email || cleanEmail, data.role);
+              hydratedUser = {
+                id: uid,
+                name: data.name || currentFbUser.displayName || 'Utilizador',
+                email: data.email || cleanEmail,
+                role: isAdmin ? 'admin' : data.role || 'user',
+                status: data.status || 'active',
+                targetRole: data.targetRole || undefined,
+                phone: data.phone || undefined,
+                company: data.company || undefined,
+                avatarUrl: currentFbUser.photoURL || data.avatarUrl || undefined,
+                plan: (data.plan as SubscriptionPlan) || (isAdmin ? 'executive' : 'free'),
+                creditsRemaining: data.creditsRemaining ?? (isAdmin ? 9999 : 5),
+                creditsUsed: data.creditsUsed ?? 0,
+                totalCvGenerated: data.totalCvGenerated ?? 0,
+                billingCycle: data.billingCycle || 'monthly',
+                subscriptionExpiresAt: data.subscriptionExpiresAt,
+                stripeCustomerId: data.stripeCustomerId,
+                stripeSubscriptionId: data.stripeSubscriptionId,
+                stripeStatus: data.stripeStatus,
+                createdAt: data.createdAt || new Date().toISOString(),
+                notes: data.notes || undefined
+              };
+            } else {
+              await setDoc(userDocRef, {
+                id: hydratedUser.id,
+                name: hydratedUser.name,
+                email: hydratedUser.email,
+                role: hydratedUser.role,
+                status: 'active',
+                plan: hydratedUser.plan,
+                creditsRemaining: hydratedUser.creditsRemaining,
+                createdAt: hydratedUser.createdAt
+              });
             }
-          );
-        } catch (err) {
-          console.error('Erro ao subscrever currículos do Firestore:', err);
+            setIsFirebaseConnected(true);
+          } catch (err) {
+            setIsFirebaseConnected(false);
+            const info = buildFirestoreErrorInfo(err, OperationType.GET, `users/${uid}`);
+            console.error('Firestore Error (Auth sync fallback active): ', JSON.stringify(info));
+          }
+
+          // Sync Firebase session with backend so API cookies/tokens are always in sync
+          try {
+            const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
+              method: 'POST',
+              body: JSON.stringify({
+                uid: hydratedUser.id,
+                email: hydratedUser.email,
+                name: hydratedUser.name,
+                avatarUrl: hydratedUser.avatarUrl,
+                provider: currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
+                targetRole: hydratedUser.targetRole,
+                plan: hydratedUser.plan,
+                creditsRemaining: hydratedUser.creditsRemaining
+              })
+            });
+
+            if (response.status === 403 && data?.code === 'auth/user-disabled') {
+              await signOut(auth).catch(() => {});
+              setStoredAuthToken(null);
+              setUser(null);
+              return;
+            }
+            if (response.ok && data?.token) {
+              setStoredAuthToken(data.token, true);
+              if (data.user) {
+                hydratedUser = {
+                  ...hydratedUser,
+                  ...data.user,
+                  id: hydratedUser.id
+                };
+              }
+            }
+          } catch (backendErr) {
+            console.warn('Aviso ao sincronizar sessão com backend:', backendErr);
+          }
+
+          setUser(hydratedUser);
+
+          // Attach listener for user's resumes subcollection
+          try {
+            const resumesColRef = collection(db, 'users', uid, 'resumes');
+            resumesUnsubRef.current = onSnapshot(
+              resumesColRef,
+              (snapshot) => {
+                if (!snapshot.empty) {
+                  const cloudResumes: SavedResume[] = snapshot.docs.map((docItem) => {
+                    const d = docItem.data();
+                    return {
+                      id: docItem.id,
+                      title: d.title || 'Currículo',
+                      targetJob: d.targetJob || 'Vaga Executiva',
+                      updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
+                      data: (d.data as CVData) || GENERIC_DEFAULT_CV
+                    };
+                  });
+                  setSavedResumes(cloudResumes);
+                }
+              },
+              (error) => {
+                const info = buildFirestoreErrorInfo(error, OperationType.GET, `users/${uid}/resumes`);
+                console.error('Firestore Resumes Listener Error: ', JSON.stringify(info));
+              }
+            );
+          } catch (err) {
+            console.error('Erro ao subscrever currículos do Firestore:', err);
+          }
+        } else {
+          // No active Firebase user: verify whether a valid Backend Auth session exists before clearing user
+          try {
+            const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
+            if (response.ok && data?.authenticated && data.user) {
+              setUser(data.user);
+            } else if (!localStorage.getItem('curriculopro_impersonating_admin')) {
+              setUser(null);
+              setStoredAuthToken(null);
+            }
+          } catch {
+            // Keep existing local session only if offline, otherwise clear if no token
+            if (!getStoredAuthToken() && !localStorage.getItem('curriculopro_impersonating_admin')) {
+              setUser(null);
+            }
+          }
         }
-      } else {
-        // User logged out of Firebase Auth
-        setUser(null);
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
 
     return () => {
@@ -272,15 +452,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  const syncFirebaseUserToBackend = async (profile: User, provider: 'google' | 'password', rememberMe = true) => {
+    try {
+      const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
+        method: 'POST',
+        body: JSON.stringify({
+          uid: profile.id,
+          email: profile.email,
+          name: profile.name,
+          avatarUrl: profile.avatarUrl,
+          provider,
+          targetRole: profile.targetRole,
+          plan: profile.plan,
+          creditsRemaining: profile.creditsRemaining,
+          rememberMe
+        })
+      });
+      if (response.status === 403) {
+        const err: any = new Error(data.error || 'Conta suspensa.');
+        err.code = data.code || 'auth/user-disabled';
+        throw err;
+      }
+      if (response.ok && data?.token) {
+        setStoredAuthToken(data.token, rememberMe);
+        if (data.user) {
+          return { ...profile, ...data.user, id: profile.id };
+        }
+      }
+    } catch (e: any) {
+      if (e?.code === 'auth/user-disabled') throw e;
+      console.warn('Sync Firebase -> Backend ignorado:', e);
+    }
+    return profile;
+  };
+
   const loginWithProvider = async (provider: 'google' | 'linkedin'): Promise<boolean> => {
     if (provider === 'google') {
       try {
+        await setPersistence(auth, browserLocalPersistence).catch(() => {});
         const result = await signInWithPopup(auth, googleProvider);
         if (result.user) {
+          const cleanEmail = (result.user.email || '').trim().toLowerCase();
+          const isAdmin = isUserAdmin(cleanEmail);
+          const profile: User = {
+            id: result.user.uid,
+            name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
+            email: cleanEmail,
+            role: isAdmin ? 'admin' : 'user',
+            status: 'active',
+            avatarUrl: result.user.photoURL || undefined,
+            plan: isAdmin ? 'executive' : 'free',
+            creditsRemaining: isAdmin ? 9999 : 5,
+            createdAt: new Date().toISOString()
+          };
+          const synced = await syncFirebaseUserToBackend(profile, 'google', true);
+          setUser((prev) => prev || synced);
           return true;
         }
         return false;
-      } catch (err) {
+      } catch (err: any) {
+        // Fallback to redirect ONLY if popup is strictly blocked in non-iframe standalone tab
+        if (err?.code === 'auth/popup-blocked' && window.self === window.top) {
+          await signInWithRedirect(auth, googleProvider);
+          return true;
+        }
         console.error('Firebase Google Auth error:', err);
         throw err;
       }
@@ -289,78 +524,245 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const login = async (email: string, password?: string): Promise<boolean> => {
+  const login = async (email: string, password?: string, rememberMe = true): Promise<boolean> => {
     if (!password) {
       throw new Error('Por favor, insira a sua palavra-passe.');
     }
     const cleanEmail = email.trim().toLowerCase();
-    const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-    return Boolean(cred.user);
+
+    try {
+      await setPersistence(
+        auth,
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      ).catch(() => {});
+
+      const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      if (cred.user) {
+        const isAdmin = isUserAdmin(cleanEmail);
+        const profile: User = {
+          id: cred.user.uid,
+          name: cred.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
+          email: cleanEmail,
+          role: isAdmin ? 'admin' : 'user',
+          status: 'active',
+          plan: isAdmin ? 'executive' : 'free',
+          creditsRemaining: isAdmin ? 9999 : 5,
+          createdAt: new Date().toISOString()
+        };
+        const synced = await syncFirebaseUserToBackend(profile, 'password', rememberMe);
+        setUser((prev) => prev || synced);
+        return true;
+      }
+    } catch (fbErr: any) {
+      const code = fbErr?.code || '';
+      if (!FIREBASE_LOGIN_FALLBACK_CODES.has(code)) {
+        throw fbErr;
+      }
+
+      // Check/Authenticate via Backend Auth API (/api/auth/login)
+      const { response, data } = await apiAuthFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: cleanEmail, password, rememberMe })
+      });
+
+      if (response.ok && data?.user && data?.token) {
+        setStoredAuthToken(data.token, rememberMe);
+        setUser(data.user);
+        return true;
+      }
+
+      if (data?.code || data?.error) {
+        const backendErr: any = new Error(data.error || 'Falha na autenticação.');
+        backendErr.code = data.code || code;
+        throw backendErr;
+      }
+
+      throw fbErr;
+    }
+
+    return false;
   };
 
   const register = async (
     name: string,
     email: string,
     password?: string,
-    targetRole?: string
+    targetRole?: string,
+    rememberMe = true
   ): Promise<boolean> => {
     if (!password || password.length < 6) {
       throw new Error('A palavra-passe deve ter pelo menos 6 caracteres.');
     }
+
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim() || 'Novo Assinante';
-    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    const fbUser = cred.user;
+    const cleanRole = targetRole?.trim() || 'Profissional Executivo';
 
+    authSyncLockRef.current = true;
     try {
-      await updateProfile(fbUser, { displayName: cleanName });
-    } catch (err) {
-      console.warn('Erro ao atualizar displayName no Firebase Auth:', err);
-    }
+      await setPersistence(
+        auth,
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      ).catch(() => {});
 
-    const isAdmin = isUserAdmin(cleanEmail);
-    const newProfile: User = {
-      id: fbUser.uid,
-      name: cleanName,
-      email: cleanEmail,
-      role: isAdmin ? 'admin' : 'user',
-      targetRole: targetRole?.trim() || 'Profissional Executivo',
-      plan: 'free',
-      creditsRemaining: 5,
-      createdAt: new Date().toISOString()
-    };
+      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const fbUser = cred.user;
 
-    try {
-      const userDocRef = doc(db, 'users', fbUser.uid);
-      await setDoc(userDocRef, {
-        id: newProfile.id,
-        name: newProfile.name,
-        email: newProfile.email,
-        role: newProfile.role,
-        targetRole: newProfile.targetRole,
-        plan: newProfile.plan,
-        creditsRemaining: newProfile.creditsRemaining,
-        createdAt: newProfile.createdAt
+      try {
+        await updateProfile(fbUser, { displayName: cleanName });
+      } catch (err) {
+        console.warn('Erro ao atualizar displayName no Firebase Auth:', err);
+      }
+
+      const isAdmin = isUserAdmin(cleanEmail);
+      const newProfile: User = {
+        id: fbUser.uid,
+        name: cleanName,
+        email: cleanEmail,
+        role: isAdmin ? 'admin' : 'user',
+        status: 'active',
+        targetRole: cleanRole,
+        plan: isAdmin ? 'executive' : 'free',
+        creditsRemaining: isAdmin ? 9999 : 5,
+        createdAt: new Date().toISOString()
+      };
+
+      try {
+        const userDocRef = doc(db, 'users', fbUser.uid);
+        await setDoc(userDocRef, {
+          id: newProfile.id,
+          name: newProfile.name,
+          email: newProfile.email,
+          role: newProfile.role,
+          status: 'active',
+          targetRole: newProfile.targetRole,
+          plan: newProfile.plan,
+          creditsRemaining: newProfile.creditsRemaining,
+          createdAt: newProfile.createdAt
+        });
+      } catch (err) {
+        const info = buildFirestoreErrorInfo(err, OperationType.CREATE, `users/${fbUser.uid}`);
+        console.error('Firestore Error during registration (continuing with backend sync): ', JSON.stringify(info));
+      }
+
+      const synced = await syncFirebaseUserToBackend(newProfile, 'password', rememberMe);
+      setUser(synced);
+      return true;
+    } catch (fbErr: any) {
+      const code = fbErr?.code || '';
+      if (!FIREBASE_EMAIL_UNAVAILABLE_CODES.has(code)) {
+        throw fbErr;
+      }
+
+      // Firebase Email/Password disabled or unavailable -> use Backend Auth Engine
+      const { response, data } = await apiAuthFetch('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: cleanName,
+          email: cleanEmail,
+          password,
+          targetRole: cleanRole,
+          rememberMe
+        })
       });
-    } catch (err) {
-      console.error('Erro ao guardar perfil no Firestore:', err);
-      handleFirestoreError(err, OperationType.CREATE, `users/${fbUser.uid}`);
-    }
 
-    setUser(newProfile);
-    return true;
+      if (response.ok && data?.user && data?.token) {
+        setStoredAuthToken(data.token, rememberMe);
+        setUser(data.user);
+        return true;
+      }
+
+      const backendErr: any = new Error(data?.error || 'Não foi possível criar a conta.');
+      backendErr.code = data?.code || code;
+      throw backendErr;
+    } finally {
+      authSyncLockRef.current = false;
+    }
   };
 
-  const resetPassword = async (email: string): Promise<void> => {
+  const resetPassword = async (email: string): Promise<ResetPasswordResult> => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       throw new Error('Por favor insira um endereço de e-mail válido.');
     }
+
+    // Check backend user store first so backend-registered users get a working code flow
+    try {
+      const { response, data } = await apiAuthFetch('/api/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email: cleanEmail })
+      });
+      if (response.ok && data?.success) {
+        return {
+          mode: 'backend_code',
+          verificationCode: data.verificationCode,
+          message: data.message || 'Código de recuperação gerado com sucesso.'
+        };
+      }
+    } catch {
+      // Fall through to Firebase reset email
+    }
+
     await sendPasswordResetEmail(auth, cleanEmail);
+    return {
+      mode: 'firebase_email',
+      message: 'Enviámos um link para redefinir a sua palavra-passe. Verifique a sua caixa de entrada e pasta de spam.'
+    };
+  };
+
+  const completePasswordReset = async (
+    email: string,
+    code: string,
+    newPassword: string
+  ): Promise<boolean> => {
+    const { response, data } = await apiAuthFetch('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        code: code.trim(),
+        newPassword
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(data?.error || 'Não foi possível redefinir a palavra-passe.');
+    }
+
+    if (data?.token && data?.user) {
+      setStoredAuthToken(data.token, true);
+      setUser(data.user);
+    }
+    return true;
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('A nova palavra-passe deve conter pelo menos 6 caracteres.');
+    }
+
+    if (auth.currentUser && auth.currentUser.email) {
+      const hasPasswordProvider = auth.currentUser.providerData.some(
+        (p) => p.providerId === 'password'
+      );
+      if (hasPasswordProvider) {
+        const cred = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+        await reauthenticateWithCredential(auth.currentUser, cred);
+        await updatePassword(auth.currentUser, newPassword);
+      }
+    }
+
+    if (getStoredAuthToken()) {
+      const { response, data } = await apiAuthFetch('/api/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      if (!response.ok) {
+        throw new Error(data?.error || 'Falha ao atualizar a palavra-passe.');
+      }
+    }
   };
 
   const demoLogin = async (_tier: 'pro' | 'executive'): Promise<void> => {
-    // Production mode: Authenticate via Google or Email/Password
     console.info('Acesso de produção ativo. Autenticação requer credenciais reais.');
   };
 
@@ -373,9 +775,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const uid = auth.currentUser.uid;
       const userRef = doc(db, 'users', uid);
       try {
-        await updateDoc(userRef, partial);
+        await updateDoc(userRef, {
+          ...partial,
+          updatedAt: new Date().toISOString()
+        });
       } catch (err) {
         console.warn('Erro ao atualizar perfil no Firestore:', err);
+      }
+    }
+
+    if (getStoredAuthToken()) {
+      try {
+        const { response, data } = await apiAuthFetch('/api/auth/profile', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: partial.name,
+            targetRole: partial.targetRole,
+            phone: partial.phone,
+            company: partial.company
+          })
+        });
+        if (response.ok && data?.user) {
+          setUser((prev) => (prev ? { ...prev, ...data.user } : data.user));
+        }
+      } catch (err) {
+        console.warn('Erro ao atualizar perfil no backend:', err);
       }
     }
   };
@@ -392,6 +816,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.warn('Erro ao deslogar Firebase:', e);
     }
+
+    try {
+      await apiAuthFetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network failure during logout
+    }
+
+    setStoredAuthToken(null);
+    localStorage.removeItem('curriculopro_impersonating_admin');
+    setOriginalAdminUser(null);
     setUser(null);
     setFirebaseUser(null);
   };
@@ -423,7 +857,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatedAt: new Date().toISOString()
         });
       } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `users/${uid}`);
+        console.warn('Aviso Firestore upgradePlan:', err);
+      }
+    }
+
+    if (getStoredAuthToken()) {
+      try {
+        await apiAuthFetch('/api/auth/sync-plan', {
+          method: 'POST',
+          body: JSON.stringify({
+            plan,
+            billingCycle: meta?.billingCycle || 'monthly',
+            creditsRemaining: 9999,
+            subscriptionExpiresAt: expiresAt,
+            stripeSubscriptionId: meta?.stripeSubscriptionId,
+            stripeCustomerId: meta?.stripeCustomerId,
+            stripeStatus: 'active'
+          })
+        });
+      } catch (err) {
+        console.warn('Aviso Backend sync-plan:', err);
       }
     }
 
@@ -519,11 +972,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Save admin original session
     setOriginalAdminUser(user);
     localStorage.setItem('curriculopro_impersonating_admin', JSON.stringify(user));
 
-    // Audit log
     try {
       const { logImpersonationAction } = await import('../services/adminModulesService');
       await logImpersonationAction({
@@ -539,7 +990,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Erro ao registar log de impersonate:', e);
     }
 
-    // Switch active user session to target
     setUser({
       ...targetUser,
       notes: `[Sessão de Suporte Ativa] ${targetUser.notes || ''}`
@@ -593,6 +1043,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         resetPassword,
+        completePasswordReset,
+        changePassword,
         demoLogin,
         loginWithProvider,
         logout,

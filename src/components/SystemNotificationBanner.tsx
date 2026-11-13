@@ -24,7 +24,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
     }
   });
 
-  useEffect(() => {
+  const loadBanners = () => {
     fetchSystemBanners().then((list) => {
       const now = new Date().toISOString();
       const active = list.filter((b) => {
@@ -37,6 +37,13 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
       });
       setBanners(active);
     });
+  };
+
+  useEffect(() => {
+    loadBanners();
+    const handler = () => loadBanners();
+    window.addEventListener('admin-config-updated', handler);
+    return () => window.removeEventListener('admin-config-updated', handler);
   }, [isPro, isExecutive]);
 
   const handleDismiss = (id: string) => {

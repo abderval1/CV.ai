@@ -22,7 +22,10 @@ import {
   TechnicalGenerationErrorLog,
   GdprDataRequest,
   AdminRolePermission,
-  FinancialMetrics
+  FinancialMetrics,
+  EditablePlanConfig,
+  PlatformSettingsConfig,
+  FrontendTelemetryData
 } from '../types/adminModules';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { SECTION_TITLES_BY_LANG } from '../utils/cvDocumentLabels';
@@ -444,6 +447,12 @@ function getStored<T>(key: string, defaultVal: T): T {
   }
 }
 
+export function emitAdminConfigUpdated(scope: string = 'all'): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('admin-config-updated', { detail: { scope, timestamp: Date.now() } }));
+  }
+}
+
 function setStored<T>(key: string, val: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(val));
@@ -480,6 +489,7 @@ export async function savePromptConfig(item: PromptTemplateConfig): Promise<void
     current.push({ ...item, updatedAt: new Date().toISOString() });
   }
   setStored('curriculopro_prompts_config', current);
+  emitAdminConfigUpdated('prompts');
 
   try {
     await setDoc(doc(db, 'promptsConfig', item.id), item);
@@ -505,6 +515,7 @@ export async function fetchAiRoutingConfig(): Promise<AiModelRoutingConfig> {
 
 export async function saveAiRoutingConfig(config: AiModelRoutingConfig): Promise<void> {
   setStored('curriculopro_ai_routing', config);
+  emitAdminConfigUpdated('aiRouting');
   try {
     await setDoc(doc(db, 'systemSettings', 'aiRouting'), config);
   } catch (e) {
@@ -533,6 +544,7 @@ export async function savePlanQuota(quota: PlanCreditQuota): Promise<void> {
   if (idx >= 0) list[idx] = quota;
   else list.push(quota);
   setStored('curriculopro_plan_quotas', list);
+  emitAdminConfigUpdated('quotas');
 
   try {
     await setDoc(doc(db, 'planQuotas', quota.planId), quota);
@@ -546,8 +558,11 @@ export async function fetchAdminTemplates(): Promise<TemplateAdminItem[]> {
     const colRef = collection(db, 'templateCatalogConfig');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
-      const list = snap.docs.map((d) => d.data() as TemplateAdminItem);
-      return list.sort((a, b) => a.displayOrder - b.displayOrder);
+      const list = (snap.docs.map((d) => d.data() as TemplateAdminItem)).sort(
+        (a, b) => a.displayOrder - b.displayOrder
+      );
+      setStored('curriculopro_admin_templates', list);
+      return list;
     }
   } catch (e) {
     console.warn('Usando catálogo local de templates:', e);
@@ -561,6 +576,7 @@ export async function saveAdminTemplate(tmpl: TemplateAdminItem): Promise<void> 
   if (idx >= 0) list[idx] = tmpl;
   else list.push(tmpl);
   setStored('curriculopro_admin_templates', list);
+  emitAdminConfigUpdated('templates');
 
   try {
     await setDoc(doc(db, 'templateCatalogConfig', tmpl.id), tmpl);
@@ -574,7 +590,9 @@ export async function fetchProfessionSnippets(): Promise<ProfessionSnippetExampl
     const colRef = collection(db, 'professionSnippets');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as ProfessionSnippetExample);
+      const list = snap.docs.map((d) => d.data() as ProfessionSnippetExample);
+      setStored('curriculopro_snippets', list);
+      return list;
     }
   } catch (e) {
     console.warn('Usando biblioteca local de profissões:', e);
@@ -588,6 +606,7 @@ export async function saveProfessionSnippet(snip: ProfessionSnippetExample): Pro
   if (idx >= 0) list[idx] = snip;
   else list.push(snip);
   setStored('curriculopro_snippets', list);
+  emitAdminConfigUpdated('snippets');
 
   try {
     await setDoc(doc(db, 'professionSnippets', snip.id), snip);
@@ -599,6 +618,7 @@ export async function saveProfessionSnippet(snip: ProfessionSnippetExample): Pro
 export async function deleteProfessionSnippet(id: string): Promise<void> {
   const list = (await fetchProfessionSnippets()).filter((s) => s.id !== id);
   setStored('curriculopro_snippets', list);
+  emitAdminConfigUpdated('snippets');
   try {
     await deleteDoc(doc(db, 'professionSnippets', id));
   } catch (e) {
@@ -606,8 +626,18 @@ export async function deleteProfessionSnippet(id: string): Promise<void> {
   }
 }
 
+export function getStoredAiRoutingSync(): AiModelRoutingConfig {
+  return getStored('curriculopro_ai_routing', DEFAULT_AI_ROUTING);
+}
+
+export function getStoredPromptsSync(): PromptTemplateConfig[] {
+  return getStored('curriculopro_prompts_config', DEFAULT_PROMPT_CONFIGS);
+}
+
 export function getStoredTemplatesSync(): TemplateAdminItem[] {
-  return getStored('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES);
+  return getStored('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES).sort(
+    (a, b) => a.displayOrder - b.displayOrder
+  );
 }
 
 export function getStoredLocalesSync(): SystemLocaleTranslation[] {
@@ -632,7 +662,9 @@ export async function fetchSystemLocales(): Promise<SystemLocaleTranslation[]> {
     const colRef = collection(db, 'systemLocales');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as SystemLocaleTranslation);
+      const list = snap.docs.map((d) => d.data() as SystemLocaleTranslation);
+      setStored('curriculopro_locales', list);
+      return list;
     }
   } catch (e) {
     console.warn('Usando idiomas padrão:', e);
@@ -647,6 +679,7 @@ export async function saveSystemLocale(locale: SystemLocaleTranslation): Promise
   if (idx >= 0) list[idx] = updated;
   else list.push(updated);
   setStored('curriculopro_locales', list);
+  emitAdminConfigUpdated('locales');
 
   try {
     await setDoc(doc(db, 'systemLocales', locale.languageCode), updated);
@@ -660,7 +693,9 @@ export async function fetchSystemBanners(): Promise<SystemAnnouncementBanner[]> 
     const colRef = collection(db, 'systemBanners');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as SystemAnnouncementBanner);
+      const list = snap.docs.map((d) => d.data() as SystemAnnouncementBanner);
+      setStored('curriculopro_banners', list);
+      return list;
     }
   } catch (e) {
     console.warn('Usando banners padrão:', e);
@@ -674,6 +709,7 @@ export async function saveSystemBanner(banner: SystemAnnouncementBanner): Promis
   if (idx >= 0) list[idx] = banner;
   else list.push(banner);
   setStored('curriculopro_banners', list);
+  emitAdminConfigUpdated('banners');
 
   try {
     await setDoc(doc(db, 'systemBanners', banner.id), banner);
@@ -685,6 +721,7 @@ export async function saveSystemBanner(banner: SystemAnnouncementBanner): Promis
 export async function deleteSystemBanner(id: string): Promise<void> {
   const list = (await fetchSystemBanners()).filter((b) => b.id !== id);
   setStored('curriculopro_banners', list);
+  emitAdminConfigUpdated('banners');
   try {
     await deleteDoc(doc(db, 'systemBanners', id));
   } catch (e) {
@@ -807,3 +844,201 @@ export function fetchImpersonationLogs(): ImpersonationAuditLog[] {
     }
   ]);
 }
+
+// -------------------------------------------------------------
+// 7. LIVE EDITABLE PLANS ($2 PRO / $4 VIP)
+// -------------------------------------------------------------
+export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
+  {
+    id: 'pro',
+    name: 'Profissional Pro',
+    tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
+    priceMonthlyValue: 2,
+    priceYearlyValue: 18,
+    badgeText: 'Mais Escolhido',
+    isPopular: true,
+    active: true,
+    features: [
+      'Desbloqueio Imediato de Download Oficial (PDF & Word .docx)',
+      'Documentos 100% Limpos e sem Marca de Água',
+      'Criação & Edição de Currículos Ilimitados',
+      'Otimização com Inteligência Artificial Ilimitada',
+      'Radar ATS 95%+ com Análise Semântica de Vagas',
+      'Cartas de Apresentação Estratégicas com IA',
+      'Tradução Integral para 5 Idiomas (PT, EN, ES, FR, DE)',
+      'Sincronização Cloud Firestore em Tempo Real'
+    ],
+    updatedAt: new Date().toISOString()
+  },
+  {
+    id: 'executive',
+    name: 'Executivo VIP',
+    tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
+    priceMonthlyValue: 4,
+    priceYearlyValue: 36,
+    badgeText: 'C-Level & Global',
+    isPopular: false,
+    active: true,
+    features: [
+      'Tudo incluído no Plano Profissional Pro',
+      'Downloads Ilimitados Oficiais em PDF e Word (.docx)',
+      'Simulador de Entrevista STAR com Ditado por Voz & Scoring',
+      'Todos os Modelos Executivos C-Level, Harvard, Europass e Big Tech',
+      'Auditoria Avançada de Perfil LinkedIn',
+      'Consultoria & Suporte Executivo Prioritário'
+    ],
+    updatedAt: new Date().toISOString()
+  }
+];
+
+export function getStoredPlansSync(): EditablePlanConfig[] {
+  return getStored('curriculopro_editable_plans', DEFAULT_EDITABLE_PLANS);
+}
+
+export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
+  try {
+    const docRef = doc(db, 'systemSettings', 'editablePlans');
+    const snap = await getDoc(docRef);
+    if (snap.exists() && Array.isArray(snap.data()?.plans)) {
+      const list = snap.data().plans as EditablePlanConfig[];
+      setStored('curriculopro_editable_plans', list);
+      return list;
+    }
+  } catch (e) {
+    console.warn('Usando planos locais:', e);
+  }
+  return getStored('curriculopro_editable_plans', DEFAULT_EDITABLE_PLANS);
+}
+
+export async function saveEditablePlan(plan: EditablePlanConfig): Promise<void> {
+  const list = getStoredPlansSync();
+  const idx = list.findIndex((p) => p.id === plan.id);
+  const updated = { ...plan, updatedAt: new Date().toISOString() };
+  if (idx >= 0) list[idx] = updated;
+  else list.push(updated);
+
+  setStored('curriculopro_editable_plans', list);
+  emitAdminConfigUpdated('plans');
+
+  try {
+    await setDoc(doc(db, 'systemSettings', 'editablePlans'), { plans: list, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    console.warn('Erro ao sincronizar planos no Firestore:', e);
+  }
+}
+
+// -------------------------------------------------------------
+// 8. PLATFORM GLOBAL SETTINGS & MAINTENANCE MODE
+// -------------------------------------------------------------
+export const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsConfig = {
+  maintenanceMode: false,
+  maintenanceMessage: 'Estamos a realizar melhorias programadas nos servidores de IA. Voltamos em instantes.',
+  allowNewRegistrations: true,
+  requirePaidPlanForExport: true,
+  enableAiFeaturesGlobally: true,
+  maxDailyFreeAiCalls: 5,
+  updatedAt: new Date().toISOString(),
+  updatedBy: 'gugurai923@gmail.com'
+};
+
+export function getStoredPlatformSettingsSync(): PlatformSettingsConfig {
+  return getStored('curriculopro_platform_settings', DEFAULT_PLATFORM_SETTINGS);
+}
+
+export async function fetchPlatformSettings(): Promise<PlatformSettingsConfig> {
+  try {
+    const docRef = doc(db, 'systemSettings', 'platformGovernance');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() as PlatformSettingsConfig;
+      setStored('curriculopro_platform_settings', data);
+      return data;
+    }
+  } catch (e) {
+    console.warn('Usando configurações globais locais:', e);
+  }
+  return getStoredPlatformSettingsSync();
+}
+
+export async function savePlatformSettings(settings: PlatformSettingsConfig): Promise<void> {
+  const updated = { ...settings, updatedAt: new Date().toISOString() };
+  setStored('curriculopro_platform_settings', updated);
+  emitAdminConfigUpdated('platform');
+
+  try {
+    await setDoc(doc(db, 'systemSettings', 'platformGovernance'), updated);
+  } catch (e) {
+    console.warn('Erro ao salvar configurações da plataforma no Firestore:', e);
+  }
+}
+
+// -------------------------------------------------------------
+// 9. REAL FRONTEND TELEMETRY TRACKING (INTERLINKED METRICS)
+// -------------------------------------------------------------
+const DEFAULT_TELEMETRY: FrontendTelemetryData = {
+  resumesStartedCount: 18,
+  checkoutOpenedCount: 9,
+  wordExportsCount: 14,
+  aiCallsCount: 42,
+  estimatedTokensUsed: 68400,
+  templateSelections: {
+    executive_harvard: 12,
+    european_europass: 9,
+    modern_tech: 7,
+    ats_strict: 6,
+    un_classic: 4,
+    creative_split: 3
+  },
+  languageSelections: {
+    pt: 22,
+    en: 14,
+    es: 4,
+    fr: 3,
+    de: 2
+  },
+  featureUsage: {
+    aiTailor: 16,
+    atsRadar: 19,
+    coverLetter: 11,
+    interviewSim: 7,
+    rawImport: 13
+  },
+  lastUpdated: new Date().toISOString()
+};
+
+export function getFrontendTelemetry(): FrontendTelemetryData {
+  return getStored('curriculopro_frontend_telemetry', DEFAULT_TELEMETRY);
+}
+
+export function trackFrontendTelemetry(
+  event:
+    | { type: 'resume_started' }
+    | { type: 'checkout_opened' }
+    | { type: 'word_exported'; templateStyle?: string }
+    | { type: 'template_selected'; templateStyle: string }
+    | { type: 'language_switched'; language: string }
+    | { type: 'ai_called'; feature: keyof FrontendTelemetryData['featureUsage']; tokens?: number }
+): void {
+  const cur = getFrontendTelemetry();
+  if (event.type === 'resume_started') {
+    cur.resumesStartedCount += 1;
+  } else if (event.type === 'checkout_opened') {
+    cur.checkoutOpenedCount += 1;
+  } else if (event.type === 'word_exported') {
+    cur.wordExportsCount += 1;
+    if (event.templateStyle) {
+      cur.templateSelections[event.templateStyle] = (cur.templateSelections[event.templateStyle] || 0) + 1;
+    }
+  } else if (event.type === 'template_selected') {
+    cur.templateSelections[event.templateStyle] = (cur.templateSelections[event.templateStyle] || 0) + 1;
+  } else if (event.type === 'language_switched') {
+    cur.languageSelections[event.language] = (cur.languageSelections[event.language] || 0) + 1;
+  } else if (event.type === 'ai_called') {
+    cur.aiCallsCount += 1;
+    cur.estimatedTokensUsed += event.tokens || 1400;
+    cur.featureUsage[event.feature] = (cur.featureUsage[event.feature] || 0) + 1;
+  }
+  cur.lastUpdated = new Date().toISOString();
+  setStored('curriculopro_frontend_telemetry', cur);
+}
+

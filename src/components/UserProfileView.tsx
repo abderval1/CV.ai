@@ -54,6 +54,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     hasActivePlan,
     logout,
     updateUserProfile,
+    changePassword,
     savedResumes,
     saveCurrentResume,
     deleteResume
@@ -67,7 +68,12 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const [profileTargetRole, setProfileTargetRole] = useState<string>(user?.targetRole || '');
   const [profilePhone, setProfilePhone] = useState<string>(user?.phone || '');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [saveErrorMsg, setSaveErrorMsg] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState<boolean>(false);
+  const [currentPwd, setCurrentPwd] = useState<string>('');
+  const [newPwd, setNewPwd] = useState<string>('');
+  const [confirmPwd, setConfirmPwd] = useState<string>('');
+  const [isChangingPwd, setIsChangingPwd] = useState<boolean>(false);
 
   // New Resume Save Form State
   const [newResumeTitle, setNewResumeTitle] = useState<string>('');
@@ -143,6 +149,33 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     triggerDownload(blob, `Curriculo_${resume.title.replace(/\s+/g, '_')}.docx`);
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveErrorMsg(null);
+    setSaveSuccessMsg(null);
+    if (newPwd.length < 6) {
+      setSaveErrorMsg('A nova palavra-passe deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setSaveErrorMsg('As novas palavras-passe não coincidem.');
+      return;
+    }
+    setIsChangingPwd(true);
+    try {
+      await changePassword(currentPwd, newPwd);
+      setCurrentPwd('');
+      setNewPwd('');
+      setConfirmPwd('');
+      setSaveSuccessMsg('Palavra-passe atualizada com segurança!');
+      setTimeout(() => setSaveSuccessMsg(null), 3500);
+    } catch (err: any) {
+      setSaveErrorMsg(err?.message || 'Não foi possível alterar a palavra-passe.');
+    } finally {
+      setIsChangingPwd(false);
+    }
+  };
+
   const planBadgeStyle =
     user.plan === 'executive'
       ? 'bg-purple-100 text-purple-900 border-purple-300 ring-2 ring-purple-500/20'
@@ -153,15 +186,23 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const planDisplayName =
     user.plan === 'executive'
       ? 'Executivo VIP'
-      : 'Profissional Pro';
+      : user.plan === 'pro'
+      ? 'Profissional Pro'
+      : 'Plano Gratuito';
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      {/* Feedback Toast */}
+      {/* Feedback Toasts */}
       {saveSuccessMsg && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 animate-in fade-in duration-200">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span className="font-semibold">{saveSuccessMsg}</span>
+        </div>
+      )}
+      {saveErrorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-center gap-2 animate-in fade-in duration-200">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span className="font-semibold">{saveErrorMsg}</span>
         </div>
       )}
 
@@ -328,6 +369,19 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             <FolderOpen className="w-4 h-4 text-amber-600" />
             <span>Meus Currículos Salvos ({savedResumes.length})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('settings')}
+            className={`py-3.5 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              activeSubTab === 'settings'
+                ? 'border-slate-900 text-slate-950'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Lock className="w-4 h-4 text-slate-600" />
+            <span>Segurança & Senha</span>
+          </button>
         </div>
       </div>
 
@@ -366,9 +420,11 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                   <span className="text-sm font-black text-slate-900 mt-1 block">
                     {planDisplayName}
                   </span>
-                  <span className="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Assinatura Ativa
+                  <span className="text-[11px] font-semibold mt-1 flex items-center gap-1">
+                    <CheckCircle2 className={`w-3 h-3 ${hasActivePlan ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className={hasActivePlan ? 'text-emerald-600' : 'text-slate-500'}>
+                      {hasActivePlan ? 'Assinatura Ativa' : 'Modo Pré-visualização'}
+                    </span>
                   </span>
                 </div>
 
@@ -377,10 +433,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                     Créditos de IA Restantes
                   </span>
                   <span className="text-sm font-black text-slate-900 mt-1 block">
-                    Ilimitados (Sem Limite)
+                    {hasActivePlan ? 'Ilimitados (Sem Limite)' : `${user.creditsRemaining ?? 5} créditos`}
                   </span>
                   <span className="text-[11px] text-slate-500 mt-1 block">
-                    Acesso total liberado
+                    {hasActivePlan ? 'Acesso total liberado' : 'Plano inicial'}
                   </span>
                 </div>
 
@@ -644,6 +700,74 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Tab 3: Security & Password Management */}
+      {activeSubTab === 'settings' && (
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm max-w-2xl">
+          <h3 className="text-base font-extrabold text-slate-900">
+            Segurança da Conta & Palavra-passe
+          </h3>
+          <p className="text-xs text-slate-500 mt-1 mb-5">
+            Atualize a sua palavra-passe de acesso à plataforma.
+          </p>
+
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Palavra-passe Atual
+              </label>
+              <input
+                type="password"
+                value={currentPwd}
+                onChange={(e) => setCurrentPwd(e.target.value)}
+                placeholder="Insira a sua senha atual"
+                className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nova Palavra-passe
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  placeholder="Mínimo de 6 caracteres"
+                  className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Confirmar Nova Palavra-passe
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  placeholder="Repita a nova senha"
+                  className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="submit"
+                disabled={isChangingPwd}
+                className="py-2.5 px-5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-2"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>{isChangingPwd ? 'A atualizar...' : 'Atualizar Palavra-passe'}</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

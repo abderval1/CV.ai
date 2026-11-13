@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Sparkles,
   ArrowRight,
@@ -15,6 +15,11 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
 import { CVData } from '../types/cv';
 import { CVHealthScoreOverview } from './CVHealthScoreOverview';
+import {
+  getStoredTemplatesSync,
+  getStoredPlansSync,
+  trackFrontendTelemetry
+} from '../services/adminModulesService';
 
 interface LandingHeroViewProps {
   onStartCreating: () => void;
@@ -39,6 +44,24 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  const [adminTemplates, setAdminTemplates] = useState(() => getStoredTemplatesSync());
+  const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
+
+  useEffect(() => {
+    const refreshConfig = () => {
+      setAdminTemplates(getStoredTemplatesSync());
+      setAdminPlans(getStoredPlansSync());
+    };
+    window.addEventListener('admin-config-updated', refreshConfig);
+    window.addEventListener('storage', refreshConfig);
+    return () => {
+      window.removeEventListener('admin-config-updated', refreshConfig);
+      window.removeEventListener('storage', refreshConfig);
+    };
+  }, []);
+
+  const proPlan = adminPlans.find((p) => p.id === 'pro') || adminPlans[0];
+  const execPlan = adminPlans.find((p) => p.id === 'executive') || adminPlans[1];
 
   // Interactive Live ATS Quick-Checker State
   const [atsPreset, setAtsPreset] = useState<'coo' | 'tech' | 'cfo'>('coo');
@@ -77,7 +100,27 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     setAtsScoreSimulated(48);
   };
 
-  const filteredTemplates = CV_TEMPLATES.filter((tmpl) => {
+  const activeMergedTemplates = useMemo(() => {
+    const adminMap = new Map(adminTemplates.map((t) => [t.id, t]));
+    return CV_TEMPLATES.filter((tmpl) => {
+      const cfg = adminMap.get(tmpl.id);
+      return !cfg || cfg.isActive !== false;
+    })
+      .map((tmpl) => {
+        const cfg = adminMap.get(tmpl.id);
+        return {
+          ...tmpl,
+          shortName: cfg?.shortName || tmpl.shortName,
+          badge: cfg?.badge || tmpl.badge,
+          atsScore: cfg?.atsScore ?? tmpl.atsScore,
+          tierRequired: cfg?.tierRequired || 'pro',
+          displayOrder: cfg?.displayOrder ?? 99
+        };
+      })
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+  }, [adminTemplates]);
+
+  const filteredTemplates = activeMergedTemplates.filter((tmpl) => {
     if (templateFilter === 'without_photo') return !tmpl.hasPhoto;
     if (templateFilter === 'with_photo') return tmpl.hasPhoto;
     return true;
@@ -157,7 +200,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </div>
 
             <p className="pt-1 text-xs text-slate-400">
-              Planos desde {formatPrice(2)}/mês · Stripe &amp; Pix Instantâneo · Word (.docx) &amp; PDF A4
+              Planos desde {formatPrice(proPlan?.priceMonthlyValue ?? 2)}/mês · Stripe &amp; Pix Instantâneo · Word (.docx) &amp; PDF A4
             </p>
           </div>
 
@@ -380,7 +423,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                     templateFilter === 'all' ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  Todos ({CV_TEMPLATES.length})
+                  Todos ({activeMergedTemplates.length})
                 </button>
                 <button
                   type="button"
@@ -432,11 +475,15 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                 <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
                   <span className="text-[11px] text-slate-500">
-                    {tmpl.hasPhoto ? 'Suporta foto' : '100% textual'}
+                    {tmpl.hasPhoto ? 'Suporta foto' : '100% textual'} ·{' '}
+                    <span className="text-slate-300 font-medium">
+                      {tmpl.tierRequired === 'free' ? 'Grátis' : tmpl.tierRequired === 'executive' ? 'VIP' : 'Pro'}
+                    </span>
                   </span>
                   <button
                     type="button"
                     onClick={() => {
+                      trackFrontendTelemetry({ type: 'template_selected', templateStyle: tmpl.id });
                       onSelectTemplate(tmpl.id);
                       onStartCreating();
                     }}
@@ -501,39 +548,37 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                      Profissional Pro
+                      {proPlan?.name || 'Profissional Pro'}
                     </span>
                     <span className="text-[11px] font-semibold text-amber-300">
-                      Recomendado
+                      {proPlan?.badgeText || 'Recomendado'}
                     </span>
                   </div>
 
                   <div className="space-y-1">
                     <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
-                      {formatPrice(2)} <span className="text-xs font-normal text-slate-400">/ Mês</span>
+                      {formatPrice(proPlan?.priceMonthlyValue ?? 2)}{' '}
+                      <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
                     <p className="text-xs text-emerald-400">
-                      Ou {formatPrice(18)} / Ano (Poupe 25%)
+                      Ou {formatPrice(proPlan?.priceYearlyValue ?? 18)} / Ano (Poupe 25%)
                     </p>
                   </div>
 
                   <ul className="space-y-2.5 text-xs text-slate-200 pt-3 border-t border-slate-800">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Currículos, versões e salvamento ilimitado na nuvem</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Exportação 1:1 em Word (.docx) e PDF A4 sem marca d'água</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Tradução integral do CV e Carta para 5 idiomas</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Radar ATS &amp; Otimizador IA (Google XYZ)</span>
-                    </li>
+                    {(proPlan?.features || [
+                      'Currículos, versões e salvamento ilimitado na nuvem',
+                      "Exportação 1:1 em Word (.docx) e PDF A4 sem marca d'água",
+                      'Tradução integral do CV e Carta para 5 idiomas',
+                      'Radar ATS & Otimizador IA (Google XYZ)'
+                    ])
+                      .slice(0, 5)
+                      .map((feat, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
                   </ul>
                 </div>
 
@@ -542,7 +587,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   onClick={onOpenPricing}
                   className="mt-6 w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <span>Subscrever Profissional</span>
+                  <span>Subscrever {proPlan?.name || 'Profissional'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -552,37 +597,35 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
-                      Executivo VIP
+                      {execPlan?.name || 'Executivo VIP'}
                     </span>
-                    <span className="text-[11px] text-slate-400">C-Level &amp; Global</span>
+                    <span className="text-[11px] text-slate-400">{execPlan?.badgeText || 'C-Level & Global'}</span>
                   </div>
 
                   <div className="space-y-1">
                     <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
-                      {formatPrice(4)} <span className="text-xs font-normal text-slate-400">/ Mês</span>
+                      {formatPrice(execPlan?.priceMonthlyValue ?? 4)}{' '}
+                      <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
                     <p className="text-xs text-purple-400">
-                      Ou {formatPrice(36)} / Ano (Poupe 25%)
+                      Ou {formatPrice(execPlan?.priceYearlyValue ?? 36)} / Ano (Poupe 25%)
                     </p>
                   </div>
 
                   <ul className="space-y-2.5 text-xs text-slate-300 pt-3 border-t border-slate-800">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Tudo incluído no Profissional Pro</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Modelos Executivos C-Level, Harvard &amp; Diplomático ONU</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Simulador de Entrevista por voz/texto com notas STAR</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Auditoria LinkedIn &amp; suporte prioritário</span>
-                    </li>
+                    {(execPlan?.features || [
+                      'Tudo incluído no Profissional Pro',
+                      'Modelos Executivos C-Level, Harvard & Diplomático ONU',
+                      'Simulador de Entrevista por voz/texto com notas STAR',
+                      'Auditoria LinkedIn & suporte prioritário'
+                    ])
+                      .slice(0, 5)
+                      .map((feat, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
                   </ul>
                 </div>
 
@@ -591,7 +634,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   onClick={onOpenPricing}
                   className="mt-6 w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <span>Subscrever Executivo VIP</span>
+                  <span>Subscrever {execPlan?.name || 'Executivo VIP'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
