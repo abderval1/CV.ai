@@ -53,6 +53,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [resetCode, setResetCode] = useState<string>('');
   const [issuedResetHint, setIssuedResetHint] = useState<string | null>(null);
   const [newResetPassword, setNewResetPassword] = useState<string>('');
+  const [googleDomainWarning, setGoogleDomainWarning] = useState<string | null>(null);
 
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
 
@@ -192,8 +193,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setLoading(false);
     }
   };
-
-  const [googleDomainWarning, setGoogleDomainWarning] = useState<string | null>(null);
 
   const handleProviderLogin = async (provider: 'google' | 'linkedin') => {
     setLoading(true);
