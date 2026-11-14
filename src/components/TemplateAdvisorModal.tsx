@@ -26,6 +26,7 @@ interface TemplateAdvisorModalProps {
   onSelectTemplate: (templateId: TemplateStyle) => void;
   cv: CVData;
   onUpdateCV: (cv: CVData) => void;
+  onOpenAuthModal?: (prompt?: string) => void;
   onOpenPricingModal?: (prompt?: string) => void;
 }
 
@@ -36,9 +37,10 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   onSelectTemplate,
   cv,
   onUpdateCV,
+  onOpenAuthModal,
   onOpenPricingModal
 }) => {
-  const { hasActivePlan } = useAuth();
+  const { isAuthenticated, hasActivePlan } = useAuth();
   const [filter, setFilter] = useState<'all' | 'with_photo' | 'without_photo' | 'executive'>('all');
   const [selectedTemplateForDetail, setSelectedTemplateForDetail] = useState<CVTemplateInfo>(
     CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]
@@ -61,9 +63,14 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   });
 
   const handleApply = (id: TemplateStyle) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('Inicie sessão ou crie uma conta para usar este modelo no editor.');
+      onClose();
+      return;
+    }
     if (!hasActivePlan) {
       onOpenPricingModal?.(
-        'A aplicação de modelos executivos internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro e Executivo VIP.'
+        'A aplicação de modelos executivos internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro ($8/mês) e Executivo VIP ($12/mês).'
       );
       onClose();
       return;
@@ -426,7 +433,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
         {/* Modal Footer */}
         <div className="px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>Formatos validados segundo normas internacionais de RH e sistemas ATS.</span>
           </div>
           <button

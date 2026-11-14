@@ -134,11 +134,17 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const handleSaveCurrentCV = async () => {
     if (!newResumeTitle.trim()) return;
     setIsSavingCurrent(true);
+    setSaveErrorMsg(null);
+    setSaveSuccessMsg(null);
     try {
       await saveCurrentResume(currentCV, newResumeTitle.trim(), user.targetRole || 'Vaga Executiva');
       setNewResumeTitle('');
       setSaveSuccessMsg('Currículo atual salvo na sua biblioteca com sucesso!');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Erro ao guardar versão do CV:', err);
+      setSaveErrorMsg('Não foi possível guardar a nova versão do currículo. Tente novamente.');
+      setTimeout(() => setSaveErrorMsg(null), 4000);
     } finally {
       setIsSavingCurrent(false);
     }

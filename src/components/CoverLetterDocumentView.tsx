@@ -165,7 +165,19 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
                     key={lang}
                     type="button"
                     disabled={isTranslatingContent}
-                    onClick={() => (onSelectLanguage ? onSelectLanguage(lang) : setLanguage(lang))}
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        onOpenAuthModal?.('Inicie sessão ou crie uma conta para traduzir a sua carta de apresentação.');
+                        return;
+                      }
+                      if (!hasActivePlan) {
+                        onOpenPricingModal?.(
+                          'A tradução integral da carta de apresentação para outros idiomas é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
+                        );
+                        return;
+                      }
+                      onSelectLanguage ? onSelectLanguage(lang) : setLanguage(lang);
+                    }}
                     className={`px-1.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-md transition-colors flex items-center gap-1 disabled:opacity-60 ${
                       appLang === lang
                         ? 'bg-white text-slate-950 shadow-2xs'

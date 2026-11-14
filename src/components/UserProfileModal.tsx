@@ -582,7 +582,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <span>Histórico de Transações & Faturas (Firestore)</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Registos fiscais de pagamentos aprovados via Stripe, Pix e transferência.
+                      Registos fiscais de pagamentos aprovados via Cartão (Stripe) e Pix.
                     </p>
                   </div>
 

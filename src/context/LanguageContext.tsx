@@ -603,16 +603,14 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<LanguageCode>(() => {
-    const saved = localStorage.getItem('app_language') as LanguageCode;
-    if (saved && SUPPORTED_LANGUAGES.some((l) => l.code === saved)) {
-      return saved;
+    try {
+      const saved = localStorage.getItem('app_language') as LanguageCode;
+      if (saved && SUPPORTED_LANGUAGES.some((l) => l.code === saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore storage errors
     }
-    // Check browser preference
-    const navLang = navigator.language.slice(0, 2).toLowerCase();
-    if (navLang === 'en') return 'en';
-    if (navLang === 'es') return 'es';
-    if (navLang === 'fr') return 'fr';
-    if (navLang === 'de') return 'de';
     return 'pt';
   });
 

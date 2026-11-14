@@ -321,9 +321,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const setStyle = (style: TemplateStyle) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('Inicie sessão ou crie uma conta para alterar e personalizar modelos de currículo.');
+      return;
+    }
     if (!hasActivePlan) {
       onOpenPricingModal?.(
-        'A alteração de modelos de currículo e acesso aos designs internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro e Executivo VIP.'
+        'A alteração de modelos de currículo e acesso aos designs internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
       );
       return;
     }
@@ -331,9 +335,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const setAccentColor = (hex: string) => {
+    if (!isAuthenticated) {
+      onOpenAuthModal?.('Inicie sessão ou crie uma conta para personalizar as cores do currículo.');
+      return;
+    }
     if (!hasActivePlan) {
       onOpenPricingModal?.(
-        'A personalização de cores executivas e tom corporativo é exclusiva para assinantes dos planos Pro ou Executivo VIP.'
+        'A personalização de cores executivas e tom corporativo é exclusiva para assinantes dos planos Pro ($8/mês) ou Executivo VIP ($12/mês).'
       );
       return;
     }
@@ -409,6 +417,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            if (!isAuthenticated) {
+                              onOpenAuthModal?.('Inicie sessão ou crie uma conta para ajustar o espaçamento do currículo.');
+                              return;
+                            }
                             if (!hasActivePlan) {
                               onOpenPricingModal?.(
                                 'A calibração inteligente de espaçamento para ajuste em 1 página é exclusiva dos assinantes Pro ou Executivo VIP.'
@@ -428,6 +440,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            if (!isAuthenticated) {
+                              onOpenAuthModal?.('Inicie sessão ou crie uma conta para ajustar o espaçamento do currículo.');
+                              return;
+                            }
                             if (!hasActivePlan) {
                               onOpenPricingModal?.(
                                 'O ajuste de densidade e espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
@@ -498,6 +514,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         type="button"
                         onClick={() => {
                           setCustomizationMenuOpen(false);
+                          if (!isAuthenticated) {
+                            onOpenAuthModal?.('Inicie sessão ou crie uma conta para carregar a sua fotografia profissional.');
+                            return;
+                          }
                           if (!hasActivePlan) {
                             onOpenPricingModal?.(
                               'O upload e gestão de fotografia executiva é exclusivo para assinantes dos planos Pro ou Executivo VIP.'
@@ -541,6 +561,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!isAuthenticated) {
+                          onOpenAuthModal?.('Inicie sessão ou crie uma conta para editar diretamente o seu currículo.');
+                          return;
+                        }
                         if (!hasActivePlan) {
                           onOpenPricingModal?.(
                             'A edição direta no documento A4 é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
@@ -636,6 +660,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     type="button"
                     disabled={isTranslatingContent}
                     onClick={() => {
+                      if (!isAuthenticated) {
+                        onOpenAuthModal?.('Inicie sessão ou crie uma conta para traduzir o seu currículo em 5 idiomas.');
+                        return;
+                      }
+                      if (!hasActivePlan) {
+                        onOpenPricingModal?.(
+                          'A tradução integral do currículo e carta para Inglês, Espanhol, Francês ou Alemão é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
+                        );
+                        return;
+                      }
                       setDocLang(lang);
                       if (onSelectLanguage) {
                         onSelectLanguage(lang);
@@ -730,7 +764,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           {/* Multi-Language Pack Download Trigger */}
           <button
             type="button"
-            onClick={() => setIsMultiLangModalOpen(true)}
+            onClick={() => {
+              if (!isAuthenticated) {
+                onOpenAuthModal?.('Inicie sessão ou crie uma conta para gerar o pacote multi-idioma.');
+                return;
+              }
+              if (!hasActivePlan) {
+                onOpenPricingModal?.('O pacote de tradução e descarga multi-idioma requer um plano Pro ou Executivo VIP ativo.');
+                return;
+              }
+              setIsMultiLangModalOpen(true);
+            }}
             className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 whitespace-nowrap"
             title={t('doc.downloadMultilangDesc', 'Traduzir e descarregar o currículo em Inglês, Espanhol, Francês ou Alemão')}
           >
@@ -1555,6 +1599,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         onSelectTemplate={setStyle}
         cv={cv}
         onUpdateCV={onChange}
+        onOpenAuthModal={onOpenAuthModal}
         onOpenPricingModal={(msg) => onOpenPricingModal?.(msg)}
       />
 

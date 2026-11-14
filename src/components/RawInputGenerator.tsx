@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV } from '../data/initialCV';
+import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
 import {
   getStoredPromptSync,
   getStoredPlatformSettingsSync,
@@ -34,6 +35,17 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   onUpdateJobDescription,
   onOpenPreview
 }) => {
+  const [generationMode, setGenerationMode] = useState<'standard' | 'tailored'>(() => {
+    try {
+      const savedJob = localStorage.getItem('curriculo_job_draft_v1');
+      if (savedJob && savedJob.trim().length > 20 && !SAMPLE_JOB_OFFERS.some((j) => j.description === savedJob)) {
+        return 'tailored';
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'standard';
+  });
   const [candidateRawText, setCandidateRawText] = useState<string>('');
   const [jobDescription, setJobDescription] = useState<string>(
     currentJobDescription || SAMPLE_JOB_OFFERS[0].description
@@ -340,131 +352,145 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     handleExtractLinkedInBackgroundJob();
   };
 
-  // Heuristic parser fallback in case server API is offline or returns error
-  const parseRawTextToCV = (rawText: string, jobDesc: string): CVData => {
-    const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  // Heuristic parser fallback in case server API is offline or disabled
+  const parseRawTextToCV = (
+    rawText: string,
+    jobDesc: string,
+    mode: 'standard' | 'tailored'
+  ): CVData => {
+    const lines = rawText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('--- DOCUMENTO IMPORTADO'));
     const firstLine = lines[0] || 'NOVO PROFISSIONAL';
-    const secondLine = lines[1] || 'Especialista em Gestão & Tecnologia';
+    const secondLine = lines[1] || 'Especialista Profissional';
 
-    // Extract email
     const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const email = emailMatch ? emailMatch[0] : 'contacto@exemplo.com';
 
-    // Extract phone
-    const phoneMatch = rawText.match(/(\+?\d[\d\s-]{7,}\d)/);
+    const phoneMatch = rawText.match(/(\+?\d[\d\s()-]{7,}\d)/);
     const phone = phoneMatch ? phoneMatch[0].trim() : '+244 923 000 000';
 
-    // Extract LinkedIn
     const lMatch = rawText.match(/(https?:\/\/[^\s]*linkedin\.com\/[^\s]+|linkedin\.com\/in\/[^\s]+)/i);
-    const linkedin = lMatch ? lMatch[0] : (linkedInUrl || 'linkedin.com/in/perfil');
+    const linkedin = lMatch ? lMatch[0] : linkedInUrl || 'linkedin.com/in/perfil';
 
-    // Extract website/platform
-    const siteMatch = rawText.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*/);
+    const siteMatch = rawText.match(/https?:\/\/(?![^\s]*linkedin\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s]*/i);
     const website = siteMatch ? siteMatch[0] : undefined;
+
+    const bulletLines = lines
+      .filter((l) => /^[-•*]\s+/.test(l))
+      .map((l) => l.replace(/^[-•*]\s+/, '').trim())
+      .filter((l) => l.length > 8);
+
+    const resolvedTemplateStyle =
+      targetStandard === 'harvard'
+        ? 'executive_harvard'
+        : targetStandard === 'tech'
+        ? 'tech_modern'
+        : targetStandard === 'ats'
+        ? 'ats_compact'
+        : targetStandard === 'europass'
+        ? 'european_europass'
+        : 'un_classic';
 
     return {
       personalDetails: {
-        name: firstLine.toUpperCase(),
-        title: secondLine,
-        location: 'Luanda, Angola (Disponível para Mobilidade)',
+        name: firstLine.replace(/[:|].*$/, '').toUpperCase().slice(0, 60),
+        title: secondLine.slice(0, 90),
+        location: 'Cidade, País',
         phone,
         email,
         linkedin,
-        website
+        website,
+        photoUrl:
+          targetStandard === 'europass'
+            ? portraitManImg
+            : undefined,
+        showPhoto: targetStandard === 'europass'
       },
-      summary: `Profissional dedicado e com sólida experiência prática, com perfil alinhado às exigências de ${
-        jobDesc.slice(0, 80).replace(/\n/g, ' ') || 'gestão de projetos e sistemas orientados a resultados'
-      }. Histórico comprovado de entregas com rigor técnico, liderança colaborativa e foco na geração de valor mensurável.`,
+      summary:
+        mode === 'tailored' && jobDesc.trim()
+          ? `Profissional com sólida experiência prática em ${secondLine}, com perfil alinhado às exigências de ${jobDesc
+              .slice(0, 90)
+              .replace(/\n/g, ' ')}. Histórico comprovado de entregas com rigor técnico, colaboração e foco em resultados.`
+          : `Profissional com experiência na área de ${secondLine}, focado em qualidade de execução, organização técnica, melhoria contínua e entrega consistente de resultados.`,
       competencies: [
         {
           id: 'comp-1',
-          category: 'Gestão Orientada para Resultados',
-          description: 'Desenho de indicadores, quadros lógicos e monitoria contínua de metas operacionais.'
+          category: 'Competências Principais',
+          description:
+            lines
+              .slice(2, 12)
+              .filter((l) => l.length < 90 && !l.includes('@'))
+              .slice(0, 3)
+              .join(', ') || 'Gestão de Processos, Comunicação Profissional e Execução Técnica'
         },
         {
           id: 'comp-2',
-          category: 'Sistemas Digitais & Automação',
-          description: 'Recolha móvel de dados, garantia de integridade da informação e fluxos automatizados.'
-        },
-        {
-          id: 'comp-3',
-          category: 'Análise de Dados & Visualização Executiva',
-          description: 'Modelagem analítica em Power BI / Excel avançado e relatórios para a liderança.'
-        },
-        {
-          id: 'comp-4',
-          category: 'Conformidade & Garantia de Qualidade',
-          description: 'Protocolos de auditoria, conformidade com normas institucionais e segurança de dados.'
+          category: 'Ferramentas & Metodologias',
+          description: 'Planeamento operacional, reporte estruturado, análise de dados e garantia de qualidade.'
         }
       ],
       experiences: [
         {
           id: 'exp-1',
-          company: 'Organização Principal / Projeto de Referência',
-          role: secondLine || 'Coordenador / Especialista',
-          period: '2022 – Presente',
-          highlights: [
-            'Liderou o planeamento operacional e a entrega de resultados contratuais com elevado índice de satisfação.',
-            'Estruturou fluxos de reporte e análise de dados que reduziram o tempo de consolidação das informações.',
-            'Assegurou conformidade com as diretrizes metodológicas e os padrões técnicos exigidos pelos financiadores.'
-          ]
-        },
-        {
-          id: 'exp-2',
-          company: 'Instituição Anterior de Desenvolvimento / Tecnologia',
-          role: 'Especialista em Operações e Sistemas',
-          period: '2019 – 2022',
-          highlights: [
-            'Coordenou equipas técnicas na realização de inquéritos e implementação de processos de melhoria contínua.',
-            'Automatizou rotinas de validação de dados garantindo integridade e confiabilidade antes da tomada de decisão.'
-          ]
+          company: 'Experiência Extraída do Documento',
+          role: secondLine.slice(0, 80),
+          period: 'Período Profissional',
+          highlights:
+            bulletLines.length > 0
+              ? bulletLines.slice(0, 5)
+              : lines.slice(2, 6).filter((l) => l.length > 15).slice(0, 3).length > 0
+              ? lines.slice(2, 6).filter((l) => l.length > 15).slice(0, 3)
+              : [
+                  'Execução de atividades técnicas e operacionais conforme o histórico importado.',
+                  'Colaboração com equipas multidisciplinares para o cumprimento de metas e prazos.'
+                ]
         }
       ],
       educations: [
         {
           id: 'edu-1',
-          degree: 'Formação Superior Universitária',
-          institution: 'Universidade / Faculdade de Referência',
-          period: 'Conclusão Recente'
+          degree: 'Formação Académica (Rever/Editar no Editor)',
+          institution: 'Instituição de Ensino',
+          period: 'Conclusão'
         }
       ],
-      trainings: [
-        'Gestão de Projetos e Monitoria Orientada para Resultados',
-        'Business Intelligence e Visualização Analítica de Dados',
-        'Segurança da Informação e Padrões Internacionais de Proteção de Dados'
-      ],
+      trainings: ['Certificações e Formações Extraídas'],
       languages: [
-        { language: 'Português', level: 'Língua Materna / Fluente' },
-        { language: 'Inglês', level: 'Proficiência Profissional' }
+        { language: 'Português', level: 'Fluente / Nativo' },
+        { language: 'Inglês', level: 'Intermédio / Profissional' }
       ],
-      references: [
-        {
-          id: 'ref-1',
-          name: 'Supervisor / Diretor de Projeto',
-          institutionAndPosition: 'Organização Internacional / Coordenação Executiva',
-          contact: 'referencia@organizacao.org'
-        }
-      ],
-      templateStyle: 'un_classic'
+      references: [],
+      templateStyle: resolvedTemplateStyle
     };
   };
 
-  // Generate Tailored CV from raw inputs via API
-  const handleGenerateTailoredCV = async () => {
+  // Generate CV (either Standard CV only OR Tailored to a specific job)
+  const handleGenerateCV = async (overrideMode?: 'standard' | 'tailored') => {
+    const activeMode = overrideMode || generationMode;
+    if (overrideMode && overrideMode !== generationMode) {
+      setGenerationMode(overrideMode);
+    }
+
     if (!candidateRawText.trim() && !linkedInUrl.trim()) {
-      setErrorMessage('Por favor insira as suas informações profissionais, documentos ou perfil do LinkedIn.');
+      setErrorMessage('Por favor importe o seu CV (PDF/Word) ou cole as suas informações profissionais antes de gerar.');
       return;
     }
 
-    if (!jobDescription.trim()) {
-      setErrorMessage('Por favor insira a descrição ou requisitos da vaga pretendida.');
+    if (activeMode === 'tailored' && !jobDescription.trim()) {
+      setErrorMessage('Para adaptar à vaga, cole a descrição da vaga pretendida ou mude para "Gerar Apenas o CV".');
       return;
     }
 
     if (platformSettings.enableAiFeaturesGlobally === false) {
-      const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription);
+      const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription, activeMode);
       onCVGenerated(fallbackCV);
-      setSuccessMessage('A IA externa está pausada pelo administrador; estruturação local aplicada com sucesso!');
+      setSuccessMessage(
+        activeMode === 'standard'
+          ? 'A IA externa está pausada; o seu currículo foi estruturado localmente com sucesso!'
+          : 'A IA externa está pausada; estruturação local aplicada com sucesso!'
+      );
       setTimeout(() => onOpenPreview(), 900);
       return;
     }
@@ -480,8 +506,9 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          generationMode: activeMode,
           rawCandidateInfo: candidateRawText,
-          jobDescription,
+          jobDescription: activeMode === 'tailored' ? jobDescription : '',
           candidateLinkedIn: linkedInUrl,
           targetStandard:
             targetStandard === 'tech'
@@ -508,13 +535,16 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         const fullCV: CVData = {
           personalDetails: {
             name: generatedData.personalDetails.name || 'SEU NOME COMPLETO',
-            title: generatedData.personalDetails.title || 'Especialista em Gestão de Projetos & Sistemas',
-            location: generatedData.personalDetails.location || 'Luanda, Angola',
+            title: generatedData.personalDetails.title || 'Especialista Profissional',
+            location: generatedData.personalDetails.location || 'Cidade, País',
             phone: generatedData.personalDetails.phone || '+244 923 000 000',
             email: generatedData.personalDetails.email || 'contacto@exemplo.com',
             linkedin: generatedData.personalDetails.linkedin || linkedInUrl || 'linkedin.com/in/seu-perfil',
             website: generatedData.personalDetails.website,
-            photoUrl: targetStandard === 'europass' ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&h=300&fit=crop&crop=face&auto=format&q=80' : undefined,
+            photoUrl:
+              targetStandard === 'europass'
+                ? portraitManImg
+                : undefined,
             showPhoto: targetStandard === 'europass'
           },
           summary: generatedData.summary || GENERIC_DEFAULT_CV.summary,
@@ -538,10 +568,9 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
             generatedData.languages && generatedData.languages.length > 0
               ? generatedData.languages
               : GENERIC_DEFAULT_CV.languages,
-          references:
-            generatedData.references && generatedData.references.length > 0
-              ? generatedData.references
-              : GENERIC_DEFAULT_CV.references,
+          references: Array.isArray(generatedData.references)
+            ? generatedData.references
+            : GENERIC_DEFAULT_CV.references,
           templateStyle:
             targetStandard === 'harvard'
               ? 'executive_harvard'
@@ -555,7 +584,11 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         };
 
         onCVGenerated(fullCV);
-        setSuccessMessage('Currículo gerado com IA e adaptado com sucesso para a vaga!');
+        setSuccessMessage(
+          activeMode === 'standard'
+            ? 'Currículo estruturado e otimizado com sucesso no padrão selecionado!'
+            : 'Currículo gerado com IA e adaptado com sucesso para a vaga!'
+        );
         setTimeout(() => {
           onOpenPreview();
         }, 1200);
@@ -569,13 +602,17 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         userEmail: 'raw-generator@client',
         operationType: 'gemini_ai_call',
         errorMessage: `[RawInputGenerator] ${err?.message || 'Fallback acionado'}`,
-        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-4-hydrogen',
         resolved: false
       });
       // Smart client-side fallback parsing the actual candidate's input
-      const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription);
+      const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription, activeMode);
       onCVGenerated(fallbackCV);
-      setSuccessMessage('Currículo estruturado e adaptado com sucesso para a vaga pretendida!');
+      setSuccessMessage(
+        activeMode === 'standard'
+          ? 'Currículo estruturado com sucesso a partir dos seus dados importados!'
+          : 'Currículo estruturado e adaptado com sucesso para a vaga pretendida!'
+      );
       setTimeout(() => {
         onOpenPreview();
       }, 1000);
@@ -585,7 +622,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Introduction Card - SaaS Presentation */}
       <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -593,10 +630,12 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
             <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <h2 className="text-base font-bold">
-                Gerador de Currículo Estratégico & ATS Studio
+                Importador & Gerador de Currículo ATS
               </h2>
               <p className="text-xs text-slate-300">
-                Insira as suas informações e a vaga pretendida para gerar um CV de alto impacto com pontuação máxima no ATS.
+                {generationMode === 'standard'
+                  ? 'Importe ou cole o seu currículo para o estruturar e aprimorar num layout profissional — sem precisar de vaga.'
+                  : 'Insira as suas informações e a vaga pretendida para gerar um CV adaptado aos requisitos do recrutador.'}
               </p>
             </div>
           </div>
@@ -723,8 +762,87 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         </div>
       </div>
 
-      {/* 2-Column Split: Inputs do Candidato vs Descrição da Vaga */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+      {/* Generation Mode Selector: CV Only vs Tailored to a Job */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setGenerationMode('standard');
+            setErrorMessage(null);
+          }}
+          className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
+            generationMode === 'standard'
+              ? 'bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/10'
+              : 'bg-white/70 border-slate-200 hover:border-slate-300 text-slate-600'
+          }`}
+        >
+          <div
+            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+              generationMode === 'standard'
+                ? 'bg-slate-900 text-amber-400'
+                : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-900">
+                Gerar Apenas o CV
+              </span>
+              {generationMode === 'standard' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                  Ativo
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              Ideal se já importou o seu CV e ainda não tem uma vaga específica. Mantém e aprimora a sua profissão real.
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setGenerationMode('tailored');
+            setErrorMessage(null);
+          }}
+          className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
+            generationMode === 'tailored'
+              ? 'bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/10'
+              : 'bg-white/70 border-slate-200 hover:border-slate-300 text-slate-600'
+          }`}
+        >
+          <div
+            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+              generationMode === 'tailored'
+                ? 'bg-slate-900 text-amber-400'
+                : 'bg-slate-100 text-slate-500'
+            }`}
+          >
+            <Target className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-900">
+                Adaptar CV para uma Vaga
+              </span>
+              {generationMode === 'tailored' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
+                  Ativo
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+              Cruza os seus dados com um anúncio ou Edital/TdR para otimizar palavras-chave e pontuação ATS.
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {/* Dynamic Layout: Full Width in Standard Mode, 2-Column Split in Tailored Mode */}
+      <div className={`grid grid-cols-1 ${generationMode === 'tailored' ? 'xl:grid-cols-2' : ''} gap-5`}>
         {/* COLUMN 1: O Seu Histórico / Informações / LinkedIn */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
@@ -930,98 +1048,115 @@ COMPETÊNCIAS:
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-2 border-t border-slate-100">
             <span>{candidateRawText.length} caracteres inseridos</span>
+            {generationMode === 'standard' && (
+              <button
+                type="button"
+                onClick={() => setGenerationMode('tailored')}
+                className="text-slate-600 hover:text-slate-900 font-semibold underline underline-offset-2"
+              >
+                Tem uma vaga específica? Clique para adicionar descrição da vaga →
+              </button>
+            )}
           </div>
         </div>
 
-        {/* COLUMN 2: A Vaga Pretendida & TdR */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-slate-800" />
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  2. A Vaga Pretendida (Edital / TdR)
-                </h3>
+        {/* COLUMN 2: A Vaga Pretendida & TdR (Only shown in tailored mode) */}
+        {generationMode === 'tailored' && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-slate-800" />
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    2. A Vaga Pretendida (Edital / TdR)
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="file"
+                    ref={jobFileInputRef}
+                    onChange={handleJobFileUpload}
+                    accept=".txt,.md,.pdf,.docx,.doc,.rtf"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={isExtractingJobFile}
+                    onClick={() => jobFileInputRef.current?.click()}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
+                    title="Carregar ficheiro PDF ou Word (.docx) com os Termos de Referência (TdR / ToR)"
+                  >
+                    {isExtractingJobFile ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Upload className="w-3 h-3" />
+                    )}
+                    <span>{isExtractingJobFile ? 'A extrair TdR...' : 'Importar TdR'}</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="file"
-                  ref={jobFileInputRef}
-                  onChange={handleJobFileUpload}
-                  accept=".txt,.md,.pdf,.docx,.doc,.rtf"
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  disabled={isExtractingJobFile}
-                  onClick={() => jobFileInputRef.current?.click()}
-                  className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
-                  title="Carregar ficheiro PDF ou Word (.docx) com os Termos de Referência (TdR / ToR)"
-                >
-                  {isExtractingJobFile ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  <span>{isExtractingJobFile ? 'A extrair TdR...' : 'Importar TdR'}</span>
-                </button>
+              {/* Presets Row */}
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[11px] text-slate-400">Vagas de Exemplo:</span>
+                {SAMPLE_JOB_OFFERS.map((job) => (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => {
+                      setJobDescription(job.description);
+                      onUpdateJobDescription(job.description);
+                    }}
+                    className={`px-2.5 py-1 text-[11px] rounded-md transition-colors border ${
+                      jobDescription.includes(job.title.split(' - ')[0])
+                        ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    {job.id === 'job-1'
+                      ? 'COO Operações'
+                      : job.id === 'job-2'
+                      ? 'Cloud & Tech Lead'
+                      : job.id === 'job-3'
+                      ? 'VP Finanças & M&A'
+                      : 'Governança Global'}
+                  </button>
+                ))}
               </div>
-            </div>
 
-            {/* Presets Row */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-[11px] text-slate-400">Vagas de Exemplo:</span>
-              {SAMPLE_JOB_OFFERS.map((job) => (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => {
-                    setJobDescription(job.description);
-                    onUpdateJobDescription(job.description);
+              {/* Job Text Area */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Cole a descrição completa da vaga (requisitos, competências e responsabilidades):
+                </label>
+                <textarea
+                  rows={13}
+                  value={jobDescription}
+                  onChange={(e) => {
+                    setJobDescription(e.target.value);
+                    onUpdateJobDescription(e.target.value);
                   }}
-                  className={`px-2.5 py-1 text-[11px] rounded-md transition-colors border ${
-                    jobDescription.includes(job.title.split(' - ')[0])
-                      ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                  }`}
-                >
-                  {job.id === 'job-1'
-                    ? 'COO Operações'
-                    : job.id === 'job-2'
-                    ? 'Cloud & Tech Lead'
-                    : job.id === 'job-3'
-                    ? 'VP Finanças & M&A'
-                    : 'Governança Global'}
-                </button>
-              ))}
+                  placeholder="Cole aqui o anúncio de emprego, termos de referência, competências exigidas, perfil desejado..."
+                  className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans placeholder:text-slate-400"
+                />
+              </div>
             </div>
 
-            {/* Job Text Area */}
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Cole a descrição completa da vaga (requisitos, competências e responsabilidades):
-              </label>
-              <textarea
-                rows={13}
-                value={jobDescription}
-                onChange={(e) => {
-                  setJobDescription(e.target.value);
-                  onUpdateJobDescription(e.target.value);
-                }}
-                placeholder="Cole aqui o anúncio de emprego, termos de referência, competências exigidas, perfil desejado..."
-                className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans placeholder:text-slate-400"
-              />
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
+              <span>{jobDescription.length} caracteres na descrição da vaga</span>
+              <button
+                type="button"
+                onClick={() => setGenerationMode('standard')}
+                className="text-slate-600 hover:text-slate-900 font-semibold underline underline-offset-2"
+              >
+                Ainda não tenho vaga (gerar apenas CV)
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-            <span>{jobDescription.length} caracteres na descrição da vaga</span>
-            <span>Triagem ATS Otimizada</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Main Trigger Action Banner */}
@@ -1042,27 +1177,51 @@ COMPETÊNCIAS:
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-slate-600">
-            A IA analisará a correspondência semântica e reescreverá o seu currículo enfatizando as métricas, palavras-chave e verbos de ação exatos para esta vaga.
+            {generationMode === 'standard'
+              ? 'A IA irá extrair, organizar e polir as suas experiências, competências e formação fielmente no padrão escolhido — pronto para qualquer candidatura.'
+              : 'A IA analisará a correspondência semântica e reescreverá o seu currículo enfatizando as métricas, palavras-chave e verbos de ação exatos para esta vaga.'}
           </div>
 
-          <button
-            type="button"
-            onClick={handleGenerateTailoredCV}
-            disabled={isGenerating}
-            className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg whitespace-nowrap shrink-0"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                <span>A Cruzar Dados e a Gerar o Currículo Adaptado...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                <span>Gerar CV Adaptado para esta Vaga</span>
-              </>
+          <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+            {generationMode === 'tailored' && (
+              <button
+                type="button"
+                onClick={() => handleGenerateCV('standard')}
+                disabled={isGenerating}
+                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Gerar Apenas CV</span>
+              </button>
             )}
-          </button>
+
+            <button
+              type="button"
+              onClick={() => handleGenerateCV(generationMode)}
+              disabled={isGenerating}
+              className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg whitespace-nowrap shrink-0"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>
+                    {generationMode === 'standard'
+                      ? 'A Estruturar o seu Currículo...'
+                      : 'A Cruzar Dados e a Gerar o Currículo Adaptado...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>
+                    {generationMode === 'standard'
+                      ? 'Gerar Apenas o CV Estruturado'
+                      : 'Gerar CV Adaptado para esta Vaga'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

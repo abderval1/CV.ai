@@ -170,7 +170,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-slate-100 text-slate-600'
                             }`}>
-                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : adminConfigMap.get(item.id)?.tierRequired === 'pro' ? 'Pro' : 'Grátis'}
+                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : 'Pro'}
                             </span>
                           )}
                         </div>
@@ -227,7 +227,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-slate-100 text-slate-600'
                             }`}>
-                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : adminConfigMap.get(item.id)?.tierRequired === 'pro' ? 'Pro' : 'Grátis'}
+                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : 'Pro'}
                             </span>
                           )}
                         </div>

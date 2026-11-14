@@ -11,9 +11,7 @@ import {
   signOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   sendPasswordResetEmail,
-  updateProfile,
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -22,6 +20,7 @@ import {
   browserSessionPersistence,
   buildFirestoreErrorInfo,
   handleFirestoreError,
+  sanitizeForFirestore,
   OperationType,
   FirebaseUser
 } from '../lib/firebase';
@@ -183,16 +182,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const FIREBASE_EMAIL_UNAVAILABLE_CODES = new Set([
   'auth/operation-not-allowed',
   'auth/configuration-not-found',
+  'auth/admin-restricted-operation',
   'auth/network-request-failed',
   'auth/internal-error'
-]);
-
-const FIREBASE_LOGIN_FALLBACK_CODES = new Set([
-  ...FIREBASE_EMAIL_UNAVAILABLE_CODES,
-  'auth/invalid-credential',
-  'auth/invalid-login-credentials',
-  'auth/user-not-found',
-  'auth/wrong-password'
 ]);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -237,6 +229,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resumesUnsubRef = useRef<Unsubscribe | null>(null);
   const authSyncLockRef = useRef<boolean>(false);
+
+  const hydrateResumesFromBackend = async () => {
+    try {
+      const { response, data } = await apiAuthFetch('/api/resumes', { method: 'GET' });
+      if (response.ok && Array.isArray(data?.resumes) && data.resumes.length > 0) {
+        setSavedResumes((prev) => {
+          const byId = new Map<string, SavedResume>();
+          for (const item of data.resumes as SavedResume[]) {
+            if (item && item.id) byId.set(item.id, item);
+          }
+          for (const existingItem of prev) {
+            if (existingItem && existingItem.id && !byId.has(existingItem.id) && existingItem.id !== 'resume-default') {
+              byId.set(existingItem.id, existingItem);
+            }
+          }
+          const merged = Array.from(byId.values());
+          return merged.length > 0 ? merged : prev;
+        });
+      }
+    } catch (err) {
+      console.warn('Aviso ao carregar currículos do servidor:', err);
+    }
+  };
 
   // Sync user state with localStorage
   useEffect(() => {
@@ -338,16 +353,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 notes: data.notes || undefined
               };
             } else {
-              await setDoc(userDocRef, {
-                id: hydratedUser.id,
-                name: hydratedUser.name,
-                email: hydratedUser.email,
-                role: hydratedUser.role,
-                status: 'active',
-                plan: hydratedUser.plan,
-                creditsRemaining: hydratedUser.creditsRemaining,
-                createdAt: hydratedUser.createdAt
-              });
+              await setDoc(
+                userDocRef,
+                sanitizeForFirestore({
+                  id: hydratedUser.id,
+                  name: hydratedUser.name,
+                  email: hydratedUser.email,
+                  role: hydratedUser.role,
+                  status: 'active',
+                  plan: hydratedUser.plan,
+                  creditsRemaining: hydratedUser.creditsRemaining,
+                  createdAt: hydratedUser.createdAt
+                })
+              );
             }
             setIsFirebaseConnected(true);
           } catch (err) {
@@ -401,26 +419,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               resumesColRef,
               (snapshot) => {
                 if (!snapshot.empty) {
-                  const cloudResumes: SavedResume[] = snapshot.docs.map((docItem) => {
-                    const d = docItem.data();
-                    return {
-                      id: docItem.id,
-                      title: d.title || 'Currículo',
-                      targetJob: d.targetJob || 'Vaga Executiva',
-                      updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
-                      data: (d.data as CVData) || GENERIC_DEFAULT_CV
-                    };
-                  });
+                  const cloudResumes: SavedResume[] = snapshot.docs
+                    .map((docItem) => {
+                      const d = docItem.data();
+                      return {
+                        id: docItem.id,
+                        title: d.title || 'Currículo',
+                        targetJob: d.targetJob || 'Vaga Executiva',
+                        updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
+                        data: (d.data as CVData) || GENERIC_DEFAULT_CV,
+                        _createdAt: String(d.createdAt || '')
+                      };
+                    })
+                    .sort((a, b) => (b._createdAt || b.id).localeCompare(a._createdAt || a.id))
+                    .map(({ _createdAt: _, ...rest }) => rest);
                   setSavedResumes(cloudResumes);
+                } else {
+                  void hydrateResumesFromBackend();
                 }
               },
               (error) => {
                 const info = buildFirestoreErrorInfo(error, OperationType.GET, `users/${uid}/resumes`);
                 console.error('Firestore Resumes Listener Error: ', JSON.stringify(info));
+                void hydrateResumesFromBackend();
               }
             );
           } catch (err) {
             console.error('Erro ao subscrever currículos do Firestore:', err);
+            void hydrateResumesFromBackend();
           }
         } else {
           // No active Firebase user: verify whether a valid Backend Auth session exists before clearing user
@@ -428,6 +454,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
             if (response.ok && data?.authenticated && data.user) {
               setUser(data.user);
+              void hydrateResumesFromBackend();
             } else if (!localStorage.getItem('curriculopro_impersonating_admin')) {
               setUser(null);
               setStoredAuthToken(null);
@@ -529,58 +556,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Por favor, insira a sua palavra-passe.');
     }
     const cleanEmail = email.trim().toLowerCase();
-
-    try {
-      await setPersistence(
-        auth,
-        rememberMe ? browserLocalPersistence : browserSessionPersistence
-      ).catch(() => {});
-
-      const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-      if (cred.user) {
-        const isAdmin = isUserAdmin(cleanEmail);
-        const profile: User = {
-          id: cred.user.uid,
-          name: cred.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
-          email: cleanEmail,
-          role: isAdmin ? 'admin' : 'user',
-          status: 'active',
-          plan: isAdmin ? 'executive' : 'free',
-          creditsRemaining: isAdmin ? 9999 : 5,
-          createdAt: new Date().toISOString()
-        };
-        const synced = await syncFirebaseUserToBackend(profile, 'password', rememberMe);
-        setUser((prev) => prev || synced);
-        return true;
-      }
-    } catch (fbErr: any) {
-      const code = fbErr?.code || '';
-      if (!FIREBASE_LOGIN_FALLBACK_CODES.has(code)) {
-        throw fbErr;
-      }
-
-      // Check/Authenticate via Backend Auth API (/api/auth/login)
-      const { response, data } = await apiAuthFetch('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email: cleanEmail, password, rememberMe })
-      });
-
-      if (response.ok && data?.user && data?.token) {
-        setStoredAuthToken(data.token, rememberMe);
-        setUser(data.user);
-        return true;
-      }
-
-      if (data?.code || data?.error) {
-        const backendErr: any = new Error(data.error || 'Falha na autenticação.');
-        backendErr.code = data.code || code;
-        throw backendErr;
-      }
-
-      throw fbErr;
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      const err: any = new Error('O formato do endereço de e-mail não é válido.');
+      err.code = 'auth/invalid-email';
+      throw err;
     }
 
-    return false;
+    // 1. Primary Email/Password authentication via Express Backend (/api/auth/login)
+    const { response, data } = await apiAuthFetch('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: cleanEmail, password, rememberMe })
+    });
+
+    if (response.ok && data?.user && data?.token) {
+      setStoredAuthToken(data.token, rememberMe);
+      setUser(data.user);
+      void hydrateResumesFromBackend();
+      return true;
+    }
+
+    if (response.status === 403 && data?.code === 'auth/user-disabled') {
+      const disabledErr: any = new Error(data.error || 'Esta conta foi suspensa pela administração.');
+      disabledErr.code = 'auth/user-disabled';
+      throw disabledErr;
+    }
+
+    if (response.status === 429) {
+      const rateErr: any = new Error(data?.error || 'Demasiadas tentativas consecutivas.');
+      rateErr.code = 'auth/too-many-requests';
+      throw rateErr;
+    }
+
+    // 2. Legacy optional fallback: if account existed directly in Firebase Email/Password
+    if (response.status === 401) {
+      try {
+        await setPersistence(
+          auth,
+          rememberMe ? browserLocalPersistence : browserSessionPersistence
+        ).catch(() => {});
+        const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        if (cred.user) {
+          const isAdmin = isUserAdmin(cleanEmail);
+          const profile: User = {
+            id: cred.user.uid,
+            name: cred.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
+            email: cleanEmail,
+            role: isAdmin ? 'admin' : 'user',
+            status: 'active',
+            plan: isAdmin ? 'executive' : 'free',
+            creditsRemaining: isAdmin ? 9999 : 5,
+            createdAt: new Date().toISOString()
+          };
+          const synced = await syncFirebaseUserToBackend(profile, 'password', rememberMe);
+          setUser((prev) => prev || synced);
+          return true;
+        }
+      } catch (fbErr: any) {
+        const fbCode = fbErr?.code || '';
+        if (fbCode === 'auth/user-disabled' || fbCode === 'auth/too-many-requests') {
+          throw fbErr;
+        }
+        // Never leak auth/operation-not-allowed or auth/configuration-not-found to Email/Password users
+        const invalidErr: any = new Error('Credenciais inválidas. Verifique o seu e-mail e palavra-passe.');
+        invalidErr.code = 'auth/invalid-credential';
+        throw invalidErr;
+      }
+    }
+
+    const backendErr: any = new Error(data?.error || 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.');
+    backendErr.code =
+      data?.code && !FIREBASE_EMAIL_UNAVAILABLE_CODES.has(data.code)
+        ? data.code
+        : 'auth/invalid-credential';
+    throw backendErr;
   };
 
   const register = async (
@@ -591,70 +639,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     rememberMe = true
   ): Promise<boolean> => {
     if (!password || password.length < 6) {
-      throw new Error('A palavra-passe deve ter pelo menos 6 caracteres.');
+      const err: any = new Error('A palavra-passe deve conter pelo menos 6 caracteres.');
+      err.code = 'auth/weak-password';
+      throw err;
     }
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = name.trim() || 'Novo Assinante';
     const cleanRole = targetRole?.trim() || 'Profissional Executivo';
 
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      const err: any = new Error('O formato do endereço de e-mail não é válido.');
+      err.code = 'auth/invalid-email';
+      throw err;
+    }
+
     authSyncLockRef.current = true;
     try {
-      await setPersistence(
-        auth,
-        rememberMe ? browserLocalPersistence : browserSessionPersistence
-      ).catch(() => {});
-
-      const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-      const fbUser = cred.user;
-
-      try {
-        await updateProfile(fbUser, { displayName: cleanName });
-      } catch (err) {
-        console.warn('Erro ao atualizar displayName no Firebase Auth:', err);
-      }
-
-      const isAdmin = isUserAdmin(cleanEmail);
-      const newProfile: User = {
-        id: fbUser.uid,
-        name: cleanName,
-        email: cleanEmail,
-        role: isAdmin ? 'admin' : 'user',
-        status: 'active',
-        targetRole: cleanRole,
-        plan: isAdmin ? 'executive' : 'free',
-        creditsRemaining: isAdmin ? 9999 : 5,
-        createdAt: new Date().toISOString()
-      };
-
-      try {
-        const userDocRef = doc(db, 'users', fbUser.uid);
-        await setDoc(userDocRef, {
-          id: newProfile.id,
-          name: newProfile.name,
-          email: newProfile.email,
-          role: newProfile.role,
-          status: 'active',
-          targetRole: newProfile.targetRole,
-          plan: newProfile.plan,
-          creditsRemaining: newProfile.creditsRemaining,
-          createdAt: newProfile.createdAt
-        });
-      } catch (err) {
-        const info = buildFirestoreErrorInfo(err, OperationType.CREATE, `users/${fbUser.uid}`);
-        console.error('Firestore Error during registration (continuing with backend sync): ', JSON.stringify(info));
-      }
-
-      const synced = await syncFirebaseUserToBackend(newProfile, 'password', rememberMe);
-      setUser(synced);
-      return true;
-    } catch (fbErr: any) {
-      const code = fbErr?.code || '';
-      if (!FIREBASE_EMAIL_UNAVAILABLE_CODES.has(code)) {
-        throw fbErr;
-      }
-
-      // Firebase Email/Password disabled or unavailable -> use Backend Auth Engine
+      // Primary registration path via Express Backend (/api/auth/register)
       const { response, data } = await apiAuthFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({
@@ -669,11 +671,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok && data?.user && data?.token) {
         setStoredAuthToken(data.token, rememberMe);
         setUser(data.user);
+        void hydrateResumesFromBackend();
         return true;
       }
 
-      const backendErr: any = new Error(data?.error || 'Não foi possível criar a conta.');
-      backendErr.code = data?.code || code;
+      const safeCode =
+        data?.code && !FIREBASE_EMAIL_UNAVAILABLE_CODES.has(data.code)
+          ? data.code
+          : response.status === 409
+          ? 'auth/email-already-in-use'
+          : response.status === 400
+          ? 'auth/invalid-email'
+          : 'auth/internal-error';
+
+      const backendErr: any = new Error(data?.error || 'Não foi possível criar a conta no servidor.');
+      backendErr.code = safeCode;
       throw backendErr;
     } finally {
       authSyncLockRef.current = false;
@@ -687,27 +699,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Check backend user store first so backend-registered users get a working code flow
-    try {
-      const { response, data } = await apiAuthFetch('/api/auth/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email: cleanEmail })
-      });
-      if (response.ok && data?.success) {
-        return {
-          mode: 'backend_code',
-          verificationCode: data.verificationCode,
-          message: data.message || 'Código de recuperação gerado com sucesso.'
-        };
-      }
-    } catch {
-      // Fall through to Firebase reset email
+    const { response, data } = await apiAuthFetch('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: cleanEmail })
+    });
+
+    if (response.ok && data?.success) {
+      return {
+        mode: 'backend_code',
+        verificationCode: data.verificationCode,
+        message: data.message || 'Código de recuperação gerado com sucesso.'
+      };
     }
 
-    await sendPasswordResetEmail(auth, cleanEmail);
-    return {
-      mode: 'firebase_email',
-      message: 'Enviámos um link para redefinir a sua palavra-passe. Verifique a sua caixa de entrada e pasta de spam.'
-    };
+    if (response.status === 429) {
+      const rateErr: any = new Error(data?.error || 'Demasiados pedidos de recuperação.');
+      rateErr.code = 'auth/too-many-requests';
+      throw rateErr;
+    }
+
+    // Fallback to Firebase password reset only if Firebase Email/Password happens to be enabled
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      return {
+        mode: 'firebase_email',
+        message: 'Enviámos um link para redefinir a sua palavra-passe. Verifique a sua caixa de entrada e pasta de spam.'
+      };
+    } catch (fbErr: any) {
+      if (FIREBASE_EMAIL_UNAVAILABLE_CODES.has(fbErr?.code)) {
+        const notFoundErr: any = new Error(
+          data?.error || 'Nenhuma conta com palavra-passe encontrada para este e-mail. Crie uma nova conta ou entre com Google.'
+        );
+        notFoundErr.code = 'auth/user-not-found';
+        throw notFoundErr;
+      }
+      throw fbErr;
+    }
   };
 
   const completePasswordReset = async (
@@ -775,10 +802,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const uid = auth.currentUser.uid;
       const userRef = doc(db, 'users', uid);
       try {
-        await updateDoc(userRef, {
-          ...partial,
-          updatedAt: new Date().toISOString()
-        });
+        await updateDoc(
+          userRef,
+          sanitizeForFirestore({
+            ...partial,
+            updatedAt: new Date().toISOString()
+          })
+        );
       } catch (err) {
         console.warn('Erro ao atualizar perfil no Firestore:', err);
       }
@@ -846,16 +876,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const uid = auth.currentUser.uid;
       const userRef = doc(db, 'users', uid);
       try {
-        await updateDoc(userRef, {
-          plan,
-          creditsRemaining: 9999,
-          billingCycle: meta?.billingCycle || 'monthly',
-          subscriptionExpiresAt: expiresAt,
-          stripeSubscriptionId: meta?.stripeSubscriptionId || null,
-          stripeCustomerId: meta?.stripeCustomerId || null,
-          stripeStatus: 'active',
-          updatedAt: new Date().toISOString()
-        });
+        await updateDoc(
+          userRef,
+          sanitizeForFirestore({
+            plan,
+            creditsRemaining: 9999,
+            billingCycle: meta?.billingCycle || 'monthly',
+            subscriptionExpiresAt: expiresAt,
+            stripeSubscriptionId: meta?.stripeSubscriptionId || null,
+            stripeCustomerId: meta?.stripeCustomerId || null,
+            stripeStatus: 'active',
+            updatedAt: new Date().toISOString()
+          })
+        );
       } catch (err) {
         console.warn('Aviso Firestore upgradePlan:', err);
       }
@@ -916,30 +949,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ): Promise<string> => {
     const id = `cv-${Date.now()}`;
     const formattedDate = new Date().toLocaleDateString('pt-PT');
+    const safeTitle = (title.trim() || cv.personalDetails?.title?.trim() || 'Meu Currículo Profissional').slice(0, 150);
+    const safeTargetJob = (targetJob?.trim() || cv.personalDetails?.title?.trim() || 'Vaga Executiva').slice(0, 180);
+    const cleanCv = sanitizeForFirestore(cv);
+
     const newResume: SavedResume = {
       id,
-      title: title.trim() || cv.personalDetails.title || 'Meu Currículo Profissional',
-      targetJob: targetJob || 'Vaga Executiva',
+      title: safeTitle,
+      targetJob: safeTargetJob,
       updatedAt: formattedDate,
-      data: cv
+      data: cleanCv
     };
 
-    // If authenticated with Firebase, persist to Firestore subcollection
+    // Guard against Firestore's 1MB document limit when an oversized inline base64 photo is embedded
+    let cloudCv: CVData = cleanCv;
+    try {
+      const estimatedSize = JSON.stringify(cleanCv).length;
+      if (estimatedSize > 800_000 && cleanCv.personalDetails?.photoUrl?.startsWith('data:')) {
+        const { photoUrl: _omitted, ...restPersonal } = cleanCv.personalDetails;
+        cloudCv = {
+          ...cleanCv,
+          personalDetails: {
+            ...restPersonal,
+            showPhoto: false
+          }
+        };
+      }
+    } catch {
+      cloudCv = cleanCv;
+    }
+
+    // 1. If authenticated with Firebase, persist to Firestore subcollection
     if (auth.currentUser) {
       const uid = auth.currentUser.uid;
       const resumeDocRef = doc(db, 'users', uid, 'resumes', id);
       try {
-        await setDoc(resumeDocRef, {
-          id,
-          userId: uid,
-          title: newResume.title,
-          targetJob: newResume.targetJob,
-          updatedAt: formattedDate,
-          createdAt: new Date().toISOString(),
-          data: cv
+        await setDoc(
+          resumeDocRef,
+          sanitizeForFirestore({
+            id,
+            userId: uid,
+            title: safeTitle,
+            targetJob: safeTargetJob,
+            updatedAt: formattedDate,
+            createdAt: new Date().toISOString(),
+            data: cloudCv
+          })
+        );
+      } catch (err: any) {
+        const errMsg = String(err?.message || err?.code || '');
+        if (errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
+          handleFirestoreError(err, OperationType.CREATE, `users/${uid}/resumes/${id}`);
+        }
+        const info = buildFirestoreErrorInfo(err, OperationType.CREATE, `users/${uid}/resumes/${id}`);
+        console.warn('Firestore save fallback active:', JSON.stringify(info));
+      }
+    }
+
+    // 2. Sync to Backend persistence API (/api/resumes) when session token exists
+    if (getStoredAuthToken() || user) {
+      try {
+        await apiAuthFetch('/api/resumes', {
+          method: 'POST',
+          body: JSON.stringify({
+            id,
+            title: safeTitle,
+            targetJob: safeTargetJob,
+            updatedAt: formattedDate,
+            data: cleanCv
+          })
         });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, `users/${uid}/resumes/${id}`);
+      } catch (backendErr) {
+        console.warn('Aviso ao guardar currículo no servidor:', backendErr);
       }
     }
 
@@ -958,8 +1039,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const resumeDocRef = doc(db, 'users', uid, 'resumes', id);
       try {
         await deleteDoc(resumeDocRef);
+      } catch (err: any) {
+        const errMsg = String(err?.message || err?.code || '');
+        if (errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
+          handleFirestoreError(err, OperationType.DELETE, `users/${uid}/resumes/${id}`);
+        }
+        const info = buildFirestoreErrorInfo(err, OperationType.DELETE, `users/${uid}/resumes/${id}`);
+        console.warn('Firestore delete fallback active:', JSON.stringify(info));
+      }
+    }
+
+    if (getStoredAuthToken() || user) {
+      try {
+        await apiAuthFetch(`/api/resumes/${encodeURIComponent(id)}`, { method: 'DELETE' });
       } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `users/${uid}/resumes/${id}`);
+        console.warn('Aviso ao remover currículo do servidor:', err);
       }
     }
 

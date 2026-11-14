@@ -1,4 +1,6 @@
 import { TemplateStyle } from '../types/cv';
+import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
+import portraitWomanImg from '../assets/images/portrait_executive_woman_1794571428995.jpg';
 
 export interface CVTemplateInfo {
   id: TemplateStyle;
@@ -381,25 +383,25 @@ export const SAMPLE_AVATARS: SampleAvatar[] = [
     id: 'exec_male',
     name: 'Executivo Formal',
     category: 'Executivo',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=face&auto=format&q=80'
+    url: portraitManImg
   },
   {
     id: 'exec_female',
     name: 'Executiva Líder',
     category: 'Executivo',
-    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop&crop=face&auto=format&q=80'
+    url: portraitWomanImg
   },
   {
     id: 'tech_pro',
-    name: 'Tech / Criativo',
+    name: 'Tech / Corporativo',
     category: 'Tech & Criativo',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face&auto=format&q=80'
+    url: portraitManImg
   },
   {
     id: 'intl_female',
     name: 'Consultora Internacional',
     category: 'Internacional',
-    url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=crop&crop=face&auto=format&q=80'
+    url: portraitWomanImg
   }
 ];
 

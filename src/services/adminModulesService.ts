@@ -846,22 +846,22 @@ export function fetchImpersonationLogs(): ImpersonationAuditLog[] {
 }
 
 // -------------------------------------------------------------
-// 7. LIVE EDITABLE PLANS ($2 PRO / $4 VIP)
+// 7. LIVE EDITABLE PLANS ($8 PRO / $12 VIP)
 // -------------------------------------------------------------
 export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
   {
     id: 'pro',
     name: 'Profissional Pro',
     tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
-    priceMonthlyValue: 2,
-    priceYearlyValue: 18,
+    priceMonthlyValue: 8,
+    priceYearlyValue: 72,
     badgeText: 'Mais Escolhido',
     isPopular: true,
     active: true,
     features: [
       'Desbloqueio Imediato de Download Oficial (PDF & Word .docx)',
       'Documentos 100% Limpos e sem Marca de Água',
-      'Criação & Edição de Currículos Ilimitados',
+      'Criação & Edição de Currículos e Cartas Ilimitadas',
       'Otimização com Inteligência Artificial Ilimitada',
       'Radar ATS 95%+ com Análise Semântica de Vagas',
       'Cartas de Apresentação Estratégicas com IA',
@@ -874,8 +874,8 @@ export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
     id: 'executive',
     name: 'Executivo VIP',
     tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
-    priceMonthlyValue: 4,
-    priceYearlyValue: 36,
+    priceMonthlyValue: 12,
+    priceYearlyValue: 108,
     badgeText: 'C-Level & Global',
     isPopular: false,
     active: true,
@@ -891,8 +891,46 @@ export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
   }
 ];
 
+function migrateLegacyPlanPricing(plans: EditablePlanConfig[]): { list: EditablePlanConfig[]; changed: boolean } {
+  if (!Array.isArray(plans) || plans.length === 0) return { list: DEFAULT_EDITABLE_PLANS, changed: true };
+  try {
+    if (localStorage.getItem('curriculopro_plans_v8_12_migrated') === '1') {
+      return { list: plans, changed: false };
+    }
+  } catch {
+    // ignore storage read
+  }
+  const hasLegacyDefaults = plans.some(
+    (p) => (p.id === 'pro' && p.priceMonthlyValue === 2) || (p.id === 'executive' && p.priceMonthlyValue === 4)
+  );
+  if (!hasLegacyDefaults) {
+    try {
+      localStorage.setItem('curriculopro_plans_v8_12_migrated', '1');
+    } catch {}
+    return { list: plans, changed: false };
+  }
+  const upgraded = plans.map((p) => {
+    if (p.id === 'pro' && p.priceMonthlyValue === 2) {
+      return { ...p, priceMonthlyValue: 8, priceYearlyValue: 72, updatedAt: new Date().toISOString() };
+    }
+    if (p.id === 'executive' && p.priceMonthlyValue === 4) {
+      return { ...p, priceMonthlyValue: 12, priceYearlyValue: 108, updatedAt: new Date().toISOString() };
+    }
+    return p;
+  });
+  try {
+    localStorage.setItem('curriculopro_plans_v8_12_migrated', '1');
+  } catch {}
+  return { list: upgraded, changed: true };
+}
+
 export function getStoredPlansSync(): EditablePlanConfig[] {
-  return getStored('curriculopro_editable_plans', DEFAULT_EDITABLE_PLANS);
+  const raw = getStored('curriculopro_editable_plans', DEFAULT_EDITABLE_PLANS);
+  const { list, changed } = migrateLegacyPlanPricing(raw);
+  if (changed) {
+    setStored('curriculopro_editable_plans', list);
+  }
+  return list;
 }
 
 export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
@@ -900,14 +938,17 @@ export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
     const docRef = doc(db, 'systemSettings', 'editablePlans');
     const snap = await getDoc(docRef);
     if (snap.exists() && Array.isArray(snap.data()?.plans)) {
-      const list = snap.data().plans as EditablePlanConfig[];
+      const { list, changed } = migrateLegacyPlanPricing(snap.data().plans as EditablePlanConfig[]);
       setStored('curriculopro_editable_plans', list);
+      if (changed) {
+        await setDoc(docRef, { plans: list, updatedAt: new Date().toISOString() }).catch(() => {});
+      }
       return list;
     }
   } catch (e) {
     console.warn('Usando planos locais:', e);
   }
-  return getStored('curriculopro_editable_plans', DEFAULT_EDITABLE_PLANS);
+  return getStoredPlansSync();
 }
 
 export async function saveEditablePlan(plan: EditablePlanConfig): Promise<void> {

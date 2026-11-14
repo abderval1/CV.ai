@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type SupportedCurrency = 'USD' | 'EUR' | 'AOA' | 'BRL';
+export type SupportedCurrency = 'USD' | 'BRL';
 
 export interface CurrencyConfig {
   code: SupportedCurrency;
@@ -20,31 +20,15 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
   USD: {
     code: 'USD',
     symbol: '$',
-    name: 'Dólar Americano',
+    name: 'Dólar Americano (USD)',
     flag: '🇺🇸',
     exchangeRateToUSD: 1,
     format: (amt) => `$${formatDecimal(amt)}`
   },
-  EUR: {
-    code: 'EUR',
-    symbol: '€',
-    name: 'Euro (Portugal / UE)',
-    flag: '🇪🇺',
-    exchangeRateToUSD: 0.92,
-    format: (amt) => `€${formatDecimal(amt * 0.92)}`
-  },
-  AOA: {
-    code: 'AOA',
-    symbol: 'Kz',
-    name: 'Kwanza (Angola)',
-    flag: '🇦🇴',
-    exchangeRateToUSD: 915,
-    format: (amt) => `${Math.round(amt * 915).toLocaleString('pt-AO')} Kz`
-  },
   BRL: {
     code: 'BRL',
     symbol: 'R$',
-    name: 'Real (Brasil)',
+    name: 'Real Brasileiro (BRL)',
     flag: '🇧🇷',
     exchangeRateToUSD: 5.4,
     format: (amt) => `R$ ${formatDecimal(amt * 5.4)}`
@@ -56,6 +40,7 @@ interface CurrencyContextType {
   setCurrency: (c: SupportedCurrency) => void;
   config: CurrencyConfig;
   formatPrice: (amountInUSD: number) => string;
+  convertFromUSD: (amountInUSD: number, targetCurrency?: SupportedCurrency) => number;
 }
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
@@ -63,7 +48,7 @@ const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currency, setCurrencyState] = useState<SupportedCurrency>(() => {
     const saved = localStorage.getItem('saas_currency');
-    return (saved as SupportedCurrency) || 'USD';
+    return saved === 'BRL' || saved === 'USD' ? saved : 'USD';
   });
 
   const setCurrency = (c: SupportedCurrency) => {
@@ -77,8 +62,14 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return config.format(amountInUSD);
   };
 
+  const convertFromUSD = (amountInUSD: number, targetCurrency?: SupportedCurrency) => {
+    const target = targetCurrency || currency;
+    const rate = CURRENCIES[target]?.exchangeRateToUSD ?? 1;
+    return Math.round(amountInUSD * rate * 100) / 100;
+  };
+
   return (
-    <CurrencyContext.Provider value={{ currency, setCurrency, config, formatPrice }}>
+    <CurrencyContext.Provider value={{ currency, setCurrency, config, formatPrice, convertFromUSD }}>
       {children}
     </CurrencyContext.Provider>
   );

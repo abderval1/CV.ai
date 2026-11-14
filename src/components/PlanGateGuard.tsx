@@ -42,8 +42,8 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
   const proPlanConfig = livePlans.find((p) => p.id === 'pro');
   const execPlanConfig = livePlans.find((p) => p.id === 'executive');
 
-  const proPriceMonthly = proPlanConfig?.priceMonthlyValue ?? 2;
-  const execPriceMonthly = execPlanConfig?.priceMonthlyValue ?? 4;
+  const proPriceMonthly = proPlanConfig?.priceMonthlyValue ?? 8;
+  const execPriceMonthly = execPlanConfig?.priceMonthlyValue ?? 12;
 
   const isExecutiveRequired = requiredTier === 'executive';
   const isProRequired = requiredTier === 'pro';

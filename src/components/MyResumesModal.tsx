@@ -50,8 +50,13 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         `"${savedTitle}" foi guardado com sucesso na sua conta.`
       );
       setTimeout(() => setSaveSuccess(false), 2000);
-    } catch {
-      showError('Erro ao Salvar', 'Não foi possível guardar o currículo.');
+    } catch (err: any) {
+      console.error('Erro ao guardar nova versão do currículo:', err);
+      const rawMsg = String(err?.message || '');
+      const friendlyDetail = rawMsg.includes('permission')
+        ? 'Sem permissão na nuvem para guardar esta versão. Verifique a sua sessão e tente novamente.'
+        : 'Não foi possível guardar a nova versão do currículo. Tente novamente.';
+      showError('Erro ao Salvar', friendlyDetail);
     } finally {
       setIsSaving(false);
     }

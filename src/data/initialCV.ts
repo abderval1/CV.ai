@@ -1,4 +1,6 @@
 import { CVData, PricingPlan } from '../types/cv';
+import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
+import portraitWomanImg from '../assets/images/portrait_executive_woman_1794571428995.jpg';
 
 // High-Converting Modern Default Executive Profile
 export const GENERIC_DEFAULT_CV: CVData = {
@@ -10,7 +12,7 @@ export const GENERIC_DEFAULT_CV: CVData = {
     email: 'alexandre.mendes@executivoglobal.com',
     linkedin: 'linkedin.com/in/alexandre-mendes-coo',
     website: 'https://alexandremendes.com',
-    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    photoUrl: portraitManImg,
     showPhoto: false
   },
   summary:
@@ -149,7 +151,7 @@ export const EXECUTIVE_DEMO_CV: CVData = {
     email: 'beatriz.fonseca@finance-holding.com',
     linkedin: 'linkedin.com/in/beatriz-fonseca-exec',
     website: 'https://beatrizfonseca.io',
-    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face&auto=format&q=80',
+    photoUrl: portraitWomanImg,
     showPhoto: false
   },
   summary:
@@ -394,20 +396,20 @@ export const SAAS_PLANS: PricingPlan[] = [
     id: 'pro',
     name: 'Profissional Pro',
     tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
-    priceMonthly: '$2 / Mês',
-    priceYearly: '$18 / Ano (Poupe 25%)',
-    priceMonthlyValue: 2,
-    priceYearlyValue: 18,
+    priceMonthly: '$8 / Mês',
+    priceYearly: '$72 / Ano (Poupe 25%)',
+    priceMonthlyValue: 8,
+    priceYearlyValue: 72,
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
       'Desbloqueio Imediato de Download Oficial (PDF & Word .docx)',
       'Documentos 100% Limpos e sem Marca de Água',
-      'Criação & Edição de Currículos Ilimitados',
+      'Criação & Edição de Currículos e Cartas Ilimitadas',
       'Otimização com Inteligência Artificial Ilimitada',
       'Radar ATS 95%+ com Análise Semântica de Vagas',
       'Cartas de Apresentação Estratégicas com IA',
-      'Extração de Dados de PDF, Word e LinkedIn',
+      'Tradução Integral para 5 Idiomas (PT, EN, ES, FR, DE)',
       'Sincronização Cloud Firestore em Tempo Real'
     ],
     isPopular: true,
@@ -417,10 +419,10 @@ export const SAAS_PLANS: PricingPlan[] = [
     id: 'executive',
     name: 'Executivo VIP',
     tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
-    priceMonthly: '$4 / Mês',
-    priceYearly: '$36 / Ano (Poupe 25%)',
-    priceMonthlyValue: 4,
-    priceYearlyValue: 36,
+    priceMonthly: '$12 / Mês',
+    priceYearly: '$108 / Ano (Poupe 25%)',
+    priceMonthlyValue: 12,
+    priceYearlyValue: 108,
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
@@ -428,7 +430,6 @@ export const SAAS_PLANS: PricingPlan[] = [
       'Downloads Ilimitados Oficiais em PDF e Word (.docx)',
       'Simulador de Entrevista STAR com Ditado por Voz & Scoring',
       'Todos os Modelos Executivos C-Level, Harvard, Europass e Big Tech',
-      'Scripts Python para Compilação e Automação Offline',
       'Auditoria Avançada de Perfil LinkedIn',
       'Consultoria & Suporte Executivo Prioritário'
     ],

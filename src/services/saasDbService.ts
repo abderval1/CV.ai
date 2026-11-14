@@ -11,7 +11,7 @@ import {
   orderBy,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   User,
   SaaSOrder,
@@ -184,6 +184,36 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     notes: order.notes || 'Subscrição SaaS ativada via Stripe'
   };
 
+  saveOrderToLocalCache(newOrder);
+
+  const authToken = (() => {
+    try {
+      return localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
+    } catch {
+      return null;
+    }
+  })();
+
+  if (authToken) {
+    try {
+      await fetch('/api/orders', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify(newOrder)
+      });
+    } catch {
+      // non-fatal
+    }
+  }
+
+  if (!auth.currentUser) {
+    return newOrder;
+  }
+
   try {
     const orderDocRef = doc(db, 'orders', orderId);
     await setDoc(orderDocRef, newOrder);
@@ -205,13 +235,9 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
       }
     }
 
-    // Save to local cache for instant retrieval across browser sessions
-    saveOrderToLocalCache(newOrder);
-
     return newOrder;
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
-    saveOrderToLocalCache(newOrder);
     return newOrder;
   }
 }
@@ -252,6 +278,34 @@ export async function fetchUserOrders(userId: string, userEmail?: string): Promi
   const localOrders = getLocalCachedOrders(userId, userEmail);
   const ordersMap = new Map<string, SaaSOrder>();
   localOrders.forEach((o) => ordersMap.set(o.id, o));
+
+  try {
+    const authToken = localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
+    if (authToken) {
+      const res = await fetch('/api/orders', {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json?.orders)) {
+          (json.orders as SaaSOrder[]).forEach((o) => {
+            if (o?.id) {
+              ordersMap.set(o.id, o);
+              saveOrderToLocalCache(o);
+            }
+          });
+        }
+      }
+    }
+  } catch {
+    // ignore backend fetch failure
+  }
+
+  if (!auth.currentUser) {
+    const allOrders = Array.from(ordersMap.values());
+    return allOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
 
   try {
     const ordersCol = collection(db, 'orders');
@@ -341,6 +395,25 @@ export async function cancelUserSubscription(
       }
     }
 
+    if (!auth.currentUser) {
+      const authToken = localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
+      if (authToken) {
+        await fetch('/api/auth/sync-plan', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ stripeStatus: 'canceled' })
+        }).catch(() => {});
+      }
+      return {
+        success: true,
+        message: 'Assinatura cancelada com sucesso. O seu plano permanecerá válido até ao final do período pago.'
+      };
+    }
+
     const userDocRef = doc(db, 'users', userId);
     await updateDoc(userDocRef, {
       stripeStatus: 'canceled',
@@ -382,6 +455,7 @@ export async function updateOrderStatus(
 // COUPONS & DISCOUNT MANAGEMENT
 // -------------------------------------------------------------
 export async function fetchAllCoupons(): Promise<SaaSCoupon[]> {
+  if (!auth.currentUser) return [];
   try {
     const couponsCol = collection(db, 'coupons');
     const snapshot = await getDocs(couponsCol);
@@ -522,8 +596,8 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
     },
     {
-      id: 'cup-angola',
-      code: 'ANGOLA100',
+      id: 'cup-stripe',
+      code: 'STRIPE100',
       discountPercent: 100,
       maxUses: 20,
       usedCount: 7,
@@ -639,12 +713,12 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'aliou.mballo@un.org',
       plan: 'executive',
       billingCycle: 'yearly',
-      amount: 36,
+      amount: 108,
       currency: 'USD',
-      paymentMethod: 'card',
+      paymentMethod: 'stripe',
       status: 'paid',
       createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Subscrição Anual Executivo VIP aprovada via Cartão Corporativo'
+      notes: 'Subscrição Anual Executivo VIP aprovada via Cartão Stripe'
     },
     {
       id: 'ord-1002',
@@ -654,27 +728,27 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'apaulo2007@hotmail.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 2,
+      amount: 8,
       currency: 'USD',
-      paymentMethod: 'multicaixa',
+      paymentMethod: 'stripe',
       status: 'paid',
       createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Pagamento processado via Multicaixa Express (Referência 923-881)'
+      notes: 'Pagamento processado via Cartão Internacional Stripe'
     },
     {
       id: 'ord-1003',
       orderNumber: 'INV-2026-0063',
       userId: 'usr-claudia-santos',
       userName: 'Cláudia Santos Varela',
-      userEmail: 'c.santos.varela@empresa.ao',
+      userEmail: 'c.santos.varela@empresa.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 2,
+      amount: 8,
       currency: 'USD',
-      paymentMethod: 'transfer',
+      paymentMethod: 'pix',
       status: 'paid',
       createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Transferência bancária IBAN confirmada pela contabilidade'
+      notes: 'Pagamento instantâneo via Pix confirmado'
     },
     {
       id: 'ord-1004',
@@ -684,27 +758,27 @@ export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; order
       userEmail: 'apaulo2007@hotmail.com',
       plan: 'pro',
       billingCycle: 'monthly',
-      amount: 2,
+      amount: 8,
       currency: 'USD',
-      paymentMethod: 'multicaixa',
+      paymentMethod: 'stripe',
       status: 'paid',
       createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Renovação mensal automática'
+      notes: 'Renovação mensal automática Stripe'
     },
     {
       id: 'ord-1005',
       orderNumber: 'INV-2026-0085',
       userId: 'usr-novocandidato',
-      userName: 'Helena Kwanza Silveira',
+      userName: 'Helena Silveira',
       userEmail: 'helena.silveira@outlook.com',
-      plan: 'pro',
+      plan: 'executive',
       billingCycle: 'monthly',
-      amount: 2,
+      amount: 12,
       currency: 'USD',
       paymentMethod: 'pix',
       status: 'paid',
       createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Upgrade após análise ATS gratuita'
+      notes: 'Upgrade via Pix Instantâneo'
     }
   ];
 

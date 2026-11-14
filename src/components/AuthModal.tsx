@@ -68,6 +68,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setMode(defaultMode);
       setError(null);
       setSuccessInfo(null);
+      setGoogleDomainWarning(null);
       setPassword('');
       setConfirmPassword('');
       setResetStep('request');
@@ -181,7 +182,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         showSuccess('Sessão Iniciada', 'Bem-vindo de volta ao Currículo Estratégico.');
       } else {
         await register(name.trim(), cleanEmail, password, targetRole.trim(), rememberMe);
-        showSuccess('Conta Criada com Sucesso', 'Bem-vindo! Os seus créditos iniciais foram ativados.');
+        showSuccess('Conta Criada com Sucesso', 'Bem-vindo! Ative o seu plano para criar, editar e descarregar.');
         onRegistrationSuccess?.();
       }
       onClose();
@@ -192,10 +193,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const [googleDomainWarning, setGoogleDomainWarning] = useState<string | null>(null);
+
   const handleProviderLogin = async (provider: 'google' | 'linkedin') => {
     setLoading(true);
     setError(null);
     setSuccessInfo(null);
+    setGoogleDomainWarning(null);
     try {
       const ok = await loginWithProvider(provider);
       if (ok) {
@@ -203,7 +207,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       }
     } catch (err: any) {
-      setError(getAuthErrorMessage(err));
+      if (err?.code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        setGoogleDomainWarning(host || 'domínio atual');
+        setError(
+          'O acesso Google não está autorizado neste URL de pré-visualização. Utilize o acesso imediato por E-mail e Palavra-passe logo abaixo.'
+        );
+      } else {
+        setError(getAuthErrorMessage(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -257,6 +269,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setMode('login');
                   setError(null);
                   setSuccessInfo(null);
+                  setGoogleDomainWarning(null);
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'login'
@@ -272,6 +285,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setMode('register');
                   setError(null);
                   setSuccessInfo(null);
+                  setGoogleDomainWarning(null);
                 }}
                 className={`py-2 text-xs font-bold rounded-lg transition-all ${
                   mode === 'register'
@@ -302,7 +316,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {error && (
             <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>{error}</span>
+              <div className="space-y-1.5">
+                <span>{error}</span>
+                {googleDomainWarning && (
+                  <p className="text-[11px] text-rose-700 bg-white/80 border border-rose-200 rounded-lg px-2.5 py-1.5 leading-relaxed">
+                    Para ativar o botão Google neste URL, adicione{' '}
+                    <code className="font-mono font-bold text-slate-900 select-all">{googleDomainWarning}</code>{' '}
+                    em Firebase Console → Authentication → Settings → Authorized domains. Ou entre/registe-se já abaixo com o seu e-mail.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 

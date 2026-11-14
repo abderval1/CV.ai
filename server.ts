@@ -59,10 +59,15 @@ async function startServer() {
     if (!ai) {
       throw new Error('GEMINI_API_KEY não configurada no servidor.');
     }
-    const defaultOrder = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+    const normalizeModel = (m?: string) => {
+      if (!m) return undefined;
+      if (m === 'gemini-3.8-flash' || m === 'gemini-flash-latest') return 'gemini-4-hydrogen';
+      return m;
+    };
+    const defaultOrder = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
     const customOrder = [
-      routingOverride?.preferredModel,
-      routingOverride?.fallbackModel,
+      normalizeModel(routingOverride?.preferredModel),
+      normalizeModel(routingOverride?.fallbackModel),
       ...defaultOrder
     ].filter((m): m is string => Boolean(m));
     const baseModels = Array.from(new Set(customOrder));
@@ -75,14 +80,20 @@ async function startServer() {
 
     for (const model of candidateModels) {
       const controller = new AbortController();
-      const timeoutMs = model === 'gemini-3.8-flash' ? 6000 : 15000;
+      const timeoutMs = 25000;
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const effectiveConfig: Record<string, any> = {
           ...(config || {}),
           abortSignal: controller.signal
         };
-        if (model === 'gemini-3.8-flash' && !effectiveConfig.thinkingConfig) {
+        if (model.startsWith('gemini-4-')) {
+          delete effectiveConfig.temperature;
+          delete effectiveConfig.topP;
+          delete effectiveConfig.topK;
+          delete effectiveConfig.candidateCount;
+        }
+        if (model === 'gemini-4-hydrogen' && !effectiveConfig.thinkingConfig) {
           effectiveConfig.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
         }
 
@@ -114,10 +125,13 @@ async function startServer() {
           msg.includes('UNAVAILABLE') ||
           msg.includes('429') ||
           msg.includes('RESOURCE_EXHAUSTED') ||
+          msg.includes('404') ||
+          msg.includes('NOT_FOUND') ||
           msg.includes('Timeout') ||
           msg.includes('abort') ||
           err?.status === 503 ||
-          err?.status === 429;
+          err?.status === 429 ||
+          err?.status === 404;
         if (isTransient) {
           modelCooldownUntil.set(model, Date.now() + 60_000);
           continue;
@@ -352,7 +366,14 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
   // Generate full structured CV from raw inputs & target job description
   app.post('/api/generate-from-raw', async (req, res) => {
     try {
-      const { rawCandidateInfo, jobDescription, candidateLinkedIn, targetStandard, adminPromptConfig } = req.body;
+      const {
+        rawCandidateInfo,
+        jobDescription,
+        candidateLinkedIn,
+        targetStandard,
+        adminPromptConfig,
+        generationMode
+      } = req.body;
 
       if (!rawCandidateInfo && !candidateLinkedIn) {
         return res.status(400).json({ error: 'Nenhuma informação do candidato foi fornecida.' });
@@ -365,11 +386,80 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
         });
       }
 
+      const cleanJobDesc = typeof jobDescription === 'string' ? jobDescription.trim() : '';
+      const isStandardMode = generationMode === 'standard' || !cleanJobDesc;
+
       const customInstructionBlock = adminPromptConfig?.systemInstruction
         ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
         : '';
 
-      const prompt = `
+      const prompt = isStandardMode
+        ? `
+Você é um especialista sénior em Recursos Humanos, redação de currículos e formatação compatível com sistemas ATS (Workday, Taleo, Greenhouse, Europass).
+${customInstructionBlock}
+O candidato enviou um currículo existente, texto bruto, notas de carreira ou perfil do LinkedIn para ser ESTRUTURADO E APRIMORADO como um CV geral (SEM uma vaga específica de destino).
+
+SUA MISSÃO:
+1. Analisar os dados fornecidos e GERAR UM CURRÍCULO ESTRUTURADO COMPLETO no padrão solicitado (${targetStandard || 'Padrão Corporativo Internacional & Executivo'}).
+2. PRESERVAR FIELMENTE a profissão real, cargos reais, empresas, datas, formação académica, competências, certificações e idiomas do candidato. NÃO invente cargos executivos, empresas ou indústrias que não existam nos dados originais.
+3. Melhorar a clareza, ortografia, organização em bullet points orientados a resultados e legibilidade para recrutadores e filtros ATS, mantendo total fidelidade à trajetória real do candidato.
+
+DADOS BRUTOS / CURRÍCULO DO CANDIDATO:
+${rawCandidateInfo || ''}
+${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
+
+DIRETRIZES DE EXTRAÇÃO E MELHORIA:
+1. Extraia o Nome Completo, Título Profissional real do candidato, Localização, Telefone, E-mail e LinkedIn.
+2. Resumo Profissional (Summary): Escreva um resumo claro e profissional de 3 a 5 linhas baseado exclusivamente na experiência e área real do candidato.
+3. Competências Principais (Core Competencies): Agrupe as competências e ferramentas reais do candidato em 4 a 6 categorias objetivas.
+4. Experiência Profissional: Liste todas as experiências encontradas em ordem cronológica reversa, mantendo empresas, cargos e períodos reais, refinando os bullet points para serem diretos, fortes e mensuráveis quando houver dados.
+5. Formação Académica, Formação Especializada/Certificações, Idiomas e Referências: Extraia tudo o que constar nos dados (se não houver referências no texto, retorne lista vazia [] e não invente contactos falsos).
+
+Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
+{
+  "personalDetails": {
+    "name": "Nome Completo",
+    "title": "Título Profissional Real",
+    "location": "Cidade, País",
+    "phone": "+...",
+    "email": "email@...",
+    "linkedin": "linkedin.com/in/...",
+    "website": "https://..."
+  },
+  "summary": "Texto do resumo profissional...",
+  "competencies": [
+    { "id": "comp-1", "category": "Categoria", "description": "Competências e ferramentas" }
+  ],
+  "experiences": [
+    {
+      "id": "exp-1",
+      "company": "Empresa / Organização",
+      "role": "Cargo",
+      "period": "Período",
+      "location": "Local",
+      "donor": "",
+      "highlights": ["Realização ou responsabilidade aprimorada 1", "Realização ou responsabilidade aprimorada 2"]
+    }
+  ],
+  "educations": [
+    { "id": "edu-1", "degree": "Grau / Curso", "institution": "Instituição", "period": "Anos", "gpaOrHonors": "" }
+  ],
+  "trainings": ["Certificação ou curso"],
+  "languages": [
+    { "language": "Idioma", "level": "Nível de proficiência" }
+  ],
+  "references": [
+    { "id": "ref-1", "name": "Nome", "institutionAndPosition": "Entidade e Cargo", "contact": "email ou telefone" }
+  ],
+  "atsInsights": {
+    "scoreEstimate": 90,
+    "matchedKeywords": ["palavra1", "palavra2"],
+    "missingKeywords": [],
+    "recommendations": ["recomendação de melhoria do CV 1", "recomendação de melhoria do CV 2"]
+  }
+}
+      `.trim()
+        : `
 Você é o mais conceituado consultor executivo de Recursos Humanos e Headhunter Internacional, especializado em recrutamento de liderança para grandes multinacionais, Big Techs e empresas de consultoria global.
 ${customInstructionBlock}
 O candidato enviou textos brutos, notas de carreira, projetos, documentos ou histórico do LinkedIn.
@@ -384,7 +474,7 @@ ${rawCandidateInfo || ''}
 ${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
 
 DESCRIÇÃO DA VAGA / REQUISITOS:
-${jobDescription || 'Posição Executiva de Liderança, Gestão de Operações, Estratégia ou Tecnologia.'}
+${cleanJobDesc}
 
 DIRETRIZES DE FORMULAÇÃO DE ALTO IMPACTO:
 1. Extraia o Nome Completo, Título Profissional Executivo (adaptado à vaga), Localização, Telefone, E-mail e LinkedIn. Se faltar algum dado, estruture de forma realista.
@@ -443,10 +533,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
-            : {})
+          responseMimeType: 'application/json'
         },
         adminPromptConfig
       );
@@ -581,15 +668,13 @@ Respond STRICTLY in valid JSON:
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
-            : {})
+          responseMimeType: 'application/json'
         },
         adminPromptConfig
       );
 
-      const parsed = parseAiJson(response.text);
+      const parsedRaw = parseAiJson(response.text);
+      const parsed = parsedRaw?.data || parsedRaw;
       if (!parsed.translatedText) {
         return res.status(502).json({ error: 'A IA não retornou o texto traduzido da carta.' });
       }
@@ -630,13 +715,29 @@ Respond STRICTLY in valid JSON:
         });
       }
 
+      const cvForTranslation = {
+        personalDetails: {
+          name: cvData.personalDetails?.name || '',
+          title: cvData.personalDetails?.title || '',
+          location: cvData.personalDetails?.location || ''
+        },
+        summary: cvData.summary || '',
+        competencies: cvData.competencies || [],
+        experiences: cvData.experiences || [],
+        educations: cvData.educations || [],
+        trainings: cvData.trainings || [],
+        languages: cvData.languages || [],
+        references: cvData.references || []
+      };
+
       const prompt = `
 You are a world-class executive career consultant and international translator.
-${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName}.
+${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName} (language code: ${langKey}).
 
 CRITICAL GUIDELINES:
-1. Preserve Identity & Contacts: Keep personalDetails.name, phone, email, linkedin, website, photoUrl, and company/university proper brand names intact.
-2. Translate ALL Text Content Written by the User:
+1. MANDATORY TARGET LANGUAGE: Every user-written field MUST be output in ${targetLangName}. Even if the input text is in Portuguese, English, Spanish, French, or German, do NOT leave source-language sentences untranslated.
+2. Preserve Identity & Contacts: Keep personalDetails.name and company/university proper brand names intact.
+3. Translate ALL Text Content Written by the User:
    - personalDetails.title (professional title)
    - personalDetails.location (city/country/availability phrasing, e.g., "Disponibilidade para Mobilidade Global" -> "Open to Global Relocation")
    - summary (full executive summary)
@@ -646,27 +747,25 @@ CRITICAL GUIDELINES:
    - Every string in trainings[]
    - Every item in languages: both 'language' name and 'level' description
    - Every item in references: 'institutionAndPosition'
-3. Accuracy & Metrics: Keep ALL numbers, percentages, currencies, company names, and technical acronyms (P&L, KPI, OKR, ROI, NPS, M&A, ERP, AWS, Python, etc.) completely accurate.
-4. Keep array lengths, ordering, and every 'id' field identical to the input.
+4. Accuracy & Metrics: Keep ALL numbers, percentages, currencies, company names, and technical acronyms (P&L, KPI, OKR, ROI, NPS, M&A, ERP, AWS, Python, etc.) completely accurate.
+5. Keep array lengths, ordering, and every 'id' field identical to the input.
 
 ORIGINAL CV DATA:
-${JSON.stringify(cvData, null, 2)}
+${JSON.stringify(cvForTranslation, null, 2)}
 
-Respond STRICTLY in valid JSON matching the exact CVData schema.
+Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (with "personalDetails", "summary", "competencies", "experiences", "educations", "trainings", "languages", "references").
       `.trim();
 
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
-            : {})
+          responseMimeType: 'application/json'
         },
         adminPromptConfig
       );
 
-      const parsed = parseAiJson(response.text);
+      const rawParsed = parseAiJson(response.text);
+      const parsed = rawParsed?.translatedCV || rawParsed?.cvData || rawParsed;
 
       // Sanitize and deterministically preserve immutable identifiers and visual config
       const mergedCV = {
@@ -1197,8 +1296,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const isYearly = billingCycle === 'yearly';
       const baseUSD = plan === 'executive'
-        ? (isYearly ? 36 : 4)
-        : (isYearly ? 18 : 2);
+        ? (isYearly ? 108 : 12)
+        : (isYearly ? 72 : 8);
 
       const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
       const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
@@ -1296,8 +1395,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const isYearly = billingCycle === 'yearly';
       const baseUSD = plan === 'executive'
-        ? (isYearly ? 36 : 4)
-        : (isYearly ? 18 : 2);
+        ? (isYearly ? 108 : 12)
+        : (isYearly ? 72 : 8);
 
       const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
       const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
@@ -1541,6 +1640,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   interface AuthStoreData {
     users: Record<string, BackendUserRecord>;
     resetTokens: Record<string, PasswordResetRecord>;
+    resumesByUser?: Record<string, any[]>;
+    ordersByUser?: Record<string, any[]>;
   }
 
   function ensureAuthSecret(): string {
@@ -1573,17 +1674,25 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         if (parsed && typeof parsed === 'object' && parsed.users) {
           return {
             users: parsed.users || {},
-            resetTokens: parsed.resetTokens || {}
+            resetTokens: parsed.resetTokens || {},
+            resumesByUser: parsed.resumesByUser || {},
+            ordersByUser: parsed.ordersByUser || {}
           };
         }
       }
     } catch (e) {
       console.warn('Aviso ao ler auth store, iniciando store limpo:', e);
     }
-    return { users: {}, resetTokens: {} };
+    return { users: {}, resetTokens: {}, resumesByUser: {}, ordersByUser: {} };
   }
 
   const authStore: AuthStoreData = loadAuthStore();
+  if (!authStore.resumesByUser) {
+    authStore.resumesByUser = {};
+  }
+  if (!authStore.ordersByUser) {
+    authStore.ordersByUser = {};
+  }
 
   function persistAuthStore() {
     try {
@@ -1669,7 +1778,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     const maxAgeMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     res.cookie('ce_session', token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: isSecure ? 'none' : 'lax',
       secure: isSecure,
       maxAge: maxAgeMs,
       path: '/'
@@ -2210,6 +2319,120 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     } catch (err: any) {
       console.error('Erro em /api/auth/reset-password:', err);
       return res.status(500).json({ error: 'Falha ao redefinir palavra-passe.' });
+    }
+  });
+
+  // Saved Resumes Persistence API (supports both backend-auth and Firebase-synced users)
+  app.get('/api/resumes', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const list = authStore.resumesByUser?.[payload.uid] || [];
+      return res.json({ resumes: list });
+    } catch (err: any) {
+      console.error('Erro em GET /api/resumes:', err);
+      return res.status(500).json({ error: 'Erro ao carregar currículos guardados.' });
+    }
+  });
+
+  app.post('/api/resumes', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const { id, title, targetJob, updatedAt, data } = req.body || {};
+      if (!id || !title || !data) {
+        return res.status(400).json({ error: 'Dados do currículo incompletos.' });
+      }
+      if (!authStore.resumesByUser) {
+        authStore.resumesByUser = {};
+      }
+      const existing = authStore.resumesByUser[payload.uid] || [];
+      const savedItem = {
+        id: String(id).slice(0, 128),
+        title: String(title).trim().slice(0, 150),
+        targetJob: String(targetJob || 'Vaga Executiva').trim().slice(0, 180),
+        updatedAt: String(updatedAt || new Date().toLocaleDateString('pt-PT')),
+        data
+      };
+      authStore.resumesByUser[payload.uid] = [
+        savedItem,
+        ...existing.filter((r) => r.id !== savedItem.id && r.title !== savedItem.title)
+      ].slice(0, 50);
+      persistAuthStore();
+      return res.status(201).json({ success: true, resume: savedItem });
+    } catch (err: any) {
+      console.error('Erro em POST /api/resumes:', err);
+      return res.status(500).json({ error: 'Falha ao guardar currículo no servidor.' });
+    }
+  });
+
+  app.delete('/api/resumes/:id', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const resumeId = String(req.params.id || '');
+      if (authStore.resumesByUser && authStore.resumesByUser[payload.uid]) {
+        authStore.resumesByUser[payload.uid] = authStore.resumesByUser[payload.uid].filter(
+          (r) => r.id !== resumeId
+        );
+        persistAuthStore();
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error('Erro em DELETE /api/resumes/:id:', err);
+      return res.status(500).json({ error: 'Falha ao remover currículo do servidor.' });
+    }
+  });
+
+  // Orders Persistence API for Backend-Authenticated users
+  app.get('/api/orders', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const list = authStore.ordersByUser?.[payload.uid] || [];
+      return res.json({ orders: list });
+    } catch (err: any) {
+      console.error('Erro em GET /api/orders:', err);
+      return res.status(500).json({ error: 'Erro ao carregar faturas.' });
+    }
+  });
+
+  app.post('/api/orders', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const order = req.body || {};
+      if (!order.id || !order.orderNumber) {
+        return res.status(400).json({ error: 'Dados do pedido inválidos.' });
+      }
+      if (!authStore.ordersByUser) {
+        authStore.ordersByUser = {};
+      }
+      const existing = authStore.ordersByUser[payload.uid] || [];
+      authStore.ordersByUser[payload.uid] = [
+        order,
+        ...existing.filter((o) => o.id !== order.id)
+      ].slice(0, 50);
+      persistAuthStore();
+      return res.status(201).json({ success: true, order });
+    } catch (err: any) {
+      console.error('Erro em POST /api/orders:', err);
+      return res.status(500).json({ error: 'Erro ao registar pedido no servidor.' });
     }
   });
 

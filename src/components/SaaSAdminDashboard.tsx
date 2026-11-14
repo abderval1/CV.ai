@@ -427,8 +427,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         ? nowMs - 90 * 86400000
         : 0;
 
-    const proPrice = editablePlans.find((p) => p.id === 'pro')?.priceMonthlyValue ?? 2;
-    const execPrice = editablePlans.find((p) => p.id === 'executive')?.priceMonthlyValue ?? 4;
+    const proPrice = editablePlans.find((p) => p.id === 'pro')?.priceMonthlyValue ?? 8;
+    const execPrice = editablePlans.find((p) => p.id === 'executive')?.priceMonthlyValue ?? 12;
 
     const totalUsers = usersList.length;
     const proUsers = usersList.filter((u) => u.plan === 'pro' && u.status !== 'suspended').length;
@@ -1687,19 +1687,19 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         <div className="space-y-3.5 text-xs">
                           {[
                             {
-                              label: 'Executivo VIP ($4/mês)',
+                              label: 'Executivo VIP ($12/mês)',
                               count: financialMetrics.executiveUsers,
                               color: 'bg-purple-600',
-                              mrrPart: financialMetrics.executiveUsers * (editablePlans.find((p) => p.id === 'executive')?.priceMonthlyValue ?? 4)
+                              mrrPart: financialMetrics.executiveUsers * (editablePlans.find((p) => p.id === 'executive')?.priceMonthlyValue ?? 12)
                             },
                             {
-                              label: 'Profissional Pro ($2/mês)',
+                              label: 'Profissional Pro ($8/mês)',
                               count: financialMetrics.proUsers,
                               color: 'bg-amber-500',
-                              mrrPart: financialMetrics.proUsers * (editablePlans.find((p) => p.id === 'pro')?.priceMonthlyValue ?? 2)
+                              mrrPart: financialMetrics.proUsers * (editablePlans.find((p) => p.id === 'pro')?.priceMonthlyValue ?? 8)
                             },
                             {
-                              label: 'Gratuito (Degustação)',
+                              label: 'Visitante / Sem Plano',
                               count: financialMetrics.freeUsers,
                               color: 'bg-slate-400',
                               mrrPart: 0
@@ -4236,10 +4236,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     onChange={(e) => setNewOrderForm({ ...newOrderForm, paymentMethod: e.target.value as PaymentMethod })}
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   >
-                    <option value="stripe">Stripe</option>
-                    <option value="pix">PIX</option>
-                    <option value="multicaixa">Multicaixa</option>
-                    <option value="transfer">Transferência</option>
+                    <option value="stripe">Cartão (Stripe)</option>
+                    <option value="pix">PIX Instantâneo</option>
                   </select>
                 </div>
               </div>

@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Zap,
   CreditCard,
-  Building,
   Tag,
   ArrowRight,
   CheckCircle2,
@@ -104,9 +103,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
   const [copiedPixPayload, setCopiedPixPayload] = useState<boolean>(false);
   const [pixSenderName, setPixSenderName] = useState<string>(user?.name || '');
   const [pixTxId, setPixTxId] = useState<string>('');
-
-  // Alternative local payments
-  const [multicaixaPhone, setMulticaixaPhone] = useState<string>('923 000 000');
 
   // Coupons
   const [couponCode, setCouponCode] = useState<string>('');
@@ -206,7 +202,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         userEmail: user?.email || 'cliente@exemplo.com',
         plan,
         billingCycle: cycle,
-        amount: plan === 'executive' ? (isYearly ? 36 : 4) : (isYearly ? 18 : 2),
+        amount: plan === 'executive' ? (isYearly ? 108 : 12) : (isYearly ? 72 : 8),
         currency: 'USD',
         paymentMethod: 'stripe',
         status: 'paid',
@@ -239,8 +235,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
   const activePlanObj = mergedPlans.find((p) => p.id === selectedPlan) || mergedPlans[0];
   const basePriceUSD =
     billingCycle === 'yearly'
-      ? activePlanObj?.priceYearlyValue ?? (selectedPlan === 'executive' ? 36 : 18)
-      : activePlanObj?.priceMonthlyValue ?? (selectedPlan === 'executive' ? 4 : 2);
+      ? activePlanObj?.priceYearlyValue ?? (selectedPlan === 'executive' ? 108 : 72)
+      : activePlanObj?.priceMonthlyValue ?? (selectedPlan === 'executive' ? 12 : 8);
 
   const discountAmountUSD = (basePriceUSD * appliedDiscount) / 100;
   const finalPriceUSD = Math.max(0, Math.round((basePriceUSD - discountAmountUSD) * 100) / 100);
@@ -381,7 +377,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         } else if (
           codeClean === 'STRIPE100' ||
           codeClean === 'PIX100' ||
-          codeClean === 'ANGOLA100' ||
           codeClean === 'VIP100'
         ) {
           setAppliedDiscount(100);
@@ -514,7 +509,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
             `Assinatura do Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativada com sucesso. O seu acesso ao Editor de Currículos foi liberado!`
           );
         }
-      } else if (paymentMethod === 'pix') {
+      } else {
         // 2. PIX INSTANT PAYMENT
         await upgradePlan(selectedPlan, { billingCycle });
 
@@ -545,41 +540,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         showSuccess(
           'Pagamento Pix Confirmado!',
           `Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativado via Pix Instantâneo (R$ ${priceBRL.toFixed(2)}). Acesso ao Editor de Currículos liberado!`
-        );
-      } else {
-        // 3. ALTERNATIVE LOCAL PAYMENTS (Multicaixa / Transferência)
-        await upgradePlan(selectedPlan, { billingCycle });
-
-        const isYearly = billingCycle === 'yearly';
-        const nextBilling = new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString();
-
-        const order = await createSaaSOrder({
-          userId: user?.id || 'usr-guest',
-          userName: user?.name || 'Cliente SaaS',
-          userEmail: user?.email || 'cliente@exemplo.com',
-          plan: selectedPlan,
-          billingCycle,
-          amount: convertedFinalPrice,
-          currency: currencyConfig.code,
-          paymentMethod,
-          status: 'paid',
-          notes:
-            appliedDiscount > 0
-              ? `Cupom ${couponCode.toUpperCase()} (${appliedDiscount}% OFF). Método: ${paymentMethod}`
-              : `Subscrição aprovada via ${paymentMethod}`
-        });
-
-        setSuccessDetails({
-          orderNumber: order.orderNumber,
-          amount: convertedFinalPrice,
-          billingCycle,
-          nextBillingDate: nextBilling,
-          paymentMethodUsed: paymentMethod === 'multicaixa' ? 'Multicaixa Express' : 'Transferência Bancária'
-        });
-        setUpgradeSuccess(true);
-        showSuccess(
-          'Subscrição Ativada!',
-          `Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativado com sucesso. Acesso ao Editor liberado!`
         );
       }
     } catch (err: any) {
@@ -857,6 +817,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                           {displayPrice}
                           <span className="text-xs font-normal text-slate-500">{periodSuffix}</span>
                         </div>
+                        <span className="text-[11px] text-slate-500 font-mono block">
+                          {currency === 'BRL'
+                            ? `Equivalente a $${billingCycle === 'yearly' ? plan.priceYearlyValue : plan.priceMonthlyValue} USD`
+                            : `Equivalente a R$ ${((billingCycle === 'yearly' ? plan.priceYearlyValue : plan.priceMonthlyValue) * 5.4).toFixed(2)} BRL`}
+                        </span>
                         {monthlyEquivalent && (
                           <span className="text-[11px] text-emerald-700 font-medium block">
                             Equivalente a {formatPrice(monthlyEquivalent)}/mês
@@ -912,7 +877,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                       <span>Processamento da Assinatura SaaS</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Disponível com Stripe Recorrente Internacional, Pix Instantâneo (QR Code) e Multicaixa.
+                      Disponível exclusivamente com Cartão (Stripe Internacional) ou Pix Instantâneo (QR Code em Reais).
                     </p>
                   </div>
 
@@ -928,9 +893,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                     <span className="text-[11px] text-slate-500 block font-medium">
                       {paymentMethod === 'pix'
                         ? `Equivalente a $${finalPriceUSD} USD (${billingCycle === 'yearly' ? 'Plano Anual' : 'Plano Mensal'})`
-                        : billingCycle === 'yearly'
-                        ? 'Cobrado anualmente (Poupe até 31%)'
-                        : 'Cobrado a cada 30 dias'}
+                        : `Equivalente a R$ ${priceBRL.toFixed(2)} BRL · ${
+                            billingCycle === 'yearly' ? 'Cobrado anualmente (Poupe 25%)' : 'Cobrado a cada 30 dias'
+                          }`}
                     </span>
                   </div>
                 </div>
@@ -972,7 +937,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                     Selecione o Canal de Pagamento:
                   </label>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Stripe (Primary Card) */}
                     <button
                       type="button"
@@ -989,8 +954,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                           Stripe
                         </span>
                       </div>
-                      <div className="font-bold text-xs text-slate-900">Cartão / Stripe</div>
-                      <div className="text-[10px] text-slate-400">Recorrente Oficial</div>
+                      <div className="font-bold text-xs text-slate-900">Cartão de Crédito / Débito</div>
+                      <div className="text-[10px] text-slate-400">Visa, Mastercard, Apple/Google Pay</div>
                     </button>
 
                     {/* Pix Instantâneo (Brasil / QR Code) */}
@@ -1009,38 +974,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                           QR Code
                         </span>
                       </div>
-                      <div className="font-bold text-xs text-slate-900">Pix Instantâneo</div>
-                      <div className="text-[10px] text-teal-600 font-semibold">Chave & QR Code</div>
-                    </button>
-
-                    {/* Multicaixa Express (Angola) */}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('multicaixa')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all ${
-                        paymentMethod === 'multicaixa'
-                          ? 'border-slate-900 bg-white ring-2 ring-slate-900/30 shadow-md'
-                          : 'border-slate-200 bg-white/70 hover:bg-white'
-                      }`}
-                    >
-                      <Building className="w-4 h-4 text-emerald-600 mb-1" />
-                      <div className="font-bold text-xs text-slate-900">Multicaixa</div>
-                      <div className="text-[10px] text-slate-400">Express / EMIS</div>
-                    </button>
-
-                    {/* Transferência IBAN */}
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('transfer')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all ${
-                        paymentMethod === 'transfer'
-                          ? 'border-slate-900 bg-white ring-2 ring-slate-900/30 shadow-md'
-                          : 'border-slate-200 bg-white/70 hover:bg-white'
-                      }`}
-                    >
-                      <Building className="w-4 h-4 text-slate-600 mb-1" />
-                      <div className="font-bold text-xs text-slate-900">IBAN / SEPA</div>
-                      <div className="text-[10px] text-slate-400">BAI / BFA / Europa</div>
+                      <div className="font-bold text-xs text-slate-900">Pix Instantâneo (BRL)</div>
+                      <div className="text-[10px] text-teal-600 font-semibold">Chave &amp; QR Code · Ativação imediata</div>
                     </button>
                   </div>
 
@@ -1370,45 +1305,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                     </div>
                   )}
 
-                  {/* 3. MULTICAIXA EXPRESS HELPER */}
-                  {paymentMethod === 'multicaixa' && (
-                    <div className="mt-2 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs space-y-2 text-emerald-950">
-                      <div className="flex items-center gap-1.5 font-bold">
-                        <Smartphone className="w-4 h-4 text-emerald-700" />
-                        <span>Multicaixa Express (Angola)</span>
-                      </div>
-                      <p className="text-[11px] text-emerald-800">
-                        Insira o seu número associado ao Multicaixa Express para receber o pedido de confirmação no seu telemóvel:
-                      </p>
-                      <input
-                        type="tel"
-                        value={multicaixaPhone}
-                        onChange={(e) => setMulticaixaPhone(e.target.value)}
-                        placeholder="Ex: 923 744 338"
-                        className="px-3 py-1.5 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold w-full max-w-xs text-slate-900"
-                      />
-                      <p className="text-[10px] text-emerald-700 font-mono">
-                        Ou pague por Referência EMIS: Entidade 00054 | Ref: 984 213 092
-                      </p>
-                    </div>
-                  )}
-
-                  {/* 4. TRANSFER HELPER */}
-                  {paymentMethod === 'transfer' && (
-                    <div className="mt-2 p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-xs space-y-1 text-slate-800 font-mono text-[11px]">
-                      <p className="font-bold text-slate-950 font-sans text-xs">Coordenadas Bancárias Oficiais:</p>
-                      <p>
-                        Banco BAI Angola: <span className="font-bold">AO06 0040 0000 8923 1001 1012 3</span>
-                      </p>
-                      <p>
-                        Banco BFA Angola: <span className="font-bold">AO06 0006 0000 4521 2002 1014 9</span>
-                      </p>
-                      <p>
-                        IBAN Internacional (SEPA):{' '}
-                        <span className="font-bold">PT50 0033 0000 4521 8976 1018 2</span>
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Final Action Button & Guarantee */}

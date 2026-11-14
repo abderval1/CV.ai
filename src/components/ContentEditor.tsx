@@ -192,9 +192,13 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         'Progresso Salvo!',
         `Currículo guardado na nuvem (${cv.experiences.length} cargos, ${cv.competencies.length} competências).`
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao guardar progresso:', err);
-      showError('Erro ao Salvar', 'Não foi possível guardar o seu progresso no momento.');
+      const rawMsg = String(err?.message || '');
+      const friendlyDetail = rawMsg.includes('permission')
+        ? 'Sem permissão na nuvem para guardar esta versão. Verifique a sua sessão.'
+        : 'Não foi possível guardar a nova versão do currículo no momento.';
+      showError('Erro ao Salvar', friendlyDetail);
     } finally {
       setIsSaving(false);
     }

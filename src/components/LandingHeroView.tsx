@@ -15,6 +15,8 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
 import { CVData } from '../types/cv';
 import { CVHealthScoreOverview } from './CVHealthScoreOverview';
+import { DocumentMiniPreview } from './DocumentMiniPreview';
+import { ShowcaseMode } from './ShowcaseGalleryView';
 import {
   getStoredTemplatesSync,
   getStoredPlansSync,
@@ -26,6 +28,7 @@ interface LandingHeroViewProps {
   onOpenPricing: () => void;
   onSelectTemplate: (templateId: string) => void;
   onOpenTemplateAdvisor: () => void;
+  onOpenShowcase: (mode: ShowcaseMode) => void;
   currentCV?: CVData;
   onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview') => void;
 }
@@ -35,10 +38,11 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   onOpenPricing,
   onSelectTemplate,
   onOpenTemplateAdvisor,
+  onOpenShowcase,
   currentCV,
   onNavigateTab
 }) => {
-  const { formatPrice } = useCurrency();
+  const { formatPrice, convertFromUSD } = useCurrency();
   const { t } = useLanguage();
   const [atsHubTab, setAtsHubTab] = useState<'health' | 'simulator'>('health');
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
@@ -191,16 +195,34 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => (onNavigateTab ? onNavigateTab('cover') : onStartCreating())}
+                onClick={() => onOpenShowcase('models-cv')}
                 className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
               >
                 <Mail className="w-4 h-4 text-amber-400" />
-                <span>Carta de Apresentação</span>
+                <span>Ver Modelos &amp; Exemplos Grátis</span>
+              </button>
+            </div>
+
+            <div className="pt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-400">
+              <button type="button" onClick={() => onOpenShowcase('models-cv')} className="hover:text-amber-300 underline underline-offset-4">
+                Modelos de CV
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => onOpenShowcase('examples-cv')} className="hover:text-amber-300 underline underline-offset-4">
+                Exemplos de CV
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => onOpenShowcase('models-cover')} className="hover:text-amber-300 underline underline-offset-4">
+                Modelos de Carta
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => onOpenShowcase('examples-cover')} className="hover:text-amber-300 underline underline-offset-4">
+                Exemplos de Carta
               </button>
             </div>
 
             <p className="pt-1 text-xs text-slate-400">
-              Planos desde {formatPrice(proPlan?.priceMonthlyValue ?? 2)}/mês · Stripe &amp; Pix Instantâneo · Word (.docx) &amp; PDF A4
+              Visualização gratuita · Planos a partir de {formatPrice(proPlan?.priceMonthlyValue ?? 8)}/mês · Cartão (Stripe) &amp; Pix
             </p>
           </div>
 
@@ -451,33 +473,51 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </div>
           </div>
 
-          {/* Hairline Grid Container (Zero nested shadows, crisp 1px dividers) */}
+          {/* Visual A4 Bento Grid Container */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-800 border border-slate-800 rounded-2xl overflow-hidden">
             {displayedTemplates.map((tmpl) => (
               <div
                 key={tmpl.id}
                 className="bg-slate-950 p-5 flex flex-col justify-between hover:bg-slate-900/90 transition-colors group"
               >
-                <div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
-                    <span className="font-medium text-slate-300">{tmpl.badge}</span>
-                    <span className="font-mono tabular-nums text-amber-400 font-semibold">
-                      {tmpl.atsScore}% ATS
-                    </span>
+                <div className="space-y-3">
+                  {/* Live Miniature A4 Photo Preview */}
+                  <div
+                    onClick={() => onOpenShowcase('models-cv')}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-center cursor-pointer overflow-hidden"
+                  >
+                    <div className="w-full max-w-[165px] aspect-[210/297] bg-white shadow-lg rounded-xs overflow-hidden transition-transform duration-200 group-hover:scale-[1.02]">
+                      <DocumentMiniPreview
+                        kind="cv"
+                        templateStyle={tmpl.id}
+                        accentColor={tmpl.accentColor}
+                        hasPhoto={tmpl.hasPhoto}
+                        size="sm"
+                      />
+                    </div>
                   </div>
-                  <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors">
-                    {tmpl.shortName}
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
-                    {tmpl.tagline}
-                  </p>
+
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+                      <span className="font-medium text-slate-300">{tmpl.hasPhoto ? 'Com Foto' : 'Sem Foto · ATS'}</span>
+                      <span className="font-mono tabular-nums text-amber-400 font-semibold">
+                        {tmpl.atsScore}% ATS
+                      </span>
+                    </div>
+                    <h3 className="text-base font-bold text-white group-hover:text-amber-400 transition-colors">
+                      {tmpl.shortName}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">
+                      {tmpl.tagline}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
                   <span className="text-[11px] text-slate-500">
-                    {tmpl.hasPhoto ? 'Suporta foto' : '100% textual'} ·{' '}
+                    Visualizar grátis ·{' '}
                     <span className="text-slate-300 font-medium">
-                      {tmpl.tierRequired === 'free' ? 'Grátis' : tmpl.tierRequired === 'executive' ? 'VIP' : 'Pro'}
+                      {tmpl.tierRequired === 'executive' ? 'VIP ($12)' : 'Pro ($8)'}
                     </span>
                   </span>
                   <button
@@ -485,7 +525,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                     onClick={() => {
                       trackFrontendTelemetry({ type: 'template_selected', templateStyle: tmpl.id });
                       onSelectTemplate(tmpl.id);
-                      onStartCreating();
                     }}
                     className="font-semibold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1"
                   >
@@ -557,11 +596,14 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                   <div className="space-y-1">
                     <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
-                      {formatPrice(proPlan?.priceMonthlyValue ?? 2)}{' '}
+                      {formatPrice(proPlan?.priceMonthlyValue ?? 8)}{' '}
                       <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      Equivalente: ${proPlan?.priceMonthlyValue ?? 8} USD · R$ {convertFromUSD(proPlan?.priceMonthlyValue ?? 8, 'BRL').toFixed(2).replace('.', ',')} BRL
+                    </p>
                     <p className="text-xs text-emerald-400">
-                      Ou {formatPrice(proPlan?.priceYearlyValue ?? 18)} / Ano (Poupe 25%)
+                      Ou {formatPrice(proPlan?.priceYearlyValue ?? 72)} / Ano (Poupe 25%)
                     </p>
                   </div>
 
@@ -604,11 +646,14 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                   <div className="space-y-1">
                     <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
-                      {formatPrice(execPlan?.priceMonthlyValue ?? 4)}{' '}
+                      {formatPrice(execPlan?.priceMonthlyValue ?? 12)}{' '}
                       <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
+                    <p className="text-[11px] text-slate-400 font-mono">
+                      Equivalente: ${execPlan?.priceMonthlyValue ?? 12} USD · R$ {convertFromUSD(execPlan?.priceMonthlyValue ?? 12, 'BRL').toFixed(2).replace('.', ',')} BRL
+                    </p>
                     <p className="text-xs text-purple-400">
-                      Ou {formatPrice(execPlan?.priceYearlyValue ?? 36)} / Ano (Poupe 25%)
+                      Ou {formatPrice(execPlan?.priceYearlyValue ?? 108)} / Ano (Poupe 25%)
                     </p>
                   </div>
 

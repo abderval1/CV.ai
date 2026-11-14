@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CVData } from './types/cv';
 import { GENERIC_DEFAULT_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
-import { Header } from './components/Header';
+import { Header, AppTab } from './components/Header';
 import { LandingHeroView } from './components/LandingHeroView';
+import { ShowcaseGalleryView, ShowcaseMode, ShowcaseSelectionPayload } from './components/ShowcaseGalleryView';
 import { CVDocumentView } from './components/CVDocumentView';
 import { ContentEditor } from './components/ContentEditor';
 import { AtsRadarPanel } from './components/AtsRadarPanel';
@@ -23,6 +24,7 @@ import { SystemNotificationBanner } from './components/SystemNotificationBanner'
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/LanguageContext';
+import { detectCVLanguage, detectTextLanguage } from './utils/languageDetect';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
 import { isUserAdmin } from './services/saasDbService';
@@ -100,9 +102,7 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-  const [activeTab, setActiveTab] = useState<'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview' | 'profile'>(
-    'home'
-  );
+  const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [mobileViewMode, setMobileViewMode] = useState<'controls' | 'preview'>('controls');
   const [isExportingWord, setIsExportingWord] = useState<boolean>(false);
   const [density, setDensity] = useState<'compact' | 'normal' | 'relaxed'>('normal');
@@ -117,6 +117,11 @@ export default function App() {
   const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
   const [pricingPromptMessage, setPricingPromptMessage] = useState<string | undefined>(undefined);
+  const [pendingModelTarget, setPendingModelTarget] = useState<{
+    targetTab: 'editor' | 'cover' | 'raw';
+    label: string;
+  } | null>(null);
+  const prevAuthRef = useRef<boolean>(isAuthenticated);
   const [isMyResumesModalOpen, setIsMyResumesModalOpen] = useState<boolean>(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
@@ -197,8 +202,12 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   });
 
   // Track which language the active CV & Cover Letter content are currently written in,
-  // plus a per-language translation cache to avoid redundant calls or drift when toggling back.
+  // plus a per-language translation cache verified against real text language detection.
+  const detectedInitialCvLang = detectCVLanguage(cv);
   const initialContentLang = ((): LanguageCode => {
+    if (detectedInitialCvLang) {
+      return detectedInitialCvLang;
+    }
     try {
       const saved = localStorage.getItem('curriculo_content_lang_v1') as LanguageCode;
       if (saved && SUPPORTED_LANGUAGES.some((l) => l.code === saved)) {
@@ -215,8 +224,10 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   const latestStateRef = useRef<{ cv: CVData; letterBody: string }>({ cv, letterBody });
   latestStateRef.current = { cv, letterBody };
 
-  const translationCacheRef = useRef<Partial<Record<LanguageCode, { cv: CVData; letterBody: string }>>>({
-    [initialContentLang]: { cv, letterBody }
+  const translationCacheRef = useRef<
+    Partial<Record<LanguageCode, { cv: CVData; letterBody: string; verified?: boolean }>>
+  >({
+    [initialContentLang]: { cv, letterBody, verified: Boolean(detectedInitialCvLang) }
   });
   const translationReqIdRef = useRef<number>(0);
   const [isTranslatingContent, setIsTranslatingContent] = useState<boolean>(false);
@@ -234,20 +245,30 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     return () => clearTimeout(timer);
   }, [letterBody]);
 
-  // Wrap CV and Cover Letter setters so manual edits update the active language cache and invalidate stale translations
+  // Wrap CV and Cover Letter setters so manual edits or imports tag the real detected language
+  // and invalidate stale translations from earlier content.
   const updateCvWithCache = useCallback((updater: CVData | ((prev: CVData) => CVData)) => {
     setCv((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      const lang = activeContentLangRef.current;
+      const detectedLang = detectCVLanguage(next);
+      const lang = (detectedLang as LanguageCode | null) || activeContentLangRef.current;
+      activeContentLangRef.current = lang;
       lastEditedLangRef.current = lang;
+      try {
+        localStorage.setItem('curriculo_content_lang_v1', lang);
+      } catch {
+        // ignore
+      }
+      const prevLetter = latestStateRef.current.letterBody;
       latestStateRef.current = {
         cv: next,
-        letterBody: latestStateRef.current.letterBody
+        letterBody: prevLetter
       };
       translationCacheRef.current = {
         [lang]: {
           cv: next,
-          letterBody: translationCacheRef.current[lang]?.letterBody ?? latestStateRef.current.letterBody
+          letterBody: prevLetter,
+          verified: Boolean(detectedLang)
         }
       };
       return next;
@@ -256,7 +277,13 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
   const updateLetterWithCache = useCallback((nextBody: string) => {
     setLetterBodyState(nextBody);
-    const lang = activeContentLangRef.current;
+    const detectedLetterLang = detectTextLanguage(nextBody);
+    const detectedCvLang = detectCVLanguage(latestStateRef.current.cv);
+    const lang =
+      (detectedLetterLang as LanguageCode | null) ||
+      (detectedCvLang as LanguageCode | null) ||
+      activeContentLangRef.current;
+    activeContentLangRef.current = lang;
     lastEditedLangRef.current = lang;
     latestStateRef.current = {
       cv: latestStateRef.current.cv,
@@ -264,8 +291,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     };
     translationCacheRef.current = {
       [lang]: {
-        cv: translationCacheRef.current[lang]?.cv ?? latestStateRef.current.cv,
-        letterBody: nextBody
+        cv: latestStateRef.current.cv,
+        letterBody: nextBody,
+        verified: Boolean(detectedLetterLang || detectedCvLang)
       }
     };
   }, []);
@@ -278,49 +306,160 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     }
   }, [activeTab]);
 
+  // Seamless funnel: Use Model -> Create Account / Login -> Subscribe ($8 or $12) -> Direct to Editor/Cover
+  useEffect(() => {
+    const justAuthenticated = !prevAuthRef.current && isAuthenticated;
+    prevAuthRef.current = isAuthenticated;
+
+    if (!pendingModelTarget) return;
+
+    if (isAuthenticated && hasActivePlan) {
+      setActiveTab(pendingModelTarget.targetTab);
+      setMobileViewMode('controls');
+      setIsPricingModalOpen(false);
+      setIsAuthModalOpen(false);
+      showSuccess('Acesso Desbloqueado!', `${pendingModelTarget.label} pronto para edição.`);
+      setPendingModelTarget(null);
+      return;
+    }
+
+    if (justAuthenticated && isAuthenticated && !hasActivePlan) {
+      setIsAuthModalOpen(false);
+      handleOpenPricingModal(
+        `Conta autenticada! Ative o plano Pro ($8/mês) ou Executivo VIP ($12/mês) via Cartão ou Pix para começar a criar no ${pendingModelTarget.label}.`
+      );
+    }
+  }, [isAuthenticated, hasActivePlan, pendingModelTarget, showSuccess]);
+
+  const handleUseShowcaseItem = useCallback(
+    (payload: ShowcaseSelectionPayload | { targetTab: 'raw'; label: string }) => {
+      if ('cvData' in payload && payload.cvData) {
+        updateCvWithCache(payload.cvData);
+      } else if ('templateStyle' in payload && payload.templateStyle) {
+        updateCvWithCache((prev) => ({
+          ...prev,
+          templateStyle: payload.templateStyle!,
+          accentColor: payload.accentColor || prev.accentColor
+        }));
+      }
+
+      if ('letterBody' in payload && payload.letterBody) {
+        updateLetterWithCache(payload.letterBody);
+      }
+
+      if (!isAuthenticated) {
+        setPendingModelTarget({ targetTab: payload.targetTab, label: payload.label });
+        handleOpenAuth(
+          `Crie a sua conta ou inicie sessão para usar o ${payload.label} e começar a criar.`,
+          'register'
+        );
+        return;
+      }
+
+      if (!hasActivePlan) {
+        setPendingModelTarget({ targetTab: payload.targetTab, label: payload.label });
+        handleOpenPricingModal(
+          `A edição e download de modelos e exemplos requer subscrição ativa. Escolha o plano Pro ($8/mês) ou Executivo VIP ($12/mês) via Cartão (Stripe) ou Pix para abrir o ${payload.label}.`
+        );
+        return;
+      }
+
+      setActiveTab(payload.targetTab);
+      setMobileViewMode('controls');
+      showSuccess('Modelo Carregado!', `${payload.label} aberto para edição.`);
+    },
+    [hasActivePlan, isAuthenticated, showSuccess, updateCvWithCache, updateLetterWithCache]
+  );
+
   // Translate BOTH CV content and Cover Letter content whenever any language selector is clicked
   const handleSwitchLanguage = useCallback(async (targetLang: LanguageCode) => {
+    if (!isAuthenticated) {
+      handleOpenAuth(
+        'Crie uma conta ou inicie sessão para traduzir o conteúdo do currículo e carta de apresentação.',
+        'register'
+      );
+      return;
+    }
+    if (!hasActivePlan) {
+      handleOpenPricingModal(
+        'A tradução integral do currículo e carta para Inglês, Espanhol, Francês ou Alemão é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
+      );
+      return;
+    }
     setLanguage(targetLang);
     trackFrontendTelemetry({ type: 'language_switched', language: targetLang });
 
     const currentLang = activeContentLangRef.current;
     const { cv: latestCv, letterBody: latestLetter } = latestStateRef.current;
-    // Save current state under current content language if not yet stored
-    if (!translationCacheRef.current[currentLang]) {
-      translationCacheRef.current[currentLang] = { cv: latestCv, letterBody: latestLetter };
+    const hasLetter = Boolean(latestLetter && latestLetter.trim().length > 0);
+
+    const actualCvLang = detectCVLanguage(latestCv);
+    const actualLetterLang = hasLetter ? detectTextLanguage(latestLetter) : null;
+
+    // Only record current snapshot under its genuine language (never pollute targetLang with wrong-language text)
+    const genuineCurrentLang = (actualCvLang as LanguageCode | null) || currentLang;
+    if (!translationCacheRef.current[genuineCurrentLang]) {
+      translationCacheRef.current[genuineCurrentLang] = {
+        cv: latestCv,
+        letterBody: latestLetter,
+        verified: Boolean(actualCvLang)
+      };
     }
 
     const langInfo = SUPPORTED_LANGUAGES.find((l) => l.code === targetLang);
     const langLabel = langInfo?.nativeName || targetLang.toUpperCase();
 
-    // Instant switch if we already have an up-to-date cached version for targetLang
+    // Validate cached entry against actual detected content language before skipping translation
     const cached = translationCacheRef.current[targetLang];
-    if (cached) {
+    const cachedCvLang = cached ? detectCVLanguage(cached.cv) : null;
+    const cachedLetterLang = cached && cached.letterBody?.trim() ? detectTextLanguage(cached.letterBody) : null;
+
+    const isCacheGenuineForTarget = Boolean(
+      cached &&
+        (!cachedCvLang || cachedCvLang === targetLang) &&
+        (!cached.letterBody?.trim() || !cachedLetterLang || cachedLetterLang === targetLang)
+    );
+
+    const isVisibleContentAlreadyInTarget =
+      actualCvLang === targetLang && (!hasLetter || !actualLetterLang || actualLetterLang === targetLang);
+
+    // Instant switch ONLY if we have a genuinely verified target-language version
+    // AND if the user clicked the already-active language, the visible content is actually in that language.
+    if (isCacheGenuineForTarget && cached && (targetLang !== currentLang || isVisibleContentAlreadyInTarget)) {
       activeContentLangRef.current = targetLang;
       try {
         localStorage.setItem('curriculo_content_lang_v1', targetLang);
       } catch {
         // ignore
       }
-      if (targetLang !== currentLang) {
-        setCv({
+      if (targetLang !== currentLang || !isVisibleContentAlreadyInTarget) {
+        const mergedCachedCv: CVData = {
           ...cached.cv,
           templateStyle: latestCv.templateStyle,
           accentColor: latestCv.accentColor,
           fontFamily: latestCv.fontFamily,
           sectionOrder: latestCv.sectionOrder,
           sectionVisibility: latestCv.sectionVisibility
-        });
+        };
+        latestStateRef.current = { cv: mergedCachedCv, letterBody: cached.letterBody };
+        setCv(mergedCachedCv);
         setLetterBodyState(cached.letterBody);
         showInfo('Idioma Alterado', `Currículo e carta exibidos em ${langLabel}.`);
       }
       return;
     }
 
-    // Use the cleanest un-drifted source snapshot (last manually edited language if available)
+    // Clear invalid/stale entry for targetLang if it held content in another language
+    if (cached && !isCacheGenuineForTarget) {
+      delete translationCacheRef.current[targetLang];
+    }
+
+    // Pick cleanest source entry (avoid picking an entry that matches latestCv only in another lang if edited)
+    const editedEntry = translationCacheRef.current[lastEditedLangRef.current];
     const sourceEntry =
-      translationCacheRef.current[lastEditedLangRef.current] ||
-      translationCacheRef.current[currentLang] || { cv: latestCv, letterBody: latestLetter };
+      editedEntry && lastEditedLangRef.current !== targetLang
+        ? editedEntry
+        : { cv: latestCv, letterBody: latestLetter };
 
     const reqId = ++translationReqIdRef.current;
     setIsTranslatingContent(true);
@@ -329,44 +468,52 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     const adminTranslateConfig = getStoredPromptSync('translateDoc');
 
     try {
-      const hasLetter = Boolean(sourceEntry.letterBody && sourceEntry.letterBody.trim().length > 0);
+      const sourceHasLetter = Boolean(sourceEntry.letterBody && sourceEntry.letterBody.trim().length > 0);
+      const sourceCvLang = detectCVLanguage(sourceEntry.cv);
+      const sourceLetterLang = sourceHasLetter ? detectTextLanguage(sourceEntry.letterBody) : null;
 
-      const cvPromise = fetch('/api/translate-cv', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cvData: sourceEntry.cv,
-          targetLanguage: targetLang,
-          adminPromptConfig: adminTranslateConfig
-        })
-      }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(data.error || `Erro ${res.status} ao traduzir o currículo.`);
-        }
-        if (!data.translatedCV) {
-          throw new Error('Resposta inválida ao traduzir o currículo.');
-        }
-        return data.translatedCV as CVData;
-      });
+      // Translate CV whenever it isn't already genuinely in targetLang
+      const cvPromise =
+        sourceCvLang === targetLang && actualCvLang === targetLang
+          ? Promise.resolve(sourceEntry.cv)
+          : fetch('/api/translate-cv', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cvData: sourceEntry.cv,
+                targetLanguage: targetLang,
+                adminPromptConfig: adminTranslateConfig
+              })
+            }).then(async (res) => {
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                throw new Error(data.error || `Erro ${res.status} ao traduzir o currículo.`);
+              }
+              if (!data.translatedCV) {
+                throw new Error('Resposta inválida ao traduzir o currículo.');
+              }
+              return data.translatedCV as CVData;
+            });
 
-      const letterPromise = hasLetter
-        ? fetch('/api/translate-letter', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: sourceEntry.letterBody,
-              targetLanguage: targetLang,
-              adminPromptConfig: adminTranslateConfig
-            })
-          }).then(async (res) => {
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              throw new Error(data.error || `Erro ${res.status} ao traduzir a carta.`);
-            }
-            return (data.translatedText as string) || sourceEntry.letterBody;
-          })
-        : Promise.resolve(sourceEntry.letterBody);
+      // Translate Cover Letter whenever present and not already genuinely in targetLang
+      const letterPromise =
+        !sourceHasLetter || (sourceLetterLang === targetLang && actualLetterLang === targetLang)
+          ? Promise.resolve(sourceEntry.letterBody)
+          : fetch('/api/translate-letter', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: sourceEntry.letterBody,
+                targetLanguage: targetLang,
+                adminPromptConfig: adminTranslateConfig
+              })
+            }).then(async (res) => {
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) {
+                throw new Error(data.error || `Erro ${res.status} ao traduzir a carta.`);
+              }
+              return (data.translatedText as string) || sourceEntry.letterBody;
+            });
 
       const [translatedCVRaw, translatedLetter] = await Promise.all([cvPromise, letterPromise]);
 
@@ -376,18 +523,20 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       const mergedCV: CVData = {
         ...sourceEntry.cv,
         ...translatedCVRaw,
-        templateStyle: sourceEntry.cv.templateStyle,
-        accentColor: sourceEntry.cv.accentColor,
-        fontFamily: sourceEntry.cv.fontFamily,
-        sectionOrder: sourceEntry.cv.sectionOrder,
-        sectionVisibility: sourceEntry.cv.sectionVisibility
+        templateStyle: latestCv.templateStyle,
+        accentColor: latestCv.accentColor,
+        fontFamily: latestCv.fontFamily,
+        sectionOrder: latestCv.sectionOrder,
+        sectionVisibility: latestCv.sectionVisibility
       };
 
       translationCacheRef.current[targetLang] = {
         cv: mergedCV,
-        letterBody: translatedLetter
+        letterBody: translatedLetter,
+        verified: true
       };
       activeContentLangRef.current = targetLang;
+      latestStateRef.current = { cv: mergedCV, letterBody: translatedLetter };
       try {
         localStorage.setItem('curriculo_content_lang_v1', targetLang);
       } catch {
@@ -421,7 +570,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setTranslatingTargetLang(null);
       }
     }
-  }, [cv, letterBody, setLanguage, showError, showInfo, showSuccess, user?.email]);
+  }, [cv, hasActivePlan, isAuthenticated, letterBody, setLanguage, showError, showInfo, showSuccess, user?.email]);
 
   const handleExportWord = async () => {
     const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
@@ -478,7 +627,12 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     }
   };
 
-  const isStudioMode = activeTab !== 'home' && activeTab !== 'profile';
+  const isShowcaseMode =
+    activeTab === 'models-cv' ||
+    activeTab === 'examples-cv' ||
+    activeTab === 'models-cover' ||
+    activeTab === 'examples-cover';
+  const isStudioMode = activeTab !== 'home' && activeTab !== 'profile' && !isShowcaseMode;
   const isAdminViewer = isUserAdmin(user?.email, user?.role);
 
   if (platformSettings.maintenanceMode && !isAdminViewer) {
@@ -604,19 +758,39 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         </div>
       )}
 
-      {/* View Mode Switching: Home Landing vs User Profile vs Studio Dual-Pane */}
+      {/* View Mode Switching: Home Landing vs Public Showcase Gallery vs User Profile vs Studio Dual-Pane */}
       {activeTab === 'home' ? (
         <main className="flex-1 overflow-y-auto">
           <LandingHeroView
-            onStartCreating={() => setActiveTab('raw')}
+            onStartCreating={() =>
+              handleUseShowcaseItem({
+                targetTab: 'raw',
+                label: 'Construtor de Currículo'
+              })
+            }
             onOpenPricing={() => setIsPricingModalOpen(true)}
             onSelectTemplate={(templateId) => {
-              updateCvWithCache((prev) => ({ ...prev, templateStyle: templateId as any }));
-              setActiveTab('editor');
+              const info = getTemplateById(templateId as any);
+              handleUseShowcaseItem({
+                targetTab: 'editor',
+                label: `Modelo ${info.shortName}`,
+                templateStyle: templateId as any,
+                accentColor: info.accentColor
+              });
             }}
             onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
+            onOpenShowcase={(mode) => setActiveTab(mode)}
             currentCV={cv}
             onNavigateTab={(tab) => setActiveTab(tab)}
+          />
+        </main>
+      ) : isShowcaseMode ? (
+        <main className="flex-1 overflow-y-auto bg-slate-50">
+          <ShowcaseGalleryView
+            mode={activeTab as ShowcaseMode}
+            onChangeMode={(mode) => setActiveTab(mode)}
+            onUseSelection={handleUseShowcaseItem}
+            onOpenPricing={() => handleOpenPricingModal()}
           />
         </main>
       ) : activeTab === 'profile' ? (
@@ -866,7 +1040,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         'Geração de realizações e balas orientadas a métricas',
                         'Ajuste de tom formal para padrões corporativos globais',
                         'Remoção automática de chavões e termos fracos',
-                        '5 créditos gratuitos de boas-vindas na sua conta'
+                        'Incluído nos planos Pro ($8/mês) e Executivo VIP ($12/mês)'
                       ]}
                       onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => setIsPricingModalOpen(true)}
@@ -1122,6 +1296,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onClose={() => {
           setIsAuthModalOpen(false);
           setAuthModalPrompt(undefined);
+          if (!isAuthenticated) {
+            setPendingModelTarget(null);
+          }
         }}
         promptMessage={authModalPrompt}
         defaultMode={authDefaultMode}
@@ -1133,6 +1310,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onClose={() => {
           setIsPricingModalOpen(false);
           setPricingPromptMessage(undefined);
+          if (!hasActivePlan) {
+            setPendingModelTarget(null);
+          }
         }}
         promptMessage={pricingPromptMessage}
       />
@@ -1168,6 +1348,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onSelectTemplate={(newStyle) => updateCvWithCache((prev) => ({ ...prev, templateStyle: newStyle }))}
         cv={cv}
         onUpdateCV={updateCvWithCache}
+        onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
         onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
       />
     </div>
