@@ -210,7 +210,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const host = typeof window !== 'undefined' ? window.location.hostname : '';
         setGoogleDomainWarning(host || 'domínio atual');
         setError(
-          'O acesso Google não está autorizado neste URL de pré-visualização. Utilize o acesso imediato por E-mail e Palavra-passe logo abaixo.'
+          'O acesso Google ainda não está autorizado neste domínio. Utilize o acesso imediato por E-mail e Palavra-passe logo abaixo.'
         );
       } else {
         setError(getAuthErrorMessage(err));

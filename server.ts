@@ -9,7 +9,6 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import Stripe from 'stripe';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
-import { createServer as createViteServer } from 'vite';
 
 dotenv.config();
 
@@ -19,7 +18,7 @@ const __dirname = path.dirname(__filename);
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
 
-async function startServer() {
+export function createApiApp() {
   const app = express();
   app.use(express.json({ limit: '25mb' }));
 
@@ -1592,7 +1591,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // -------------------------------------------------------------
   // 8. FULL-STACK HYBRID AUTHENTICATION API (/api/auth/*)
   // -------------------------------------------------------------
-  const AUTH_DATA_DIR = path.resolve(__dirname, '.data');
+  const isVercelEnv = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.VERCEL_URL);
+  const AUTH_DATA_DIR = isVercelEnv
+    ? path.resolve('/tmp', '.data')
+    : path.resolve(__dirname, '.data');
   const AUTH_STORE_FILE = path.join(AUTH_DATA_DIR, 'auth-users.json');
   const AUTH_SECRET_FILE = path.join(AUTH_DATA_DIR, 'auth-secret.key');
 
@@ -2436,10 +2438,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
+  return app;
+}
+
+export async function startServer() {
+  const app = createApiApp();
   const httpServer = http.createServer(app);
 
   // Vite middleware in dev or static files in production
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -2460,4 +2468,6 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   });
 }
 
-startServer();
+if (!process.env.VERCEL && !process.env.VERCEL_ENV) {
+  void startServer();
+}
