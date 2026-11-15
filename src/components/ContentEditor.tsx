@@ -637,7 +637,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       })
                     }
                     className={INPUT_CLASS}
-                    placeholder="Ex: joao.santos@exemplo.com"
+                    placeholder="Ex: joao.silva@empresa.com"
                   />
                 </div>
 

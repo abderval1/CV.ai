@@ -27,6 +27,8 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useToast } from '../context/ToastContext';
 import { SaaSOrder } from '../types/cv';
 import { fetchUserOrders, cancelUserSubscription } from '../services/saasDbService';
+import { getStoredPlatformSettingsSync, submitGdprRequest } from '../services/adminModulesService';
+import { formatCycleLabel, formatCycleWithDiscount, getPixKeyTypeLabel } from '../utils/billingCycles';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -51,8 +53,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [isCanceling, setIsCanceling] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState<boolean>(false);
+  const [isSubmittingGdpr, setIsSubmittingGdpr] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
 
-  const PIX_KEY = 'f4693532-31da-4e95-a589-19bccab0d915';
+  useEffect(() => {
+    const sync = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('admin-config-updated', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  const pixKey = platformSettings.pixKey || 'f4693532-31da-4e95-a589-19bccab0d915';
+  const pixKeyLabel = getPixKeyTypeLabel(platformSettings.pixKeyType);
 
   const loadOrders = useCallback(async () => {
     if (!user) return;
@@ -84,9 +99,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   };
 
   const handleCopyPix = () => {
-    navigator.clipboard.writeText(PIX_KEY);
+    navigator.clipboard.writeText(pixKey);
     setCopiedPix(true);
-    showSuccess('Chave Pix Copiada!', 'Chave Pix oficial pronta para transferência.');
+    showSuccess('Chave Pix Copiada!', `Chave Pix (${pixKeyLabel}) pronta para transferência.`);
     setTimeout(() => setCopiedPix(false), 2500);
   };
 
@@ -133,13 +148,32 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       const data = await res.json();
       if (data.url) {
         window.open(data.url, '_blank');
-        showInfo('Portal Stripe', 'A redirecionar para a gestão de cartões e faturas.');
+        showInfo('Portal de Faturação', 'A redirecionar para a gestão de cartões e faturas.');
       } else {
         showInfo('Gestão de Faturação', 'Subscrição gerida via faturação direta na plataforma.');
       }
-    } catch (e) {
-      console.warn('Portal Stripe indisponível:', e);
+    } catch {
       showInfo('Gestão de Faturação', 'Subscrição gerida via faturação direta na plataforma.');
+    }
+  };
+
+  const handleSubmitGdpr = async (type: 'export_data' | 'delete_account') => {
+    setIsSubmittingGdpr(true);
+    try {
+      await submitGdprRequest(
+        type,
+        type === 'export_data'
+          ? 'Solicitação de portabilidade de dados enviada pelo titular via Área do Utilizador.'
+          : 'Solicitação de eliminação definitiva de conta e histórico conforme Art. 17 RGPD.'
+      );
+      showSuccess(
+        type === 'export_data' ? 'Pedido de Exportação Registado' : 'Pedido de Eliminação Registado',
+        'A nossa equipa de privacidade recebeu a sua solicitação e processará em conformidade com o RGPD.'
+      );
+    } catch (err: any) {
+      showError('Erro RGPD', err?.message || 'Não foi possível submeter o pedido neste momento.');
+    } finally {
+      setIsSubmittingGdpr(false);
     }
   };
 
@@ -218,7 +252,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             }`}
           >
             <Receipt className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Assinatura & Histórico Stripe</span>
+            <span>Assinatura &amp; Faturas</span>
             {isSubscriptionActive && (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             )}
@@ -284,10 +318,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <div className="grid grid-cols-2 gap-3 text-xs pt-1">
                   <div>
                     <p className="text-slate-400">Ciclo de Cobrança:</p>
-                    <p className="font-semibold text-slate-800 capitalize">
-                      {user.billingCycle === 'yearly'
-                        ? 'Anual (Poupe até 31%)'
-                        : 'Mensal'}
+                    <p className="font-semibold text-slate-800">
+                      {formatCycleWithDiscount(user.billingCycle)}
                     </p>
                   </div>
                   <div>
@@ -302,14 +334,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <div className="pt-2 border-t border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2 text-slate-600">
                     <span className="flex items-center gap-1.5">
                       <CreditCard className="w-3.5 h-3.5 text-blue-600" />
-                      ID Stripe:{' '}
-                      <span className="font-mono text-[11px] text-slate-500">
-                        {user.stripeCustomerId.substring(0, 14)}...
-                      </span>
+                      Método de Renovação: Cartão Recorrente
                     </span>
                     <span className="text-emerald-700 font-semibold flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      Vinculado à Stripe
+                      Pagamento Configurado
                     </span>
                   </div>
                 )}
@@ -377,7 +406,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     </div>
                     <div>
                       <p className="font-semibold text-slate-800">Histórico de Transações</p>
-                      <p className="text-[11px] text-slate-500">Faturas e recibos Stripe/Pix</p>
+                      <p className="text-[11px] text-slate-500">Faturas e recibos de pagamento</p>
                     </div>
                   </button>
                 </div>
@@ -388,7 +417,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-teal-950 flex items-center gap-1.5">
                     <QrCode className="w-3.5 h-3.5 text-teal-700" />
-                    Chave Pix Oficial para Transferências
+                    Chave Pix Oficial ({pixKeyLabel})
                   </span>
                   <button
                     type="button"
@@ -400,7 +429,36 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   </button>
                 </div>
                 <div className="p-2 bg-white rounded-xl border border-teal-200 font-mono text-[11px] text-slate-800 select-all break-all shadow-2xs">
-                  {PIX_KEY}
+                  {pixKey}
+                </div>
+              </div>
+
+              {/* RGPD Privacy & Data Rights */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <ShieldCheck className="w-4 h-4 text-slate-700" />
+                  <span>Privacidade &amp; Direitos RGPD / LGPD</span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Pode solicitar a portabilidade dos seus dados ou a eliminação definitiva da sua conta a qualquer momento.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={isSubmittingGdpr}
+                    onClick={() => handleSubmitGdpr('export_data')}
+                    className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-800 font-semibold rounded-lg text-[11px] transition-colors disabled:opacity-50"
+                  >
+                    Solicitar Exportação RGPD
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingGdpr}
+                    onClick={() => handleSubmitGdpr('delete_account')}
+                    className="px-3 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 font-semibold rounded-lg text-[11px] transition-colors disabled:opacity-50"
+                  >
+                    Solicitar Eliminação RGPD
+                  </button>
                 </div>
               </div>
             </div>
@@ -413,10 +471,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                       <CreditCard className="w-4 h-4 text-indigo-600" />
-                      <span>Status da Assinatura Stripe</span>
+                      <span>Status da Assinatura</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Sincronizado diretamente com a base de dados do Firestore e infraestrutura Stripe.
+                      Consulte os detalhes da sua subscrição, próxima renovação e histórico de faturas.
                     </p>
                   </div>
 
@@ -453,7 +511,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         : 'Plano Gratuito'}
                     </span>
                     <span className="text-[11px] text-slate-500 block">
-                      Ciclo: <strong className="text-slate-700 capitalize">{user.billingCycle || 'Mensal'}</strong>
+                      Ciclo: <strong className="text-slate-700">{formatCycleLabel(user.billingCycle)}</strong>
                     </span>
                   </div>
 
@@ -475,60 +533,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   </div>
                 </div>
 
-                {/* Stripe Technical Identifiers */}
-                {(user.stripeCustomerId || user.stripeSubscriptionId) && (
-                  <div className="p-3 bg-white/80 rounded-xl border border-slate-200 text-xs space-y-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                      Identificadores Técnicos Stripe
+                {user.stripeCustomerId && (
+                  <div className="p-3 bg-white/80 rounded-xl border border-slate-200 text-xs flex items-center justify-between text-slate-600">
+                    <span>Método de Renovação: <strong className="text-slate-800">Cartão Recorrente Ativo</strong></span>
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      Verificado
                     </span>
-
-                    <div className="space-y-1.5 font-mono text-[11px]">
-                      {user.stripeCustomerId && (
-                        <div className="flex items-center justify-between gap-2 p-1.5 bg-slate-50 rounded-lg">
-                          <span className="text-slate-500 font-sans text-xs">Cliente (Customer):</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-800 font-semibold">{user.stripeCustomerId}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(user.stripeCustomerId!, 'ID do Cliente')}
-                              className="text-slate-400 hover:text-slate-700 p-0.5"
-                              title="Copiar ID"
-                            >
-                              {copiedId === 'ID do Cliente' ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {user.stripeSubscriptionId && (
-                        <div className="flex items-center justify-between gap-2 p-1.5 bg-slate-50 rounded-lg">
-                          <span className="text-slate-500 font-sans text-xs">Subscrição (Subscription):</span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-800 font-semibold">{user.stripeSubscriptionId}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(user.stripeSubscriptionId!, 'ID da Subscrição')}
-                              className="text-slate-400 hover:text-slate-700 p-0.5"
-                              title="Copiar ID"
-                            >
-                              {copiedId === 'ID da Subscrição' ? (
-                                <Check className="w-3 h-3 text-emerald-600" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 )}
 
-                {/* Action Buttons: Stripe Customer Portal & Cancel Subscription */}
+                {/* Action Buttons: Billing Portal & Cancel Subscription */}
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {user.stripeCustomerId && (
                     <button
@@ -537,7 +552,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
                     >
                       <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Abrir Portal do Cliente Stripe</span>
+                      <span>Gerir Cartão &amp; Faturas</span>
                     </button>
                   )}
 
@@ -579,10 +594,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                       <Receipt className="w-4 h-4 text-slate-700" />
-                      <span>Histórico de Transações & Faturas (Firestore)</span>
+                      <span>Histórico de Transações &amp; Faturas</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Registos fiscais de pagamentos aprovados via Cartão (Stripe) e Pix.
+                      Registos de pagamentos efetuados via Cartão e Pix.
                     </p>
                   </div>
 
@@ -591,7 +606,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     onClick={loadOrders}
                     disabled={isLoadingOrders}
                     className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200"
-                    title="Recarregar transações do Firestore"
+                    title="Recarregar transações"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLoadingOrders ? 'animate-spin' : ''}`} />
                   </button>
@@ -601,7 +616,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {isLoadingOrders ? (
                   <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                     <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 mx-auto" />
-                    <p className="text-xs text-slate-500 font-medium">A consultar faturas no Firestore...</p>
+                    <p className="text-xs text-slate-500 font-medium">A carregar faturas...</p>
                   </div>
                 ) : orders.length === 0 ? (
                   <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
@@ -611,8 +626,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     <div>
                       <h4 className="text-xs font-bold text-slate-800">Nenhuma transação registada</h4>
                       <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-0.5">
-                        Assim que concluir um pagamento via Stripe ou Pix, a fatura oficial com o número do pedido
-                        será gravada e ficará disponível para consulta e download aqui.
+                        Assim que concluir um pagamento via Cartão ou Pix, a fatura oficial com o número do pedido
+                        ficará disponível para consulta aqui.
                       </p>
                     </div>
                     <button
@@ -706,8 +721,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                               <strong className="text-slate-800 capitalize">
                                 {order.plan === 'executive' ? 'Executivo VIP' : 'Profissional'}
                               </strong>{' '}
-                              · {order.billingCycle === 'yearly' ? 'Anual' : 'Mensal'} ·{' '}
-                              <span className="capitalize">{order.paymentMethod}</span>
+                              · {formatCycleLabel(order.billingCycle)} ·{' '}
+                              <span>{isPix ? 'Pix' : 'Cartão'}</span>
                             </span>
 
                             {order.receiptUrl && (
@@ -734,7 +749,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
         {/* Modal Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs">
-          <span className="text-slate-400 font-mono">UID: {user.id.substring(0, 14)}...</span>
+          <span className="text-slate-400">Sessão protegida</span>
           <button
             type="button"
             onClick={() => {

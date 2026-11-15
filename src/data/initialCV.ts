@@ -399,6 +399,8 @@ export const SAAS_PLANS: PricingPlan[] = [
     priceMonthly: '$8 / Mês',
     priceYearly: '$72 / Ano (Poupe 25%)',
     priceMonthlyValue: 8,
+    priceQuarterlyValue: 21.6,
+    priceSemiannualValue: 39.36,
     priceYearlyValue: 72,
     currency: 'USD',
     creditsMonthly: 9999,
@@ -410,7 +412,7 @@ export const SAAS_PLANS: PricingPlan[] = [
       'Radar ATS 95%+ com Análise Semântica de Vagas',
       'Cartas de Apresentação Estratégicas com IA',
       'Tradução Integral para 5 Idiomas (PT, EN, ES, FR, DE)',
-      'Sincronização Cloud Firestore em Tempo Real'
+      'Sincronização na Nuvem em Tempo Real'
     ],
     isPopular: true,
     ctaText: 'Subscrever Plano Pro'
@@ -422,6 +424,8 @@ export const SAAS_PLANS: PricingPlan[] = [
     priceMonthly: '$12 / Mês',
     priceYearly: '$108 / Ano (Poupe 25%)',
     priceMonthlyValue: 12,
+    priceQuarterlyValue: 32.4,
+    priceSemiannualValue: 59.04,
     priceYearlyValue: 108,
     currency: 'USD',
     creditsMonthly: 9999,

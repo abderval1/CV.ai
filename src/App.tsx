@@ -20,6 +20,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { UserProfileView } from './components/UserProfileView';
 import { PlanGateGuard } from './components/PlanGateGuard';
 import { InterviewSimulator } from './components/InterviewSimulator';
+import { JobMatchesPanel } from './components/JobMatchesPanel';
 import { SystemNotificationBanner } from './components/SystemNotificationBanner';
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
@@ -43,7 +44,7 @@ import {
   logGenerationError,
   emitAdminConfigUpdated
 } from './services/adminModulesService';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut, Wrench } from 'lucide-react';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating } = useAuth();
@@ -151,6 +152,12 @@ export default function App() {
 
     const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
     window.addEventListener('admin-config-updated', syncHandler);
+
+    const qp = new URLSearchParams(window.location.search);
+    if (qp.get('stripe_status') === 'success' && qp.get('session_id')) {
+      setIsPricingModalOpen(true);
+    }
+
     return () => {
       mounted = false;
       window.removeEventListener('admin-config-updated', syncHandler);
@@ -359,7 +366,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       if (!hasActivePlan) {
         setPendingModelTarget({ targetTab: payload.targetTab, label: payload.label });
         handleOpenPricingModal(
-          `A edição e download de modelos e exemplos requer subscrição ativa. Escolha o plano Pro ($8/mês) ou Executivo VIP ($12/mês) via Cartão (Stripe) ou Pix para abrir o ${payload.label}.`
+          `A edição e download de modelos e exemplos requer subscrição ativa. Escolha o plano Pro ($8/mês) ou Executivo VIP ($12/mês) via Cartão ou Pix para abrir o ${payload.label}.`
         );
         return;
       }
@@ -891,6 +898,19 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
                   <button
                     type="button"
+                    onClick={() => setActiveTab('jobs')}
+                    className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                      activeTab === 'jobs'
+                        ? 'bg-white text-slate-950 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-950'
+                    }`}
+                  >
+                    <Briefcase className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Vagas</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setActiveTab('ai')}
                     className={`flex-1 sm:flex-initial px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
                       activeTab === 'ai'
@@ -1028,6 +1048,16 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAiTailor={() => setActiveTab('ai')}
                     />
                   )
+                )}
+
+                {activeTab === 'jobs' && (
+                  <JobMatchesPanel
+                    cv={cv}
+                    onApplyJobToTailor={(desc, tab) => {
+                      setJobDescription(desc);
+                      setActiveTab(tab);
+                    }}
+                  />
                 )}
 
                 {activeTab === 'ai' && (

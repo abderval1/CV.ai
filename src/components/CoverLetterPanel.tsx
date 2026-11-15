@@ -119,7 +119,7 @@ Sincerely,
 
 ${candName || 'Seu Nome Completo'}
 ${candTitle || 'Profissional Executivo'}
-${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
     }
 
     if (lang === 'fr') {
@@ -141,7 +141,7 @@ Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distin
 
 ${candName || 'Seu Nome Completo'}
 ${candTitle || 'Spécialiste Exécutif'}
-${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
     }
 
     if (lang === 'es') {
@@ -163,7 +163,7 @@ Agradeciendo de antemano su atención, les saluda atentamente,
 
 ${candName || 'Seu Nome Completo'}
 ${candTitle || 'Profesional Ejecutivo'}
-${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
     }
 
     if (lang === 'de') {
@@ -185,7 +185,7 @@ Mit freundlichen Grüßen
 
 ${candName || 'Ihr Name'}
 ${candTitle || 'Führungskraft'}
-${candPhone || '+49 170 0000000'} | ${candEmail || 'kontakt@beispiel.de'}`;
+${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
     }
 
     // Default: Portuguese
@@ -207,7 +207,7 @@ Agradecendo desde já a vossa atenção, apresento os meus melhores cumprimentos
 
 ${candName || 'Seu Nome Completo'}
 ${candTitle || 'Especialista Executivo'}
-${candPhone || '+244 923 000 000'} | ${candEmail || 'seu.email@exemplo.com'}`;
+${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
   };
 
   // Generate Letter with AI

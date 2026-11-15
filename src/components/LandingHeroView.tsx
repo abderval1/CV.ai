@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Sparkles,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Check,
-  Mail,
+  FileText,
   Activity,
-  Target
+  Target,
+  SlidersHorizontal
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { useCurrency } from '../context/CurrencyContext';
@@ -137,8 +137,8 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
   const faqs = [
     {
-      q: 'Como funciona o pagamento via Stripe e Pix?',
-      a: 'Processamos cartões internacionais via Stripe com renovação transparente, além de Pix Instantâneo com QR Code e ativação imediata.'
+      q: 'Como funciona o pagamento via Cartão e Pix?',
+      a: 'Aceitamos cartões de crédito e débito internacionais com renovação transparente, além de Pix em Reais com QR Code e chave oficial.'
     },
     {
       q: 'O currículo passa mesmo pelos robôs ATS (Workday, Taleo, Greenhouse)?',
@@ -154,23 +154,23 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     },
     {
       q: 'Posso cancelar ou mudar de plano quando quiser?',
-      a: 'Sim, com 1 clique na sua Área do Usuário ou Portal Stripe, sem multas ou fidelização.'
+      a: 'Sim, com 1 clique na sua Área do Utilizador, sem multas ou fidelização.'
     }
   ];
 
   return (
-    <div className="w-full max-w-full bg-slate-900 text-white min-h-full overflow-x-hidden selection:bg-amber-400 selection:text-slate-950">
+    <div className="w-full max-w-full bg-[#0B0F17] text-white min-h-full overflow-x-hidden selection:bg-amber-400 selection:text-slate-950">
       {/* 1. UNIFIED EDITORIAL HERO & METRICS STRIP */}
-      <section className="relative pt-12 pb-10 lg:pt-18 lg:pb-12 border-b border-slate-800 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+      <section className="relative pt-12 pb-10 lg:pt-20 lg:pb-14 border-b border-slate-800/80 bg-[#0B0F17]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto space-y-5">
-            <p className="text-xs font-semibold tracking-wider uppercase text-amber-400">
+            <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-amber-400">
               {t('hero.kicker', 'Currículos ATS · Cartas de Apresentação · 5 Idiomas')}
             </p>
 
             <h1
-              className="font-extrabold tracking-tight text-white leading-[1.12]"
-              style={{ fontSize: 'clamp(2rem, 4.2vw, 3.5rem)', textWrap: 'balance' }}
+              className="font-bold tracking-[-0.03em] text-slate-50 leading-[1.1]"
+              style={{ fontSize: 'clamp(2rem, 4.2vw, 3.35rem)', textWrap: 'balance' }}
             >
               {t('hero.title', 'Passe pelos filtros das maiores empresas do mundo e receba 3x mais entrevistas.')}
             </h1>
@@ -187,7 +187,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <button
                 type="button"
                 onClick={onStartCreating}
-                className="w-full sm:w-auto px-7 py-3 text-sm font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl transition-colors flex items-center justify-center gap-2 group whitespace-nowrap"
+                className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation"
               >
                 <span>{t('hero.ctaStart', 'Criar Meu Currículo Profissional')}</span>
                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -196,9 +196,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <button
                 type="button"
                 onClick={() => onOpenShowcase('models-cv')}
-                className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-white bg-slate-800/80 hover:bg-slate-800 border border-slate-700 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                className="w-full sm:w-auto min-h-[46px] px-6 py-3 text-sm font-medium text-slate-100 bg-transparent hover:bg-slate-800/70 border border-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap touch-manipulation"
               >
-                <Mail className="w-4 h-4 text-amber-400" />
+                <FileText className="w-4 h-4 text-slate-400" />
                 <span>Ver Modelos &amp; Exemplos Grátis</span>
               </button>
             </div>
@@ -222,26 +222,26 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </div>
 
             <p className="pt-1 text-xs text-slate-400">
-              Visualização gratuita · Planos a partir de {formatPrice(proPlan?.priceMonthlyValue ?? 8)}/mês · Cartão (Stripe) &amp; Pix
+              Visualização gratuita · Planos a partir de {formatPrice(proPlan?.priceMonthlyValue ?? 8)}/mês · Cartão &amp; Pix
             </p>
           </div>
 
           {/* Integrated 4-Metric Hairline Strip */}
           <div className="mt-12 pt-8 border-t border-slate-800/80 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
             <div>
-              <p className="text-2xl sm:text-3xl font-extrabold text-white font-mono tabular-nums">98.7%</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">98.7%</p>
               <p className="text-xs text-slate-400 mt-1">Aprovação em triagem ATS</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-extrabold text-amber-400 font-mono tabular-nums">+48.000</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">+48.000</p>
               <p className="text-xs text-slate-400 mt-1">Profissionais contratados</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-extrabold text-white font-mono tabular-nums">14 Dias</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">14 Dias</p>
               <p className="text-xs text-slate-400 mt-1">Tempo médio até entrevista</p>
             </div>
             <div>
-              <p className="text-2xl sm:text-3xl font-extrabold text-white font-mono tabular-nums">5 Idiomas</p>
+              <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">5 Idiomas</p>
               <p className="text-xs text-slate-400 mt-1">Tradução total com 1 clique</p>
             </div>
           </div>
@@ -249,12 +249,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       </section>
 
       {/* 2. CENTRAL INTERATIVA ATS (Grouped Health Diagnostics + Job Match Simulator) */}
-      <section className="py-14 lg:py-16 bg-slate-950/60 border-b border-slate-800">
+      <section className="py-14 lg:py-16 bg-[#0E131D] border-b border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                Central de Inteligência ATS
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
+                Auditoria &amp; Diagnóstico ATS
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
                 Auditoria &amp; Simulador em Tempo Real
@@ -298,7 +298,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               onOpenPricing={onOpenPricing}
             />
           ) : (
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-7 space-y-6">
+            <div className="bg-[#0B0F17] border border-slate-800 rounded-xl p-6 sm:p-7 space-y-6">
               {/* Role Preset Selector */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800 text-xs">
                 <span className="text-slate-400 font-medium">Selecione uma vaga de referência:</span>
@@ -306,7 +306,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleResetAtsSim('coo')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
                       atsPreset === 'coo'
                         ? 'bg-amber-400 text-slate-950'
                         : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
@@ -317,7 +317,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleResetAtsSim('tech')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
                       atsPreset === 'tech'
                         ? 'bg-amber-400 text-slate-950'
                         : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
@@ -328,7 +328,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleResetAtsSim('cfo')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
                       atsPreset === 'cfo'
                         ? 'bg-amber-400 text-slate-950'
                         : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
@@ -346,7 +346,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                     Compatibilidade ATS
                   </p>
                   <p
-                    className={`text-5xl font-black font-mono tabular-nums transition-colors ${
+                    className={`text-5xl font-bold font-mono tabular-nums tracking-tight transition-colors ${
                       atsScoreSimulated >= 90 ? 'text-emerald-400' : 'text-amber-400'
                     }`}
                   >
@@ -381,7 +381,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="p-3.5 bg-slate-900/70 rounded-xl border border-slate-800 text-xs space-y-1">
+                  <div className="p-3.5 bg-slate-900/70 rounded-lg border border-slate-800 text-xs space-y-1">
                     <span className="font-semibold text-slate-300">
                       {hasAppliedKeywords ? 'Trecho Otimizado (Fórmula Google XYZ):' : 'Descrição Original Genérica:'}
                     </span>
@@ -397,16 +397,16 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       <button
                         type="button"
                         onClick={handleApplyAtsKeywords}
-                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
+                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <Check className="w-3.5 h-3.5" />
                         <span>Aplicar Fórmula Google XYZ (Elevar para 98%)</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={onStartCreating}
-                        className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
+                        className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
                       >
                         <span>Aplicar no Meu Currículo</span>
                         <ArrowRight className="w-3.5 h-3.5" />
@@ -421,11 +421,11 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       </section>
 
       {/* 3. MODELOS INTERNACIONAIS (Hairline Bento Grid — Clean & Scannable) */}
-      <section className="py-14 lg:py-16 bg-slate-900 border-b border-slate-800">
+      <section className="py-14 lg:py-16 bg-[#0B0F17] border-b border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
                 Padrões Internacionais
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">
@@ -437,7 +437,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 p-1 bg-slate-950 border border-slate-800 rounded-lg text-xs">
+              <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-lg text-xs">
                 <button
                   type="button"
                   onClick={() => setTemplateFilter('all')}
@@ -474,11 +474,11 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
           </div>
 
           {/* Visual A4 Bento Grid Container */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-800 border border-slate-800 rounded-2xl overflow-hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-800 border border-slate-800 rounded-xl overflow-hidden">
             {displayedTemplates.map((tmpl) => (
               <div
                 key={tmpl.id}
-                className="bg-slate-950 p-5 flex flex-col justify-between hover:bg-slate-900/90 transition-colors group"
+                className="bg-[#0B0F17] p-5 flex flex-col justify-between hover:bg-slate-900/90 transition-colors group"
               >
                 <div className="space-y-3">
                   {/* Live Miniature A4 Photo Preview */}
@@ -556,8 +556,8 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               onClick={onOpenTemplateAdvisor}
               className="text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1.5"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Abrir Consultor IA de Modelos</span>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Abrir Consultor de Modelos</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -565,37 +565,37 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       </section>
 
       {/* 4. PLANOS & DÚVIDAS FREQUENTES (Unified Conversion & Trust Section) */}
-      <section className="py-14 lg:py-20 bg-slate-950/70">
+      <section className="py-14 lg:py-20 bg-[#0E131D]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
           {/* Pricing Block */}
           <div className="space-y-8">
             <div className="text-center max-w-xl mx-auto space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
                 Preços Transparentes
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
                 Escolha o plano ideal para a sua candidatura
               </h2>
               <p className="text-sm text-slate-400">
-                Acesso completo à edição, IA, tradução em 5 idiomas e exportação Word/PDF sem marcas de água.
+                Acesso completo à edição, tradução em 5 idiomas e exportação Word/PDF. Ciclos Mensal, Trimestral (-10%), Semestral (-18%) e Anual (-25%).
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
               {/* Pro Plan */}
-              <div className="bg-slate-900/90 p-6 sm:p-7 rounded-2xl border border-amber-400/60 flex flex-col justify-between">
+              <div className="bg-[#0B0F17] p-6 sm:p-7 rounded-xl border border-amber-400/50 flex flex-col justify-between">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
                       {proPlan?.name || 'Profissional Pro'}
                     </span>
-                    <span className="text-[11px] font-semibold text-amber-300">
+                    <span className="text-[11px] font-medium text-amber-300">
                       {proPlan?.badgeText || 'Recomendado'}
                     </span>
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
+                    <p className="text-3xl font-bold text-white tracking-tight tabular-nums">
                       {formatPrice(proPlan?.priceMonthlyValue ?? 8)}{' '}
                       <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
@@ -612,7 +612,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       'Currículos, versões e salvamento ilimitado na nuvem',
                       "Exportação 1:1 em Word (.docx) e PDF A4 sem marca d'água",
                       'Tradução integral do CV e Carta para 5 idiomas',
-                      'Radar ATS & Otimizador IA (Google XYZ)'
+                      'Radar ATS & Otimizador de Impacto (XYZ)'
                     ])
                       .slice(0, 5)
                       .map((feat, i) => (
@@ -627,7 +627,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenPricing}
-                  className="mt-6 w-full py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                  className="mt-6 w-full min-h-[44px] py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
                 >
                   <span>Subscrever {proPlan?.name || 'Profissional'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -635,24 +635,24 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </div>
 
               {/* Executive VIP Plan */}
-              <div className="bg-slate-900/60 p-6 sm:p-7 rounded-2xl border border-slate-800 flex flex-col justify-between">
+              <div className="bg-[#0B0F17] p-6 sm:p-7 rounded-xl border border-slate-800 flex flex-col justify-between">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-100">
                       {execPlan?.name || 'Executivo VIP'}
                     </span>
                     <span className="text-[11px] text-slate-400">{execPlan?.badgeText || 'C-Level & Global'}</span>
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-3xl font-extrabold text-white font-mono tabular-nums">
+                    <p className="text-3xl font-bold text-white tracking-tight tabular-nums">
                       {formatPrice(execPlan?.priceMonthlyValue ?? 12)}{' '}
                       <span className="text-xs font-normal text-slate-400">/ Mês</span>
                     </p>
                     <p className="text-[11px] text-slate-400 font-mono">
                       Equivalente: ${execPlan?.priceMonthlyValue ?? 12} USD · R$ {convertFromUSD(execPlan?.priceMonthlyValue ?? 12, 'BRL').toFixed(2).replace('.', ',')} BRL
                     </p>
-                    <p className="text-xs text-purple-400">
+                    <p className="text-xs text-slate-300">
                       Ou {formatPrice(execPlan?.priceYearlyValue ?? 108)} / Ano (Poupe 25%)
                     </p>
                   </div>
@@ -677,7 +677,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <button
                   type="button"
                   onClick={onOpenPricing}
-                  className="mt-6 w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                  className="mt-6 w-full min-h-[44px] py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
                 >
                   <span>Subscrever {execPlan?.name || 'Executivo VIP'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -690,10 +690,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
           <div className="space-y-5 pt-4 border-t border-slate-800/80">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
               <h3 className="text-lg font-bold text-white tracking-tight">Perguntas Frequentes</h3>
-              <span className="text-xs text-slate-500">Pagamentos seguros via Stripe &amp; Pix</span>
+              <span className="text-xs text-slate-500">Pagamentos seguros via Cartão &amp; Pix</span>
             </div>
 
-            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl divide-y divide-slate-800 overflow-hidden">
+            <div className="bg-[#0B0F17] border border-slate-800 rounded-xl divide-y divide-slate-800 overflow-hidden">
               {faqs.map((faq, idx) => (
                 <div key={idx}>
                   <button
@@ -721,13 +721,13 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       </section>
 
       {/* Quiet Footer */}
-      <footer className="border-t border-slate-800/80 py-7 text-center text-xs text-slate-500 bg-slate-950">
+      <footer className="border-t border-slate-800/80 py-7 text-center text-xs text-slate-500 bg-[#0B0F17]">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© {new Date().getFullYear()} Currículo Estratégico. Todos os direitos reservados.</p>
           <div className="flex items-center gap-3 text-slate-400">
             <span>Privacidade &amp; Dados</span>
             <span aria-hidden="true">·</span>
-            <span>Segurança Stripe &amp; Pix</span>
+            <span>Pagamentos via Cartão &amp; Pix</span>
             <span aria-hidden="true">·</span>
             <span>Termos de Serviço</span>
           </div>

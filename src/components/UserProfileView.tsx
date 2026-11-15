@@ -30,6 +30,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { CVData, SubscriptionPlan, SavedResume } from '../types/cv';
 import { generateWordDocument, triggerDownload } from '../utils/docxExport';
 import { OFFICIAL_PIX_KEY } from './PricingModal';
+import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
+import { formatCycleLabel, formatCycleWithDiscount, getPixKeyTypeLabel } from '../utils/billingCycles';
 
 interface UserProfileViewProps {
   onNavigateTab: (tab: 'home' | 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview') => void;
@@ -78,6 +80,20 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   // New Resume Save Form State
   const [newResumeTitle, setNewResumeTitle] = useState<string>('');
   const [isSavingCurrent, setIsSavingCurrent] = useState<boolean>(false);
+  const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  React.useEffect(() => {
+    const sync = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    window.addEventListener('admin-config-updated', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('admin-config-updated', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+
+  const livePixKey = platformSettings.pixKey || OFFICIAL_PIX_KEY;
+  const livePixKeyLabel = getPixKeyTypeLabel(platformSettings.pixKeyType);
 
   if (!isAuthenticated || !user) {
     return (
@@ -126,7 +142,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   };
 
   const handleCopyPix = () => {
-    navigator.clipboard.writeText(OFFICIAL_PIX_KEY);
+    navigator.clipboard.writeText(livePixKey);
     setCopiedPix(true);
     setTimeout(() => setCopiedPix(false), 2500);
   };
@@ -274,7 +290,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
               <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>Plano Contratado: <strong className="text-white capitalize">{user.plan === 'executive' ? 'Executivo VIP' : user.plan === 'pro' ? 'Profissional Pro' : 'Gratuito'}</strong></span>
               <span aria-hidden="true" className="text-slate-600">·</span>
-              <span className="text-slate-400">Ciclo {user.billingCycle === 'yearly' ? 'Anual' : 'Mensal'}</span>
+              <span className="text-slate-400">Ciclo {formatCycleLabel(user.billingCycle)}</span>
             </div>
 
             <button
@@ -450,10 +466,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                   <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                     Ciclo de Cobrança
                   </span>
-                  <span className="text-sm font-black text-slate-900 mt-1 block capitalize">
-                    {user.billingCycle === 'yearly'
-                      ? 'Anual (Poupe 31%)'
-                      : 'Mensal'}
+                  <span className="text-sm font-black text-slate-900 mt-1 block">
+                    {formatCycleWithDiscount(user.billingCycle)}
                   </span>
                   <span className="text-[11px] text-slate-500 mt-1 block">
                     {user.subscriptionExpiresAt
@@ -590,10 +604,10 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                 </button>
               </div>
               <p className="text-[11px] text-amber-900/80 leading-relaxed">
-                Ativação imediata sem anuidade ou cartão. Chave oficial cadastrada:
+                Ativação após confirmação. Chave ({livePixKeyLabel}) oficial cadastrada:
               </p>
               <div className="p-2.5 bg-white rounded-xl border border-amber-200 font-mono text-[11px] text-slate-800 break-all select-all">
-                {OFFICIAL_PIX_KEY}
+                {livePixKey}
               </div>
             </div>
           </div>

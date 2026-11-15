@@ -8,7 +8,6 @@ import {
   getDoc,
   query,
   where,
-  orderBy,
   limit
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -16,13 +15,12 @@ import {
   User,
   SaaSOrder,
   SaaSCoupon,
-  PricingPlan,
   SubscriptionPlan,
   OrderStatus,
   UserRole,
-  UserStatus
+  BillingCycle
 } from '../types/cv';
-import { SAAS_PLANS } from '../data/initialCV';
+import { getCycleDurationDays, getCyclePriceUSD, normalizeBillingCycle } from '../utils/billingCycles';
 
 export const ADMIN_EMAILS = [
   'gugurai923@gmail.com',
@@ -36,62 +34,156 @@ export function isUserAdmin(email?: string | null, role?: UserRole): boolean {
   return ADMIN_EMAILS.some((adm) => adm.toLowerCase() === email.trim().toLowerCase());
 }
 
+function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
+  } catch {
+    return null;
+  }
+}
+
+async function apiRequest<T = any>(url: string, options: RequestInit = {}): Promise<{ ok: boolean; status: number; data: T }> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {})
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const res = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers
+  });
+  const data = (await res.json().catch(() => ({}))) as T;
+  return { ok: res.ok, status: res.status, data };
+}
+
+function normalizeUserRecord(id: string, data: any): User {
+  return {
+    id,
+    name: data.name || 'Sem Nome',
+    email: data.email || '',
+    role: data.role || (isUserAdmin(data.email) ? 'admin' : 'user'),
+    status: data.status || 'active',
+    plan: (data.plan as SubscriptionPlan) || 'free',
+    avatarUrl: data.avatarUrl,
+    phone: data.phone || '',
+    company: data.company || '',
+    targetRole: data.targetRole || '',
+    creditsRemaining: data.creditsRemaining ?? 5,
+    creditsUsed: data.creditsUsed ?? 0,
+    totalCvGenerated: data.totalCvGenerated ?? 0,
+    billingCycle: data.billingCycle || 'monthly',
+    subscriptionExpiresAt: data.subscriptionExpiresAt,
+    stripeCustomerId: data.stripeCustomerId,
+    stripeSubscriptionId: data.stripeSubscriptionId,
+    stripeStatus: data.stripeStatus,
+    createdAt: data.createdAt || new Date().toISOString(),
+    notes: data.notes || ''
+  };
+}
+
 // -------------------------------------------------------------
 // USERS MANAGEMENT
 // -------------------------------------------------------------
 export async function fetchAllUsers(): Promise<User[]> {
-  try {
-    const usersCol = collection(db, 'users');
-    const snapshot = await getDocs(usersCol);
-    if (snapshot.empty) return [];
+  const usersByEmail = new Map<string, User>();
+  const usersById = new Map<string, User>();
 
-    return snapshot.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        name: data.name || 'Sem Nome',
-        email: data.email || '',
-        role: data.role || (isUserAdmin(data.email) ? 'admin' : 'user'),
-        status: data.status || 'active',
-        plan: (data.plan as SubscriptionPlan) || 'free',
-        avatarUrl: data.avatarUrl,
-        phone: data.phone || '',
-        creditsRemaining: data.creditsRemaining ?? 5,
-        creditsUsed: data.creditsUsed ?? 0,
-        totalCvGenerated: data.totalCvGenerated ?? 1,
-        billingCycle: data.billingCycle || 'monthly',
-        subscriptionExpiresAt: data.subscriptionExpiresAt,
-        createdAt: data.createdAt || new Date().toISOString(),
-        notes: data.notes || ''
-      };
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'users');
-    return [];
+  try {
+    const { ok, data } = await apiRequest<{ users?: any[] }>('/api/admin/overview', { method: 'GET' });
+    if (ok && Array.isArray(data?.users)) {
+      for (const u of data.users) {
+        if (!u?.id) continue;
+        const normalized = normalizeUserRecord(u.id, u);
+        usersById.set(normalized.id, normalized);
+        if (normalized.email) usersByEmail.set(normalized.email.toLowerCase(), normalized);
+      }
+    }
+  } catch (e) {
+    console.warn('Aviso ao consultar utilizadores no servidor:', e);
   }
+
+  if (auth.currentUser) {
+    try {
+      const usersCol = collection(db, 'users');
+      const snapshot = await getDocs(usersCol);
+      snapshot.docs.forEach((d) => {
+        const normalized = normalizeUserRecord(d.id, d.data());
+        const emailKey = normalized.email.toLowerCase();
+        const existing = usersById.get(normalized.id) || (emailKey ? usersByEmail.get(emailKey) : undefined);
+        const merged = existing
+          ? {
+              ...existing,
+              ...normalized,
+              totalCvGenerated: Math.max(existing.totalCvGenerated || 0, normalized.totalCvGenerated || 0),
+              notes: normalized.notes || existing.notes
+            }
+          : normalized;
+        usersById.set(merged.id, merged);
+        if (emailKey) usersByEmail.set(emailKey, merged);
+      });
+    } catch (error: any) {
+      if (String(error?.code || '').includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+      } else {
+        console.warn('Aviso Firestore fetchAllUsers:', error);
+      }
+    }
+  }
+
+  return Array.from(usersById.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 export async function updateUserManagement(
   userId: string,
-  updates: Partial<User>
+  updates: Partial<User> & { email?: string }
 ): Promise<void> {
-  try {
-    const userDocRef = doc(db, 'users', userId);
-    await updateDoc(userDocRef, {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  const { ok, status, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates)
+  });
+
+  if (auth.currentUser) {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) {
+        return;
+      }
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok && status !== 404) {
+    throw new Error(data?.error || 'Não foi possível atualizar o utilizador no servidor.');
   }
 }
 
 export async function createManualCustomer(user: Partial<User>): Promise<User> {
-  const newId = user.id || `usr-${Date.now()}`;
-  const newUser: User = {
-    id: newId,
-    name: user.name || 'Novo Cliente',
-    email: user.email || `cliente-${Date.now()}@exemplo.com`,
+  const cleanEmail = String(user.email || '').trim().toLowerCase();
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Por favor, indique um endereço de e-mail válido.');
+  }
+
+  let createdUser: User = {
+    id: user.id || `usr-${Date.now()}`,
+    name: user.name?.trim() || cleanEmail.split('@')[0] || 'Cliente',
+    email: cleanEmail,
     role: user.role || 'user',
     status: user.status || 'active',
     plan: user.plan || 'pro',
@@ -101,69 +193,110 @@ export async function createManualCustomer(user: Partial<User>): Promise<User> {
     totalCvGenerated: 0,
     billingCycle: user.billingCycle || 'monthly',
     createdAt: new Date().toISOString(),
-    notes: user.notes || 'Cadastrado manualmente pela equipa'
+    notes: user.notes || 'Registado manualmente pela equipa administrativa'
   };
 
-  try {
-    const userDocRef = doc(db, 'users', newId);
-    await setDoc(userDocRef, newUser);
-    return newUser;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `users/${newId}`);
-    return newUser;
+  const { ok, data } = await apiRequest<{ user?: User; error?: string }>('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify(createdUser)
+  });
+
+  if (ok && data?.user) {
+    createdUser = normalizeUserRecord(data.user.id, data.user);
+  } else if (!auth.currentUser) {
+    throw new Error(data?.error || 'Não foi possível registar o cliente no servidor.');
   }
+
+  if (auth.currentUser) {
+    try {
+      const userDocRef = doc(db, 'users', createdUser.id);
+      await setDoc(userDocRef, createdUser);
+    } catch (error: any) {
+      if (String(error?.code || '').includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.CREATE, `users/${createdUser.id}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  return createdUser;
 }
 
 // -------------------------------------------------------------
 // ORDERS & BILLING TRANSACTIONS
 // -------------------------------------------------------------
 export async function fetchAllOrders(): Promise<SaaSOrder[]> {
+  const ordersMap = new Map<string, SaaSOrder>();
+
   try {
-    const ordersCol = collection(db, 'orders');
-    const q = query(ordersCol, limit(100));
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) return [];
-
-    const orders: SaaSOrder[] = snapshot.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        orderNumber: data.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
-        userId: data.userId || 'anon',
-        userName: data.userName || 'Cliente',
-        userEmail: data.userEmail || '',
-        plan: data.plan || 'pro',
-        billingCycle: data.billingCycle || 'monthly',
-        amount: Number(data.amount) || 0,
-        currency: data.currency || 'USD',
-        paymentMethod: data.paymentMethod || 'card',
-        status: (data.status as OrderStatus) || 'paid',
-        stripeSubscriptionId: data.stripeSubscriptionId,
-        stripePaymentIntentId: data.stripePaymentIntentId,
-        receiptUrl: data.receiptUrl,
-        createdAt: data.createdAt || new Date().toISOString(),
-        notes: data.notes || ''
-      };
-    });
-
-    // sort client-side in case composite indexes are not yet deployed
-    return orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'orders');
-    return [];
+    const { ok, data } = await apiRequest<{ orders?: SaaSOrder[] }>('/api/admin/overview', { method: 'GET' });
+    if (ok && Array.isArray(data?.orders)) {
+      data.orders.forEach((o) => {
+        if (o?.id) ordersMap.set(o.id, o);
+      });
+    }
+  } catch (e) {
+    console.warn('Aviso ao consultar ordens no servidor:', e);
   }
+
+  if (auth.currentUser) {
+    try {
+      const ordersCol = collection(db, 'orders');
+      const q = query(ordersCol, limit(100));
+      const snapshot = await getDocs(q);
+
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        const order: SaaSOrder = {
+          id: d.id,
+          orderNumber: data.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
+          userId: data.userId || 'anon',
+          userName: data.userName || 'Cliente',
+          userEmail: data.userEmail || '',
+          plan: data.plan || 'pro',
+          billingCycle: data.billingCycle || 'monthly',
+          amount: Number(data.amount) || 0,
+          currency: data.currency || 'USD',
+          paymentMethod: data.paymentMethod || 'stripe',
+          status: (data.status as OrderStatus) || 'paid',
+          stripeSubscriptionId: data.stripeSubscriptionId,
+          stripePaymentIntentId: data.stripePaymentIntentId,
+          receiptUrl: data.receiptUrl,
+          createdAt: data.createdAt || new Date().toISOString(),
+          notes: data.notes || ''
+        };
+        ordersMap.set(order.id, order);
+      });
+    } catch (error: any) {
+      if (String(error?.code || '').includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.LIST, 'orders');
+      } else {
+        console.warn('Aviso Firestore fetchAllOrders:', error);
+      }
+    }
+  }
+
+  return Array.from(ordersMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
-export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOrder> {
+export async function createSaaSOrder(
+  order: Partial<SaaSOrder> & { adminManual?: boolean }
+): Promise<SaaSOrder> {
   const orderId = order.id || `ord-${Date.now()}`;
   const now = new Date();
   const sequence = String(Math.floor(1000 + Math.random() * 9000));
-  const orderNumber = order.orderNumber || `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${sequence}`;
+  const orderNumber =
+    order.orderNumber ||
+    `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${sequence}`;
 
-  const isYearly = order.billingCycle === 'yearly';
-  const expirationDays = isYearly ? 365 : 30;
+  const billingCycle: BillingCycle = normalizeBillingCycle(order.billingCycle);
+  const expirationDays = getCycleDurationDays(billingCycle);
   const subscriptionExpiresAt = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000).toISOString();
+  const planId = order.plan || 'pro';
+  const defaultAmount = getCyclePriceUSD({ id: planId }, billingCycle);
 
   const newOrder: SaaSOrder = {
     id: orderId,
@@ -171,9 +304,9 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     userId: order.userId || 'guest',
     userName: order.userName || 'Cliente',
     userEmail: order.userEmail || '',
-    plan: order.plan || 'pro',
-    billingCycle: order.billingCycle || 'monthly',
-    amount: order.amount ?? 2,
+    plan: planId,
+    billingCycle,
+    amount: order.amount ?? defaultAmount,
     currency: order.currency || 'USD',
     paymentMethod: order.paymentMethod || 'stripe',
     status: order.status || 'paid',
@@ -181,22 +314,16 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     stripePaymentIntentId: order.stripePaymentIntentId,
     receiptUrl: order.receiptUrl,
     createdAt: now.toISOString(),
-    notes: order.notes || 'Subscrição SaaS ativada via Stripe'
+    notes: order.notes || 'Subscrição SaaS registada com sucesso'
   };
 
   saveOrderToLocalCache(newOrder);
 
-  const authToken = (() => {
-    try {
-      return localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
-    } catch {
-      return null;
-    }
-  })();
-
+  const authToken = getAuthToken();
   if (authToken) {
+    const endpoint = order.adminManual ? '/api/admin/orders' : '/api/orders';
     try {
-      await fetch('/api/orders', {
+      await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -218,8 +345,7 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     const orderDocRef = doc(db, 'orders', orderId);
     await setDoc(orderDocRef, newOrder);
 
-    // If customer exists, also update user's plan and credits in users collection
-    if (newOrder.userId && newOrder.userId !== 'guest') {
+    if (newOrder.status === 'paid' && newOrder.userId && newOrder.userId !== 'guest' && newOrder.userId !== 'manual') {
       const userDocRef = doc(db, 'users', newOrder.userId);
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -236,8 +362,10 @@ export async function createSaaSOrder(order: Partial<SaaSOrder>): Promise<SaaSOr
     }
 
     return newOrder;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
+  } catch (error: any) {
+    if (String(error?.code || '').includes('permission-denied')) {
+      handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
+    }
     return newOrder;
   }
 }
@@ -280,7 +408,7 @@ export async function fetchUserOrders(userId: string, userEmail?: string): Promi
   localOrders.forEach((o) => ordersMap.set(o.id, o));
 
   try {
-    const authToken = localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
+    const authToken = getAuthToken();
     if (authToken) {
       const res = await fetch('/api/orders', {
         credentials: 'include',
@@ -309,7 +437,6 @@ export async function fetchUserOrders(userId: string, userEmail?: string): Promi
 
   try {
     const ordersCol = collection(db, 'orders');
-    // 1. Query by userId directly from Firestore
     if (userId) {
       const qUserId = query(ordersCol, where('userId', '==', userId), limit(50));
       const snapUserId = await getDocs(qUserId);
@@ -338,7 +465,6 @@ export async function fetchUserOrders(userId: string, userEmail?: string): Promi
       });
     }
 
-    // 2. Query by userEmail if present to link any guest or pre-login sessions
     if (userEmail && userEmail.includes('@')) {
       try {
         const qEmail = query(ordersCol, where('userEmail', '==', userEmail), limit(50));
@@ -395,38 +521,36 @@ export async function cancelUserSubscription(
       }
     }
 
-    if (!auth.currentUser) {
-      const authToken = localStorage.getItem('curriculopro_auth_token') || sessionStorage.getItem('curriculopro_auth_token');
-      if (authToken) {
-        await fetch('/api/auth/sync-plan', {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authToken}`
-          },
-          body: JSON.stringify({ stripeStatus: 'canceled' })
-        }).catch(() => {});
-      }
-      return {
-        success: true,
-        message: 'Assinatura cancelada com sucesso. O seu plano permanecerá válido até ao final do período pago.'
-      };
+    const authToken = getAuthToken();
+    if (authToken) {
+      await fetch('/api/auth/sync-plan', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ stripeStatus: 'canceled' })
+      }).catch(() => {});
     }
 
-    const userDocRef = doc(db, 'users', userId);
-    await updateDoc(userDocRef, {
-      stripeStatus: 'canceled',
-      notes: `Assinatura cancelada pelo cliente em ${new Date().toLocaleDateString('pt-PT')}`,
-      updatedAt: new Date().toISOString()
-    });
+    if (auth.currentUser) {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        stripeStatus: 'canceled',
+        notes: `Assinatura cancelada pelo cliente em ${new Date().toLocaleDateString('pt-PT')}`,
+        updatedAt: new Date().toISOString()
+      });
+    }
 
     return {
       success: true,
       message: 'Assinatura cancelada com sucesso. O seu plano permanecerá válido até ao final do período pago.'
     };
   } catch (err: any) {
-    handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    if (auth.currentUser && String(err?.code || '').includes('permission-denied')) {
+      handleFirestoreError(err, OperationType.UPDATE, `users/${userId}`);
+    }
     return {
       success: false,
       message: err.message || 'Não foi possível cancelar a assinatura no momento.'
@@ -437,17 +561,54 @@ export async function cancelUserSubscription(
 export async function updateOrderStatus(
   orderId: string,
   newStatus: OrderStatus,
-  notes?: string
+  notes?: string,
+  orderMeta?: Partial<SaaSOrder>
 ): Promise<void> {
-  try {
-    const orderDocRef = doc(db, 'orders', orderId);
-    await updateDoc(orderDocRef, {
-      status: newStatus,
-      ...(notes ? { notes } : {}),
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: newStatus, ...(notes ? { notes } : {}) })
+  });
+
+  if (auth.currentUser) {
+    try {
+      const orderDocRef = doc(db, 'orders', orderId);
+      await updateDoc(orderDocRef, {
+        status: newStatus,
+        ...(notes ? { notes } : {}),
+        updatedAt: new Date().toISOString()
+      });
+
+      if (newStatus === 'paid' && orderMeta?.userId && orderMeta.userId !== 'guest' && orderMeta.userId !== 'manual') {
+        const cycle = normalizeBillingCycle(orderMeta.billingCycle);
+        const days = getCycleDurationDays(cycle);
+        const userDocRef = doc(db, 'users', orderMeta.userId);
+        const userSnap = await getDoc(userDocRef);
+        if (userSnap.exists()) {
+          await updateDoc(userDocRef, {
+            plan: orderMeta.plan || 'pro',
+            creditsRemaining: 9999,
+            billingCycle: cycle,
+            subscriptionExpiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+            stripeStatus: 'active',
+            status: 'active',
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) return;
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível atualizar a fatura.');
   }
 }
 
@@ -455,29 +616,49 @@ export async function updateOrderStatus(
 // COUPONS & DISCOUNT MANAGEMENT
 // -------------------------------------------------------------
 export async function fetchAllCoupons(): Promise<SaaSCoupon[]> {
-  if (!auth.currentUser) return [];
-  try {
-    const couponsCol = collection(db, 'coupons');
-    const snapshot = await getDocs(couponsCol);
-    if (snapshot.empty) return [];
+  const couponsMap = new Map<string, SaaSCoupon>();
 
-    return snapshot.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        code: data.code || '',
-        discountPercent: Number(data.discountPercent) || 0,
-        maxUses: Number(data.maxUses) || 100,
-        usedCount: Number(data.usedCount) || 0,
-        expiresAt: data.expiresAt || '',
-        active: Boolean(data.active),
-        createdAt: data.createdAt || new Date().toISOString()
-      };
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, 'coupons');
-    return [];
+  try {
+    const { ok, data } = await apiRequest<{ coupons?: SaaSCoupon[] }>('/api/coupons/public', { method: 'GET' });
+    if (ok && Array.isArray(data?.coupons)) {
+      data.coupons.forEach((c) => {
+        if (c?.id) couponsMap.set(c.id, c);
+      });
+    }
+  } catch {
+    // ignore public fetch error
   }
+
+  if (auth.currentUser) {
+    try {
+      const couponsCol = collection(db, 'coupons');
+      const snapshot = await getDocs(couponsCol);
+      snapshot.docs.forEach((d) => {
+        const data = d.data();
+        const item: SaaSCoupon = {
+          id: d.id,
+          code: data.code || '',
+          discountPercent: Number(data.discountPercent) || 0,
+          maxUses: Number(data.maxUses) || 100,
+          usedCount: Number(data.usedCount) || 0,
+          expiresAt: data.expiresAt || '',
+          active: Boolean(data.active),
+          createdAt: data.createdAt || new Date().toISOString()
+        };
+        couponsMap.set(item.id, item);
+      });
+    } catch (error: any) {
+      if (String(error?.code || '').includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.LIST, 'coupons');
+      } else {
+        console.warn('Aviso Firestore fetchAllCoupons:', error);
+      }
+    }
+  }
+
+  return Array.from(couponsMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 }
 
 export async function createCoupon(coupon: Partial<SaaSCoupon>): Promise<SaaSCoupon> {
@@ -495,301 +676,166 @@ export async function createCoupon(coupon: Partial<SaaSCoupon>): Promise<SaaSCou
     createdAt: new Date().toISOString()
   };
 
-  try {
-    const couponDocRef = doc(db, 'coupons', couponId);
-    await setDoc(couponDocRef, newCoupon);
-    return newCoupon;
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, `coupons/${couponId}`);
-    return newCoupon;
+  const { ok, data } = await apiRequest<{ error?: string }>('/api/admin/coupons', {
+    method: 'POST',
+    body: JSON.stringify(newCoupon)
+  });
+
+  if (auth.currentUser) {
+    try {
+      const couponDocRef = doc(db, 'coupons', couponId);
+      await setDoc(couponDocRef, newCoupon);
+      return newCoupon;
+    } catch (error: any) {
+      if (String(error?.code || '').includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.CREATE, `coupons/${couponId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
   }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível criar o cupom.');
+  }
+
+  return newCoupon;
 }
 
 export async function toggleCouponActive(couponId: string, currentActive: boolean): Promise<void> {
-  try {
-    const couponDocRef = doc(db, 'coupons', couponId);
-    await updateDoc(couponDocRef, {
-      active: !currentActive,
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `coupons/${couponId}`);
+  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/coupons/${encodeURIComponent(couponId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active: !currentActive })
+  });
+
+  if (auth.currentUser) {
+    try {
+      const couponDocRef = doc(db, 'coupons', couponId);
+      await updateDoc(couponDocRef, {
+        active: !currentActive,
+        updatedAt: new Date().toISOString()
+      });
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) return;
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.UPDATE, `coupons/${couponId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível atualizar o cupom.');
   }
 }
 
 export async function deleteCoupon(couponId: string): Promise<void> {
-  try {
-    const couponDocRef = doc(db, 'coupons', couponId);
-    await deleteDoc(couponDocRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `coupons/${couponId}`);
+  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/coupons/${encodeURIComponent(couponId)}`, {
+    method: 'DELETE'
+  });
+
+  if (auth.currentUser) {
+    try {
+      const couponDocRef = doc(db, 'coupons', couponId);
+      await deleteDoc(couponDocRef);
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) return;
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.DELETE, `coupons/${couponId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível eliminar o cupom.');
   }
 }
 
 export async function incrementCouponUsage(couponId: string, currentUsed: number): Promise<void> {
   try {
-    const couponDocRef = doc(db, 'coupons', couponId);
-    await updateDoc(couponDocRef, {
-      usedCount: (currentUsed || 0) + 1,
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    console.warn('Erro ao incrementar contagem do cupom:', error);
+    await apiRequest(`/api/coupons/${encodeURIComponent(couponId)}/use`, { method: 'POST' });
+  } catch {
+    // ignore backend error
+  }
+
+  if (auth.currentUser) {
+    try {
+      const couponDocRef = doc(db, 'coupons', couponId);
+      await updateDoc(couponDocRef, {
+        usedCount: (currentUsed || 0) + 1,
+        updatedAt: new Date().toISOString()
+      });
+    } catch {
+      // client may not have admin Firestore coupon write access; server endpoint handles persistence
+    }
   }
 }
 
 export async function anonymizeUserRecord(userId: string): Promise<void> {
-  try {
-    const userDocRef = doc(db, 'users', userId);
-    await updateDoc(userDocRef, {
-      name: 'Utilizador Anonimizado (RGPD)',
-      email: `anon-${userId.slice(0, 8)}@eliminado.rgpd`,
-      phone: '',
-      status: 'suspended',
-      plan: 'free',
-      creditsRemaining: 0,
-      notes: `Conta anonimizada conforme Art. 17 RGPD em ${new Date().toISOString()}`,
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}/anonymize`, {
+    method: 'POST'
+  });
+
+  if (auth.currentUser) {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        name: 'Utilizador Anonimizado (RGPD)',
+        email: `anon-${userId.slice(0, 8)}@eliminado.rgpd`,
+        phone: '',
+        status: 'suspended',
+        plan: 'free',
+        creditsRemaining: 0,
+        notes: `Conta anonimizada conforme Art. 17 RGPD em ${new Date().toISOString()}`,
+        updatedAt: new Date().toISOString()
+      });
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) return;
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível anonimizar o utilizador.');
   }
 }
 
 export async function deleteUserAccountRecord(userId: string): Promise<void> {
-  try {
-    const userDocRef = doc(db, 'users', userId);
-    await deleteDoc(userDocRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE'
+  });
+
+  if (auth.currentUser) {
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      await deleteDoc(userDocRef);
+      return;
+    } catch (error: any) {
+      const code = String(error?.code || '');
+      if (code === 'not-found' && ok) return;
+      if (code.includes('permission-denied')) {
+        handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+      } else if (!ok) {
+        throw error;
+      }
+    }
+  }
+
+  if (!ok) {
+    throw new Error(data?.error || 'Não foi possível eliminar o utilizador.');
   }
 }
 
-// -------------------------------------------------------------
-// SEED REALISTIC SAAS DEMO DATA
-// -------------------------------------------------------------
-export async function seedDemoDataIfEmpty(): Promise<{ usersAdded: number; ordersAdded: number; couponsAdded: number }> {
-  let usersAdded = 0;
-  let ordersAdded = 0;
-  let couponsAdded = 0;
-
-  // 1. Initial Coupons
-  const demoCoupons: SaaSCoupon[] = [
-    {
-      id: 'cup-lancamento',
-      code: 'LANCAMENTO50',
-      discountPercent: 50,
-      maxUses: 200,
-      usedCount: 38,
-      expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
-      active: true,
-      createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-      id: 'cup-unvip',
-      code: 'UN_SPECIAL',
-      discountPercent: 30,
-      maxUses: 100,
-      usedCount: 14,
-      expiresAt: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(),
-      active: true,
-      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()
-    },
-    {
-      id: 'cup-stripe',
-      code: 'STRIPE100',
-      discountPercent: 100,
-      maxUses: 20,
-      usedCount: 7,
-      expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      active: true,
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  for (const c of demoCoupons) {
-    try {
-      await setDoc(doc(db, 'coupons', c.id), c);
-      couponsAdded++;
-    } catch (e) {
-      console.warn('Erro ao semear cupom:', e);
-    }
-  }
-
-  // 2. Demo Users & Customers
-  const demoUsers: Partial<User>[] = [
-    {
-      id: 'usr-admin-owner',
-      name: 'Administrador SaaS (Owner)',
-      email: 'gugurai923@gmail.com',
-      role: 'admin',
-      status: 'active',
-      plan: 'executive',
-      creditsRemaining: 9999,
-      creditsUsed: 140,
-      totalCvGenerated: 42,
-      billingCycle: 'yearly',
-      createdAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Proprietário & Administrador Geral do Sistema'
-    },
-    {
-      id: 'usr-aliou-mballo',
-      name: 'Dr. Aliou Diouf Mballo',
-      email: 'aliou.mballo@un.org',
-      role: 'user',
-      status: 'active',
-      plan: 'executive',
-      phone: '+238 991 2345',
-      creditsRemaining: 9999,
-      creditsUsed: 65,
-      totalCvGenerated: 12,
-      billingCycle: 'yearly',
-      createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Economista Sénior & Consultor Internacional de Mercados'
-    },
-    {
-      id: 'usr-antonio-paulo',
-      name: 'Carlos Paulo Mendes',
-      email: 'c.paulo.mendes@holding.com',
-      role: 'user',
-      status: 'active',
-      plan: 'pro',
-      phone: '+55 11 98881-2200',
-      creditsRemaining: 850,
-      creditsUsed: 32,
-      totalCvGenerated: 8,
-      billingCycle: 'monthly',
-      createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Diretor de Operações & Inovação'
-    },
-    {
-      id: 'usr-claudia-santos',
-      name: 'Cláudia Santos Varela',
-      email: 'c.santos.varela@empresa.ao',
-      role: 'user',
-      status: 'active',
-      plan: 'pro',
-      phone: '+244 912 345 678',
-      creditsRemaining: 620,
-      creditsUsed: 19,
-      totalCvGenerated: 4,
-      billingCycle: 'monthly',
-      createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Gestora de Recursos Humanos & Projetos'
-    },
-    {
-      id: 'usr-mateus-cuanza',
-      name: 'Mateus Manuel Baptista',
-      email: 'mateus.baptista@gmail.com',
-      role: 'user',
-      status: 'active',
-      plan: 'free',
-      phone: '+244 934 112 233',
-      creditsRemaining: 3,
-      creditsUsed: 2,
-      totalCvGenerated: 2,
-      billingCycle: 'monthly',
-      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Candidato a Vagas Internacionais'
-    }
-  ];
-
-  for (const u of demoUsers) {
-    try {
-      await setDoc(doc(db, 'users', u.id!), u);
-      usersAdded++;
-    } catch (e) {
-      console.warn('Erro ao semear utilizador:', e);
-    }
-  }
-
-  // 3. Demo Orders / Transactions
-  const demoOrders: SaaSOrder[] = [
-    {
-      id: 'ord-1001',
-      orderNumber: 'INV-2026-0041',
-      userId: 'usr-aliou-mballo',
-      userName: 'Dr. Aliou Diouf Mballo',
-      userEmail: 'aliou.mballo@un.org',
-      plan: 'executive',
-      billingCycle: 'yearly',
-      amount: 108,
-      currency: 'USD',
-      paymentMethod: 'stripe',
-      status: 'paid',
-      createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Subscrição Anual Executivo VIP aprovada via Cartão Stripe'
-    },
-    {
-      id: 'ord-1002',
-      orderNumber: 'INV-2026-0052',
-      userId: 'usr-antonio-paulo',
-      userName: 'António Paulo Mendes',
-      userEmail: 'apaulo2007@hotmail.com',
-      plan: 'pro',
-      billingCycle: 'monthly',
-      amount: 8,
-      currency: 'USD',
-      paymentMethod: 'stripe',
-      status: 'paid',
-      createdAt: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Pagamento processado via Cartão Internacional Stripe'
-    },
-    {
-      id: 'ord-1003',
-      orderNumber: 'INV-2026-0063',
-      userId: 'usr-claudia-santos',
-      userName: 'Cláudia Santos Varela',
-      userEmail: 'c.santos.varela@empresa.com',
-      plan: 'pro',
-      billingCycle: 'monthly',
-      amount: 8,
-      currency: 'USD',
-      paymentMethod: 'pix',
-      status: 'paid',
-      createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Pagamento instantâneo via Pix confirmado'
-    },
-    {
-      id: 'ord-1004',
-      orderNumber: 'INV-2026-0074',
-      userId: 'usr-antonio-paulo',
-      userName: 'António Paulo Mendes',
-      userEmail: 'apaulo2007@hotmail.com',
-      plan: 'pro',
-      billingCycle: 'monthly',
-      amount: 8,
-      currency: 'USD',
-      paymentMethod: 'stripe',
-      status: 'paid',
-      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Renovação mensal automática Stripe'
-    },
-    {
-      id: 'ord-1005',
-      orderNumber: 'INV-2026-0085',
-      userId: 'usr-novocandidato',
-      userName: 'Helena Silveira',
-      userEmail: 'helena.silveira@outlook.com',
-      plan: 'executive',
-      billingCycle: 'monthly',
-      amount: 12,
-      currency: 'USD',
-      paymentMethod: 'pix',
-      status: 'paid',
-      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Upgrade via Pix Instantâneo'
-    }
-  ];
-
-  for (const o of demoOrders) {
-    try {
-      await setDoc(doc(db, 'orders', o.id), o);
-      ordersAdded++;
-    } catch (e) {
-      console.warn('Erro ao semear ordem:', e);
-    }
-  }
-
-  return { usersAdded, ordersAdded, couponsAdded };
-}

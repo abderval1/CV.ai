@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   Lock,
-  Sparkles,
   Crown,
   ShieldCheck,
   CheckCircle2,
   ArrowRight,
-  UserCheck
+  UserCheck,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -53,30 +53,30 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
 
   const badgeConfig: {
     label: string;
-    bg: string;
+    border: string;
     iconBg: string;
     btnBg: string;
     targetPlan: 'pro' | 'executive';
   } = isExecutiveRequired
     ? {
         label: `Exclusivo ${execPlanConfig?.name || 'Executivo VIP'}`,
-        bg: 'from-purple-900/40 via-slate-900 to-slate-900 border-purple-500/30',
-        iconBg: 'bg-gradient-to-tr from-purple-600 to-indigo-600 text-white shadow-purple-500/30',
-        btnBg: 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white',
+        border: 'border-slate-700',
+        iconBg: 'bg-slate-800 border border-slate-700 text-amber-400',
+        btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
         targetPlan: 'executive'
       }
     : isProRequired
     ? {
         label: `Exclusivo ${proPlanConfig?.name || 'Plano Profissional Pro'}`,
-        bg: 'from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/30',
-        iconBg: 'bg-gradient-to-tr from-amber-500 to-yellow-500 text-slate-950 shadow-amber-500/30',
+        border: 'border-slate-800',
+        iconBg: 'bg-amber-400 text-slate-950',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
         targetPlan: 'pro'
       }
     : {
         label: 'Acesso Exclusivo para Assinantes',
-        bg: 'from-slate-950 via-slate-900 to-slate-950 border-slate-700/80',
-        iconBg: 'bg-gradient-to-tr from-amber-500 to-indigo-600 text-white shadow-indigo-500/30',
+        border: 'border-slate-800',
+        iconBg: 'bg-slate-800 border border-slate-700 text-amber-400',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
         targetPlan: 'pro'
       };
@@ -84,43 +84,39 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
   return (
     <div className="min-h-[460px] flex items-center justify-center p-4 sm:p-6 my-auto">
       <div
-        className={`w-full max-w-xl bg-gradient-to-b ${badgeConfig.bg} rounded-3xl border shadow-2xl p-6 sm:p-8 text-white relative overflow-hidden backdrop-blur-md`}
+        className={`w-full max-w-xl bg-[#0B0F17] ${badgeConfig.border} rounded-xl border shadow-xl p-6 sm:p-8 text-white relative overflow-hidden`}
       >
-        {/* Glow ambient highlight */}
-        <div className="absolute -top-24 -right-24 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-60 h-60 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Top Header Badge */}
-        <div className="flex items-center justify-between gap-3 pb-6 border-b border-slate-800">
-          <div className="flex items-center gap-3">
+        {/* Top Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-slate-800">
+          <div className="flex items-center gap-3 min-w-0">
             <div
-              className={`w-12 h-12 rounded-2xl ${badgeConfig.iconBg} flex items-center justify-center shadow-lg shrink-0`}
+              className={`w-11 h-11 rounded-lg ${badgeConfig.iconBg} flex items-center justify-center shrink-0`}
             >
               {isExecutiveRequired ? (
-                <Crown className="w-6 h-6" />
+                <Crown className="w-5 h-5" />
               ) : isProRequired ? (
-                <Sparkles className="w-6 h-6" />
+                <SlidersHorizontal className="w-5 h-5" />
               ) : (
-                <Lock className="w-6 h-6" />
+                <Lock className="w-5 h-5" />
               )}
             </div>
-            <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block">
+            <div className="min-w-0">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400 block">
                 {badgeConfig.label}
               </span>
-              <h3 className="text-lg sm:text-xl font-extrabold tracking-tight text-white">
+              <h3 className="text-lg font-bold tracking-tight text-white">
                 {featureTitle}
               </h3>
             </div>
           </div>
 
-          <div className="text-right shrink-0">
-            <span className="text-[10px] text-slate-400 block">Seu Plano:</span>
-            <span className="text-xs font-bold text-slate-200 capitalize bg-slate-800/80 px-2.5 py-1 rounded-full border border-slate-700">
+          <div className="text-left sm:text-right shrink-0">
+            <span className="text-[10px] text-slate-400 block">Seu Plano</span>
+            <span className="text-xs font-semibold text-slate-200 capitalize">
               {currentPlan === 'public'
-                ? 'Visitante (Sem Acesso)'
+                ? 'Visitante'
                 : currentPlan === 'free'
-                ? 'Gratuito (Sem Acesso)'
+                ? 'Gratuito'
                 : currentPlan === 'pro'
                 ? proPlanConfig?.name || 'Plano Pro'
                 : execPlanConfig?.name || 'Executivo VIP'}
@@ -129,11 +125,11 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
         </div>
 
         {/* Description & Value Proposition */}
-        <div className="py-6 space-y-4">
+        <div className="py-5 space-y-4">
           <p className="text-sm text-slate-300 leading-relaxed">{featureSubtitle}</p>
 
-          <div className="bg-slate-950/60 rounded-2xl p-4 border border-slate-800/80 space-y-2.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <div className="bg-slate-900/70 rounded-lg p-4 border border-slate-800 space-y-2.5">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
               O que este recurso inclui:
             </span>
@@ -149,13 +145,13 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
         </div>
 
         {/* Primary CTA Buttons */}
-        <div className="space-y-3 pt-2">
+        <div className="space-y-3 pt-1">
           {isAuthRequired ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={onOpenAuthModal}
-                className="w-full py-3 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                className="w-full min-h-[44px] py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 touch-manipulation"
               >
                 <UserCheck className="w-4 h-4" />
                 <span>Entrar / Criar Conta</span>
@@ -163,7 +159,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
               <button
                 type="button"
                 onClick={onOpenPricingModal}
-                className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl transition-all border border-slate-700 flex items-center justify-center gap-2"
+                className="w-full min-h-[44px] py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-lg transition-colors border border-slate-700 flex items-center justify-center gap-2 touch-manipulation"
               >
                 <span>Ver Planos ({formatPrice(proPriceMonthly)}+)</span>
               </button>
@@ -172,9 +168,8 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
             <button
               type="button"
               onClick={onOpenPricingModal}
-              className={`w-full py-3.5 px-6 ${badgeConfig.btnBg} font-extrabold text-xs sm:text-sm rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 group`}
+              className={`w-full min-h-[46px] py-3 px-5 ${badgeConfig.btnBg} font-semibold text-xs sm:text-sm rounded-lg transition-colors flex items-center justify-center gap-2 group touch-manipulation`}
             >
-              <Sparkles className="w-4 h-4" />
               <span>
                 {isExecutiveRequired
                   ? `Fazer Upgrade para ${execPlanConfig?.name || 'Executivo VIP'} — ${formatPrice(execPriceMonthly)}/mês`

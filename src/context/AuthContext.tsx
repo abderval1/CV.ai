@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User, SubscriptionPlan, SavedResume, CVData, BillingCycle } from '../types/cv';
 import { GENERIC_DEFAULT_CV } from '../data/initialCV';
+import { getCycleDurationDays, normalizeBillingCycle } from '../utils/billingCycles';
 import {
   auth,
   db,
@@ -40,15 +41,18 @@ const LOCAL_STORAGE_USER_KEY = 'curriculopro_user_session';
 const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
 const AUTH_TOKEN_KEY = 'curriculopro_auth_token';
 
+let inMemoryAuthToken: string | null = null;
+
 function getStoredAuthToken(): string | null {
   try {
-    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
+    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY) || inMemoryAuthToken;
   } catch {
-    return null;
+    return inMemoryAuthToken;
   }
 }
 
 function setStoredAuthToken(token: string | null, rememberMe = true) {
+  inMemoryAuthToken = token;
   try {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     sessionStorage.removeItem(AUTH_TOKEN_KEY);
@@ -60,7 +64,7 @@ function setStoredAuthToken(token: string | null, rememberMe = true) {
       }
     }
   } catch {
-    // ignore storage errors
+    // Fallback safely to inMemoryAuthToken in restricted mobile private mode/WebViews
   }
 }
 
@@ -73,13 +77,31 @@ async function apiAuthFetch(url: string, options: RequestInit = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers
-  });
-  const data = await response.json().catch(() => ({}));
-  return { response, data };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers,
+      signal: options.signal || controller.signal
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await response.json().catch(() => ({}))
+      : {};
+    return { response, data, isJson: contentType.includes('application/json') };
+  } catch (err: any) {
+    const netErr: any = new Error(
+      err?.name === 'AbortError'
+        ? 'O servidor demorou a responder. Verifique a sua ligação e tente novamente.'
+        : 'Falha de ligação ao servidor. Verifique a sua internet e tente novamente.'
+    );
+    netErr.code = 'auth/network-request-failed';
+    throw netErr;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export function getAuthErrorMessage(err: any): string {
@@ -106,7 +128,7 @@ export function getAuthErrorMessage(err: any): string {
     case 'auth/cancelled-popup-request':
       return 'A janela de autenticação foi fechada antes de concluir o processo.';
     case 'auth/popup-blocked':
-      return 'A janela de autenticação foi bloqueada pelo navegador. Permita pop-ups ou utilize o acesso por e-mail.';
+      return 'A janela de autenticação foi bloqueada pelo navegador do telemóvel. Utilize o acesso por e-mail e palavra-passe abaixo.';
     case 'auth/unauthorized-domain':
       return 'Este domínio não está autorizado para autenticação Google. Utilize e-mail e palavra-passe abaixo.';
     case 'auth/account-exists-with-different-credential':
@@ -120,6 +142,15 @@ export function getAuthErrorMessage(err: any): string {
       return 'Método de autenticação não configurado no provedor externo.';
     default: {
       const msg = String(err.message || '');
+      const lower = msg.toLowerCase();
+      if (
+        lower.includes('load failed') ||
+        lower.includes('failed to fetch') ||
+        lower.includes('networkerror') ||
+        lower.includes('aborted')
+      ) {
+        return 'Falha de ligação ao servidor. Verifique a sua ligação à internet e tente novamente.';
+      }
       if (msg.startsWith('{') && msg.includes('"operationType"')) {
         return 'Não foi possível sincronizar o perfil com a nuvem neste momento. Tente novamente em instantes.';
       }
@@ -154,11 +185,9 @@ interface AuthContextType {
   resetPassword: (email: string) => Promise<ResetPasswordResult>;
   completePasswordReset: (email: string, code: string, newPassword: string) => Promise<boolean>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  demoLogin: (tier: 'pro' | 'executive') => Promise<void>;
   loginWithProvider: (provider: 'google' | 'linkedin') => Promise<boolean>;
   logout: () => Promise<void>;
   updateUserProfile: (partial: Partial<User>) => Promise<void>;
-  switchDemoPlan: (plan: SubscriptionPlan) => void;
   upgradePlan: (
     plan: SubscriptionPlan,
     meta?: {
@@ -167,6 +196,7 @@ interface AuthContextType {
       stripeCustomerId?: string;
     }
   ) => Promise<void>;
+  refreshUser: () => Promise<User | null>;
   savedResumes: SavedResume[];
   saveCurrentResume: (cv: CVData, title: string, targetJob?: string) => Promise<string>;
   loadResume: (id: string) => CVData | null;
@@ -229,6 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resumesUnsubRef = useRef<Unsubscribe | null>(null);
   const authSyncLockRef = useRef<boolean>(false);
+  const sessionEpochRef = useRef<number>(0);
 
   const hydrateResumesFromBackend = async () => {
     try {
@@ -450,18 +481,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else {
           // No active Firebase user: verify whether a valid Backend Auth session exists before clearing user
+          const epochAtStart = sessionEpochRef.current;
           try {
             const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
+            // If user explicitly logged in or registered while /api/auth/me was in flight, never overwrite new session
+            if (epochAtStart !== sessionEpochRef.current) {
+              return;
+            }
             if (response.ok && data?.authenticated && data.user) {
               setUser(data.user);
               void hydrateResumesFromBackend();
-            } else if (!localStorage.getItem('curriculopro_impersonating_admin')) {
+            } else if (!localStorage.getItem('curriculopro_impersonating_admin') && !getStoredAuthToken()) {
               setUser(null);
               setStoredAuthToken(null);
             }
           } catch {
-            // Keep existing local session only if offline, otherwise clear if no token
-            if (!getStoredAuthToken() && !localStorage.getItem('curriculopro_impersonating_admin')) {
+            if (
+              epochAtStart === sessionEpochRef.current &&
+              !getStoredAuthToken() &&
+              !localStorage.getItem('curriculopro_impersonating_admin')
+            ) {
               setUser(null);
             }
           }
@@ -563,16 +602,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 1. Primary Email/Password authentication via Express Backend (/api/auth/login)
-    const { response, data } = await apiAuthFetch('/api/auth/login', {
+    const { response, data, isJson } = await apiAuthFetch('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email: cleanEmail, password, rememberMe })
     });
 
     if (response.ok && data?.user && data?.token) {
+      sessionEpochRef.current += 1;
       setStoredAuthToken(data.token, rememberMe);
       setUser(data.user);
       void hydrateResumesFromBackend();
       return true;
+    }
+
+    if (!isJson && response.status >= 500) {
+      const srvErr: any = new Error('Serviço de autenticação temporariamente indisponível. Tente novamente.');
+      srvErr.code = 'auth/network-request-failed';
+      throw srvErr;
     }
 
     if (response.status === 403 && data?.code === 'auth/user-disabled') {
@@ -657,7 +703,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     authSyncLockRef.current = true;
     try {
       // Primary registration path via Express Backend (/api/auth/register)
-      const { response, data } = await apiAuthFetch('/api/auth/register', {
+      const { response, data, isJson } = await apiAuthFetch('/api/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           name: cleanName,
@@ -669,10 +715,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (response.ok && data?.user && data?.token) {
+        sessionEpochRef.current += 1;
         setStoredAuthToken(data.token, rememberMe);
         setUser(data.user);
         void hydrateResumesFromBackend();
         return true;
+      }
+
+      if (!isJson && response.status >= 500) {
+        const srvErr: any = new Error('Serviço de registo temporariamente indisponível. Tente novamente.');
+        srvErr.code = 'auth/network-request-failed';
+        throw srvErr;
       }
 
       const safeCode =
@@ -789,10 +842,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const demoLogin = async (_tier: 'pro' | 'executive'): Promise<void> => {
-    console.info('Acesso de produção ativo. Autenticação requer credenciais reais.');
-  };
-
   const updateUserProfile = async (partial: Partial<User>): Promise<void> => {
     if (!user) return;
     const updated = { ...user, ...partial, updatedAt: new Date().toISOString() };
@@ -834,11 +883,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchDemoPlan = (_plan: SubscriptionPlan) => {
-    // Production mode: Upgrades handled through official checkout
-  };
-
   const logout = async (): Promise<void> => {
+    sessionEpochRef.current += 1;
     try {
       if (auth.currentUser) {
         await signOut(auth);
@@ -868,8 +914,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       stripeCustomerId?: string;
     }
   ): Promise<void> => {
-    const isYearly = meta?.billingCycle === 'yearly';
-    const durationDays = isYearly ? 365 : 30;
+    const cycle = normalizeBillingCycle(meta?.billingCycle);
+    const durationDays = getCycleDurationDays(cycle);
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
     if (auth.currentUser) {
@@ -881,7 +927,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sanitizeForFirestore({
             plan,
             creditsRemaining: 9999,
-            billingCycle: meta?.billingCycle || 'monthly',
+            billingCycle: cycle,
             subscriptionExpiresAt: expiresAt,
             stripeSubscriptionId: meta?.stripeSubscriptionId || null,
             stripeCustomerId: meta?.stripeCustomerId || null,
@@ -900,7 +946,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           method: 'POST',
           body: JSON.stringify({
             plan,
-            billingCycle: meta?.billingCycle || 'monthly',
+            billingCycle: cycle,
             creditsRemaining: 9999,
             subscriptionExpiresAt: expiresAt,
             stripeSubscriptionId: meta?.stripeSubscriptionId,
@@ -914,19 +960,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!user) {
-      setUser({
-        id: `usr-guest-${Date.now()}`,
-        name: 'Assinante Pro',
-        email: 'assinante.pro@exemplo.com',
-        plan,
-        creditsRemaining: 9999,
-        billingCycle: meta?.billingCycle || 'monthly',
-        stripeSubscriptionId: meta?.stripeSubscriptionId,
-        stripeCustomerId: meta?.stripeCustomerId,
-        stripeStatus: 'active',
-        createdAt: new Date().toISOString(),
-        subscriptionExpiresAt: expiresAt
-      });
+      console.warn('upgradePlan requer utilizador autenticado.');
       return;
     }
 
@@ -934,12 +968,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...user,
       plan,
       creditsRemaining: 9999,
-      billingCycle: meta?.billingCycle || user.billingCycle || 'monthly',
+      billingCycle: cycle,
       stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
       stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
       stripeStatus: 'active',
       subscriptionExpiresAt: expiresAt
     });
+  };
+
+  const refreshUser = async (): Promise<User | null> => {
+    try {
+      const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
+      if (response.ok && data?.authenticated && data.user) {
+        const merged = user ? { ...user, ...data.user } : (data.user as User);
+        setUser(merged);
+        return merged;
+      }
+    } catch {
+      // ignore network error
+    }
+    if (auth.currentUser) {
+      try {
+        const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          const refreshed = user
+            ? {
+                ...user,
+                plan: (d.plan as SubscriptionPlan) || user.plan,
+                billingCycle: normalizeBillingCycle(d.billingCycle || user.billingCycle),
+                creditsRemaining: d.creditsRemaining ?? user.creditsRemaining,
+                subscriptionExpiresAt: d.subscriptionExpiresAt || user.subscriptionExpiresAt,
+                stripeStatus: d.stripeStatus || user.stripeStatus
+              }
+            : null;
+          if (refreshed) {
+            setUser(refreshed);
+            return refreshed;
+          }
+        }
+      } catch {
+        // ignore firestore error
+      }
+    }
+    return user;
   };
 
   const saveCurrentResume = async (
@@ -1139,12 +1211,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetPassword,
         completePasswordReset,
         changePassword,
-        demoLogin,
         loginWithProvider,
         logout,
         updateUserProfile,
-        switchDemoPlan,
         upgradePlan,
+        refreshUser,
         savedResumes,
         saveCurrentResume,
         loadResume,

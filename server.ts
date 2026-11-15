@@ -1252,311 +1252,820 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   });
 
   // -------------------------------------------------------------
-  // STRIPE RECURRING SUBSCRIPTION API ROUTES
+  // PAYMENT & RECURRING SUBSCRIPTION API ROUTES (ALL 4 CYCLES)
   // -------------------------------------------------------------
 
-  // 1. Stripe Configuration & Public Status
-  app.get('/api/stripe/config', (_req, res) => {
-    res.json({
+  type ServerBillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
+
+  function normalizeServerCycle(raw?: string | null): ServerBillingCycle {
+    if (raw === 'quarterly' || raw === 'semiannual' || raw === 'yearly' || raw === 'monthly') {
+      return raw;
+    }
+    return 'monthly';
+  }
+
+  function getServerCycleSpec(cycle: ServerBillingCycle) {
+    switch (cycle) {
+      case 'quarterly':
+        return {
+          months: 3,
+          days: 90,
+          defaultDiscountPct: 10,
+          label: 'Trimestral',
+          recurringInterval: 'month' as const,
+          recurringIntervalCount: 3
+        };
+      case 'semiannual':
+        return {
+          months: 6,
+          days: 180,
+          defaultDiscountPct: 18,
+          label: 'Semestral',
+          recurringInterval: 'month' as const,
+          recurringIntervalCount: 6
+        };
+      case 'yearly':
+        return {
+          months: 12,
+          days: 365,
+          defaultDiscountPct: 25,
+          label: 'Anual',
+          recurringInterval: 'year' as const,
+          recurringIntervalCount: 1
+        };
+      default:
+        return {
+          months: 1,
+          days: 30,
+          defaultDiscountPct: 0,
+          label: 'Mensal',
+          recurringInterval: 'month' as const,
+          recurringIntervalCount: 1
+        };
+    }
+  }
+
+  const cachedGatewayProductIds: Record<'pro' | 'executive', string | null> = {
+    pro: null,
+    executive: null
+  };
+
+  async function ensureGatewayProductId(plan: 'pro' | 'executive'): Promise<string> {
+    if (!stripeClient) throw new Error('Processador de cartão indisponível.');
+    const existingCached = cachedGatewayProductIds[plan];
+    if (existingCached) return existingCached;
+
+    const targetName =
+      plan === 'executive'
+        ? 'Currículo Estratégico - Plano Executivo VIP'
+        : 'Currículo Estratégico - Plano Profissional Pro';
+
+    const list = await stripeClient.products.list({ active: true, limit: 25 });
+    const found = list.data.find((p) => p.metadata?.saasPlanId === plan || p.name === targetName);
+    if (found) {
+      cachedGatewayProductIds[plan] = found.id;
+      return found.id;
+    }
+
+    const created = await stripeClient.products.create({
+      name: targetName,
+      description:
+        plan === 'executive'
+          ? 'Acesso Executivo VIP com Simulador de Entrevistas STAR, Radar ATS e Exportações Ilimitadas.'
+          : 'Acesso Profissional Pro com Radar ATS, Otimizador IA e Exportações Word/PDF Ilimitadas.',
+      metadata: { saasPlanId: plan }
+    });
+    cachedGatewayProductIds[plan] = created.id;
+    return created.id;
+  }
+
+  function resolveServerPlanPricing(
+    rawPlan?: string,
+    rawCycle?: string,
+    couponCode?: string,
+    fallbackDiscountPercent?: number
+  ) {
+    const plan: 'pro' | 'executive' = rawPlan === 'executive' ? 'executive' : 'pro';
+    const billingCycle = normalizeServerCycle(rawCycle);
+    const spec = getServerCycleSpec(billingCycle);
+
+    const editablePlans: any[] = Array.isArray(authStore.adminConfig?.editablePlans)
+      ? authStore.adminConfig.editablePlans
+      : [];
+    const matchedPlan = editablePlans.find((p) => p?.id === plan);
+
+    const monthlyUSD = Number(matchedPlan?.priceMonthlyValue) > 0
+      ? Number(matchedPlan.priceMonthlyValue)
+      : plan === 'executive'
+      ? 12
+      : 8;
+
+    let baseUSD = monthlyUSD;
+    if (billingCycle === 'quarterly') {
+      baseUSD =
+        Number(matchedPlan?.priceQuarterlyValue) > 0
+          ? Number(matchedPlan.priceQuarterlyValue)
+          : Math.round(monthlyUSD * 3 * 0.9 * 100) / 100;
+    } else if (billingCycle === 'semiannual') {
+      baseUSD =
+        Number(matchedPlan?.priceSemiannualValue) > 0
+          ? Number(matchedPlan.priceSemiannualValue)
+          : Math.round(monthlyUSD * 6 * 0.82 * 100) / 100;
+    } else if (billingCycle === 'yearly') {
+      baseUSD =
+        Number(matchedPlan?.priceYearlyValue) > 0
+          ? Number(matchedPlan.priceYearlyValue)
+          : Math.round(monthlyUSD * 12 * 0.75 * 100) / 100;
+    }
+
+    let validDiscountPct = 0;
+    let appliedCoupon: any = null;
+    if (couponCode && String(couponCode).trim()) {
+      const codeClean = String(couponCode).trim().toUpperCase();
+      const foundCoupon = (authStore.coupons || []).find(
+        (c) => String(c?.code || '').trim().toUpperCase() === codeClean && c?.active
+      );
+      if (foundCoupon) {
+        const notExpired = !foundCoupon.expiresAt || new Date(foundCoupon.expiresAt).getTime() >= Date.now();
+        const withinLimit = !(Number(foundCoupon.maxUses) > 0 && Number(foundCoupon.usedCount) >= Number(foundCoupon.maxUses));
+        if (notExpired && withinLimit) {
+          validDiscountPct = Math.min(100, Math.max(0, Number(foundCoupon.discountPercent) || 0));
+          appliedCoupon = foundCoupon;
+        }
+      } else if (typeof fallbackDiscountPercent === 'number' && fallbackDiscountPercent > 0 && fallbackDiscountPercent < 100) {
+        validDiscountPct = Math.min(90, Math.max(0, Number(fallbackDiscountPercent)));
+      }
+    }
+
+    const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - validDiscountPct / 100) * 100) / 100);
+    return {
+      plan,
+      billingCycle,
+      spec,
+      monthlyUSD,
+      baseUSD,
+      discountRate: validDiscountPct,
+      appliedCoupon,
+      finalPriceUSD,
+      planLabel: plan === 'executive' ? 'Executivo VIP' : 'Profissional Pro'
+    };
+  }
+
+  function buildPaymentConfigPayload() {
+    const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+    const proMonthly = resolveServerPlanPricing('pro', 'monthly').baseUSD;
+    const execMonthly = resolveServerPlanPricing('executive', 'monthly').baseUSD;
+
+    return {
+      cardEnabled: Boolean(stripeClient && stripePublishableKey),
       configured: Boolean(stripeClient),
       publishableKey: stripePublishableKey,
-      isTestMode: !stripeSecretKey || (!stripeSecretKey.startsWith('sk_live_') && !stripeSecretKey.startsWith('rk_live_')),
-      supportedCurrencies: ['usd', 'eur', 'aoa', 'brl'],
+      isTestMode: Boolean(stripeSecretKey && !stripeSecretKey.startsWith('sk_live_') && !stripeSecretKey.startsWith('rk_live_')),
+      supportedCurrencies: ['usd', 'brl'],
+      pixConfig: {
+        pixKey: gov.pixKey || 'f4693532-31da-4e95-a589-19bccab0d915',
+        pixKeyType: gov.pixKeyType || 'evp',
+        pixBeneficiaryName: gov.pixBeneficiaryName || 'CURRICULO ESTRATEGICO',
+        pixCity: gov.pixCity || 'SAO PAULO'
+      },
       plans: {
         pro: {
-          name: 'Plano Profissional',
-          monthlyUSD: 2,
-          yearlyUSD: 18,
+          name: 'Plano Profissional Pro',
+          monthlyUSD: proMonthly,
+          quarterlyUSD: resolveServerPlanPricing('pro', 'quarterly').baseUSD,
+          semiannualUSD: resolveServerPlanPricing('pro', 'semiannual').baseUSD,
+          yearlyUSD: resolveServerPlanPricing('pro', 'yearly').baseUSD,
           savingsYearlyPercent: 25
         },
         executive: {
           name: 'Plano Executivo VIP',
-          monthlyUSD: 4,
-          yearlyUSD: 36,
+          monthlyUSD: execMonthly,
+          quarterlyUSD: resolveServerPlanPricing('executive', 'quarterly').baseUSD,
+          semiannualUSD: resolveServerPlanPricing('executive', 'semiannual').baseUSD,
+          yearlyUSD: resolveServerPlanPricing('executive', 'yearly').baseUSD,
           savingsYearlyPercent: 25
         }
       }
-    });
+    };
+  }
+
+  // 1. Public Payment Configuration (vendor-agnostic alias + backwards-compatible route)
+  app.get('/api/payments/config', (_req, res) => {
+    res.json(buildPaymentConfigPayload());
   });
 
-  // 2. Create Stripe Checkout Session for Recurring Subscriptions (Monthly / Yearly)
+  app.get('/api/stripe/config', (_req, res) => {
+    res.json(buildPaymentConfigPayload());
+  });
+
+  // 2. Create Tokenized Card Recurring Subscription Intent (In-Modal PCI-DSS Flow)
+  app.post('/api/payments/create-subscription-intent', async (req, res) => {
+    try {
+      const {
+        plan: rawPlan = 'pro',
+        billingCycle: rawCycle = 'monthly',
+        userId,
+        userName,
+        userEmail,
+        couponCode,
+        discountPercent,
+        currency: rawCurrency = 'USD'
+      } = req.body || {};
+
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
+      const cleanEmail = String(userEmail || '').trim().toLowerCase();
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ error: 'Inicie sessão com um e-mail válido antes de concluir a subscrição.' });
+      }
+
+      const targetCurrency = String(rawCurrency || 'USD').toUpperCase() === 'BRL' ? 'brl' : 'usd';
+      const chargeAmount =
+        targetCurrency === 'brl'
+          ? Math.round(pricing.finalPriceUSD * 5.4 * 100) / 100
+          : pricing.finalPriceUSD;
+      const unitAmountCents = Math.round(chargeAmount * 100);
+      const nextBillingDate = new Date(Date.now() + pricing.spec.days * 86400000).toISOString();
+
+      // Valid 100% Promo Coupon activation (server-validated)
+      if (pricing.finalPriceUSD === 0 && pricing.appliedCoupon) {
+        const promoSubId = `sub_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+        const now = new Date();
+        const orderNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+          Math.floor(1000 + Math.random() * 9000)
+        )}`;
+
+        const promoOrder = {
+          id: `ord-${Date.now()}`,
+          orderNumber,
+          userId: userId || 'client',
+          userName: userName || cleanEmail,
+          userEmail: cleanEmail,
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          amount: 0,
+          currency: targetCurrency.toUpperCase(),
+          paymentMethod: 'card',
+          status: 'paid',
+          stripeSubscriptionId: promoSubId,
+          createdAt: now.toISOString(),
+          notes: `Assinatura ${pricing.spec.label.toLowerCase()} ativada com cupom 100% (${pricing.appliedCoupon.code}).`
+        };
+
+        const targetUser = (userId && authStore.users[userId]) || findBackendUserByEmail(cleanEmail);
+        if (targetUser) {
+          targetUser.plan = pricing.plan;
+          targetUser.billingCycle = pricing.billingCycle;
+          targetUser.creditsRemaining = 9999;
+          targetUser.subscriptionExpiresAt = nextBillingDate;
+          targetUser.stripeSubscriptionId = promoSubId;
+          targetUser.stripeStatus = 'active';
+          targetUser.status = 'active';
+          targetUser.updatedAt = now.toISOString();
+        }
+        const uidKey = targetUser?.id || userId || cleanEmail;
+        if (!authStore.ordersByUser) authStore.ordersByUser = {};
+        authStore.ordersByUser[uidKey] = [promoOrder, ...(authStore.ordersByUser[uidKey] || [])].slice(0, 50);
+        persistAuthStore();
+
+        return res.json({
+          success: true,
+          mode: 'coupon_100',
+          verified: true,
+          subscriptionId: promoSubId,
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          amount: 0,
+          currency: targetCurrency.toUpperCase(),
+          nextBillingDate,
+          order: promoOrder
+        });
+      }
+
+      if (!stripeClient) {
+        return res.status(503).json({
+          error: 'O pagamento por cartão não está disponível neste momento. Utilize o Pix Instantâneo ou tente mais tarde.'
+        });
+      }
+
+      const existingUser = (userId && authStore.users[userId]) || findBackendUserByEmail(cleanEmail);
+      let customerId = existingUser?.stripeCustomerId;
+      if (!customerId) {
+        const existingCustomers = await stripeClient.customers.list({ email: cleanEmail, limit: 1 });
+        if (existingCustomers.data.length > 0) {
+          customerId = existingCustomers.data[0].id;
+        } else {
+          const createdCustomer = await stripeClient.customers.create({
+            email: cleanEmail,
+            name: String(userName || existingUser?.name || cleanEmail).slice(0, 120),
+            metadata: { userId: existingUser?.id || userId || 'client' }
+          });
+          customerId = createdCustomer.id;
+        }
+      }
+
+      const productId = await ensureGatewayProductId(pricing.plan);
+      const subscription = await stripeClient.subscriptions.create({
+        customer: customerId,
+        items: [
+          {
+            price_data: {
+              currency: targetCurrency,
+              product: productId,
+              unit_amount: unitAmountCents,
+              recurring: {
+                interval: pricing.spec.recurringInterval,
+                interval_count: pricing.spec.recurringIntervalCount
+              }
+            }
+          }
+        ],
+        payment_behavior: 'default_incomplete',
+        payment_settings: { save_default_payment_method: 'on_subscription' },
+        metadata: {
+          userId: existingUser?.id || userId || 'client',
+          userEmail: cleanEmail,
+          userName: String(userName || existingUser?.name || cleanEmail).slice(0, 120),
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          couponCode: pricing.appliedCoupon?.code || ''
+        },
+        expand: ['latest_invoice.confirmation_secret']
+      });
+
+      const latestInvoice = subscription.latest_invoice as any;
+      let clientSecret: string | undefined =
+        latestInvoice?.confirmation_secret?.client_secret ||
+        latestInvoice?.payment_intent?.client_secret;
+
+      if (!clientSecret && latestInvoice?.id) {
+        const retrievedInv = await stripeClient.invoices.retrieve(latestInvoice.id, {
+          expand: ['confirmation_secret']
+        });
+        clientSecret = (retrievedInv as any)?.confirmation_secret?.client_secret;
+      }
+
+      if (!clientSecret) {
+        await stripeClient.subscriptions.cancel(subscription.id).catch(() => {});
+        return res.status(502).json({
+          error: 'Não foi possível iniciar a cobrança segura com cartão. Tente novamente ou utilize o Pix.'
+        });
+      }
+
+      return res.json({
+        success: true,
+        mode: 'intent',
+        clientSecret,
+        subscriptionId: subscription.id,
+        customerId,
+        plan: pricing.plan,
+        billingCycle: pricing.billingCycle,
+        amount: chargeAmount,
+        currency: targetCurrency.toUpperCase(),
+        durationDays: pricing.spec.days
+      });
+    } catch (err: any) {
+      console.error('Erro ao iniciar assinatura por cartão:', err);
+      return res.status(500).json({
+        error: err?.message || 'Não foi possível iniciar o pagamento por cartão. Tente novamente.'
+      });
+    }
+  });
+
+  // 3. Verify & Finalize Tokenized Card Subscription After 3DS/Card Confirmation
+  app.post('/api/payments/confirm-subscription', async (req, res) => {
+    try {
+      const { subscriptionId, paymentIntentId, plan: rawPlan, billingCycle: rawCycle, cardLast4, cardBrand } =
+        req.body || {};
+
+      if (!stripeClient) {
+        return res.status(503).json({
+          verified: false,
+          error: 'Serviço de validação de cartão temporariamente indisponível.'
+        });
+      }
+      if (!subscriptionId || typeof subscriptionId !== 'string') {
+        return res.status(400).json({ verified: false, error: 'Identificador da assinatura ausente.' });
+      }
+
+      const subscription = await stripeClient.subscriptions.retrieve(subscriptionId, {
+        expand: ['latest_invoice']
+      });
+
+      let paymentSucceeded = false;
+      let verifiedIntentId = typeof paymentIntentId === 'string' ? paymentIntentId : '';
+      if (verifiedIntentId) {
+        const pi = await stripeClient.paymentIntents.retrieve(verifiedIntentId);
+        if (pi.status === 'succeeded') {
+          paymentSucceeded = true;
+        }
+      }
+
+      const latestInv = subscription.latest_invoice as any;
+      if (
+        subscription.status === 'active' ||
+        subscription.status === 'trialing' ||
+        latestInv?.status === 'paid'
+      ) {
+        paymentSucceeded = true;
+      }
+
+      if (!paymentSucceeded) {
+        return res.status(402).json({
+          verified: false,
+          status: subscription.status,
+          error: 'O pagamento ainda não foi confirmado pelo banco emissor do cartão.'
+        });
+      }
+
+      const plan: 'pro' | 'executive' =
+        subscription.metadata?.plan === 'executive' || rawPlan === 'executive' ? 'executive' : 'pro';
+      const billingCycle = normalizeServerCycle(subscription.metadata?.billingCycle || rawCycle);
+      const spec = getServerCycleSpec(billingCycle);
+      const customerId =
+        typeof subscription.customer === 'string'
+          ? subscription.customer
+          : (subscription.customer as any)?.id;
+
+      const metaUserId = subscription.metadata?.userId;
+      const metaUserEmail = String(subscription.metadata?.userEmail || '').trim().toLowerCase();
+      const targetUser =
+        (metaUserId && authStore.users[metaUserId]) ||
+        (metaUserEmail ? findBackendUserByEmail(metaUserEmail) : undefined);
+
+      const nextBillingDate = new Date(Date.now() + spec.days * 86400000).toISOString();
+      const amountPaid = latestInv?.amount_paid
+        ? Math.round((Number(latestInv.amount_paid) / 100) * 100) / 100
+        : resolveServerPlanPricing(plan, billingCycle).baseUSD;
+      const currencyPaid = String(latestInv?.currency || 'usd').toUpperCase();
+      const receiptUrl = latestInv?.hosted_invoice_url || latestInv?.invoice_pdf || undefined;
+
+      if (targetUser) {
+        targetUser.plan = plan;
+        targetUser.billingCycle = billingCycle;
+        targetUser.creditsRemaining = 9999;
+        targetUser.subscriptionExpiresAt = nextBillingDate;
+        if (customerId) targetUser.stripeCustomerId = customerId;
+        targetUser.stripeSubscriptionId = subscription.id;
+        targetUser.stripeStatus = 'active';
+        targetUser.status = 'active';
+        targetUser.updatedAt = new Date().toISOString();
+      }
+
+      const now = new Date();
+      const uidKey = targetUser?.id || metaUserId || metaUserEmail || 'client';
+      if (!authStore.ordersByUser) authStore.ordersByUser = {};
+      const existingOrders = authStore.ordersByUser[uidKey] || [];
+      let order = existingOrders.find(
+        (o) => o?.stripeSubscriptionId === subscription.id || (verifiedIntentId && o?.stripePaymentIntentId === verifiedIntentId)
+      );
+
+      if (!order) {
+        const orderNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+          Math.floor(1000 + Math.random() * 9000)
+        )}`;
+        order = {
+          id: `ord-${Date.now()}`,
+          orderNumber,
+          userId: uidKey,
+          userName: subscription.metadata?.userName || targetUser?.name || metaUserEmail || 'Assinante',
+          userEmail: metaUserEmail || targetUser?.email || '',
+          plan,
+          billingCycle,
+          amount: amountPaid,
+          currency: currencyPaid,
+          paymentMethod: 'card',
+          status: 'paid',
+          stripeSubscriptionId: subscription.id,
+          stripePaymentIntentId: verifiedIntentId || undefined,
+          receiptUrl,
+          createdAt: now.toISOString(),
+          notes: `Assinatura ${spec.label.toLowerCase()} confirmada via Cartão${
+            cardBrand || cardLast4 ? ` (${cardBrand || 'Cartão'} ${cardLast4 ? 'final ' + cardLast4 : ''})` : ''
+          }. Renovação: ${nextBillingDate.slice(0, 10)}.`
+        };
+        authStore.ordersByUser[uidKey] = [order, ...existingOrders].slice(0, 50);
+      }
+
+      persistAuthStore();
+
+      return res.json({
+        verified: true,
+        subscriptionId: subscription.id,
+        customerId,
+        paymentIntentId: verifiedIntentId || undefined,
+        plan,
+        billingCycle,
+        amount: amountPaid,
+        currency: currencyPaid,
+        nextBillingDate,
+        receiptUrl,
+        order
+      });
+    } catch (err: any) {
+      console.error('Erro ao confirmar assinatura por cartão:', err);
+      return res.status(500).json({
+        verified: false,
+        error: err?.message || 'Não foi possível validar o pagamento com cartão.'
+      });
+    }
+  });
+
+  // 4. Hosted Checkout Session (Backwards-compatible for top-level redirects & 4 cycles)
   app.post('/api/stripe/create-checkout-session', async (req, res) => {
     try {
       const {
-        plan = 'pro',
-        billingCycle = 'monthly',
+        plan: rawPlan = 'pro',
+        billingCycle: rawCycle = 'monthly',
         userId,
         userName,
         userEmail,
         discountPercent = 0,
         couponCode,
-        originUrl
-      } = req.body;
+        originUrl,
+        currency: rawCurrency = 'USD'
+      } = req.body || {};
 
-      const isYearly = billingCycle === 'yearly';
-      const baseUSD = plan === 'executive'
-        ? (isYearly ? 108 : 12)
-        : (isYearly ? 72 : 8);
-
-      const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
-      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
-      const unitAmountCents = Math.round(finalPriceUSD * 100);
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
+      const targetCurrency = String(rawCurrency || 'USD').toUpperCase() === 'BRL' ? 'brl' : 'usd';
+      const chargeAmount =
+        targetCurrency === 'brl'
+          ? Math.round(pricing.finalPriceUSD * 5.4 * 100) / 100
+          : pricing.finalPriceUSD;
+      const unitAmountCents = Math.round(chargeAmount * 100);
 
       const appBaseUrl = originUrl || process.env.APP_URL || `http://localhost:${PORT}`;
-      const planLabel = plan === 'executive' ? 'Executivo VIP' : 'Profissional';
-      const cycleLabel = isYearly ? 'Anual' : 'Mensal';
 
-      if (stripeClient && finalPriceUSD > 0) {
-        // Create real Stripe checkout session with recurring subscription
-        const session = await stripeClient.checkout.sessions.create({
-          mode: 'subscription',
-          customer_email: userEmail || undefined,
-          client_reference_id: userId || undefined,
-          metadata: {
-            userId: userId || 'usr-guest',
-            userName: userName || 'Cliente SaaS',
-            plan,
-            billingCycle,
-            couponCode: couponCode || ''
-          },
-          subscription_data: {
-            metadata: {
-              userId: userId || 'usr-guest',
-              plan,
-              billingCycle,
-              couponCode: couponCode || ''
-            }
-          },
-          line_items: [
-            {
-              price_data: {
-                currency: 'usd',
-                product_data: {
-                  name: `Currículo Estratégico SaaS - Plano ${planLabel} (${cycleLabel})`,
-                  description: isYearly
-                    ? `Assinatura recorrente anual (Faturamento a cada 12 meses). Exportações Word (.docx) ilimitadas, IA sem restrições e auditoria ATS prioritária.`
-                    : `Assinatura recorrente mensal (Faturamento a cada 30 dias). Exportações Word (.docx) ilimitadas, IA sem restrições e auditoria ATS prioritária.`
-                },
-                unit_amount: unitAmountCents,
-                recurring: {
-                  interval: isYearly ? 'year' : 'month'
-                }
-              },
-              quantity: 1
-            }
-          ],
-          success_url: `${appBaseUrl}?stripe_status=success&session_id={CHECKOUT_SESSION_ID}&plan=${plan}&cycle=${billingCycle}`,
-          cancel_url: `${appBaseUrl}?stripe_status=canceled&plan=${plan}`
-        });
+      if (pricing.finalPriceUSD === 0 && pricing.appliedCoupon) {
+        const promoSessionId = `cs_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+        const promoSubId = `sub_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+        if (!authStore.promoSessions) authStore.promoSessions = {};
+        authStore.promoSessions[promoSessionId] = {
+          sessionId: promoSessionId,
+          subscriptionId: promoSubId,
+          userId: userId || 'anonymous',
+          userEmail: userEmail || '',
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          couponCode: pricing.appliedCoupon.code,
+          createdAt: new Date().toISOString()
+        };
+        persistAuthStore();
 
         return res.json({
           success: true,
-          mode: 'live',
-          sessionId: session.id,
-          url: session.url
+          mode: 'coupon_100',
+          sessionId: promoSessionId,
+          subscriptionId: promoSubId,
+          url: `${appBaseUrl}?stripe_status=success&session_id=${promoSessionId}&plan=${pricing.plan}&cycle=${pricing.billingCycle}`,
+          message: 'Subscrição ativada com cupom promocional 100%.'
         });
       }
 
-      // Demo/Simulated checkout when Stripe API key is not configured or 100% coupon applied
-      const simulatedSessionId = `cs_demo_${Math.random().toString(36).substring(2, 11)}`;
-      const simulatedSubId = `sub_${Math.random().toString(36).substring(2, 14)}`;
+      if (!stripeClient) {
+        return res.status(503).json({
+          error: 'O pagamento por cartão não está disponível neste momento. Utilize o pagamento via Pix.'
+        });
+      }
+
+      const session = await stripeClient.checkout.sessions.create({
+        mode: 'subscription',
+        customer_email: userEmail || undefined,
+        client_reference_id: userId || undefined,
+        metadata: {
+          userId: userId || 'usr-client',
+          userName: userName || 'Cliente',
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          couponCode: pricing.appliedCoupon?.code || ''
+        },
+        subscription_data: {
+          metadata: {
+            userId: userId || 'usr-client',
+            plan: pricing.plan,
+            billingCycle: pricing.billingCycle,
+            couponCode: pricing.appliedCoupon?.code || ''
+          }
+        },
+        line_items: [
+          {
+            price_data: {
+              currency: targetCurrency,
+              product_data: {
+                name: `Currículo Estratégico - Plano ${pricing.planLabel} (${pricing.spec.label})`,
+                description: `Assinatura recorrente ${pricing.spec.label.toLowerCase()} (a cada ${pricing.spec.months} ${
+                  pricing.spec.months === 1 ? 'mês' : 'meses'
+                }). Exportações Word (.docx) e PDF ilimitadas, IA completa e análise ATS.`
+              },
+              unit_amount: unitAmountCents,
+              recurring: {
+                interval: pricing.spec.recurringInterval,
+                interval_count: pricing.spec.recurringIntervalCount
+              }
+            },
+            quantity: 1
+          }
+        ],
+        success_url: `${appBaseUrl}?stripe_status=success&session_id={CHECKOUT_SESSION_ID}&plan=${pricing.plan}&cycle=${pricing.billingCycle}`,
+        cancel_url: `${appBaseUrl}?stripe_status=canceled&plan=${pricing.plan}`
+      });
 
       return res.json({
         success: true,
-        mode: 'demo',
-        sessionId: simulatedSessionId,
-        subscriptionId: simulatedSubId,
-        url: `${appBaseUrl}?stripe_status=success&session_id=${simulatedSessionId}&plan=${plan}&cycle=${billingCycle}&demo=true`,
-        message: 'Sessão Stripe Checkout pronta (Modo seguro / Simulação ativa).'
+        mode: 'live',
+        sessionId: session.id,
+        url: session.url
       });
     } catch (err: any) {
-      console.error('Erro ao gerar Stripe Checkout Session:', err);
+      console.error('Erro ao gerar sessão de checkout:', err);
       return res.status(500).json({
-        error: 'Erro ao gerar checkout Stripe: ' + (err.message || 'Falha desconhecida')
+        error: 'Não foi possível iniciar a página de pagamento. Tente novamente ou pague via Pix.'
       });
     }
   });
 
-  // 3. Process In-Modal Direct Card Subscription (Stripe Recurring Authorizations)
+  // 5. Legacy Direct Process Subscription (Disabled for unconfirmed non-zero card charges)
   app.post('/api/stripe/process-subscription', async (req, res) => {
     try {
-      const {
-        plan = 'pro',
-        billingCycle = 'monthly',
-        userId,
-        userName,
-        userEmail,
-        cardLast4,
-        cardBrand,
-        couponCode,
-        discountPercent = 0
-      } = req.body;
+      const { plan: rawPlan = 'pro', billingCycle: rawCycle = 'monthly', couponCode, discountPercent } = req.body || {};
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
 
-      const isYearly = billingCycle === 'yearly';
-      const baseUSD = plan === 'executive'
-        ? (isYearly ? 108 : 12)
-        : (isYearly ? 72 : 8);
-
-      const discountRate = Math.min(100, Math.max(0, Number(discountPercent) || 0));
-      const finalPriceUSD = Math.max(0, Math.round(baseUSD * (1 - discountRate / 100) * 100) / 100);
-
-      const durationDays = isYearly ? 365 : 30;
-      const nextBillingDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-
-      let stripeCustomerId = `cus_${Math.random().toString(36).substring(2, 12)}`;
-      let stripeSubscriptionId = `sub_${Math.random().toString(36).substring(2, 14)}`;
-      let paymentIntentId = `pi_${Math.random().toString(36).substring(2, 14)}`;
-
-      // If real Stripe client is configured and user has email, register customer in Stripe
-      if (stripeClient && userEmail) {
-        try {
-          const customer = await stripeClient.customers.create({
-            email: userEmail,
-            name: userName || 'Cliente SaaS',
-            metadata: {
-              userId: userId || 'anon',
-              plan,
-              billingCycle
-            }
-          });
-          stripeCustomerId = customer.id;
-        } catch (stripeErr) {
-          console.warn('Erro ao criar cliente Stripe:', stripeErr);
-        }
+      if (pricing.finalPriceUSD === 0 && pricing.appliedCoupon) {
+        const promoSubId = `sub_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
+        const nextBillingDate = new Date(Date.now() + pricing.spec.days * 86400000).toISOString();
+        return res.json({
+          success: true,
+          mode: 'coupon_100',
+          subscriptionId: promoSubId,
+          status: 'active',
+          plan: pricing.plan,
+          billingCycle: pricing.billingCycle,
+          amount: 0,
+          currency: 'USD',
+          nextBillingDate,
+          cardBrand: 'Cupom 100%',
+          last4: '0000',
+          invoiceNumber: `PROMO-INV-${Date.now().toString().slice(-6)}`,
+          message: `Assinatura ${pricing.spec.label} ativada com cupom 100%!`
+        });
       }
 
-      return res.json({
-        success: true,
-        mode: stripeClient ? 'live' : 'test',
-        subscriptionId: stripeSubscriptionId,
-        customerId: stripeCustomerId,
-        paymentIntentId,
-        status: 'active',
-        plan,
-        billingCycle,
-        amount: finalPriceUSD,
-        currency: 'USD',
-        nextBillingDate,
-        cardBrand: cardBrand || 'Visa',
-        last4: cardLast4 || '4242',
-        receiptUrl: `https://pay.stripe.com/receipts/${paymentIntentId}`,
-        invoiceNumber: `STRIPE-INV-${Date.now().toString().slice(-6)}`,
-        message: `Assinatura ${isYearly ? 'Anual' : 'Mensal'} autorizada com sucesso na Stripe!`
+      return res.status(400).json({
+        error: 'Para sua segurança, finalize o pagamento diretamente no formulário seguro de cartão.'
       });
     } catch (err: any) {
-      console.error('Erro ao processar assinatura Stripe:', err);
       return res.status(500).json({
-        error: 'Falha no processamento da assinatura: ' + (err.message || 'Erro de rede')
+        error: 'Falha ao processar solicitação de subscrição.'
       });
     }
   });
 
-  // 4. Verify Stripe Checkout Session
+  // 6. Strict Checkout Session Verification
   app.post('/api/stripe/verify-session', async (req, res) => {
     try {
-      const { sessionId } = req.body;
-      if (!sessionId) {
-        return res.status(400).json({ error: 'Session ID obrigatório.' });
+      const { sessionId } = req.body || {};
+      if (!sessionId || typeof sessionId !== 'string') {
+        return res.status(400).json({ verified: false, error: 'Identificador da sessão obrigatório.' });
       }
 
-      if (stripeClient && !sessionId.startsWith('cs_demo_')) {
-        const session = await stripeClient.checkout.sessions.retrieve(sessionId, {
-          expand: ['subscription', 'customer']
-        });
-
-        const sub = session.subscription as Stripe.Subscription | null;
+      if (sessionId.startsWith('cs_promo_')) {
+        const promo = authStore.promoSessions?.[sessionId];
+        if (!promo) {
+          return res.status(404).json({ verified: false, error: 'Sessão promocional não encontrada.' });
+        }
         return res.json({
           verified: true,
-          mode: 'live',
+          mode: 'coupon_100',
+          status: 'complete',
+          paymentStatus: 'paid',
+          subscriptionId: promo.subscriptionId,
+          customerId: undefined,
+          plan: promo.plan,
+          billingCycle: normalizeServerCycle(promo.billingCycle),
+          amount: 0,
+          currency: 'USD'
+        });
+      }
+
+      if (!stripeClient) {
+        return res.status(503).json({ verified: false, error: 'Serviço de validação de pagamento indisponível.' });
+      }
+
+      const session = await stripeClient.checkout.sessions.retrieve(sessionId, {
+        expand: ['subscription', 'customer']
+      });
+
+      const isPaid =
+        session.status === 'complete' &&
+        (session.payment_status === 'paid' || session.payment_status === 'no_payment_required');
+
+      if (!isPaid) {
+        return res.status(402).json({
+          verified: false,
           status: session.status,
           paymentStatus: session.payment_status,
-          subscriptionId: typeof session.subscription === 'string' ? session.subscription : sub?.id,
-          customerId: typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id,
-          plan: session.metadata?.plan || 'pro',
-          billingCycle: session.metadata?.billingCycle || 'monthly'
+          error: 'O pagamento ainda não foi confirmado.'
         });
       }
 
-      // Demo verification
+      const sub = session.subscription as Stripe.Subscription | null;
+      const plan: 'pro' | 'executive' = session.metadata?.plan === 'executive' ? 'executive' : 'pro';
+      const billingCycle = normalizeServerCycle(session.metadata?.billingCycle);
+      const customerId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id;
+      const subscriptionId = typeof session.subscription === 'string' ? session.subscription : sub?.id;
+      const amount = session.amount_total ? Math.round((session.amount_total / 100) * 100) / 100 : resolveServerPlanPricing(plan, billingCycle).baseUSD;
+      const currency = String(session.currency || 'usd').toUpperCase();
+
       return res.json({
         verified: true,
-        mode: 'demo',
-        status: 'complete',
-        paymentStatus: 'paid',
-        subscriptionId: `sub_demo_${sessionId.slice(0, 10)}`,
-        customerId: `cus_demo_${Date.now()}`
+        mode: 'live',
+        status: session.status,
+        paymentStatus: session.payment_status,
+        subscriptionId,
+        customerId,
+        customerEmail: session.customer_details?.email || session.customer_email || undefined,
+        plan,
+        billingCycle,
+        amount,
+        currency
       });
     } catch (err: any) {
-      console.error('Erro ao verificar sessão Stripe:', err);
-      return res.status(500).json({ error: err.message || 'Falha ao validar sessão Stripe.' });
+      console.error('Erro ao verificar sessão de pagamento:', err);
+      return res.status(500).json({ verified: false, error: 'Não foi possível validar o pagamento.' });
     }
   });
 
-  // 5. Customer Portal for Managing Recurring Subscriptions
+  // 7. Customer Billing Portal (Hidden gateway branding)
   app.post('/api/stripe/customer-portal', async (req, res) => {
     try {
-      const { customerId, returnUrl } = req.body;
+      const { customerId, returnUrl } = req.body || {};
       const appBaseUrl = returnUrl || process.env.APP_URL || `http://localhost:${PORT}`;
 
-      if (stripeClient && customerId && !customerId.startsWith('cus_demo_')) {
-        const portalSession = await stripeClient.billingPortal.sessions.create({
-          customer: customerId,
-          return_url: appBaseUrl
+      if (!stripeClient) {
+        return res.status(503).json({
+          error: 'Portal de gestão de faturação indisponível neste momento.'
         });
-        return res.json({ url: portalSession.url, active: true });
       }
 
-      return res.json({
-        url: `${appBaseUrl}?stripe_portal=active`,
-        active: false,
-        message: 'Portal do cliente Stripe gerenciado centralmente.'
+      if (!customerId || typeof customerId !== 'string' || !customerId.startsWith('cus_')) {
+        return res.status(400).json({
+          error: 'Nenhuma conta de pagamento recorrente encontrada para este perfil.'
+        });
+      }
+
+      const portalSession = await stripeClient.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: appBaseUrl
       });
+      return res.json({ url: portalSession.url, active: true });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({ error: 'Não foi possível abrir o portal de faturação neste momento.' });
     }
   });
 
-  // 6. Cancel Subscription Endpoint
+  // 8. Cancel Subscription Endpoint
   app.post('/api/stripe/cancel-subscription', async (req, res) => {
     try {
-      const { subscriptionId } = req.body;
-      if (!subscriptionId) {
-        return res.status(400).json({ error: 'Subscription ID obrigatório.' });
+      const { subscriptionId } = req.body || {};
+      if (!subscriptionId || typeof subscriptionId !== 'string') {
+        return res.status(400).json({ error: 'Identificador de assinatura obrigatório.' });
       }
 
-      if (stripeClient && !subscriptionId.startsWith('sub_demo_')) {
+      if (stripeClient && subscriptionId.startsWith('sub_') && !subscriptionId.startsWith('sub_promo_')) {
         const canceled = await stripeClient.subscriptions.cancel(subscriptionId);
         return res.json({
           success: true,
           status: canceled.status,
-          message: 'Assinatura cancelada com sucesso na Stripe.'
+          message: 'Renovação automática cancelada com sucesso.'
         });
       }
 
       return res.json({
         success: true,
         status: 'canceled',
-        message: 'Assinatura cancelada com sucesso (Modo simulação / teste).'
+        message: 'Assinatura cancelada com sucesso.'
       });
     } catch (err: any) {
-      console.error('Erro ao cancelar assinatura Stripe:', err);
-      return res.status(500).json({ error: err.message || 'Erro ao cancelar assinatura.' });
+      console.error('Erro ao cancelar assinatura:', err);
+      return res.status(500).json({ error: 'Não foi possível cancelar a assinatura neste momento.' });
     }
   });
 
   // -------------------------------------------------------------
-  // 7. ADMIN NO-CODE PROMPT LIVE TESTER ENDPOINT
+  // 7. ADMIN NO-CODE PROMPT LIVE TESTER ENDPOINT (PRODUCTION)
   // -------------------------------------------------------------
   app.post('/api/admin/test-prompt', async (req, res) => {
     const startedAt = Date.now();
     try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload || (payload.role !== 'admin' && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase()))) {
+        return res.status(403).json({ error: 'Acesso restrito a administradores autenticados.' });
+      }
+
       const { systemInstruction, userPromptTemplate, sampleInput, temperature, preferredModel, fallbackModel } = req.body;
       if (!ai) {
-        return res.json({
-          output: `[Modo Simulação Offline - GEMINI_API_KEY ausente]\nSystem: ${systemInstruction || 'N/A'}\nPrompt aplicado ao input: "${sampleInput || 'Exemplo padrão'}"\nResultado: Perfil otimizado com métricas quantificáveis e foco executivo.`,
-          modelUsed: preferredModel || 'gemini-3.8-flash',
-          latencyMs: Date.now() - startedAt,
-          estimatedTokens: 320
+        return res.status(503).json({
+          error: 'GEMINI_API_KEY não configurada no servidor. Configure a chave de API nas variáveis de ambiente para executar testes ao vivo.'
         });
       }
 
@@ -1616,11 +2125,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     targetRole?: string;
     phone?: string;
     company?: string;
+    notes?: string;
     avatarUrl?: string;
     creditsRemaining: number;
     creditsUsed: number;
     totalCvGenerated: number;
-    billingCycle: 'monthly' | 'yearly';
+    billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
     subscriptionExpiresAt?: string;
     stripeCustomerId?: string;
     stripeSubscriptionId?: string;
@@ -1644,6 +2154,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     resetTokens: Record<string, PasswordResetRecord>;
     resumesByUser?: Record<string, any[]>;
     ordersByUser?: Record<string, any[]>;
+    coupons?: any[];
+    adminConfig?: Record<string, any>;
+    errorLogs?: any[];
+    gdprRequests?: any[];
+    impersonationLogs?: any[];
+    promoSessions?: Record<string, any>;
   }
 
   function ensureAuthSecret(): string {
@@ -1678,23 +2194,42 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             users: parsed.users || {},
             resetTokens: parsed.resetTokens || {},
             resumesByUser: parsed.resumesByUser || {},
-            ordersByUser: parsed.ordersByUser || {}
+            ordersByUser: parsed.ordersByUser || {},
+            coupons: Array.isArray(parsed.coupons) ? parsed.coupons : [],
+            adminConfig: parsed.adminConfig && typeof parsed.adminConfig === 'object' ? parsed.adminConfig : {},
+            errorLogs: Array.isArray(parsed.errorLogs) ? parsed.errorLogs : [],
+            gdprRequests: Array.isArray(parsed.gdprRequests) ? parsed.gdprRequests : [],
+            impersonationLogs: Array.isArray(parsed.impersonationLogs) ? parsed.impersonationLogs : [],
+            promoSessions: parsed.promoSessions && typeof parsed.promoSessions === 'object' ? parsed.promoSessions : {}
           };
         }
       }
     } catch (e) {
       console.warn('Aviso ao ler auth store, iniciando store limpo:', e);
     }
-    return { users: {}, resetTokens: {}, resumesByUser: {}, ordersByUser: {} };
+    return {
+      users: {},
+      resetTokens: {},
+      resumesByUser: {},
+      ordersByUser: {},
+      coupons: [],
+      adminConfig: {},
+      errorLogs: [],
+      gdprRequests: [],
+      impersonationLogs: [],
+      promoSessions: {}
+    };
   }
 
   const authStore: AuthStoreData = loadAuthStore();
-  if (!authStore.resumesByUser) {
-    authStore.resumesByUser = {};
-  }
-  if (!authStore.ordersByUser) {
-    authStore.ordersByUser = {};
-  }
+  if (!authStore.resumesByUser) authStore.resumesByUser = {};
+  if (!authStore.ordersByUser) authStore.ordersByUser = {};
+  if (!authStore.coupons) authStore.coupons = [];
+  if (!authStore.adminConfig) authStore.adminConfig = {};
+  if (!authStore.errorLogs) authStore.errorLogs = [];
+  if (!authStore.gdprRequests) authStore.gdprRequests = [];
+  if (!authStore.impersonationLogs) authStore.impersonationLogs = [];
+  if (!authStore.promoSessions) authStore.promoSessions = {};
 
   function persistAuthStore() {
     try {
@@ -1798,10 +2333,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       targetRole: record.targetRole,
       phone: record.phone,
       company: record.company,
+      notes: record.notes,
       avatarUrl: record.avatarUrl,
       creditsRemaining: record.creditsRemaining,
       creditsUsed: record.creditsUsed,
-      totalCvGenerated: record.totalCvGenerated,
+      totalCvGenerated: Math.max(
+        record.totalCvGenerated || 0,
+        authStore.resumesByUser?.[record.id]?.length || 0
+      ),
       billingCycle: record.billingCycle,
       subscriptionExpiresAt: record.subscriptionExpiresAt,
       stripeCustomerId: record.stripeCustomerId,
@@ -2162,7 +2701,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       } = req.body || {};
 
       if (plan && ['free', 'pro', 'executive'].includes(plan)) userRecord.plan = plan;
-      if (billingCycle && ['monthly', 'yearly'].includes(billingCycle)) userRecord.billingCycle = billingCycle;
+      if (billingCycle && ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(billingCycle)) {
+        userRecord.billingCycle = billingCycle;
+      }
       if (typeof creditsRemaining === 'number') userRecord.creditsRemaining = creditsRemaining;
       if (typeof subscriptionExpiresAt === 'string') userRecord.subscriptionExpiresAt = subscriptionExpiresAt;
       if (typeof stripeCustomerId === 'string') userRecord.stripeCustomerId = stripeCustomerId;
@@ -2435,6 +2976,1510 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     } catch (err: any) {
       console.error('Erro em POST /api/orders:', err);
       return res.status(500).json({ error: 'Erro ao registar pedido no servidor.' });
+    }
+  });
+
+  // -------------------------------------------------------------
+  // 9. PRODUCTION ADMIN BACKOFFICE & PUBLIC CONFIG API
+  // -------------------------------------------------------------
+  function requireAdminSession(req: express.Request, res: express.Response) {
+    const token = extractTokenFromRequest(req);
+    const payload = token ? verifySessionToken(token) : null;
+    if (!payload) {
+      res.status(401).json({ error: 'Sessão administrativa não autenticada.' });
+      return null;
+    }
+    const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+    const isAdm =
+      payload.role === 'admin' ||
+      userRec?.role === 'admin' ||
+      ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+    if (!isAdm) {
+      res.status(403).json({ error: 'Acesso restrito a administradores.' });
+      return null;
+    }
+    return payload;
+  }
+
+  // Public runtime config (non-sensitive frontend settings, plans, banners, templates, snippets, locales)
+  app.get('/api/public/config', (_req, res) => {
+    const cfg = authStore.adminConfig || {};
+    return res.json({
+      editablePlans: cfg.editablePlans || null,
+      platformGovernance: cfg.platformGovernance || null,
+      systemBanners: cfg.systemBanners || null,
+      adminTemplates: cfg.adminTemplates || null,
+      professionSnippets: cfg.professionSnippets || null,
+      systemLocales: cfg.systemLocales || null,
+      planQuotas: cfg.planQuotas || null
+    });
+  });
+
+  // Public active coupons validation & usage tracking
+  app.get('/api/coupons/public', (_req, res) => {
+    return res.json({ coupons: authStore.coupons || [] });
+  });
+
+  app.post('/api/coupons/:id/use', (req, res) => {
+    try {
+      const couponId = String(req.params.id || '');
+      const list = authStore.coupons || [];
+      const idx = list.findIndex((c) => c.id === couponId);
+      if (idx >= 0) {
+        list[idx].usedCount = (Number(list[idx].usedCount) || 0) + 1;
+        list[idx].updatedAt = new Date().toISOString();
+        persistAuthStore();
+      }
+      return res.json({ success: true });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao atualizar uso do cupom.' });
+    }
+  });
+
+  // Error telemetry intake from client
+  app.post('/api/error-logs', (req, res) => {
+    try {
+      const log = req.body || {};
+      if (!log.errorMessage) {
+        return res.status(400).json({ error: 'errorMessage obrigatório.' });
+      }
+      const entry = {
+        id: log.id || `err-${Date.now()}`,
+        timestamp: log.timestamp || new Date().toISOString(),
+        userEmail: log.userEmail || '',
+        operationType: log.operationType || 'unknown',
+        errorMessage: String(log.errorMessage).slice(0, 1000),
+        modelUsed: log.modelUsed || 'n/a',
+        resolved: Boolean(log.resolved)
+      };
+      authStore.errorLogs = [entry, ...(authStore.errorLogs || [])].slice(0, 100);
+      persistAuthStore();
+      return res.status(201).json({ success: true, log: entry });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao registar log.' });
+    }
+  });
+
+  // Authenticated user GDPR submission endpoint
+  app.post('/api/gdpr/request', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload) {
+        return res.status(401).json({ error: 'Autenticação necessária para submeter pedido RGPD.' });
+      }
+      const { requestType, notes } = req.body || {};
+      if (!['export_data', 'delete_account'].includes(requestType)) {
+        return res.status(400).json({ error: 'Tipo de pedido RGPD inválido.' });
+      }
+      const reqItem = {
+        id: `gdpr-${Date.now()}`,
+        userId: payload.uid,
+        userEmail: payload.email,
+        requestType,
+        status: 'pending',
+        requestedAt: new Date().toISOString(),
+        notes: notes ? String(notes).slice(0, 400) : 'Solicitação submetida pelo titular da conta.'
+      };
+      authStore.gdprRequests = [reqItem, ...(authStore.gdprRequests || [])].slice(0, 100);
+      persistAuthStore();
+      return res.status(201).json({ success: true, request: reqItem });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao registar pedido RGPD.' });
+    }
+  });
+
+  // Admin Overview Snapshot
+  app.get('/api/admin/overview', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const users = Object.values(authStore.users).map((u) => sanitizeUser(u));
+    const ordersMap = new Map<string, any>();
+    Object.values(authStore.ordersByUser || {}).forEach((arr) => {
+      if (Array.isArray(arr)) {
+        arr.forEach((o) => {
+          if (o?.id) ordersMap.set(o.id, o);
+        });
+      }
+    });
+    const orders = Array.from(ordersMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    return res.json({
+      users,
+      orders,
+      coupons: authStore.coupons || [],
+      config: authStore.adminConfig || {},
+      errorLogs: authStore.errorLogs || [],
+      gdprRequests: authStore.gdprRequests || [],
+      impersonationLogs: authStore.impersonationLogs || []
+    });
+  });
+
+  // Admin User Management
+  app.post('/api/admin/users', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const { id, name, email, role, status, plan, phone, creditsRemaining, billingCycle, notes } = req.body || {};
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ error: 'E-mail válido obrigatório.' });
+      }
+      const existing = findBackendUserByEmail(cleanEmail);
+      const uid = id || existing?.id || `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
+      const nowIso = new Date().toISOString();
+      const record: BackendUserRecord = {
+        ...(existing || {}),
+        id: uid,
+        name: String(name || existing?.name || 'Novo Cliente').trim(),
+        email: cleanEmail,
+        role: role === 'admin' || ADMIN_EMAILS_BACKEND.has(cleanEmail) ? 'admin' : 'user',
+        status: status === 'suspended' ? 'suspended' : 'active',
+        plan: ['free', 'pro', 'executive'].includes(plan) ? plan : 'pro',
+        phone: typeof phone === 'string' ? phone : existing?.phone || '',
+        notes: typeof notes === 'string' ? notes : existing?.notes || 'Cadastrado manualmente pelo admin',
+        creditsRemaining: typeof creditsRemaining === 'number' ? creditsRemaining : (plan === 'free' ? 5 : 9999),
+        creditsUsed: existing?.creditsUsed ?? 0,
+        totalCvGenerated: existing?.totalCvGenerated ?? 0,
+        billingCycle: normalizeServerCycle(billingCycle),
+        authProviders: existing?.authProviders || ['password'],
+        createdAt: existing?.createdAt || nowIso,
+        updatedAt: nowIso
+      };
+      authStore.users[uid] = record;
+      persistAuthStore();
+      return res.status(201).json({ success: true, user: sanitizeUser(record) });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Erro ao criar utilizador.' });
+    }
+  });
+
+  app.patch('/api/admin/users/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    try {
+      const userId = String(req.params.id || '');
+      let record: BackendUserRecord | undefined = authStore.users[userId];
+      const updates = req.body || {};
+      if (!record && updates.email) {
+        record = findBackendUserByEmail(String(updates.email));
+      }
+      if (!record) {
+        return res.status(404).json({ error: 'Utilizador não encontrado no servidor.' });
+      }
+      if (typeof updates.name === 'string') record.name = updates.name.trim();
+      if (typeof updates.phone === 'string') record.phone = updates.phone.trim();
+      if (typeof updates.notes === 'string') record.notes = updates.notes;
+      if (updates.plan && ['free', 'pro', 'executive'].includes(updates.plan)) record.plan = updates.plan;
+      if (updates.role && ['admin', 'user'].includes(updates.role)) record.role = updates.role;
+      if (updates.status && ['active', 'suspended'].includes(updates.status)) record.status = updates.status;
+      if (typeof updates.creditsRemaining === 'number') record.creditsRemaining = updates.creditsRemaining;
+      if (typeof updates.creditsUsed === 'number') record.creditsUsed = updates.creditsUsed;
+      if (typeof updates.subscriptionExpiresAt === 'string') record.subscriptionExpiresAt = updates.subscriptionExpiresAt;
+      record.updatedAt = new Date().toISOString();
+      persistAuthStore();
+      return res.json({ success: true, user: sanitizeUser(record) });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'Erro ao atualizar utilizador.' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/anonymize', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const userId = String(req.params.id || '');
+    const record = authStore.users[userId];
+    if (record) {
+      record.name = 'Utilizador Anonimizado (RGPD)';
+      record.email = `anon-${userId.slice(0, 8)}@eliminado.rgpd`;
+      record.phone = '';
+      record.status = 'suspended';
+      record.plan = 'free';
+      record.creditsRemaining = 0;
+      record.notes = `Conta anonimizada conforme Art. 17 RGPD em ${new Date().toISOString()}`;
+      record.updatedAt = new Date().toISOString();
+      persistAuthStore();
+    }
+    return res.json({ success: true });
+  });
+
+  app.delete('/api/admin/users/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const userId = String(req.params.id || '');
+    delete authStore.users[userId];
+    if (authStore.resumesByUser) delete authStore.resumesByUser[userId];
+    if (authStore.ordersByUser) delete authStore.ordersByUser[userId];
+    persistAuthStore();
+    return res.json({ success: true });
+  });
+
+  // Admin Orders Management
+  app.post('/api/admin/orders', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const order = req.body || {};
+    if (!order.id || !order.orderNumber) {
+      return res.status(400).json({ error: 'Dados do pedido inválidos.' });
+    }
+    const targetUid = String(order.userId || 'manual');
+    if (!authStore.ordersByUser) authStore.ordersByUser = {};
+    const existing = authStore.ordersByUser[targetUid] || [];
+    authStore.ordersByUser[targetUid] = [order, ...existing.filter((o) => o.id !== order.id)].slice(0, 100);
+
+    // Sync target user's plan if present
+    const targetUser = authStore.users[targetUid] || (order.userEmail ? findBackendUserByEmail(order.userEmail) : undefined);
+    const normalizedCycle = normalizeServerCycle(order.billingCycle);
+    if (targetUser && order.status === 'paid' && ['pro', 'executive'].includes(order.plan)) {
+      const days = getServerCycleSpec(normalizedCycle).days;
+      targetUser.plan = order.plan;
+      targetUser.creditsRemaining = 9999;
+      targetUser.billingCycle = normalizedCycle;
+      targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      targetUser.stripeStatus = 'active';
+      targetUser.status = 'active';
+      targetUser.updatedAt = new Date().toISOString();
+    }
+    persistAuthStore();
+    return res.status(201).json({ success: true, order });
+  });
+
+  app.patch('/api/admin/orders/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const orderId = String(req.params.id || '');
+    const { status, notes } = req.body || {};
+    let updated = false;
+    let matchedOrder: any = null;
+    Object.values(authStore.ordersByUser || {}).forEach((arr) => {
+      if (Array.isArray(arr)) {
+        arr.forEach((o) => {
+          if (o.id === orderId) {
+            if (status) o.status = status;
+            if (notes) o.notes = notes;
+            o.updatedAt = new Date().toISOString();
+            matchedOrder = o;
+            updated = true;
+          }
+        });
+      }
+    });
+
+    if (updated && status === 'paid' && matchedOrder && ['pro', 'executive'].includes(matchedOrder.plan)) {
+      const targetUser =
+        (matchedOrder.userId && authStore.users[matchedOrder.userId]) ||
+        (matchedOrder.userEmail ? findBackendUserByEmail(matchedOrder.userEmail) : undefined);
+      if (targetUser) {
+        const normalizedCycle = normalizeServerCycle(matchedOrder.billingCycle);
+        const days = getServerCycleSpec(normalizedCycle).days;
+        targetUser.plan = matchedOrder.plan;
+        targetUser.creditsRemaining = 9999;
+        targetUser.billingCycle = normalizedCycle;
+        targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+        targetUser.stripeStatus = 'active';
+        targetUser.status = 'active';
+        targetUser.updatedAt = new Date().toISOString();
+      }
+    }
+
+    if (updated) persistAuthStore();
+    return res.json({ success: true, updated });
+  });
+
+  // Admin Coupons Management
+  app.post('/api/admin/coupons', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const coupon = req.body || {};
+    if (!coupon.id || !coupon.code) {
+      return res.status(400).json({ error: 'Cupom inválido.' });
+    }
+    authStore.coupons = [coupon, ...(authStore.coupons || []).filter((c) => c.id !== coupon.id)];
+    persistAuthStore();
+    return res.status(201).json({ success: true, coupon });
+  });
+
+  app.patch('/api/admin/coupons/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const couponId = String(req.params.id || '');
+    const { active } = req.body || {};
+    const idx = (authStore.coupons || []).findIndex((c) => c.id === couponId);
+    if (idx >= 0 && authStore.coupons) {
+      if (typeof active === 'boolean') authStore.coupons[idx].active = active;
+      authStore.coupons[idx].updatedAt = new Date().toISOString();
+      persistAuthStore();
+    }
+    return res.json({ success: true });
+  });
+
+  app.delete('/api/admin/coupons/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const couponId = String(req.params.id || '');
+    authStore.coupons = (authStore.coupons || []).filter((c) => c.id !== couponId);
+    persistAuthStore();
+    return res.json({ success: true });
+  });
+
+  // Admin Module Config Persistence
+  app.post('/api/admin/config/:scope', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const scope = String(req.params.scope || '');
+    const allowedScopes = new Set([
+      'promptsConfig',
+      'aiRouting',
+      'planQuotas',
+      'adminTemplates',
+      'professionSnippets',
+      'systemLocales',
+      'systemBanners',
+      'editablePlans',
+      'platformGovernance'
+    ]);
+    if (!allowedScopes.has(scope)) {
+      return res.status(400).json({ error: 'Escopo de configuração inválido.' });
+    }
+    if (!authStore.adminConfig) authStore.adminConfig = {};
+    authStore.adminConfig[scope] = req.body?.data ?? req.body;
+    persistAuthStore();
+    return res.json({ success: true, scope });
+  });
+
+  // Admin Error Logs & GDPR & Impersonation Audit
+  app.patch('/api/admin/error-logs/:id/resolve', (req, res) => {
+    const payload = requireAdminSession(req, res);
+    if (!payload) return;
+    const logId = String(req.params.id || '');
+    const idx = (authStore.errorLogs || []).findIndex((l) => l.id === logId);
+    if (idx >= 0 && authStore.errorLogs) {
+      authStore.errorLogs[idx].resolved = true;
+      authStore.errorLogs[idx].resolvedAt = new Date().toISOString();
+      authStore.errorLogs[idx].resolvedBy = payload.email;
+      persistAuthStore();
+    }
+    return res.json({ success: true });
+  });
+
+  app.patch('/api/admin/gdpr/:id', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const requestId = String(req.params.id || '');
+    const { status, notes } = req.body || {};
+    const idx = (authStore.gdprRequests || []).findIndex((r) => r.id === requestId);
+    if (idx >= 0 && authStore.gdprRequests) {
+      if (status) authStore.gdprRequests[idx].status = status;
+      if (status === 'completed') authStore.gdprRequests[idx].completedAt = new Date().toISOString();
+      if (notes) authStore.gdprRequests[idx].notes = notes;
+      persistAuthStore();
+    }
+    return res.json({ success: true });
+  });
+
+  app.post('/api/admin/impersonation-logs', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const entry = req.body || {};
+    authStore.impersonationLogs = [entry, ...(authStore.impersonationLogs || [])].slice(0, 100);
+    persistAuthStore();
+    return res.status(201).json({ success: true });
+  });
+
+  // =========================================================================
+  // MULTI-PORTAL LIVE JOB AGGREGATOR & CV PROFILE MATCHING
+  // Sources: Radar de Vagas, LinkedIn Jobs, Remotive, Arbeitnow, Jobicy, RemoteOK
+  // + Pre-filled tailored links for Indeed, Glassdoor, Gupy, InfoJobs, Wellfound
+  // =========================================================================
+  const RADAR_BASE_URL = 'https://radar-de-vagas.fly.dev';
+  const radarCache = new Map<string, { expiresAt: number; payload: any }>();
+
+  const JOB_STOPWORDS = new Set([
+    'para', 'como', 'sobre', 'entre', 'com', 'sem', 'por', 'dos', 'das', 'nos', 'nas', 'uma', 'uns', 'umas',
+    'que', 'mais', 'muito', 'alta', 'alto', 'nivel', 'area', 'setor', 'experiencia', 'profissional', 'anos',
+    'gestao', 'equipa', 'equipe', 'atendimento', 'trabalho', 'atuacao', 'foco', 'resultados', 'empresa',
+    'empresas', 'processos', 'projetos', 'controle', 'desenvolvimento', 'planejamento', 'coordenacao',
+    'with', 'from', 'that', 'this', 'have', 'will', 'your', 'about', 'into', 'over', 'year', 'years',
+    'work', 'working', 'team', 'experience', 'role', 'skills', 'using', 'based', 'strong', 'proven',
+    'senior', 'junior', 'pleno', 'lead', 'specialist', 'especialista', 'analista', 'assistente', 'auxiliar',
+    'and', 'the', 'for', 'are', 'los', 'las', 'con', 'del', 'una', 'por', 'sus', 'esta', 'como'
+  ]);
+
+  const PT_EN_SYNONYM_MAP: Record<string, string[]> = {
+    desenvolvedor: ['developer', 'engineer', 'software'],
+    programador: ['developer', 'programmer', 'engineer'],
+    engenheiro: ['engineer', 'engineering'],
+    engenharia: ['engineering', 'engineer'],
+    software: ['software', 'developer', 'engineer'],
+    frontend: ['frontend', 'front-end', 'react', 'typescript'],
+    backend: ['backend', 'back-end', 'node', 'python', 'java'],
+    fullstack: ['fullstack', 'full-stack', 'developer'],
+    dados: ['data', 'analytics', 'bi', 'sql'],
+    analista: ['analyst', 'analytics'],
+    produto: ['product', 'pm'],
+    projetos: ['project', 'program', 'scrum', 'agile'],
+    projeto: ['project', 'program'],
+    gerente: ['manager', 'lead', 'head'],
+    gestor: ['manager', 'director', 'lead'],
+    diretor: ['director', 'head', 'vp'],
+    financeiro: ['finance', 'financial', 'accounting', 'fintech'],
+    financas: ['finance', 'financial', 'treasury'],
+    contabilidade: ['accounting', 'accountant', 'finance'],
+    faturacao: ['billing', 'invoicing', 'finance', 'ap'],
+    pagamentos: ['payments', 'billing', 'fintech'],
+    seguranca: ['security', 'cybersecurity', 'infosec'],
+    nuvem: ['cloud', 'aws', 'azure', 'gcp', 'devops'],
+    infraestrutura: ['infrastructure', 'devops', 'sre', 'cloud'],
+    inteligencia: ['ai', 'artificial intelligence', 'ml'],
+    design: ['design', 'ui', 'ux', 'product design'],
+    marketing: ['marketing', 'growth', 'seo', 'content'],
+    vendas: ['sales', 'account executive', 'business development'],
+    comercial: ['sales', 'commercial', 'business development'],
+    suporte: ['support', 'help desk', 'service desk', 'customer'],
+    cliente: ['customer', 'success', 'support'],
+    clientes: ['customer', 'success', 'account'],
+    operacoes: ['operations', 'ops', 'logistics'],
+    logistica: ['logistics', 'supply chain', 'operations'],
+    humanos: ['hr', 'people', 'talent', 'recruiting'],
+    recrutamento: ['recruiting', 'talent', 'hr'],
+    juridico: ['legal', 'counsel', 'compliance'],
+    conformidade: ['compliance', 'audit', 'risk', 'governance'],
+    auditoria: ['audit', 'compliance', 'finance'],
+    qualidade: ['qa', 'quality', 'testing'],
+    testes: ['qa', 'testing', 'automation'],
+    automacao: ['automation', 'rpa', 'devops'],
+    erp: ['sap', 'erp', 'oracle', 'netsuite'],
+    sap: ['sap', 'erp'],
+    banco: ['database', 'sql', 'dba'],
+    redes: ['network', 'security', 'infrastructure'],
+    saude: ['health', 'healthcare', 'medical'],
+    educacao: ['education', 'learning', 'training'],
+    remoto: ['remote']
+  };
+
+  function normalizeTextToken(raw: string): string {
+    return (raw || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9+#.\-\s/]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function decodeHtmlEntities(str: string): string {
+    return (str || '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function stripHtmlTags(html: string): string {
+    return decodeHtmlTagsAndWhitespace(decodeHtmlEntities(html || ''));
+  }
+
+  function decodeHtmlTagsAndWhitespace(text: string): string {
+    return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function tokenizeMeaningful(raw: string): string[] {
+    const norm = normalizeTextToken(raw);
+    if (!norm) return [];
+    return norm
+      .split(/[\s,/|;]+/)
+      .map((t) => t.replace(/^\.+|\.+$/g, '').trim())
+      .filter((t) => t.length >= 2 && !JOB_STOPWORDS.has(t));
+  }
+
+  function formatSalaryField(salary: any, fallbackCurrency?: string, fallbackPeriod?: string): string | null {
+    if (salary == null) return null;
+    if (typeof salary === 'string') return salary.trim() || null;
+    if (typeof salary === 'number' && Number.isFinite(salary) && salary > 0) {
+      const curPrefix = fallbackCurrency ? `${fallbackCurrency.toUpperCase()} ` : '';
+      return `${curPrefix}${salary.toLocaleString('pt-PT')}${fallbackPeriod || ''}`;
+    }
+    if (typeof salary === 'object') {
+      const { min, max, currency: cur, period } = salary as {
+        min?: number | null;
+        max?: number | null;
+        currency?: string | null;
+        period?: string | null;
+      };
+      const periodMap: Record<string, string> = {
+        year: '/ano',
+        annual: '/ano',
+        yearly: '/ano',
+        month: '/mês',
+        monthly: '/mês',
+        hour: '/hora',
+        hourly: '/hora',
+        day: '/dia',
+        week: '/semana'
+      };
+      const effPeriod = period || fallbackPeriod;
+      const pSuffix = effPeriod ? periodMap[String(effPeriod).toLowerCase()] || `/${effPeriod}` : '';
+      const effCur = cur || fallbackCurrency;
+      const curPrefix = effCur ? `${String(effCur).toUpperCase()} ` : '';
+      const minNum = typeof min === 'number' && min > 0 ? min : null;
+      const maxNum = typeof max === 'number' && max > 0 ? max : null;
+      if (minNum && maxNum && minNum !== maxNum) {
+        return `${curPrefix}${minNum.toLocaleString('pt-PT')} – ${maxNum.toLocaleString('pt-PT')}${pSuffix}`;
+      }
+      if (minNum || maxNum) {
+        const val = (minNum || maxNum) as number;
+        return `${curPrefix}${val.toLocaleString('pt-PT')}${pSuffix}`;
+      }
+    }
+    return null;
+  }
+
+  async function fetchCachedExternal(
+    cacheKey: string,
+    url: string,
+    mode: 'json' | 'text' = 'json',
+    ttlMs: number = 3 * 60 * 1000,
+    timeoutMs: number = 6000
+  ): Promise<any> {
+    const cached = radarCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.payload;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          Accept: mode === 'json' ? 'application/json' : 'text/html,application/xhtml+xml',
+          'User-Agent':
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+        }
+      });
+      if (!resp.ok) {
+        throw new Error(`${url} respondeu HTTP ${resp.status}`);
+      }
+      const payload = mode === 'json' ? await resp.json() : await resp.text();
+      radarCache.set(cacheKey, {
+        expiresAt: Date.now() + ttlMs,
+        payload
+      });
+      if (radarCache.size > 120) {
+        const oldestKey = radarCache.keys().next().value;
+        if (oldestKey) radarCache.delete(oldestKey);
+      }
+      return payload;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function fetchRadarApiJson(pathWithQuery: string): Promise<any> {
+    return fetchCachedExternal(`radar:${pathWithQuery}`, `${RADAR_BASE_URL}${pathWithQuery}`, 'json', 2 * 60 * 1000, 6500);
+  }
+
+  async function fetchLinkedInGuestJobs(keywords: string, location?: string): Promise<any[]> {
+    if (!keywords || !keywords.trim()) return [];
+    const params = new URLSearchParams({ keywords: keywords.trim(), start: '0' });
+    if (location && location.trim()) {
+      params.set('location', location.trim());
+    }
+    const url = `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params.toString()}`;
+    const html: string = await fetchCachedExternal(`linkedin:${params.toString()}`, url, 'text', 4 * 60 * 1000, 5500);
+    const items: any[] = [];
+    const liMatches = html.match(/<li>[\s\S]*?<\/li>/gi) || [];
+    for (const block of liMatches) {
+      const urnMatch = block.match(/data-entity-urn="urn:li:jobPosting:(\d+)"/i);
+      const hrefMatch = block.match(/<a[^>]+class="[^"]*base-card__full-link[^"]*"[^>]+href="([^"]+)"/i);
+      const titleMatch = block.match(/<h3[^>]+class="[^"]*base-search-card__title[^"]*"[^>]*>([\s\S]*?)<\/h3>/i);
+      const companyMatch = block.match(/<h4[^>]+class="[^"]*base-search-card__subtitle[^"]*"[^>]*>([\s\S]*?)<\/h4>/i);
+      const locMatch = block.match(/<span[^>]+class="[^"]*job-search-card__location[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+      const timeMatch = block.match(/<time[^>]+datetime="([^"]+)"/i);
+
+      const jobId = urnMatch?.[1];
+      const title = stripHtmlTags(titleMatch?.[1] || '');
+      const company = stripHtmlTags(companyMatch?.[1] || '');
+      const applyHref = decodeHtmlEntities(hrefMatch?.[1] || '');
+      if (!title || !company || !applyHref) continue;
+
+      const locText = stripHtmlTags(locMatch?.[1] || '');
+      const isRemote = /remote|remoto|teletrabalho|anywhere/i.test(`${title} ${locText}`);
+      const isHybrid = /hybrid|hibrido|híbrido/i.test(`${title} ${locText}`);
+
+      items.push({
+        id: `linkedin:${jobId || encodeURIComponent(applyHref.slice(0, 80))}`,
+        title,
+        company,
+        workplace: isRemote ? 'remote' : isHybrid ? 'hybrid' : 'onsite',
+        locations: locText ? [locText] : [],
+        allowedCountries: [],
+        category: null,
+        seniority: null,
+        salary: null,
+        skills: [],
+        tags: [],
+        descriptionSnippet: '',
+        sourcePortal: 'linkedin',
+        sourceName: 'LinkedIn',
+        postedAt: timeMatch?.[1] ? `${timeMatch[1]}T12:00:00.000Z` : new Date().toISOString(),
+        applyUrl: applyHref,
+        portalUrl: applyHref
+      });
+    }
+    return items;
+  }
+
+  function detectNormalizedContractType(rawList: any[], title?: string, snippet?: string): string | null {
+    const combinedRaw = [
+      ...(Array.isArray(rawList) ? rawList.map((x) => String(x || '')) : []),
+      String(title || ''),
+      String(snippet || '').slice(0, 350)
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    if (/\b(intern|internship|estagio|estágio|trainee|apprentice)\b/i.test(combinedRaw)) {
+      return 'internship';
+    }
+    if (/\b(part[\s_-]?time|meio[\s_-]?periodo|meio[\s_-]?período)\b/i.test(combinedRaw)) {
+      return 'part_time';
+    }
+    if (/\b(contract|contractor|freelance|freelancer|pj|b2b|temporar[yi]|consultant)\b/i.test(combinedRaw)) {
+      return 'contract';
+    }
+    if (/\b(full[\s_-]?time|permanent|tempo[\s_-]?integral|clt|efetivo|indefinite)\b/i.test(combinedRaw)) {
+      return 'full_time';
+    }
+    return null;
+  }
+
+  async function fetchRemotiveJobs(searchTerm?: string): Promise<{ jobs: any[]; total: number }> {
+    const q = searchTerm ? `?search=${encodeURIComponent(searchTerm)}&limit=50` : '?limit=60';
+    const data = await fetchCachedExternal(`remotive:${q}`, `https://remotive.com/api/remote-jobs${q}`, 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data?.jobs) ? data.jobs : [];
+    const normalized = list.map((j: any) => {
+      const desc = stripHtmlTags(String(j.description || '')).slice(0, 2600);
+      return {
+        id: `remotive:${j.id}`,
+        title: String(j.title || ''),
+        company: String(j.company_name || ''),
+        workplace: 'remote',
+        locations: j.candidate_required_location ? [String(j.candidate_required_location)] : ['Worldwide'],
+        allowedCountries: [],
+        category: j.category ? String(j.category) : null,
+        seniority: null,
+        employmentType: detectNormalizedContractType([j.job_type], j.title, desc),
+        salary: formatSalaryField(j.salary),
+        skills: Array.isArray(j.tags) ? j.tags.map((t: any) => String(t)) : [],
+        tags: Array.isArray(j.tags) ? j.tags.map((t: any) => String(t)) : [],
+        descriptionSnippet: desc,
+        sourcePortal: 'remotive',
+        sourceName: 'Remotive',
+        postedAt: j.publication_date || null,
+        applyUrl: String(j.url || ''),
+        portalUrl: String(j.url || '')
+      };
+    });
+    return { jobs: normalized, total: Number(data?.['total-job-count'] || data?.['job-count'] || normalized.length) };
+  }
+
+  async function fetchArbeitnowJobs(): Promise<any[]> {
+    const data = await fetchCachedExternal('arbeitnow:p1', 'https://www.arbeitnow.com/api/job-board-api', 'json', 5 * 60 * 1000, 6500);
+    const list = Array.isArray(data?.data) ? data.data.slice(0, 120) : [];
+    return list.map((j: any) => {
+      const desc = stripHtmlTags(String(j.description || '')).slice(0, 2600);
+      const types = Array.isArray(j.job_types) ? j.job_types.map((t: any) => String(t)) : [];
+      return {
+        id: `arbeitnow:${j.slug}`,
+        title: String(j.title || ''),
+        company: String(j.company_name || ''),
+        workplace: j.remote ? 'remote' : 'onsite',
+        locations: j.location ? [String(j.location)] : [],
+        allowedCountries: [],
+        category: null,
+        seniority: null,
+        employmentType: detectNormalizedContractType(types, j.title, desc),
+        salary: null,
+        skills: Array.isArray(j.tags) ? j.tags.map((t: any) => String(t)) : [],
+        tags: types,
+        descriptionSnippet: desc,
+        sourcePortal: 'arbeitnow',
+        sourceName: 'Arbeitnow',
+        postedAt: typeof j.created_at === 'number' ? new Date(j.created_at * 1000).toISOString() : null,
+        applyUrl: String(j.url || ''),
+        portalUrl: String(j.url || '')
+      };
+    });
+  }
+
+  async function fetchJobicyJobs(tag?: string): Promise<any[]> {
+    const q = tag ? `?count=40&tag=${encodeURIComponent(tag)}` : '?count=50';
+    const data = await fetchCachedExternal(`jobicy:${q}`, `https://jobicy.com/api/v2/remote-jobs${q}`, 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data?.jobs) ? data.jobs : [];
+    return list.map((j: any) => {
+      const desc = stripHtmlTags(String(j.jobDescription || j.jobExcerpt || '')).slice(0, 2600);
+      const types = Array.isArray(j.jobType) ? j.jobType.map((t: any) => String(t)) : [];
+      const titleStr = decodeHtmlEntities(String(j.jobTitle || ''));
+      return {
+        id: `jobicy:${j.id}`,
+        title: titleStr,
+        company: decodeHtmlEntities(String(j.companyName || '')),
+        workplace: 'remote',
+        locations: j.jobGeo ? [String(j.jobGeo)] : ['Worldwide'],
+        allowedCountries: [],
+        category: Array.isArray(j.jobIndustry) ? j.jobIndustry.map((x: any) => decodeHtmlEntities(String(x))).join(', ') : null,
+        seniority: j.jobLevel && j.jobLevel !== 'Any' ? String(j.jobLevel).toLowerCase() : null,
+        employmentType: detectNormalizedContractType(types, titleStr, desc),
+        salary: formatSalaryField(
+          { min: j.salaryMin, max: j.salaryMax, currency: j.salaryCurrency, period: j.salaryPeriod }
+        ),
+        skills: [],
+        tags: types,
+        descriptionSnippet: desc,
+        sourcePortal: 'jobicy',
+        sourceName: 'Jobicy',
+        postedAt: j.pubDate || null,
+        applyUrl: String(j.url || ''),
+        portalUrl: String(j.url || '')
+      };
+    });
+  }
+
+  async function fetchRemoteOkJobs(): Promise<any[]> {
+    const data = await fetchCachedExternal('remoteok:all', 'https://remoteok.com/api', 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data) ? data.slice(1, 100) : [];
+    return list
+      .filter((j: any) => j && j.position && j.company)
+      .map((j: any) => {
+        const desc = stripHtmlTags(String(j.description || '')).slice(0, 2600);
+        const tags = Array.isArray(j.tags) ? j.tags.map((t: any) => String(t)) : [];
+        return {
+          id: `remoteok:${j.id || j.slug}`,
+          title: String(j.position || ''),
+          company: String(j.company || ''),
+          workplace: 'remote',
+          locations: j.location ? [String(j.location)] : ['Worldwide'],
+          allowedCountries: [],
+          category: null,
+          seniority: null,
+          employmentType: detectNormalizedContractType(tags, j.position, desc),
+          salary: formatSalaryField({ min: j.salary_min, max: j.salary_max, currency: 'USD', period: 'year' }),
+          skills: tags,
+          tags,
+          descriptionSnippet: desc,
+          sourcePortal: 'remoteok',
+          sourceName: 'RemoteOK',
+          postedAt: j.date || (typeof j.epoch === 'number' ? new Date(j.epoch * 1000).toISOString() : null),
+          applyUrl: String(j.apply_url || j.url || ''),
+          portalUrl: String(j.url || '')
+        };
+      });
+  }
+
+  const COUNTRY_PREFERENCE_RULES: Record<
+    string,
+    {
+      label: string;
+      linkedInLocation: string;
+      indeedUrl: string;
+      hints: string[];
+      countryCodes: string[];
+    }
+  > = {
+    remoto_global: {
+      label: 'Remoto Global',
+      linkedInLocation: '',
+      indeedUrl: 'https://www.indeed.com/jobs',
+      hints: ['worldwide', 'anywhere', 'global', 'remote'],
+      countryCodes: []
+    },
+    brasil: {
+      label: 'Brasil',
+      linkedInLocation: 'Brazil',
+      indeedUrl: 'https://br.indeed.com/jobs',
+      hints: ['br', 'brazil', 'brasil', 'sao paulo', 'rio de janeiro', 'belo horizonte', 'curitiba', 'latam', 'south america', 'americas'],
+      countryCodes: ['br']
+    },
+    portugal: {
+      label: 'Portugal',
+      linkedInLocation: 'Portugal',
+      indeedUrl: 'https://pt.indeed.com/jobs',
+      hints: ['pt', 'portugal', 'lisboa', 'lisbon', 'porto', 'coimbra', 'braga', 'europe', 'eu', 'emea'],
+      countryCodes: ['pt']
+    },
+    angola: {
+      label: 'Angola',
+      linkedInLocation: 'Angola',
+      indeedUrl: 'https://www.indeed.com/jobs',
+      hints: ['ao', 'angola', 'luanda', 'benguela', 'africa', 'emea'],
+      countryCodes: ['ao']
+    },
+    espanha: {
+      label: 'Espanha',
+      linkedInLocation: 'Spain',
+      indeedUrl: 'https://es.indeed.com/jobs',
+      hints: ['es', 'spain', 'espanha', 'madrid', 'barcelona', 'europe', 'eu', 'emea'],
+      countryCodes: ['es']
+    },
+    reino_unido: {
+      label: 'Reino Unido',
+      linkedInLocation: 'United Kingdom',
+      indeedUrl: 'https://uk.indeed.com/jobs',
+      hints: ['gb', 'uk', 'united kingdom', 'reino unido', 'london', 'manchester', 'england', 'scotland', 'europe', 'emea'],
+      countryCodes: ['gb', 'uk']
+    },
+    alemanha: {
+      label: 'Alemanha',
+      linkedInLocation: 'Germany',
+      indeedUrl: 'https://de.indeed.com/jobs',
+      hints: ['de', 'germany', 'alemanha', 'berlin', 'munich', 'frankfurt', 'hamburg', 'europe', 'eu', 'emea'],
+      countryCodes: ['de']
+    },
+    franca: {
+      label: 'França',
+      linkedInLocation: 'France',
+      indeedUrl: 'https://fr.indeed.com/jobs',
+      hints: ['fr', 'france', 'franca', 'paris', 'lyon', 'europe', 'eu', 'emea'],
+      countryCodes: ['fr']
+    },
+    estados_unidos: {
+      label: 'Estados Unidos',
+      linkedInLocation: 'United States',
+      indeedUrl: 'https://www.indeed.com/jobs',
+      hints: ['us', 'usa', 'united states', 'estados unidos', 'new york', 'san francisco', 'austin', 'north america', 'americas'],
+      countryCodes: ['us']
+    },
+    canada: {
+      label: 'Canadá',
+      linkedInLocation: 'Canada',
+      indeedUrl: 'https://ca.indeed.com/jobs',
+      hints: ['ca', 'canada', 'toronto', 'vancouver', 'montreal', 'north america', 'americas'],
+      countryCodes: ['ca']
+    },
+    europa: {
+      label: 'União Europeia',
+      linkedInLocation: 'European Union',
+      indeedUrl: 'https://pt.indeed.com/jobs',
+      hints: ['eu', 'europe', 'europa', 'emea', 'portugal', 'spain', 'germany', 'france', 'netherlands', 'ireland', 'poland', 'italy', 'uk'],
+      countryCodes: ['pt', 'es', 'de', 'fr', 'nl', 'ie', 'pl', 'it', 'be', 'at', 'se', 'fi', 'dk']
+    }
+  };
+
+  app.post('/api/jobs/match', async (req, res) => {
+    try {
+      const {
+        cv,
+        search = '',
+        workplace = 'all',
+        source = 'all',
+        preferences
+      } = (req.body || {}) as {
+        cv?: any;
+        search?: string;
+        workplace?: string;
+        source?: string;
+        preferences?: {
+          countries?: string[];
+          targetRoles?: string[];
+          contractTypes?: string[];
+        };
+      };
+
+      const prefCountries = Array.isArray(preferences?.countries)
+        ? preferences!.countries.map((c) => String(c).trim()).filter(Boolean)
+        : [];
+      const prefRoles = Array.isArray(preferences?.targetRoles)
+        ? preferences!.targetRoles.map((r) => String(r).trim()).filter(Boolean)
+        : [];
+      const prefContracts = Array.isArray(preferences?.contractTypes)
+        ? preferences!.contractTypes.map((t) => String(t).trim()).filter(Boolean)
+        : [];
+
+      const personalTitle = String(cv?.personalDetails?.title || '');
+      const personalLocation = String(cv?.personalDetails?.location || '');
+      const summary = String(cv?.summary || '');
+      const competenciesText = Array.isArray(cv?.competencies)
+        ? cv.competencies.map((c: any) => `${c?.category || ''} ${c?.description || ''}`).join(' ')
+        : '';
+      const experienceRoles = Array.isArray(cv?.experiences)
+        ? cv.experiences.slice(0, 4).map((e: any) => String(e?.role || '')).join(' ')
+        : '';
+      const experienceHighlights = Array.isArray(cv?.experiences)
+        ? cv.experiences
+            .slice(0, 4)
+            .flatMap((e: any) => (Array.isArray(e?.highlights) ? e.highlights.slice(0, 4) : []))
+            .join(' ')
+        : '';
+
+      const prefRoleTokens = tokenizeMeaningful(prefRoles.join(' '));
+      const titleTokensRaw = tokenizeMeaningful(`${personalTitle} ${experienceRoles}`);
+      const skillTokensRaw = tokenizeMeaningful(`${competenciesText} ${summary} ${experienceHighlights}`);
+
+      const weightedTerms = new Map<string, { label: string; weight: number; isRole: boolean }>();
+
+      const addTerm = (token: string, weight: number, isRole: boolean, label?: string) => {
+        const clean = token.trim();
+        if (!clean || clean.length < 2 || JOB_STOPWORDS.has(clean)) return;
+        const existing = weightedTerms.get(clean);
+        if (!existing || existing.weight < weight) {
+          weightedTerms.set(clean, { label: label || clean, weight, isRole });
+        }
+        const synonyms = PT_EN_SYNONYM_MAP[clean];
+        if (synonyms) {
+          for (const syn of synonyms) {
+            const synClean = normalizeTextToken(syn);
+            const synEx = weightedTerms.get(synClean);
+            if (!synEx || synEx.weight < weight * 0.92) {
+              weightedTerms.set(synClean, {
+                label: syn,
+                weight: weight * 0.92,
+                isRole
+              });
+            }
+          }
+        }
+      };
+
+      // User-configured target roles carry highest priority weight
+      prefRoleTokens.forEach((tok) => addTerm(tok, 4.0, true));
+      prefRoles.forEach((rolePhrase) => {
+        const normPhrase = normalizeTextToken(rolePhrase);
+        if (normPhrase.length >= 2) {
+          weightedTerms.set(normPhrase, { label: rolePhrase, weight: 4.5, isRole: true });
+        }
+      });
+
+      titleTokensRaw.forEach((tok, idx) => addTerm(tok, idx < 4 ? 3.2 : 2.5, true));
+      skillTokensRaw.forEach((tok, idx) => addTerm(tok, idx < 18 ? 2.0 : 1.35, false));
+
+      const exactCompTerms: string[] = Array.isArray(cv?.competencies)
+        ? cv.competencies
+            .map((c: any) => normalizeTextToken(String(c?.category || '')))
+            .filter((t: string) => t.length >= 2 && t.length <= 36)
+        : [];
+      exactCompTerms.forEach((phrase) => {
+        if (!JOB_STOPWORDS.has(phrase)) {
+          weightedTerms.set(phrase, { label: phrase, weight: 2.6, isRole: false });
+        }
+      });
+
+      const searchQueries: string[] = [];
+      const pushQuery = (q: string) => {
+        const clean = q.trim();
+        if (clean.length >= 2 && !searchQueries.includes(clean)) {
+          searchQueries.push(clean);
+        }
+      };
+
+      if (typeof search === 'string' && search.trim()) {
+        pushQuery(search.trim());
+      }
+
+      for (const r of prefRoles) {
+        pushQuery(r);
+        if (searchQueries.length >= 4) break;
+      }
+
+      for (const tok of [...prefRoleTokens, ...titleTokensRaw]) {
+        const syns = PT_EN_SYNONYM_MAP[tok];
+        if (syns && syns[0]) pushQuery(syns[0]);
+        else pushQuery(tok);
+        if (searchQueries.length >= 5) break;
+      }
+
+      for (const comp of Array.isArray(cv?.competencies) ? cv.competencies : []) {
+        const catTokens = tokenizeMeaningful(String(comp?.category || ''));
+        for (const t of catTokens) {
+          const syns = PT_EN_SYNONYM_MAP[t];
+          pushQuery(syns?.[0] || t);
+          if (searchQueries.length >= 6) break;
+        }
+        if (searchQueries.length >= 6) break;
+      }
+
+      const wpParam =
+        workplace && workplace !== 'all' ? `&workplace=${encodeURIComponent(workplace)}` : '';
+
+      // Detect location preferences (explicit preferences override/enhance CV location)
+      const locationNorm = normalizeTextToken(personalLocation);
+      const userCountryHints: string[] = [];
+      const selectedSpecificCountries = prefCountries.filter((c) => c !== 'remoto_global');
+      const allowGlobalRemote = prefCountries.length === 0 || prefCountries.includes('remoto_global');
+      let linkedInLocation = '';
+      let secondaryLinkedInLocation = '';
+      let indeedBaseUrl = 'https://www.indeed.com/jobs';
+      let portalLocationLabel = personalLocation || 'Remote';
+
+      if (prefCountries.length > 0) {
+        const linkedInLocList: string[] = [];
+        for (const code of prefCountries) {
+          const rule = COUNTRY_PREFERENCE_RULES[code];
+          if (rule) {
+            userCountryHints.push(...rule.hints);
+            if (rule.linkedInLocation && !linkedInLocList.includes(rule.linkedInLocation)) {
+              linkedInLocList.push(rule.linkedInLocation);
+            }
+          }
+        }
+        const firstSpecificRule = selectedSpecificCountries[0]
+          ? COUNTRY_PREFERENCE_RULES[selectedSpecificCountries[0]]
+          : null;
+        if (firstSpecificRule) {
+          indeedBaseUrl = firstSpecificRule.indeedUrl;
+          portalLocationLabel = firstSpecificRule.linkedInLocation || firstSpecificRule.label;
+        }
+        linkedInLocation = linkedInLocList[0] || '';
+        secondaryLinkedInLocation = linkedInLocList[1] || '';
+      } else {
+        if (/brasil|brazil|sao paulo|rio de janeiro|belo horizonte|curitiba/.test(locationNorm)) {
+          userCountryHints.push('br', 'brazil', 'latam', 'south america', 'americas');
+          linkedInLocation = 'Brazil';
+          indeedBaseUrl = 'https://br.indeed.com/jobs';
+        } else if (/portugal|lisboa|porto|coimbra|braga/.test(locationNorm)) {
+          userCountryHints.push('pt', 'portugal', 'europe', 'eu', 'emea');
+          linkedInLocation = 'Portugal';
+          indeedBaseUrl = 'https://pt.indeed.com/jobs';
+        } else if (/angola|luanda|benguela|huambo/.test(locationNorm)) {
+          userCountryHints.push('ao', 'angola', 'africa', 'emea');
+          linkedInLocation = 'Angola';
+        } else if (/espanha|spain|madrid|barcelona/.test(locationNorm)) {
+          userCountryHints.push('es', 'spain', 'europe', 'eu', 'emea');
+          linkedInLocation = 'Spain';
+          indeedBaseUrl = 'https://es.indeed.com/jobs';
+        }
+      }
+
+      const linkedInKeywordPrimary =
+        (typeof search === 'string' && search.trim()) ||
+        prefRoles[0] ||
+        personalTitle.trim() ||
+        searchQueries.slice(0, 2).join(' ') ||
+        'software engineer';
+      const linkedInKeywordEn = searchQueries.slice(0, 2).join(' ') || linkedInKeywordPrimary;
+
+      const radarTasks: Promise<any>[] = [
+        fetchRadarApiJson(`/api/jobs?page=1&pageSize=50${wpParam}`).catch(() => null),
+        fetchRadarApiJson(`/api/jobs?page=2&pageSize=50${wpParam}`).catch(() => null),
+        ...searchQueries.slice(0, 4).map((q) =>
+          fetchRadarApiJson(`/api/jobs?q=${encodeURIComponent(q)}&pageSize=50${wpParam}`).catch(() => null)
+        )
+      ];
+
+      const [
+        radarResponses,
+        liLocal,
+        liSecondary,
+        liGlobal,
+        remotiveMain,
+        remotiveFiltered,
+        arbeitnowJobs,
+        jobicyJobs,
+        remoteOkJobs
+      ] = await Promise.all([
+        Promise.all(radarTasks),
+        fetchLinkedInGuestJobs(linkedInKeywordPrimary, linkedInLocation).catch(() => []),
+        secondaryLinkedInLocation
+          ? fetchLinkedInGuestJobs(linkedInKeywordEn, secondaryLinkedInLocation).catch(() => [])
+          : Promise.resolve([]),
+        linkedInKeywordEn !== linkedInKeywordPrimary || linkedInLocation
+          ? fetchLinkedInGuestJobs(linkedInKeywordEn, '').catch(() => [])
+          : Promise.resolve([]),
+        fetchRemotiveJobs().catch(() => ({ jobs: [], total: 0 })),
+        searchQueries[0]
+          ? fetchRemotiveJobs(searchQueries[0]).catch(() => ({ jobs: [], total: 0 }))
+          : Promise.resolve({ jobs: [], total: 0 }),
+        fetchArbeitnowJobs().catch(() => []),
+        fetchJobicyJobs(searchQueries[0]).catch(() => []),
+        fetchRemoteOkJobs().catch(() => [])
+      ]);
+
+      const radarTotal = Number(
+        radarResponses.find((r) => r && typeof r.total === 'number')?.total || 0
+      );
+
+      const unifiedPool: any[] = [];
+      for (const resp of radarResponses) {
+        if (resp && Array.isArray(resp.jobs)) {
+          for (const job of resp.jobs) {
+            if (!job?.id) continue;
+            const applyUrl = job.applyUrl || job.url || `${RADAR_BASE_URL}/jobs/${encodeURIComponent(job.id)}`;
+            unifiedPool.push({
+              id: String(job.id),
+              title: String(job.title || ''),
+              company: String(job.company || ''),
+              workplace: String(job.workplace || 'remote'),
+              locations: Array.isArray(job.locations) ? job.locations.map((l: any) => String(l)) : [],
+              allowedCountries: Array.isArray(job.allowedCountries)
+                ? job.allowedCountries.map((c: any) => String(c))
+                : [],
+              category: job.category ? String(job.category) : null,
+              seniority: job.seniority ? String(job.seniority) : null,
+              employmentType: detectNormalizedContractType([job.employmentType], job.title),
+              salary: formatSalaryField(job.salary),
+              skills: Array.isArray(job.skills) ? job.skills.map((s: any) => String(s)) : [],
+              tags: Array.isArray(job.tags) ? job.tags.map((t: any) => String(t)) : [],
+              descriptionSnippet: '',
+              sourcePortal: 'radar',
+              sourceName: 'Radar de Vagas',
+              postedAt: job.postedAt || job.firstSeenAt || null,
+              applyUrl: String(applyUrl),
+              portalUrl: `${RADAR_BASE_URL}/jobs/${encodeURIComponent(job.id)}`
+            });
+          }
+        }
+      }
+
+      // Normalize LinkedIn employmentType from title too
+      const liCombined = [...liLocal, ...liSecondary, ...liGlobal].map((j) => ({
+        ...j,
+        employmentType: j.employmentType || detectNormalizedContractType([], j.title)
+      }));
+
+      unifiedPool.push(
+        ...liCombined,
+        ...remotiveMain.jobs,
+        ...remotiveFiltered.jobs,
+        ...arbeitnowJobs,
+        ...jobicyJobs,
+        ...remoteOkJobs
+      );
+
+      const deduped = new Map<string, any>();
+      for (const job of unifiedPool) {
+        if (!job?.title || !job?.company) continue;
+        const key = `${normalizeTextToken(job.title)}::${normalizeTextToken(job.company)}`;
+        if (!deduped.has(key)) {
+          deduped.set(key, job);
+        }
+      }
+
+      const titleNormForSeniority = normalizeTextToken(`${prefRoles.join(' ')} ${personalTitle} ${experienceRoles}`);
+      const candidateSeniority =
+        /diretor|director|vp|head|chief|c-level/.test(titleNormForSeniority)
+          ? 'director'
+          : /gerente|manager|lead|principal|staff|senior|sênior|sr\b/.test(titleNormForSeniority)
+          ? 'senior'
+          : /junior|jr\b|estagio|intern|trainee/.test(titleNormForSeniority)
+          ? 'junior'
+          : 'mid';
+
+      const userSearchNorm = normalizeTextToken(String(search || ''));
+      const sourceCountsAll: Record<string, number> = {
+        radar: 0,
+        linkedin: 0,
+        remotive: 0,
+        arbeitnow: 0,
+        jobicy: 0,
+        remoteok: 0
+      };
+      const allCompatibleJobs: any[] = [];
+
+      for (const job of deduped.values()) {
+        const jobTitleNorm = normalizeTextToken(job.title);
+        const jobTagsNorm = normalizeTextToken(job.tags.join(' '));
+        const jobSkillsNorm = normalizeTextToken(job.skills.join(' '));
+        const jobCategoryNorm = normalizeTextToken(String(job.category || ''));
+        const jobCompanyNorm = normalizeTextToken(job.company);
+        const jobDescNorm = normalizeTextToken(String(job.descriptionSnippet || '').slice(0, 700));
+        const jobFullNorm = `${jobTitleNorm} ${jobSkillsNorm} ${jobTagsNorm} ${jobCategoryNorm} ${jobCompanyNorm} ${jobDescNorm}`;
+
+        if (userSearchNorm) {
+          const queryTokens = tokenizeMeaningful(userSearchNorm);
+          const allQueryMatch = queryTokens.every((qt) => jobFullNorm.includes(qt));
+          if (!allQueryMatch && !jobFullNorm.includes(userSearchNorm)) {
+            continue;
+          }
+        }
+
+        if (workplace && workplace !== 'all' && job.workplace && job.workplace !== workplace) {
+          continue;
+        }
+
+        // Contract type preference filter
+        if (prefContracts.length > 0) {
+          const detectedType = job.employmentType as string | null;
+          if (detectedType) {
+            if (!prefContracts.includes(detectedType)) {
+              continue;
+            }
+          } else {
+            // Unspecified jobs (common on LinkedIn guest cards) pass when full_time is accepted
+            if (!prefContracts.includes('full_time')) {
+              continue;
+            }
+          }
+        }
+
+        // Country preference filtering & affinity
+        const allowedList = Array.isArray(job.allowedCountries)
+          ? job.allowedCountries.map((c: string) => c.toLowerCase())
+          : [];
+        const locationsList = Array.isArray(job.locations)
+          ? job.locations.map((l: string) => normalizeTextToken(l)).join(' ')
+          : '';
+        const isGlobalRemoteJob =
+          job.workplace === 'remote' &&
+          allowedList.length === 0 &&
+          (locationsList === '' || /anywhere|worldwide|global|remote/i.test(locationsList));
+
+        const matchesConfiguredCountry = userCountryHints.some(
+          (hint) =>
+            allowedList.includes(hint) ||
+            (hint.length > 2 && locationsList.includes(hint))
+        );
+
+        if (prefCountries.length > 0) {
+          if (selectedSpecificCountries.length > 0 && !allowGlobalRemote) {
+            // User explicitly selected specific countries without "remoto_global"
+            if (!matchesConfiguredCountry && !isGlobalRemoteJob) {
+              continue;
+            }
+            // Exclude explicit foreign country restriction when it doesn't match user country codes
+            if (allowedList.length > 0 && !matchesConfiguredCountry) {
+              continue;
+            }
+          } else if (selectedSpecificCountries.length === 0 && allowGlobalRemote) {
+            // User selected ONLY "Remoto Global"
+            if (job.workplace !== 'remote') {
+              continue;
+            }
+          } else if (selectedSpecificCountries.length > 0 && allowGlobalRemote) {
+            // Selected specific countries + Remoto Global
+            if (!matchesConfiguredCountry && !isGlobalRemoteJob) {
+              continue;
+            }
+          }
+        }
+
+        let rawPoints = 0;
+        let titleHits = 0;
+        let skillHits = 0;
+        const matchedKeywords: string[] = [];
+
+        for (const [term, meta] of weightedTerms.entries()) {
+          if (term.length < 2) continue;
+          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex =
+            term.length <= 3
+              ? new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, 'i')
+              : new RegExp(`(?:^|[^a-z0-9])${escaped}`, 'i');
+
+          const inTitle = regex.test(jobTitleNorm);
+          const inSkillsOrTags = regex.test(`${jobSkillsNorm} ${jobTagsNorm}`);
+          const inCategoryOrDesc = regex.test(`${jobCategoryNorm} ${jobDescNorm}`);
+
+          if (inTitle || inSkillsOrTags || inCategoryOrDesc) {
+            const hitScore = inTitle
+              ? meta.weight * 8.5
+              : inSkillsOrTags
+              ? meta.weight * 5.5
+              : meta.weight * 2.8;
+            rawPoints += hitScore;
+            if (inTitle) titleHits += 1;
+            else skillHits += 1;
+
+            const displayKw = meta.label.length <= 2 ? meta.label.toUpperCase() : meta.label;
+            if (!matchedKeywords.some((k) => k.toLowerCase() === displayKw.toLowerCase())) {
+              matchedKeywords.push(displayKw);
+            }
+          }
+        }
+
+        if (!userSearchNorm && rawPoints < 14 && matchedKeywords.length === 0) {
+          continue;
+        }
+
+        let locationMatched = false;
+        if (matchesConfiguredCountry) {
+          rawPoints += prefCountries.length > 0 ? 14 : 9;
+          locationMatched = true;
+        } else if (job.workplace === 'remote' && allowedList.length === 0) {
+          rawPoints += 6;
+          locationMatched = true;
+        } else if (isGlobalRemoteJob) {
+          rawPoints += 7;
+          locationMatched = true;
+        }
+
+        const jobSen = String(job.seniority || '').toLowerCase();
+        if (
+          jobSen &&
+          ((candidateSeniority === 'senior' && (jobSen === 'senior' || jobSen === 'lead')) ||
+            (candidateSeniority === 'director' &&
+              (jobSen === 'director' || jobSen === 'senior' || jobSen === 'lead')) ||
+            (candidateSeniority === 'mid' && jobSen === 'mid') ||
+            (candidateSeniority === 'junior' && (jobSen === 'junior' || jobSen === 'entry')))
+        ) {
+          rawPoints += 6;
+        }
+
+        const matchScore = userSearchNorm && rawPoints < 14
+          ? 52
+          : Math.min(98, Math.max(36, Math.round(32 + rawPoints * 1.15)));
+
+        const topKeywords = matchedKeywords.slice(0, 6);
+        const fitParts: string[] = [];
+        if (titleHits > 0) fitParts.push('Alinhamento direto com o cargo');
+        if (skillHits > 0) fitParts.push(`${skillHits} competência(s) compatível(eis)`);
+        if (locationMatched) {
+          fitParts.push(job.workplace === 'remote' ? 'Remoto compatível' : 'País compatível');
+        }
+
+        if (typeof sourceCountsAll[job.sourcePortal] === 'number') {
+          sourceCountsAll[job.sourcePortal] += 1;
+        }
+
+        allCompatibleJobs.push({
+          id: job.id,
+          title: job.title,
+          company: job.company,
+          workplace: job.workplace,
+          employmentType: job.employmentType || null,
+          locations: job.locations,
+          allowedCountries: job.allowedCountries,
+          category: job.category,
+          seniority: job.seniority,
+          salary: job.salary,
+          skills: job.skills.slice(0, 8),
+          tags: job.tags.slice(0, 8),
+          descriptionSnippet: job.descriptionSnippet || '',
+          sourcePortal: job.sourcePortal,
+          sourceName: job.sourceName,
+          postedAt: job.postedAt,
+          applyUrl: job.applyUrl,
+          radarUrl: job.portalUrl,
+          matchScore,
+          matchedKeywords: topKeywords,
+          fitReason: fitParts.join(' · ') || 'Perfil compatível com a vaga'
+        });
+      }
+
+      allCompatibleJobs.sort((a, b) => {
+        if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
+        const tA = a.postedAt ? new Date(a.postedAt).getTime() : 0;
+        const tB = b.postedAt ? new Date(b.postedAt).getTime() : 0;
+        return tB - tA;
+      });
+
+      const filteredBySource =
+        source && source !== 'all'
+          ? allCompatibleJobs.filter((j) => j.sourcePortal === source)
+          : allCompatibleJobs;
+
+      const roleQueryForExternal = encodeURIComponent(
+        (typeof search === 'string' && search.trim()) ||
+          prefRoles[0] ||
+          personalTitle.trim() ||
+          searchQueries[0] ||
+          'Software'
+      );
+      const locQueryForExternal = encodeURIComponent(portalLocationLabel);
+
+      const externalPortals = [
+        {
+          id: 'linkedin',
+          name: 'LinkedIn Vagas',
+          url: `https://www.linkedin.com/jobs/search/?keywords=${roleQueryForExternal}&location=${locQueryForExternal}`,
+          liveCount: sourceCountsAll.linkedin
+        },
+        {
+          id: 'indeed',
+          name: 'Indeed',
+          url: `${indeedBaseUrl}?q=${roleQueryForExternal}&l=${locQueryForExternal}`,
+          liveCount: null
+        },
+        {
+          id: 'glassdoor',
+          name: 'Glassdoor',
+          url: `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${roleQueryForExternal}`,
+          liveCount: null
+        },
+        {
+          id: 'gupy',
+          name: 'Gupy',
+          url: `https://portal.gupy.io/job-search/term=${roleQueryForExternal}`,
+          liveCount: null
+        },
+        {
+          id: 'infojobs',
+          name: 'InfoJobs',
+          url: `https://www.infojobs.com.br/empregos.aspx?palabra=${roleQueryForExternal}`,
+          liveCount: null
+        },
+        {
+          id: 'wellfound',
+          name: 'Wellfound',
+          url: `https://wellfound.com/jobs?query=${roleQueryForExternal}`,
+          liveCount: null
+        },
+        {
+          id: 'radar',
+          name: 'Radar de Vagas',
+          url: `${RADAR_BASE_URL}/?q=${roleQueryForExternal}`,
+          liveCount: sourceCountsAll.radar
+        }
+      ];
+
+      return res.json({
+        sourceUrl: RADAR_BASE_URL,
+        totalPlatformJobs: radarTotal + Number(remotiveMain.total || 0),
+        scannedPoolCount: deduped.size,
+        compatibleCount: filteredBySource.length,
+        totalCompatibleAllSources: allCompatibleJobs.length,
+        sourceCounts: sourceCountsAll,
+        matchedJobs: filteredBySource.slice(0, 80),
+        externalPortals,
+        profileQueriesUsed: searchQueries.slice(0, 5),
+        syncedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('Erro ao consultar portais de vagas:', error?.message || error);
+      return res.status(502).json({
+        error: 'Não foi possível sincronizar vagas ao vivo neste momento.'
+      });
+    }
+  });
+
+  app.get('/api/jobs/detail', async (req, res) => {
+    try {
+      const id = String(req.query.id || '').trim();
+      if (!id) {
+        return res.status(400).json({ error: 'Parâmetro id é obrigatório.' });
+      }
+
+      if (id.startsWith('linkedin:')) {
+        const numericId = id.replace(/^linkedin:/, '');
+        if (/^\d+$/.test(numericId)) {
+          const html: string = await fetchCachedExternal(
+            `li_detail:${numericId}`,
+            `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${numericId}`,
+            'text',
+            10 * 60 * 1000,
+            5500
+          );
+          const descMatch = html.match(/<div[^>]*class="[^"]*show-more-less-html__markup[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+          const titleMatch = html.match(/<h2[^>]*class="[^"]*top-card-layout__title[^"]*"[^>]*>([\s\S]*?)<\/h2>/i);
+          const companyMatch = html.match(/<a[^>]*class="[^"]*topcard__org-name-link[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+          return res.json({
+            id,
+            title: stripHtmlTags(titleMatch?.[1] || ''),
+            company: stripHtmlTags(companyMatch?.[1] || ''),
+            description: stripHtmlTags(descMatch?.[1] || ''),
+            applyUrl: `https://www.linkedin.com/jobs/view/${numericId}`,
+            radarUrl: `https://www.linkedin.com/jobs/view/${numericId}`
+          });
+        }
+      }
+
+      const data = await fetchRadarApiJson(`/api/jobs/${encodeURIComponent(id)}`);
+      return res.json({
+        id: data.id,
+        title: data.title,
+        company: data.company,
+        description: data.description || '',
+        applyUrl: data.applyUrl || data.url,
+        radarUrl: `${RADAR_BASE_URL}/jobs/${encodeURIComponent(data.id || id)}`,
+        locations: data.locations || [],
+        workplace: data.workplace || null,
+        skills: data.skills || [],
+        tags: data.tags || []
+      });
+    } catch (error: any) {
+      return res.status(502).json({
+        error: error?.message || 'Erro ao obter detalhes completos da vaga.'
+      });
     }
   });
 

@@ -122,7 +122,7 @@ export interface InterviewAnswerEvaluation {
 export type SubscriptionPlan = 'free' | 'pro' | 'executive';
 export type UserRole = 'admin' | 'user';
 export type UserStatus = 'active' | 'suspended';
-export type BillingCycle = 'monthly' | 'yearly';
+export type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
 export type PaymentMethod = 'multicaixa' | 'card' | 'transfer' | 'pix' | 'stripe' | 'manual';
 export type OrderStatus = 'paid' | 'pending' | 'refunded' | 'failed';
 
@@ -167,6 +167,8 @@ export interface PricingPlan {
   priceMonthly: string;
   priceYearly: string;
   priceMonthlyValue: number;
+  priceQuarterlyValue?: number;
+  priceSemiannualValue?: number;
   priceYearlyValue: number;
   currency: string;
   creditsMonthly: number;

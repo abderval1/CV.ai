@@ -81,9 +81,9 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const [isExtractingCandidateFile, setIsExtractingCandidateFile] = useState<boolean>(false);
   const [isExtractingJobFile, setIsExtractingJobFile] = useState<boolean>(false);
 
-  // Load Demonstration Rich Profile (Executive COO / Operations)
+  // Load Executive Preset Profile
   const handleLoadExecutiveProfile = () => {
-    const demoText = `${AGOSTINHO_CV.personalDetails.name}
+    const presetText = `${AGOSTINHO_CV.personalDetails.name}
 ${AGOSTINHO_CV.personalDetails.title}
 ${AGOSTINHO_CV.personalDetails.location} | ${AGOSTINHO_CV.personalDetails.phone} | ${AGOSTINHO_CV.personalDetails.email} | ${AGOSTINHO_CV.personalDetails.linkedin}
 Website/Portfolio: ${AGOSTINHO_CV.personalDetails.website || 'https://beatrizfonseca.io'}
@@ -107,7 +107,7 @@ ${AGOSTINHO_CV.educations.map((e: any) => `- ${e.degree}, ${e.institution} (${e.
 COMPETÊNCIAS & FERRAMENTAS:
 Estratégia Corporativa, M&A, Finanças Globais, Due Diligence, Governança, Power BI, IFRS, Gestão de Stakeholders.`;
 
-    setCandidateRawText(demoText);
+    setCandidateRawText(presetText);
     setLinkedInUrl(AGOSTINHO_CV.personalDetails.linkedin || 'https://linkedin.com/in/beatriz-fonseca-exec');
     setTargetStandard('onu');
     setSuccessMessage('Perfil Liderança Executiva & Estratégia carregado!');
@@ -116,7 +116,7 @@ Estratégia Corporativa, M&A, Finanças Globais, Due Diligence, Governança, Pow
 
   // Load Tech Lead Profile
   const handleLoadTechLeadProfile = () => {
-    const demoText = `${TECH_LEAD_CV.personalDetails.name}
+    const presetText = `${TECH_LEAD_CV.personalDetails.name}
 ${TECH_LEAD_CV.personalDetails.title}
 ${TECH_LEAD_CV.personalDetails.location} | ${TECH_LEAD_CV.personalDetails.phone} | ${TECH_LEAD_CV.personalDetails.email} | ${TECH_LEAD_CV.personalDetails.linkedin}
 Portfolio: ${TECH_LEAD_CV.personalDetails.website}
@@ -139,7 +139,7 @@ ${TECH_LEAD_CV.educations.map((e: any) => `- ${e.degree}, ${e.institution} (${e.
 COMPETÊNCIAS & STACK TÉCNICA:
 Kubernetes, Docker, AWS (ECS, Lambda), Node.js, TypeScript, React, Python, PostgreSQL, Redis, CI/CD, DevSecOps, Microserviços.`;
 
-    setCandidateRawText(demoText);
+    setCandidateRawText(presetText);
     setLinkedInUrl(TECH_LEAD_CV.personalDetails.linkedin || 'https://linkedin.com/in/manuelsilva-tech');
     setTargetStandard('tech');
     setSuccessMessage('Perfil Tech Lead & Arquiteto Cloud carregado!');
@@ -148,7 +148,7 @@ Kubernetes, Docker, AWS (ECS, Lambda), Node.js, TypeScript, React, Python, Postg
 
   // Load Finance Executive Profile
   const handleLoadFinanceProfile = () => {
-    const demoText = `ISABEL AFONSO CARDOSO
+    const presetText = `ISABEL AFONSO CARDOSO
 Diretora Financeira & Controller de Risco | CFO Corporativo
 Luanda, Angola | +244 923 888 999 | isabel.cardoso@financas.ao | linkedin.com/in/isabelcardoso-cfo
 
@@ -174,7 +174,7 @@ FORMAÇÃO ACADÉMICA:
 COMPETÊNCIAS CHAVE:
 IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corporativa, Análise de Risco.`;
 
-    setCandidateRawText(demoText);
+    setCandidateRawText(presetText);
     setLinkedInUrl('https://linkedin.com/in/isabelcardoso-cfo');
     setTargetStandard('harvard');
     setSuccessMessage('Perfil Direção Financeira & Controladoria carregado!');
@@ -366,10 +366,10 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     const secondLine = lines[1] || 'Especialista Profissional';
 
     const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const email = emailMatch ? emailMatch[0] : 'contacto@exemplo.com';
+    const email = emailMatch ? emailMatch[0] : '';
 
     const phoneMatch = rawText.match(/(\+?\d[\d\s()-]{7,}\d)/);
-    const phone = phoneMatch ? phoneMatch[0].trim() : '+244 923 000 000';
+    const phone = phoneMatch ? phoneMatch[0].trim() : '';
 
     const lMatch = rawText.match(/(https?:\/\/[^\s]*linkedin\.com\/[^\s]+|linkedin\.com\/in\/[^\s]+)/i);
     const linkedin = lMatch ? lMatch[0] : linkedInUrl || 'linkedin.com/in/perfil';
@@ -537,8 +537,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
             name: generatedData.personalDetails.name || 'SEU NOME COMPLETO',
             title: generatedData.personalDetails.title || 'Especialista Profissional',
             location: generatedData.personalDetails.location || 'Cidade, País',
-            phone: generatedData.personalDetails.phone || '+244 923 000 000',
-            email: generatedData.personalDetails.email || 'contacto@exemplo.com',
+            phone: generatedData.personalDetails.phone || '',
+            email: generatedData.personalDetails.email || '',
             linkedin: generatedData.personalDetails.linkedin || linkedInUrl || 'linkedin.com/in/seu-perfil',
             website: generatedData.personalDetails.website,
             photoUrl:
@@ -656,7 +656,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         {/* Multi-Industry Exemplary Career Presets */}
         <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2 text-xs">
           <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-            Exemplos Demonstrativos:
+            Modelos de Preenchimento:
           </span>
           <button
             type="button"

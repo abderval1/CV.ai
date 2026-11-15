@@ -263,6 +263,8 @@ export interface EditablePlanConfig {
   name: string;
   tagline: string;
   priceMonthlyValue: number;
+  priceQuarterlyValue?: number;
+  priceSemiannualValue?: number;
   priceYearlyValue: number;
   badgeText: string;
   isPopular: boolean;
@@ -278,6 +280,10 @@ export interface PlatformSettingsConfig {
   requirePaidPlanForExport: boolean;
   enableAiFeaturesGlobally: boolean;
   maxDailyFreeAiCalls: number;
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'evp';
+  pixBeneficiaryName?: string;
+  pixCity?: string;
   updatedAt: string;
   updatedBy: string;
 }

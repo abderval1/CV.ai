@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Download,
-  Sparkles,
   FolderOpen,
   User as UserIcon,
   LogOut,
@@ -12,7 +11,6 @@ import {
   Menu,
   X,
   Target,
-  Bot,
   Mail,
   ShieldCheck,
   UploadCloud,
@@ -22,7 +20,10 @@ import {
   Loader2,
   Check,
   LayoutGrid,
-  Briefcase
+  Briefcase,
+  SlidersHorizontal,
+  CreditCard,
+  FileCheck2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
@@ -34,6 +35,7 @@ export type AppTab =
   | 'raw'
   | 'editor'
   | 'ats'
+  | 'jobs'
   | 'ai'
   | 'cover'
   | 'interview'
@@ -91,7 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAdmin = isUserAdmin(user?.email, user?.role);
-  const isToolActive = ['raw', 'ats', 'ai', 'interview', 'cover'].includes(activeTab);
+  const isToolActive = ['raw', 'ats', 'jobs', 'ai', 'interview', 'cover'].includes(activeTab);
   const isShowcaseActive = ['models-cv', 'examples-cv', 'models-cover', 'examples-cover'].includes(activeTab);
 
   const showcaseLabels: Record<string, string> = {
@@ -103,13 +105,14 @@ export const Header: React.FC<HeaderProps> = ({
 
   const toolLabels: Record<string, string> = {
     cover: 'Carta de Apresentação',
+    jobs: 'Vagas Compatíveis',
     raw: t('tool.importData', 'Importar Dados'),
     ats: t('tool.atsRadar', 'Radar ATS'),
     ai: t('tool.aiOptimizer', 'Otimizador IA'),
     interview: t('tool.interviewSim', 'Simulador Entrevista')
   };
 
-  const handleSelectTool = (tab: 'raw' | 'ats' | 'ai' | 'cover' | 'interview') => {
+  const handleSelectTool = (tab: 'raw' | 'ats' | 'jobs' | 'ai' | 'cover' | 'interview') => {
     setActiveTab(tab);
     setShowcaseDropdownOpen(false);
     setToolsDropdownOpen(false);
@@ -125,7 +128,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="no-print bg-white border-b border-slate-200 sticky top-0 z-40 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-15 flex items-center justify-between gap-3 w-full min-w-0">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-15 flex items-center justify-between gap-2 sm:gap-3 w-full min-w-0">
         {/* Zone 1: Clean Brand Lockup */}
         <a
           href="#home"
@@ -133,9 +136,9 @@ export const Header: React.FC<HeaderProps> = ({
             e.preventDefault();
             handleSelectNav('home');
           }}
-          className="text-sm sm:text-base font-extrabold tracking-tight text-slate-900 hover:text-slate-700 transition-colors flex items-center gap-2 min-w-0 shrink"
+          className="text-sm sm:text-base font-bold tracking-tight text-slate-900 hover:text-slate-700 transition-colors flex items-center gap-2 min-w-0 shrink touch-manipulation"
         >
-          <span className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center font-black text-[11px] tracking-tighter shrink-0">
+          <span className="w-7 h-7 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-[11px] tracking-tight shrink-0">
             CE
           </span>
           <span className="truncate">Currículo Estratégico</span>
@@ -199,7 +202,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'models-cv' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <FileText className="w-4 h-4 text-slate-700 mt-0.5 shrink-0" />
+                    <FileText className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Modelos de CV</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -215,7 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'examples-cv' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Briefcase className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <Briefcase className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Exemplos de CV</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -236,7 +239,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'models-cover' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Mail className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                    <Mail className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Modelos de Carta de Apresentação</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -252,7 +255,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'examples-cover' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Sparkles className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                    <FileCheck2 className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Exemplos de Carta de Apresentação</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -294,8 +297,8 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'hover:text-slate-950 hover:bg-slate-50'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span>{isToolActive ? toolLabels[activeTab] || 'Ferramentas' : 'Ferramentas & IA'}</span>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+              <span>{isToolActive ? toolLabels[activeTab] || 'Ferramentas' : 'Ferramentas'}</span>
               <ChevronDown
                 className={`w-3.5 h-3.5 transition-transform duration-150 ${
                   toolsDropdownOpen ? 'rotate-180 text-slate-900' : 'text-slate-400'
@@ -311,7 +314,7 @@ export const Header: React.FC<HeaderProps> = ({
                 />
                 <div className="absolute left-0 mt-1.5 w-72 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
                   <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Documentos & Formatos
+                    Documentos &amp; Formatos
                   </div>
 
                   <button
@@ -321,7 +324,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'cover' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Mail className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                    <Mail className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Carta de Apresentação</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -339,11 +342,11 @@ export const Header: React.FC<HeaderProps> = ({
                       }}
                       className="w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-slate-700"
                     >
-                      <Globe className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+                      <Globe className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-xs font-semibold leading-tight">Modelos Internacionais</p>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          Harvard, ATS Estrito, Europass, Tech & Executivo
+                          Harvard, ATS Estrito, Europass, Tech &amp; Executivo
                         </p>
                       </div>
                     </button>
@@ -351,7 +354,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                   <div className="border-t border-slate-100 my-1" />
                   <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Inteligência ATS & IA
+                    Análise &amp; Otimização
                   </div>
 
                   <button
@@ -361,9 +364,9 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'raw' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <UploadCloud className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                    <UploadCloud className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-semibold leading-tight">Importar Dados & LinkedIn</p>
+                      <p className="text-xs font-semibold leading-tight">Importar Dados &amp; LinkedIn</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         Extraia estrutura de PDF, Word ou texto livre
                       </p>
@@ -377,11 +380,27 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'ats' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Target className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <Target className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-semibold leading-tight">Radar ATS & Palavras-Chave</p>
+                      <p className="text-xs font-semibold leading-tight">Radar ATS &amp; Palavras-Chave</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         Compare o seu perfil com os requisitos da vaga
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTool('jobs')}
+                    className={`w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors flex items-start gap-2.5 ${
+                      activeTab === 'jobs' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
+                    }`}
+                  >
+                    <Briefcase className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold leading-tight">Vagas Compatíveis (Radar)</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Vagas ao vivo alinhadas ao seu CV com link direto
                       </p>
                     </div>
                   </button>
@@ -393,9 +412,9 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'ai' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <Bot className="w-4 h-4 text-purple-600 mt-0.5 shrink-0" />
+                    <SlidersHorizontal className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
-                      <p className="text-xs font-semibold leading-tight">Otimizador IA (Google XYZ)</p>
+                      <p className="text-xs font-semibold leading-tight">Otimizador de Impacto (XYZ)</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         Reescreva realizações com foco em métricas
                       </p>
@@ -409,7 +428,7 @@ export const Header: React.FC<HeaderProps> = ({
                       activeTab === 'interview' ? 'bg-slate-50 text-slate-950 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <MessageSquare className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                    <MessageSquare className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                     <div>
                       <p className="text-xs font-semibold leading-tight">Simulador de Entrevista</p>
                       <p className="text-[11px] text-slate-500 mt-0.5">
@@ -615,7 +634,7 @@ export const Header: React.FC<HeaderProps> = ({
                       }}
                       className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                      <CreditCard className="w-3.5 h-3.5 text-slate-500" />
                       <span>Gerir Plano</span>
                     </button>
 
@@ -654,9 +673,9 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              className="min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition-colors whitespace-nowrap touch-manipulation"
             >
-              <UserIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <UserIcon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
               <span>Entrar</span>
             </button>
           )}
@@ -666,9 +685,9 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={onExportWord}
             disabled={isExportingWord}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors rounded-lg whitespace-nowrap shrink-0 ${
+            className={`min-h-[40px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors rounded-lg whitespace-nowrap shrink-0 touch-manipulation ${
               !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold'
+                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
             }`}
           >
@@ -693,7 +712,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors border border-slate-200"
+            className="lg:hidden min-w-[40px] min-h-[40px] flex items-center justify-center p-1.5 rounded-lg text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors border border-slate-200 touch-manipulation"
             aria-label="Abrir menu de navegação"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -748,9 +767,9 @@ export const Header: React.FC<HeaderProps> = ({
                   setMobileMenuOpen(false);
                   onOpenPricingModal();
                 }}
-                className="flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-900"
+                className="min-h-[44px] flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-900 touch-manipulation"
               >
-                <Sparkles className="w-4 h-4 shrink-0 text-amber-600" />
+                <CreditCard className="w-4 h-4 shrink-0 text-amber-700" />
                 <span>Planos</span>
               </button>
             </div>
@@ -764,7 +783,7 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectNav('models-cv')}
-                className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors touch-manipulation ${
                   activeTab === 'models-cv' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
                 }`}
               >
@@ -774,31 +793,31 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectNav('examples-cv')}
-                className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors touch-manipulation ${
                   activeTab === 'examples-cv' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
                 }`}
               >
-                <Briefcase className="w-4 h-4 shrink-0 text-emerald-600" />
+                <Briefcase className="w-4 h-4 shrink-0" />
                 <span>Exemplos de CV</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSelectNav('models-cover')}
-                className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors touch-manipulation ${
                   activeTab === 'models-cover' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
                 }`}
               >
-                <Mail className="w-4 h-4 shrink-0 text-amber-600" />
+                <Mail className="w-4 h-4 shrink-0" />
                 <span>Modelos Carta</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleSelectNav('examples-cover')}
-                className={`flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors ${
+                className={`min-h-[44px] flex items-center gap-2 p-2.5 rounded-lg text-xs font-semibold transition-colors touch-manipulation ${
                   activeTab === 'examples-cover' ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
                 }`}
               >
-                <Sparkles className="w-4 h-4 shrink-0 text-indigo-600" />
+                <FileCheck2 className="w-4 h-4 shrink-0" />
                 <span>Exemplos Carta</span>
               </button>
             </div>
@@ -806,17 +825,17 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">
-              Ferramentas Inteligentes
+              Ferramentas &amp; Análise
             </span>
             <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
               <button
                 type="button"
                 onClick={() => handleSelectTool('raw')}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50"
+                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
               >
                 <span className="flex items-center gap-2.5">
-                  <UploadCloud className="w-4 h-4 text-indigo-600" />
-                  <span>Importar Dados & LinkedIn</span>
+                  <UploadCloud className="w-4 h-4 text-slate-600" />
+                  <span>Importar Dados &amp; LinkedIn</span>
                 </span>
                 <span className="text-[10px] text-slate-400">PDF / Word</span>
               </button>
@@ -824,10 +843,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => handleSelectTool('ats')}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50"
+                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
               >
                 <span className="flex items-center gap-2.5">
-                  <Target className="w-4 h-4 text-emerald-600" />
+                  <Target className="w-4 h-4 text-slate-600" />
                   <span>Radar ATS</span>
                 </span>
                 <span className="text-[10px] text-slate-400">Match da vaga</span>
@@ -835,23 +854,35 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 type="button"
-                onClick={() => handleSelectTool('ai')}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50"
+                onClick={() => handleSelectTool('jobs')}
+                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
               >
                 <span className="flex items-center gap-2.5">
-                  <Bot className="w-4 h-4 text-purple-600" />
-                  <span>Otimizador IA</span>
+                  <Briefcase className="w-4 h-4 text-slate-600" />
+                  <span>Vagas Compatíveis</span>
                 </span>
-                <span className="text-[10px] text-slate-400">Google XYZ</span>
+                <span className="text-[10px] text-slate-400">Radar ao vivo</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectTool('ai')}
+                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
+              >
+                <span className="flex items-center gap-2.5">
+                  <SlidersHorizontal className="w-4 h-4 text-slate-600" />
+                  <span>Otimizador de Impacto</span>
+                </span>
+                <span className="text-[10px] text-slate-400">Fórmula XYZ</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => handleSelectTool('interview')}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50"
+                className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
               >
                 <span className="flex items-center gap-2.5">
-                  <MessageSquare className="w-4 h-4 text-indigo-600" />
+                  <MessageSquare className="w-4 h-4 text-slate-600" />
                   <span>Simulador de Entrevista</span>
                 </span>
                 <span className="text-[10px] text-slate-400">Método STAR</span>
@@ -864,10 +895,10 @@ export const Header: React.FC<HeaderProps> = ({
                     setMobileMenuOpen(false);
                     onOpenTemplateAdvisor();
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50"
+                  className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 touch-manipulation"
                 >
                   <span className="flex items-center gap-2.5">
-                    <Globe className="w-4 h-4 text-blue-600" />
+                    <Globe className="w-4 h-4 text-slate-600" />
                     <span>Modelos Internacionais</span>
                   </span>
                   <span className="text-[10px] text-slate-400">9 formatos</span>
@@ -881,11 +912,11 @@ export const Header: React.FC<HeaderProps> = ({
                     setMobileMenuOpen(false);
                     onOpenAdminDashboard();
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100/80 border-t border-amber-200"
+                  className="w-full min-h-[44px] flex items-center justify-between px-3 py-2.5 text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100/80 border-t border-amber-200 touch-manipulation"
                 >
                   <span className="flex items-center gap-2.5">
                     <ShieldCheck className="w-4 h-4 text-amber-700" />
-                    <span>Painel Administrativo (SaaS)</span>
+                    <span>Painel Administrativo</span>
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-200/70 px-1.5 py-0.5 rounded">
                     Admin
@@ -906,7 +937,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onOpenMyResumesModal();
                 }
               }}
-              className="flex-1 py-2 px-3 bg-slate-100 text-slate-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+              className="flex-1 min-h-[44px] py-2 px-3 bg-slate-100 text-slate-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
             >
               <FolderOpen className="w-3.5 h-3.5" />
               <span>Meus CVs</span>
@@ -919,7 +950,7 @@ export const Header: React.FC<HeaderProps> = ({
                   setMobileMenuOpen(false);
                   onOpenUserProfile ? onOpenUserProfile() : setActiveTab('profile');
                 }}
-                className="flex-1 py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
               >
                 <Receipt className="w-3.5 h-3.5 text-amber-400" />
                 <span>Minha Conta</span>
@@ -931,7 +962,7 @@ export const Header: React.FC<HeaderProps> = ({
                   setMobileMenuOpen(false);
                   onOpenAuthModal();
                 }}
-                className="flex-1 py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
               >
                 <UserIcon className="w-3.5 h-3.5" />
                 <span>Entrar / Registar</span>

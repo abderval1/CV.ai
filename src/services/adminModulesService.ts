@@ -9,7 +9,7 @@ import {
   query,
   limit
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 import {
   PromptTemplateConfig,
   AiModelRoutingConfig,
@@ -307,90 +307,11 @@ export const DEFAULT_LOCALES: SystemLocaleTranslation[] = [
   }
 ];
 
-export const DEFAULT_BANNERS: SystemAnnouncementBanner[] = [
-  {
-    id: 'ban-launch',
-    title: 'Novos Modelos Executivos Disponíveis',
-    message: 'Adicionamos os modelos Harvard Business School e Diplomático ONU para subscritores Pro e VIP.',
-    type: 'promo',
-    active: true,
-    targetAudience: 'all',
-    actionUrl: '#templates',
-    actionLabel: 'Ver Modelos',
-    startsAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-    dismissible: true
-  },
-  {
-    id: 'ban-upgrade',
-    title: 'Exportação 1:1 em Word (.docx)',
-    message: 'Gere o seu currículo oficial com formatação idêntica e sem marcas de água ativando o plano Pro por apenas $2/mês.',
-    type: 'info',
-    active: true,
-    targetAudience: 'free_only',
-    actionUrl: '#pricing',
-    actionLabel: 'Ativar Plano',
-    startsAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-    dismissible: true
-  }
-];
+export const DEFAULT_BANNERS: SystemAnnouncementBanner[] = [];
 
-export const DEFAULT_ERROR_LOGS: TechnicalGenerationErrorLog[] = [
-  {
-    id: 'err-101',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    userEmail: 'candidato.teste@gmail.com',
-    operationType: 'pdf_export',
-    errorMessage: 'Timeout no renderizador de impressão do cliente: ecrã bloqueado por extensão de navegador.',
-    modelUsed: 'n/a',
-    resolved: true,
-    resolvedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-    resolvedBy: 'gugurai923@gmail.com'
-  },
-  {
-    id: 'err-102',
-    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    userEmail: 'dev.marcos@outlook.com',
-    operationType: 'gemini_ai_call',
-    errorMessage: 'Quota de requisições por minuto excedida temporariamente no modelo gemini-3.8-flash; failover acionado para gemini-3.1-flash-lite.',
-    modelUsed: 'gemini-3.8-flash',
-    resolved: true,
-    resolvedAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-    resolvedBy: 'sistema-automatico'
-  },
-  {
-    id: 'err-103',
-    timestamp: new Date(Date.now() - 14 * 60 * 60 * 1000).toISOString(),
-    userEmail: 'ana.pereira@empresa.com',
-    operationType: 'docx_export',
-    errorMessage: 'Caracter unicode especial em destaque de experiência causou aviso de codificação; sanitizado com sucesso.',
-    modelUsed: 'n/a',
-    resolved: false
-  }
-];
+export const DEFAULT_ERROR_LOGS: TechnicalGenerationErrorLog[] = [];
 
-export const DEFAULT_GDPR_REQUESTS: GdprDataRequest[] = [
-  {
-    id: 'gdpr-201',
-    userId: 'usr-mateus-cuanza',
-    userEmail: 'mateus.baptista@gmail.com',
-    requestType: 'export_data',
-    status: 'completed',
-    requestedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    completedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    notes: 'Arquivo ZIP com JSON de currículos e faturas enviado para o e-mail do titular.'
-  },
-  {
-    id: 'gdpr-202',
-    userId: 'usr-exemplo-inativo',
-    userEmail: 'inativo.candidato@yahoo.com',
-    requestType: 'delete_account',
-    status: 'pending',
-    requestedAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-    notes: 'Pedido de eliminação total do histórico de acordo com Art. 17 RGPD (Direito ao Esquecimento).'
-  }
-];
+export const DEFAULT_GDPR_REQUESTS: GdprDataRequest[] = [];
 
 export const DEFAULT_RBAC_PERMISSIONS: AdminRolePermission[] = [
   {
@@ -435,8 +356,135 @@ export const DEFAULT_RBAC_PERMISSIONS: AdminRolePermission[] = [
 ];
 
 // -------------------------------------------------------------
-// LOCAL CACHING & FIRESTORE SYNC HELPERS
+// ONE-TIME LEGACY SEED CLEANUP FOR PRODUCTION
 // -------------------------------------------------------------
+
+function purgeLegacySeedStorageOnce(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem('curriculopro_prod_reset_v1') === '1') return;
+
+    const legacyBannerIds = new Set(['ban-launch', 'ban-upgrade']);
+    const rawBanners = localStorage.getItem('curriculopro_banners');
+    if (rawBanners) {
+      try {
+        const parsed = JSON.parse(rawBanners);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((b: any) => !legacyBannerIds.has(b?.id));
+          localStorage.setItem('curriculopro_banners', JSON.stringify(filtered));
+        }
+      } catch {
+        localStorage.removeItem('curriculopro_banners');
+      }
+    }
+
+    const legacyErrorIds = new Set(['err-101', 'err-102', 'err-103']);
+    const rawErrors = localStorage.getItem('curriculopro_error_logs');
+    if (rawErrors) {
+      try {
+        const parsed = JSON.parse(rawErrors);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((e: any) => !legacyErrorIds.has(e?.id));
+          localStorage.setItem('curriculopro_error_logs', JSON.stringify(filtered));
+        }
+      } catch {
+        localStorage.removeItem('curriculopro_error_logs');
+      }
+    }
+
+    const legacyGdprIds = new Set(['gdpr-201', 'gdpr-202']);
+    const rawGdpr = localStorage.getItem('curriculopro_gdpr_requests');
+    if (rawGdpr) {
+      try {
+        const parsed = JSON.parse(rawGdpr);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((g: any) => !legacyGdprIds.has(g?.id));
+          localStorage.setItem('curriculopro_gdpr_requests', JSON.stringify(filtered));
+        }
+      } catch {
+        localStorage.removeItem('curriculopro_gdpr_requests');
+      }
+    }
+
+    const legacyImpIds = new Set(['imp-001']);
+    const rawImp = localStorage.getItem('curriculopro_impersonation_logs');
+    if (rawImp) {
+      try {
+        const parsed = JSON.parse(rawImp);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((i: any) => !legacyImpIds.has(i?.id));
+          localStorage.setItem('curriculopro_impersonation_logs', JSON.stringify(filtered));
+        }
+      } catch {
+        localStorage.removeItem('curriculopro_impersonation_logs');
+      }
+    }
+
+    const rawTelemetry = localStorage.getItem('curriculopro_frontend_telemetry');
+    if (rawTelemetry) {
+      try {
+        const parsed = JSON.parse(rawTelemetry);
+        if (
+          parsed &&
+          parsed.resumesStartedCount === 18 &&
+          parsed.checkoutOpenedCount === 9 &&
+          parsed.aiCallsCount === 42
+        ) {
+          localStorage.removeItem('curriculopro_frontend_telemetry');
+        }
+      } catch {
+        localStorage.removeItem('curriculopro_frontend_telemetry');
+      }
+    }
+
+    localStorage.setItem('curriculopro_prod_reset_v1', '1');
+  } catch {
+    // ignore storage access issues
+  }
+}
+
+purgeLegacySeedStorageOnce();
+
+// -------------------------------------------------------------
+// LOCAL CACHING, EXPRESS API & FIRESTORE SYNC HELPERS
+// -------------------------------------------------------------
+
+const AUTH_TOKEN_KEY = 'curriculopro_auth_token';
+
+function getAuthToken(): string | null {
+  try {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function adminApiFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const token = getAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...((options.headers as Record<string, string>) || {})
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(path, {
+    ...options,
+    headers,
+    credentials: 'include'
+  });
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+  if (!res.ok) {
+    throw new Error(data?.error || `HTTP ${res.status}`);
+  }
+  return data;
+}
 
 function getStored<T>(key: string, defaultVal: T): T {
   try {
@@ -461,21 +509,56 @@ function setStored<T>(key: string, val: T): void {
   }
 }
 
+async function fetchPublicAdminConfig(): Promise<Record<string, any> | null> {
+  try {
+    return await adminApiFetch('/api/public/config', { method: 'GET' });
+  } catch {
+    return null;
+  }
+}
+
+async function saveAdminConfigScope(scope: string, payload: any): Promise<void> {
+  if (!getAuthToken()) return;
+  try {
+    await adminApiFetch(`/api/admin/config/${encodeURIComponent(scope)}`, {
+      method: 'POST',
+      body: JSON.stringify({ data: payload })
+    });
+  } catch (e) {
+    console.warn(`Erro ao sincronizar ${scope} no servidor:`, e);
+  }
+}
+
 // -------------------------------------------------------------
 // SERVICE METHODS
 // -------------------------------------------------------------
 
 export async function fetchPromptsConfig(): Promise<PromptTemplateConfig[]> {
-  try {
-    const colRef = collection(db, 'promptsConfig');
-    const snap = await getDocs(colRef);
-    if (!snap.empty) {
-      const list = snap.docs.map((d) => d.data() as PromptTemplateConfig);
-      setStored('curriculopro_prompts_config', list);
-      return list;
+  if (getAuthToken()) {
+    try {
+      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+      const list = overview?.adminConfig?.promptsConfig;
+      if (Array.isArray(list) && list.length > 0) {
+        setStored('curriculopro_prompts_config', list);
+        return list;
+      }
+    } catch {
+      // fall through
     }
-  } catch (e) {
-    console.warn('Usando configuração local de prompts:', e);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const colRef = collection(db, 'promptsConfig');
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => d.data() as PromptTemplateConfig);
+        setStored('curriculopro_prompts_config', list);
+        return list;
+      }
+    } catch (e) {
+      console.warn('Usando configuração local de prompts:', e);
+    }
   }
   return getStored('curriculopro_prompts_config', DEFAULT_PROMPT_CONFIGS);
 }
@@ -483,32 +566,52 @@ export async function fetchPromptsConfig(): Promise<PromptTemplateConfig[]> {
 export async function savePromptConfig(item: PromptTemplateConfig): Promise<void> {
   const current = await fetchPromptsConfig();
   const idx = current.findIndex((p) => p.id === item.id);
+  const updatedItem = { ...item, updatedAt: new Date().toISOString() };
   if (idx >= 0) {
-    current[idx] = { ...item, updatedAt: new Date().toISOString() };
+    current[idx] = updatedItem;
   } else {
-    current.push({ ...item, updatedAt: new Date().toISOString() });
+    current.push(updatedItem);
   }
   setStored('curriculopro_prompts_config', current);
   emitAdminConfigUpdated('prompts');
 
-  try {
-    await setDoc(doc(db, 'promptsConfig', item.id), item);
-  } catch (e) {
-    console.warn('Erro ao sincronizar prompt no Firestore:', e);
+  await saveAdminConfigScope('promptsConfig', current);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'promptsConfig', item.id), updatedItem, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar prompt no Firestore:', e);
+    }
   }
 }
 
 export async function fetchAiRoutingConfig(): Promise<AiModelRoutingConfig> {
-  try {
-    const docRef = doc(db, 'systemSettings', 'aiRouting');
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      const data = snap.data() as AiModelRoutingConfig;
-      setStored('curriculopro_ai_routing', data);
-      return data;
+  if (getAuthToken()) {
+    try {
+      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+      const cfg = overview?.adminConfig?.aiRouting;
+      if (cfg && typeof cfg === 'object' && cfg.primaryModel) {
+        setStored('curriculopro_ai_routing', cfg);
+        return cfg;
+      }
+    } catch {
+      // fall through
     }
-  } catch (e) {
-    console.warn('Usando configuração local de routing de IA:', e);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const docRef = doc(db, 'systemSettings', 'aiRouting');
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as AiModelRoutingConfig;
+        setStored('curriculopro_ai_routing', data);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Usando configuração local de routing de IA:', e);
+    }
   }
   return getStored('curriculopro_ai_routing', DEFAULT_AI_ROUTING);
 }
@@ -516,14 +619,25 @@ export async function fetchAiRoutingConfig(): Promise<AiModelRoutingConfig> {
 export async function saveAiRoutingConfig(config: AiModelRoutingConfig): Promise<void> {
   setStored('curriculopro_ai_routing', config);
   emitAdminConfigUpdated('aiRouting');
-  try {
-    await setDoc(doc(db, 'systemSettings', 'aiRouting'), config);
-  } catch (e) {
-    console.warn('Erro ao guardar aiRouting no Firestore:', e);
+
+  await saveAdminConfigScope('aiRouting', config);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'systemSettings', 'aiRouting'), config, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao guardar aiRouting no Firestore:', e);
+    }
   }
 }
 
 export async function fetchPlanQuotas(): Promise<PlanCreditQuota[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.planQuotas) && pub.planQuotas.length > 0) {
+    setStored('curriculopro_plan_quotas', pub.planQuotas);
+    return pub.planQuotas;
+  }
+
   try {
     const colRef = collection(db, 'planQuotas');
     const snap = await getDocs(colRef);
@@ -546,14 +660,25 @@ export async function savePlanQuota(quota: PlanCreditQuota): Promise<void> {
   setStored('curriculopro_plan_quotas', list);
   emitAdminConfigUpdated('quotas');
 
-  try {
-    await setDoc(doc(db, 'planQuotas', quota.planId), quota);
-  } catch (e) {
-    console.warn('Erro ao salvar quota no Firestore:', e);
+  await saveAdminConfigScope('planQuotas', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'planQuotas', quota.planId), quota, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao salvar quota no Firestore:', e);
+    }
   }
 }
 
 export async function fetchAdminTemplates(): Promise<TemplateAdminItem[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.adminTemplates) && pub.adminTemplates.length > 0) {
+    const sorted = [...pub.adminTemplates].sort((a, b) => a.displayOrder - b.displayOrder);
+    setStored('curriculopro_admin_templates', sorted);
+    return sorted;
+  }
+
   try {
     const colRef = collection(db, 'templateCatalogConfig');
     const snap = await getDocs(colRef);
@@ -578,14 +703,24 @@ export async function saveAdminTemplate(tmpl: TemplateAdminItem): Promise<void> 
   setStored('curriculopro_admin_templates', list);
   emitAdminConfigUpdated('templates');
 
-  try {
-    await setDoc(doc(db, 'templateCatalogConfig', tmpl.id), tmpl);
-  } catch (e) {
-    console.warn('Erro ao sincronizar template no Firestore:', e);
+  await saveAdminConfigScope('adminTemplates', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'templateCatalogConfig', tmpl.id), tmpl, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar template no Firestore:', e);
+    }
   }
 }
 
 export async function fetchProfessionSnippets(): Promise<ProfessionSnippetExample[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.professionSnippets) && pub.professionSnippets.length > 0) {
+    setStored('curriculopro_snippets', pub.professionSnippets);
+    return pub.professionSnippets;
+  }
+
   try {
     const colRef = collection(db, 'professionSnippets');
     const snap = await getDocs(colRef);
@@ -608,10 +743,14 @@ export async function saveProfessionSnippet(snip: ProfessionSnippetExample): Pro
   setStored('curriculopro_snippets', list);
   emitAdminConfigUpdated('snippets');
 
-  try {
-    await setDoc(doc(db, 'professionSnippets', snip.id), snip);
-  } catch (e) {
-    console.warn('Erro ao sincronizar snippet:', e);
+  await saveAdminConfigScope('professionSnippets', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'professionSnippets', snip.id), snip, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar snippet:', e);
+    }
   }
 }
 
@@ -619,10 +758,15 @@ export async function deleteProfessionSnippet(id: string): Promise<void> {
   const list = (await fetchProfessionSnippets()).filter((s) => s.id !== id);
   setStored('curriculopro_snippets', list);
   emitAdminConfigUpdated('snippets');
-  try {
-    await deleteDoc(doc(db, 'professionSnippets', id));
-  } catch (e) {
-    console.warn('Erro ao apagar snippet no Firestore:', e);
+
+  await saveAdminConfigScope('professionSnippets', list);
+
+  if (auth.currentUser) {
+    try {
+      await deleteDoc(doc(db, 'professionSnippets', id));
+    } catch (e) {
+      console.warn('Erro ao apagar snippet no Firestore:', e);
+    }
   }
 }
 
@@ -658,6 +802,12 @@ export function getStoredPromptSync(id: string): PromptTemplateConfig | undefine
 }
 
 export async function fetchSystemLocales(): Promise<SystemLocaleTranslation[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.systemLocales) && pub.systemLocales.length > 0) {
+    setStored('curriculopro_locales', pub.systemLocales);
+    return pub.systemLocales;
+  }
+
   try {
     const colRef = collection(db, 'systemLocales');
     const snap = await getDocs(colRef);
@@ -681,14 +831,24 @@ export async function saveSystemLocale(locale: SystemLocaleTranslation): Promise
   setStored('curriculopro_locales', list);
   emitAdminConfigUpdated('locales');
 
-  try {
-    await setDoc(doc(db, 'systemLocales', locale.languageCode), updated);
-  } catch (e) {
-    console.warn('Erro ao guardar idioma no Firestore:', e);
+  await saveAdminConfigScope('systemLocales', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'systemLocales', locale.languageCode), updated, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao guardar idioma no Firestore:', e);
+    }
   }
 }
 
 export async function fetchSystemBanners(): Promise<SystemAnnouncementBanner[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.systemBanners)) {
+    setStored('curriculopro_banners', pub.systemBanners);
+    return pub.systemBanners;
+  }
+
   try {
     const colRef = collection(db, 'systemBanners');
     const snap = await getDocs(colRef);
@@ -698,7 +858,7 @@ export async function fetchSystemBanners(): Promise<SystemAnnouncementBanner[]> 
       return list;
     }
   } catch (e) {
-    console.warn('Usando banners padrão:', e);
+    console.warn('Usando banners locais:', e);
   }
   return getStored('curriculopro_banners', DEFAULT_BANNERS);
 }
@@ -711,10 +871,14 @@ export async function saveSystemBanner(banner: SystemAnnouncementBanner): Promis
   setStored('curriculopro_banners', list);
   emitAdminConfigUpdated('banners');
 
-  try {
-    await setDoc(doc(db, 'systemBanners', banner.id), banner);
-  } catch (e) {
-    console.warn('Erro ao salvar banner no Firestore:', e);
+  await saveAdminConfigScope('systemBanners', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'systemBanners', banner.id), banner, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao salvar banner no Firestore:', e);
+    }
   }
 }
 
@@ -722,23 +886,44 @@ export async function deleteSystemBanner(id: string): Promise<void> {
   const list = (await fetchSystemBanners()).filter((b) => b.id !== id);
   setStored('curriculopro_banners', list);
   emitAdminConfigUpdated('banners');
-  try {
-    await deleteDoc(doc(db, 'systemBanners', id));
-  } catch (e) {
-    console.warn('Erro ao apagar banner:', e);
+
+  await saveAdminConfigScope('systemBanners', list);
+
+  if (auth.currentUser) {
+    try {
+      await deleteDoc(doc(db, 'systemBanners', id));
+    } catch (e) {
+      console.warn('Erro ao apagar banner:', e);
+    }
   }
 }
 
 export async function fetchErrorLogs(): Promise<TechnicalGenerationErrorLog[]> {
-  try {
-    const colRef = collection(db, 'generationErrorLogs');
-    const q = query(colRef, limit(50));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as TechnicalGenerationErrorLog);
+  if (getAuthToken()) {
+    try {
+      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+      if (Array.isArray(overview?.errorLogs)) {
+        setStored('curriculopro_error_logs', overview.errorLogs);
+        return overview.errorLogs;
+      }
+    } catch {
+      // fall through
     }
-  } catch (e) {
-    console.warn('Usando logs de erro padrão:', e);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const colRef = collection(db, 'generationErrorLogs');
+      const q = query(colRef, limit(50));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => d.data() as TechnicalGenerationErrorLog);
+        setStored('curriculopro_error_logs', list);
+        return list;
+      }
+    } catch (e) {
+      console.warn('Usando logs de erro locais:', e);
+    }
   }
   return getStored('curriculopro_error_logs', DEFAULT_ERROR_LOGS);
 }
@@ -748,47 +933,121 @@ export async function logGenerationError(log: Omit<TechnicalGenerationErrorLog, 
     ...log,
     id: `err-${Date.now()}`
   };
-  const list = [newLog, ...(await fetchErrorLogs())].slice(0, 100);
+  const current = getStored<TechnicalGenerationErrorLog[]>('curriculopro_error_logs', []);
+  const list = [newLog, ...current].slice(0, 100);
   setStored('curriculopro_error_logs', list);
 
   try {
-    await setDoc(doc(db, 'generationErrorLogs', newLog.id), newLog);
-  } catch (e) {
-    console.warn('Erro ao gravar log no Firestore:', e);
+    await adminApiFetch('/api/error-logs', {
+      method: 'POST',
+      body: JSON.stringify(newLog)
+    });
+  } catch {
+    // ignore transient logging failure
+  }
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'generationErrorLogs', newLog.id), newLog, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao gravar log no Firestore:', e);
+    }
   }
 }
 
 export async function resolveErrorLog(logId: string, adminEmail: string): Promise<void> {
+  const resolvedAt = new Date().toISOString();
   const list = await fetchErrorLogs();
   const idx = list.findIndex((l) => l.id === logId);
   if (idx >= 0) {
     list[idx].resolved = true;
-    list[idx].resolvedAt = new Date().toISOString();
+    list[idx].resolvedAt = resolvedAt;
     list[idx].resolvedBy = adminEmail;
     setStored('curriculopro_error_logs', list);
   }
-  try {
-    await updateDoc(doc(db, 'generationErrorLogs', logId), {
-      resolved: true,
-      resolvedAt: new Date().toISOString(),
-      resolvedBy: adminEmail
-    });
-  } catch (e) {
-    console.warn('Erro ao atualizar log:', e);
+
+  if (getAuthToken()) {
+    try {
+      await adminApiFetch(`/api/admin/error-logs/${encodeURIComponent(logId)}/resolve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ resolvedAt, resolvedBy: adminEmail })
+      });
+    } catch (e) {
+      console.warn('Erro ao resolver log no backend:', e);
+    }
+  }
+
+  if (auth.currentUser) {
+    try {
+      await updateDoc(doc(db, 'generationErrorLogs', logId), {
+        resolved: true,
+        resolvedAt,
+        resolvedBy: adminEmail
+      });
+    } catch (e) {
+      console.warn('Erro ao atualizar log:', e);
+    }
   }
 }
 
 export async function fetchGdprRequests(): Promise<GdprDataRequest[]> {
-  try {
-    const colRef = collection(db, 'gdprRequests');
-    const snap = await getDocs(colRef);
-    if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as GdprDataRequest);
+  if (getAuthToken()) {
+    try {
+      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+      if (Array.isArray(overview?.gdprRequests)) {
+        setStored('curriculopro_gdpr_requests', overview.gdprRequests);
+        return overview.gdprRequests;
+      }
+    } catch {
+      // fall through
     }
-  } catch (e) {
-    console.warn('Usando solicitações RGPD locais:', e);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const colRef = collection(db, 'gdprRequests');
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => d.data() as GdprDataRequest);
+        setStored('curriculopro_gdpr_requests', list);
+        return list;
+      }
+    } catch (e) {
+      console.warn('Usando solicitações RGPD locais:', e);
+    }
   }
   return getStored('curriculopro_gdpr_requests', DEFAULT_GDPR_REQUESTS);
+}
+
+export async function submitGdprRequest(
+  requestType: GdprDataRequest['requestType'],
+  notes?: string
+): Promise<GdprDataRequest> {
+  const data = await adminApiFetch('/api/gdpr/request', {
+    method: 'POST',
+    body: JSON.stringify({ requestType, notes })
+  });
+  const created: GdprDataRequest = data?.request || {
+    id: `gdpr-${Date.now()}`,
+    userId: auth.currentUser?.uid || 'user',
+    userEmail: auth.currentUser?.email || '',
+    requestType,
+    status: 'pending',
+    requestedAt: new Date().toISOString(),
+    notes
+  };
+
+  const current = getStored<GdprDataRequest[]>('curriculopro_gdpr_requests', []);
+  setStored('curriculopro_gdpr_requests', [created, ...current].slice(0, 100));
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'gdprRequests', created.id), created, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao sincronizar pedido RGPD no Firestore:', e);
+    }
+  }
+  return created;
 }
 
 export async function updateGdprRequestStatus(
@@ -798,20 +1057,35 @@ export async function updateGdprRequestStatus(
 ): Promise<void> {
   const list = await fetchGdprRequests();
   const idx = list.findIndex((r) => r.id === requestId);
+  const completedAt = status === 'completed' ? new Date().toISOString() : undefined;
   if (idx >= 0) {
     list[idx].status = status;
-    if (status === 'completed') list[idx].completedAt = new Date().toISOString();
+    if (completedAt) list[idx].completedAt = completedAt;
     if (notes) list[idx].notes = notes;
     setStored('curriculopro_gdpr_requests', list);
   }
-  try {
-    await updateDoc(doc(db, 'gdprRequests', requestId), {
-      status,
-      ...(status === 'completed' ? { completedAt: new Date().toISOString() } : {}),
-      ...(notes ? { notes } : {})
-    });
-  } catch (e) {
-    console.warn('Erro ao atualizar pedido RGPD:', e);
+
+  if (getAuthToken()) {
+    try {
+      await adminApiFetch(`/api/admin/gdpr/${encodeURIComponent(requestId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status, notes })
+      });
+    } catch (e) {
+      console.warn('Erro ao atualizar pedido RGPD no backend:', e);
+    }
+  }
+
+  if (auth.currentUser) {
+    try {
+      await updateDoc(doc(db, 'gdprRequests', requestId), {
+        status,
+        ...(completedAt ? { completedAt } : {}),
+        ...(notes ? { notes } : {})
+      });
+    } catch (e) {
+      console.warn('Erro ao atualizar pedido RGPD:', e);
+    }
   }
 }
 
@@ -823,26 +1097,58 @@ export async function logImpersonationAction(log: Omit<ImpersonationAuditLog, 'i
   const list = [item, ...getStored<ImpersonationAuditLog[]>('curriculopro_impersonation_logs', [])].slice(0, 100);
   setStored('curriculopro_impersonation_logs', list);
 
-  try {
-    await setDoc(doc(db, 'impersonationAuditLogs', item.id), item);
-  } catch (e) {
-    console.warn('Erro ao guardar registo de personificação:', e);
+  if (getAuthToken()) {
+    try {
+      await adminApiFetch('/api/admin/impersonation-logs', {
+        method: 'POST',
+        body: JSON.stringify(item)
+      });
+    } catch (e) {
+      console.warn('Erro ao guardar registo de personificação no backend:', e);
+    }
+  }
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'impersonationAuditLogs', item.id), item, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao guardar registo de personificação:', e);
+    }
   }
 }
 
 export function fetchImpersonationLogs(): ImpersonationAuditLog[] {
-  return getStored<ImpersonationAuditLog[]>('curriculopro_impersonation_logs', [
-    {
-      id: 'imp-001',
-      adminId: 'admin-master',
-      adminEmail: 'gugurai923@gmail.com',
-      targetUserId: 'usr-aliou-mballo',
-      targetUserEmail: 'aliou.mballo@un.org',
-      action: 'started',
-      details: 'Acesso para verificação de quebra de página no modelo Diplomático ONU',
-      timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  return getStored<ImpersonationAuditLog[]>('curriculopro_impersonation_logs', []);
+}
+
+export async function fetchImpersonationLogsAsync(): Promise<ImpersonationAuditLog[]> {
+  if (getAuthToken()) {
+    try {
+      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+      if (Array.isArray(overview?.impersonationLogs)) {
+        setStored('curriculopro_impersonation_logs', overview.impersonationLogs);
+        return overview.impersonationLogs;
+      }
+    } catch {
+      // fall through
     }
-  ]);
+  }
+
+  if (auth.currentUser) {
+    try {
+      const colRef = collection(db, 'impersonationAuditLogs');
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        const list = snap.docs.map((d) => d.data() as ImpersonationAuditLog);
+        setStored('curriculopro_impersonation_logs', list);
+        return list;
+      }
+    } catch {
+      // fall through
+    }
+  }
+
+  return getStored<ImpersonationAuditLog[]>('curriculopro_impersonation_logs', []);
 }
 
 // -------------------------------------------------------------
@@ -854,6 +1160,8 @@ export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
     name: 'Profissional Pro',
     tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
     priceMonthlyValue: 8,
+    priceQuarterlyValue: 21.6,
+    priceSemiannualValue: 39.36,
     priceYearlyValue: 72,
     badgeText: 'Mais Escolhido',
     isPopular: true,
@@ -866,7 +1174,7 @@ export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
       'Radar ATS 95%+ com Análise Semântica de Vagas',
       'Cartas de Apresentação Estratégicas com IA',
       'Tradução Integral para 5 Idiomas (PT, EN, ES, FR, DE)',
-      'Sincronização Cloud Firestore em Tempo Real'
+      'Sincronização na Nuvem em Tempo Real'
     ],
     updatedAt: new Date().toISOString()
   },
@@ -875,6 +1183,8 @@ export const DEFAULT_EDITABLE_PLANS: EditablePlanConfig[] = [
     name: 'Executivo VIP',
     tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
     priceMonthlyValue: 12,
+    priceQuarterlyValue: 32.4,
+    priceSemiannualValue: 59.04,
     priceYearlyValue: 108,
     badgeText: 'C-Level & Global',
     isPopular: false,
@@ -934,14 +1244,21 @@ export function getStoredPlansSync(): EditablePlanConfig[] {
 }
 
 export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.editablePlans) && pub.editablePlans.length > 0) {
+    const { list } = migrateLegacyPlanPricing(pub.editablePlans as EditablePlanConfig[]);
+    setStored('curriculopro_editable_plans', list);
+    return list;
+  }
+
   try {
     const docRef = doc(db, 'systemSettings', 'editablePlans');
     const snap = await getDoc(docRef);
     if (snap.exists() && Array.isArray(snap.data()?.plans)) {
       const { list, changed } = migrateLegacyPlanPricing(snap.data().plans as EditablePlanConfig[]);
       setStored('curriculopro_editable_plans', list);
-      if (changed) {
-        await setDoc(docRef, { plans: list, updatedAt: new Date().toISOString() }).catch(() => {});
+      if (changed && auth.currentUser) {
+        await setDoc(docRef, { plans: list, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
       }
       return list;
     }
@@ -961,10 +1278,18 @@ export async function saveEditablePlan(plan: EditablePlanConfig): Promise<void> 
   setStored('curriculopro_editable_plans', list);
   emitAdminConfigUpdated('plans');
 
-  try {
-    await setDoc(doc(db, 'systemSettings', 'editablePlans'), { plans: list, updatedAt: new Date().toISOString() });
-  } catch (e) {
-    console.warn('Erro ao sincronizar planos no Firestore:', e);
+  await saveAdminConfigScope('editablePlans', list);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(
+        doc(db, 'systemSettings', 'editablePlans'),
+        { plans: list, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    } catch (e) {
+      console.warn('Erro ao sincronizar planos no Firestore:', e);
+    }
   }
 }
 
@@ -978,22 +1303,44 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsConfig = {
   requirePaidPlanForExport: true,
   enableAiFeaturesGlobally: true,
   maxDailyFreeAiCalls: 5,
+  pixKey: 'f4693532-31da-4e95-a589-19bccab0d915',
+  pixKeyType: 'evp',
+  pixBeneficiaryName: 'CURRICULO ESTRATEGICO',
+  pixCity: 'SAO PAULO',
   updatedAt: new Date().toISOString(),
   updatedBy: 'gugurai923@gmail.com'
 };
 
+function mergePlatformSettings(raw: Partial<PlatformSettingsConfig> | null | undefined): PlatformSettingsConfig {
+  return {
+    ...DEFAULT_PLATFORM_SETTINGS,
+    ...(raw || {}),
+    pixKey: raw?.pixKey !== undefined ? raw.pixKey : DEFAULT_PLATFORM_SETTINGS.pixKey,
+    pixKeyType: raw?.pixKeyType || DEFAULT_PLATFORM_SETTINGS.pixKeyType,
+    pixBeneficiaryName: raw?.pixBeneficiaryName || DEFAULT_PLATFORM_SETTINGS.pixBeneficiaryName,
+    pixCity: raw?.pixCity || DEFAULT_PLATFORM_SETTINGS.pixCity
+  };
+}
+
 export function getStoredPlatformSettingsSync(): PlatformSettingsConfig {
-  return getStored('curriculopro_platform_settings', DEFAULT_PLATFORM_SETTINGS);
+  return mergePlatformSettings(getStored('curriculopro_platform_settings', DEFAULT_PLATFORM_SETTINGS));
 }
 
 export async function fetchPlatformSettings(): Promise<PlatformSettingsConfig> {
+  const pub = await fetchPublicAdminConfig();
+  if (pub?.platformGovernance && typeof pub.platformGovernance === 'object') {
+    const merged = mergePlatformSettings(pub.platformGovernance);
+    setStored('curriculopro_platform_settings', merged);
+    return merged;
+  }
+
   try {
     const docRef = doc(db, 'systemSettings', 'platformGovernance');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const data = snap.data() as PlatformSettingsConfig;
-      setStored('curriculopro_platform_settings', data);
-      return data;
+      const merged = mergePlatformSettings(snap.data() as PlatformSettingsConfig);
+      setStored('curriculopro_platform_settings', merged);
+      return merged;
     }
   } catch (e) {
     console.warn('Usando configurações globais locais:', e);
@@ -1002,47 +1349,38 @@ export async function fetchPlatformSettings(): Promise<PlatformSettingsConfig> {
 }
 
 export async function savePlatformSettings(settings: PlatformSettingsConfig): Promise<void> {
-  const updated = { ...settings, updatedAt: new Date().toISOString() };
+  const updated = mergePlatformSettings({ ...settings, updatedAt: new Date().toISOString() });
   setStored('curriculopro_platform_settings', updated);
   emitAdminConfigUpdated('platform');
 
-  try {
-    await setDoc(doc(db, 'systemSettings', 'platformGovernance'), updated);
-  } catch (e) {
-    console.warn('Erro ao salvar configurações da plataforma no Firestore:', e);
+  await saveAdminConfigScope('platformGovernance', updated);
+
+  if (auth.currentUser) {
+    try {
+      await setDoc(doc(db, 'systemSettings', 'platformGovernance'), updated, { merge: true });
+    } catch (e) {
+      console.warn('Erro ao salvar configurações da plataforma no Firestore:', e);
+    }
   }
 }
 
 // -------------------------------------------------------------
-// 9. REAL FRONTEND TELEMETRY TRACKING (INTERLINKED METRICS)
+// 9. REAL FRONTEND TELEMETRY TRACKING (PRODUCTION CLEAN STATE)
 // -------------------------------------------------------------
 const DEFAULT_TELEMETRY: FrontendTelemetryData = {
-  resumesStartedCount: 18,
-  checkoutOpenedCount: 9,
-  wordExportsCount: 14,
-  aiCallsCount: 42,
-  estimatedTokensUsed: 68400,
-  templateSelections: {
-    executive_harvard: 12,
-    european_europass: 9,
-    modern_tech: 7,
-    ats_strict: 6,
-    un_classic: 4,
-    creative_split: 3
-  },
-  languageSelections: {
-    pt: 22,
-    en: 14,
-    es: 4,
-    fr: 3,
-    de: 2
-  },
+  resumesStartedCount: 0,
+  checkoutOpenedCount: 0,
+  wordExportsCount: 0,
+  aiCallsCount: 0,
+  estimatedTokensUsed: 0,
+  templateSelections: {},
+  languageSelections: {},
   featureUsage: {
-    aiTailor: 16,
-    atsRadar: 19,
-    coverLetter: 11,
-    interviewSim: 7,
-    rawImport: 13
+    aiTailor: 0,
+    atsRadar: 0,
+    coverLetter: 0,
+    interviewSim: 0,
+    rawImport: 0
   },
   lastUpdated: new Date().toISOString()
 };

@@ -1,17 +1,17 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
   ArrowRight,
-  Sparkles,
   FileText,
   Target,
   Award,
   GraduationCap,
   Globe,
   UserCheck,
-  TrendingUp
+  TrendingUp,
+  SlidersHorizontal
 } from 'lucide-react';
 import { CVData } from '../types/cv';
 import { EXECUTIVE_DEMO_CV } from '../data/initialCV';
@@ -44,85 +44,6 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 }) => {
   const [profileMode, setProfileMode] = useState<'current' | 'benchmark'>('current');
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  const triggerConfetti = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = canvas.parentElement?.clientWidth || 500;
-    canvas.height = canvas.parentElement?.clientHeight || 420;
-
-    const colors = ['#10b981', '#f59e0b', '#38bdf8', '#fbbf24', '#ffffff'];
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      size: number;
-      color: string;
-      rotation: number;
-      rotationSpeed: number;
-      opacity: number;
-    }> = [];
-
-    const startX = canvas.width > 600 ? 120 : canvas.width / 2;
-    const startY = 140;
-
-    for (let i = 0; i < 48; i++) {
-      const angle = (Math.PI * 2 * i) / 48 + (Math.random() - 0.5) * 0.6;
-      const speed = Math.random() * 5 + 2;
-      particles.push({
-        x: startX,
-        y: startY,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 3,
-        size: Math.random() * 5 + 3,
-        color: colors[Math.floor(Math.random() * colors.length)],
-        rotation: Math.random() * 360,
-        rotationSpeed: (Math.random() - 0.5) * 8,
-        opacity: 1
-      });
-    }
-
-    let startTime: number | null = null;
-    const animate = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const elapsed = timestamp - startTime;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      let alive = false;
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vy += 0.14;
-        p.vx *= 0.98;
-        p.rotation += p.rotationSpeed;
-        p.opacity = Math.max(0, 1 - elapsed / 2200);
-
-        if (p.opacity > 0) {
-          alive = true;
-          ctx.save();
-          ctx.globalAlpha = p.opacity;
-          ctx.translate(p.x, p.y);
-          ctx.rotate((p.rotation * Math.PI) / 180);
-          ctx.fillStyle = p.color;
-          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.65);
-          ctx.restore();
-        }
-      });
-
-      if (alive && elapsed < 2400) {
-        requestAnimationFrame(animate);
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    };
-
-    requestAnimationFrame(animate);
-  }, []);
 
   const activeCV = useMemo(() => {
     if (profileMode === 'benchmark') {
@@ -365,15 +286,6 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   const warningCount = audits.filter((a) => a.status === 'warning').length;
   const missingCount = audits.filter((a) => a.status === 'missing').length;
 
-  useEffect(() => {
-    if (profileMode === 'benchmark') {
-      const timer = setTimeout(() => {
-        triggerConfetti();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [profileMode, triggerConfetti]);
-
   const radius = 52;
   const stroke = 7;
   const normalizedRadius = radius - stroke * 2;
@@ -417,14 +329,9 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
       </div>
 
       {/* Unified Single-Elevation Split Cockpit */}
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+      <div className="bg-[#0B0F17] border border-slate-800 rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
         {/* Left Summary Column */}
         <div className="lg:col-span-5 p-6 flex flex-col justify-between gap-6 relative overflow-hidden">
-          <canvas
-            ref={canvasRef}
-            className="pointer-events-none absolute inset-0 z-20 w-full h-full"
-          />
-
           <div className="space-y-5 relative z-10">
             <div className="flex items-center justify-between text-xs">
               <span className="font-mono uppercase tracking-wider text-slate-400">
@@ -463,14 +370,14 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                 </svg>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-2xl font-extrabold font-mono tabular-nums text-white tracking-tight">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-white tracking-tight">
                     {totalScore}%
                   </span>
                 </div>
               </div>
 
               <div className="space-y-1.5 min-w-0">
-                <h3 className="text-sm font-bold text-white leading-snug">
+                <h3 className="text-sm font-semibold text-white leading-snug">
                   {tierInfo.label}
                 </h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
@@ -492,7 +399,7 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
             <button
               type="button"
               onClick={() => onNavigateTab?.('editor')}
-              className={`w-full py-2.5 px-4 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap ${
+              className={`w-full min-h-[42px] py-2.5 px-4 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap ${
                 totalScore >= 90
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
                   : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
@@ -505,7 +412,7 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
+                  <SlidersHorizontal className="w-4 h-4" />
                   <span>Corrigir Secções no Editor</span>
                   <ArrowRight className="w-4 h-4" />
                 </>

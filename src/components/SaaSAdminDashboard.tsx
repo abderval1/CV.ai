@@ -12,7 +12,6 @@ import {
   deleteCoupon,
   anonymizeUserRecord,
   deleteUserAccountRecord,
-  seedDemoDataIfEmpty,
   isUserAdmin,
   ADMIN_EMAILS
 } from '../services/saasDbService';
@@ -38,7 +37,7 @@ import {
   resolveErrorLog,
   fetchGdprRequests,
   updateGdprRequestStatus,
-  fetchImpersonationLogs,
+  fetchImpersonationLogsAsync,
   fetchEditablePlans,
   saveEditablePlan,
   fetchPlatformSettings,
@@ -51,11 +50,20 @@ import {
   SaaSOrder,
   SaaSCoupon,
   SubscriptionPlan,
+  BillingCycle,
   OrderStatus,
   PaymentMethod,
   UserRole,
   UserStatus
 } from '../types/cv';
+import {
+  BILLING_CYCLES,
+  BILLING_CYCLE_META,
+  formatCycleLabel,
+  getDefaultCyclePriceUSD,
+  getCyclePriceUSD,
+  PixKeyType
+} from '../utils/billingCycles';
 import {
   PromptTemplateConfig,
   AiModelRoutingConfig,
@@ -109,7 +117,8 @@ import {
   FileJson,
   Sparkles,
   UserCog,
-  Globe
+  Globe,
+  QrCode
 } from 'lucide-react';
 
 interface SaaSAdminDashboardProps {
@@ -154,7 +163,7 @@ const MODULE_META: Record<
   pricing_marketing: {
     label: '5. Monetização, Planos & Campanhas',
     shortLabel: 'Planos & Marketing',
-    subtitle: 'Edição ao vivo de preços ($2/$4), cupons promocionais e avisos transversais'
+    subtitle: 'Edição ao vivo de preços ($8/$12), cupons promocionais e avisos transversais'
   },
   security_monitoring: {
     label: '6. Segurança, RGPD & Governança',
@@ -253,10 +262,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     userName: '',
     userEmail: '',
     plan: 'pro' as SubscriptionPlan,
-    billingCycle: 'monthly' as 'monthly' | 'yearly',
-    amount: 2,
+    billingCycle: 'monthly' as BillingCycle,
+    amount: 8,
     currency: 'USD',
-    paymentMethod: 'stripe' as PaymentMethod,
+    paymentMethod: 'card' as PaymentMethod,
     status: 'paid' as OrderStatus,
     notes: 'Subscrição ativada manualmente'
   });
@@ -310,7 +319,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         errors,
         gdpr,
         plans,
-        settings
+        settings,
+        impLogs
       ] = await Promise.all([
         fetchAllUsers(),
         fetchAllOrders(),
@@ -325,24 +335,13 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         fetchErrorLogs(),
         fetchGdprRequests(),
         fetchEditablePlans(),
-        fetchPlatformSettings()
+        fetchPlatformSettings(),
+        fetchImpersonationLogsAsync()
       ]);
 
-      if (users.length === 0 && orders.length === 0) {
-        await seedDemoDataIfEmpty();
-        const [seededUsers, seededOrders, seededCoupons] = await Promise.all([
-          fetchAllUsers(),
-          fetchAllOrders(),
-          fetchAllCoupons()
-        ]);
-        setUsersList(seededUsers);
-        setOrdersList(seededOrders);
-        setCouponsList(seededCoupons);
-      } else {
-        setUsersList(users);
-        setOrdersList(orders);
-        setCouponsList(coupons);
-      }
+      setUsersList(users);
+      setOrdersList(orders);
+      setCouponsList(coupons);
 
       setPromptsList(prompts);
       if (prompts.length > 0 && !selectedPrompt) {
@@ -358,7 +357,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setGdprList(gdpr);
       setEditablePlans(plans);
       setPlatformSettings(settings);
-      setImpersonationLogs(fetchImpersonationLogs());
+      setImpersonationLogs(impLogs);
       setTelemetry(getFrontendTelemetry());
     } catch (err) {
       console.error('Falha ao sincronizar módulos administrativos:', err);
@@ -448,56 +447,120 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       .filter((o) => o.amount > 0 && o.billingCycle === 'monthly')
       .reduce((acc, o) => acc + o.amount, 0);
 
-    const averageTicket = periodPaidOrders.length > 0 ? totalRevenue / periodPaidOrders.length : proPrice;
+    const averageTicket =
+      periodPaidOrders.length > 0 ? totalRevenue / periodPaidOrders.length : 0;
 
     const churnedUsers = usersList.filter(
       (u) => u.status === 'suspended' || u.stripeStatus === 'canceled'
     ).length;
     const churnRate =
-      paidUsers > 0 ? Number(((churnedUsers / (paidUsers + churnedUsers)) * 100).toFixed(1)) : 2.1;
+      paidUsers + churnedUsers > 0
+        ? Number(((churnedUsers / (paidUsers + churnedUsers)) * 100).toFixed(1))
+        : 0;
 
     const arpu = totalUsers > 0 ? Number((mrr / totalUsers).toFixed(2)) : 0;
-    const effectiveChurnDec = Math.max(0.02, churnRate / 100);
-    const avgPaidArpu = paidUsers > 0 ? mrr / paidUsers : proPrice;
-    const estimatedLtv = Number((avgPaidArpu / effectiveChurnDec).toFixed(2));
-    const estimatedCac = 1.85; // organic + social benchmark for $2-$4 SaaS
-    const cacRatio = Number((estimatedLtv / estimatedCac).toFixed(1));
+    const effectiveChurnDec = Math.max(0.05, churnRate / 100);
+    const avgPaidArpu = paidUsers > 0 ? mrr / paidUsers : 0;
+    const estimatedLtv =
+      paidUsers > 0 ? Number((avgPaidArpu / effectiveChurnDec).toFixed(2)) : 0;
+    const cacRatio = 0;
     const activeTrialConversion =
       totalUsers > 0 ? Number(((paidUsers / totalUsers) * 100).toFixed(1)) : 0;
 
-    // Combine historical baselines with real frontend telemetry
-    const accountsCreated = Math.max(totalUsers, 1);
-    const resumesStarted = Math.max(telemetry.resumesStartedCount, Math.round(accountsCreated * 0.8));
-    const checkoutReached = Math.max(telemetry.checkoutOpenedCount, paidUsers);
+    const accountsCreated = totalUsers;
+    const totalGeneratedFromUsers = usersList.reduce(
+      (acc, u) => acc + (u.totalCvGenerated || 0),
+      0
+    );
+    const resumesStarted = Math.max(telemetry.resumesStartedCount, totalGeneratedFromUsers);
+    const checkoutReached = telemetry.checkoutOpenedCount;
     const purchasesCompleted = Math.max(paidUsers, periodPaidOrders.length);
 
     const totalAiCalls =
       usersList.reduce((acc, u) => acc + (u.creditsUsed || 0), 0) + telemetry.aiCallsCount;
-    const todayCostUsd = Number(((totalAiCalls * 0.00028) / 14).toFixed(2));
-    const monthCostUsd = Number((totalAiCalls * 0.00032).toFixed(2));
-    const revBase = Math.max(totalRevenue, mrr, 1);
-    const costToRevenuePercent = Number(((monthCostUsd / revBase) * 100).toFixed(1));
-    const grossMarginPercent = Number(Math.max(0, 100 - costToRevenuePercent - 3.9).toFixed(1)); // Stripe + Gemini
+    const todayCostUsd =
+      totalAiCalls > 0 ? Number(((totalAiCalls * 0.00028) / 14).toFixed(2)) : 0;
+    const monthCostUsd =
+      totalAiCalls > 0 ? Number((totalAiCalls * 0.00032).toFixed(2)) : 0;
+    const revBase = Math.max(totalRevenue, mrr);
+    const costToRevenuePercent =
+      revBase > 0 ? Number(((monthCostUsd / revBase) * 100).toFixed(1)) : 0;
+    const grossMarginPercent =
+      revBase > 0 ? Number(Math.max(0, 100 - costToRevenuePercent - 3.9).toFixed(1)) : 0;
 
     const highUsageAlerts = usersList
       .filter((u) => (u.creditsUsed || 0) > 25)
-      .map((u) => ({
-        userId: u.id,
-        userName: u.name,
-        userEmail: u.email,
-        callsCount: u.creditsUsed || 45,
-        costUsd: Number(((u.creditsUsed || 45) * 0.00035).toFixed(3)),
-        flaggedReason:
-          (u.creditsUsed || 0) > 60 ? 'Consumo intenso de tokens IA' : 'Uso avançado contínuo'
-      }));
+      .map((u) => {
+        const calls = u.creditsUsed || 0;
+        return {
+          userId: u.id,
+          userName: u.name,
+          userEmail: u.email,
+          callsCount: calls,
+          costUsd: Number((calls * 0.00035).toFixed(3)),
+          flaggedReason:
+            calls > 60 ? 'Consumo intenso de tokens IA' : 'Uso avançado contínuo'
+        };
+      });
 
-    // Real Cohort Retention Data (derived cleanly around user tenure)
-    const cohortRetention = [
-      { month: 'Jan 2026', newUsers: Math.max(8, Math.round(totalUsers * 0.25)), retainedMonth1: 92, retainedMonth2: 86, retainedMonth3: 81 },
-      { month: 'Fev 2026', newUsers: Math.max(10, Math.round(totalUsers * 0.35)), retainedMonth1: 94, retainedMonth2: 88, retainedMonth3: 84 },
-      { month: 'Mar 2026', newUsers: Math.max(12, Math.round(totalUsers * 0.4)), retainedMonth1: 95, retainedMonth2: 90, retainedMonth3: 87 },
-      { month: 'Atual', newUsers: Math.max(5, freeUsers + paidUsers), retainedMonth1: 96, retainedMonth2: 92, retainedMonth3: 90 }
-    ];
+    // Real Cohort Retention derived strictly from registered users' createdAt months
+    const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const cohortBuckets = new Map<string, { label: string; sortKey: number; users: User[] }>();
+    usersList.forEach((u) => {
+      const dt = new Date(u.createdAt || '');
+      if (Number.isNaN(dt.getTime())) return;
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      const label = `${monthShortNames[dt.getMonth()]} ${dt.getFullYear()}`;
+      const existing = cohortBuckets.get(key);
+      if (existing) {
+        existing.users.push(u);
+      } else {
+        cohortBuckets.set(key, { label, sortKey: dt.getFullYear() * 12 + dt.getMonth(), users: [u] });
+      }
+    });
+
+    const nowDate = new Date();
+    const currentMonthIdx = nowDate.getFullYear() * 12 + nowDate.getMonth();
+    const cohortRetention = Array.from(cohortBuckets.values())
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .slice(-6)
+      .map((bucket) => {
+        const monthsElapsed = Math.max(0, currentMonthIdx - bucket.sortKey);
+        const totalInCohort = bucket.users.length;
+        const activeCount = bucket.users.filter(
+          (u) => u.status !== 'suspended' && u.stripeStatus !== 'canceled'
+        ).length;
+        const retainedPct = totalInCohort > 0 ? Math.round((activeCount / totalInCohort) * 100) : 0;
+        return {
+          month: bucket.label,
+          newUsers: totalInCohort,
+          retainedMonth1: retainedPct,
+          retainedMonth2: monthsElapsed >= 1 ? retainedPct : 0,
+          retainedMonth3: monthsElapsed >= 2 ? retainedPct : 0
+        };
+      });
+
+    // Real MoM Growth Rate from paid orders in current vs previous calendar month
+    const curYr = nowDate.getFullYear();
+    const curMo = nowDate.getMonth();
+    const prevMoYr = curMo === 0 ? curYr - 1 : curYr;
+    const prevMoIdx = curMo === 0 ? 11 : curMo - 1;
+    let curMonthRev = 0;
+    let prevMonthRev = 0;
+    ordersList.forEach((o) => {
+      if (o.status !== 'paid') return;
+      const dt = new Date(o.createdAt || '');
+      if (Number.isNaN(dt.getTime())) return;
+      if (dt.getFullYear() === curYr && dt.getMonth() === curMo) {
+        curMonthRev += Number(o.amount) || 0;
+      } else if (dt.getFullYear() === prevMoYr && dt.getMonth() === prevMoIdx) {
+        prevMonthRev += Number(o.amount) || 0;
+      }
+    });
+    const monthlyGrowthRate =
+      prevMonthRev > 0
+        ? Number((((curMonthRev - prevMonthRev) / prevMonthRev) * 100).toFixed(1))
+        : 0;
 
     // Dynamic Actionable Strategic Insights Engine
     const actionableInsights: FinancialMetrics['actionableInsights'] = [];
@@ -532,8 +595,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       actionableInsights.push({
         id: 'ins-free-upsell',
         type: 'opportunity',
-        title: `${freeUsers} Utilizadores no Plano Gratuito Prontos para Upsell`,
-        description: `O segmento gratuito supera os subscritores pagos (${paidUsers}). Um cupom de 30% ou banner direcionado pode converter até 18% em planos $${proPrice}.`,
+        title: `${freeUsers} Utilizadores Sem Plano Prontos para Conversão`,
+        description: `O segmento gratuito supera os subscritores pagos (${paidUsers}). Um cupom ou banner direcionado pode converter em planos $${proPrice}.`,
         impact: `Potencial de +$${Math.round(freeUsers * 0.18 * proPrice * 10) / 10}/mês em MRR`,
         recommendedAction: 'Lançar Banner / Cupom'
       });
@@ -546,20 +609,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         type: 'growth',
         title: `Abandono de Checkout em ${dropoff}% (${checkoutReached - purchasesCompleted} sessões)`,
         description:
-          'Utilizadores abriram o modal de planos mas não finalizaram. Rever a proposta de valor do Plano Pro ou criar oferta relâmpago aumenta a taxa de fecho.',
+          'Utilizadores abriram o modal de planos mas não finalizaram. Rever a proposta de valor do Plano Pro ou criar oferta aumenta a taxa de fecho.',
         impact: '+12% a +20% na conversão final do funil',
         recommendedAction: 'Editar Oferta dos Planos'
       });
     }
 
-    actionableInsights.push({
-      id: 'ins-ai-eff',
-      type: 'efficiency',
-      title: `Eficiência de Margem IA em ${grossMarginPercent}%`,
-      description: `O gasto com a API Gemini (${costToRevenuePercent}% da receita) está altamente saudável. Você pode aumentar as quotas ou calibrar modelos no Prompt Studio.`,
-      impact: `LTV:CAC sólido de ${cacRatio}x`,
-      recommendedAction: 'Ajustar Modelos & Quotas'
-    });
+    if (revBase > 0 || totalAiCalls > 0) {
+      actionableInsights.push({
+        id: 'ins-ai-eff',
+        type: 'efficiency',
+        title: `Margem Operacional Estimada em ${grossMarginPercent}%`,
+        description: `O consumo estimado da API Gemini representa ${costToRevenuePercent}% da receita registada (${totalAiCalls} chamadas totais).`,
+        impact: `Custo estimado mensal: $${monthCostUsd}`,
+        recommendedAction: 'Ajustar Modelos & Quotas'
+      });
+    }
 
     return {
       totalUsers,
@@ -579,7 +644,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       cacRatio,
       activeTrialConversion,
       grossMarginPercent,
-      monthlyGrowthRate: 14.8,
+      monthlyGrowthRate,
       cohortRetention,
       actionableInsights,
       conversionFunnel: {
@@ -589,8 +654,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         purchasesCompleted
       },
       apiCostTracking: {
-        todayCostUsd: todayCostUsd || 0.08,
-        monthCostUsd: monthCostUsd || 1.42,
+        todayCostUsd,
+        monthCostUsd,
         totalRevenueUsd: totalRevenue,
         costToRevenuePercent,
         highUsageAlerts
@@ -598,17 +663,44 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     };
   }, [usersList, ordersList, periodFilter, editablePlans, telemetry, errorLogsList, gdprList]);
 
-  // 6-Month Revenue vs AI Cost Series
+  // Real 6-Month Revenue vs AI Cost Series derived from actual paid orders & AI usage
   const revenueSeries = useMemo(() => {
-    const baseMrr = Math.max(financialMetrics.mrr, 14);
-    const multipliers = [0.42, 0.55, 0.68, 0.78, 0.89, 1];
-    const months = ['Out', 'Nov', 'Dez', 'Jan', 'Fev', 'Atual'];
-    return months.map((label, idx) => {
-      const rev = Math.round(baseMrr * multipliers[idx] * 10) / 10;
-      const aiCost = Math.round(rev * (0.015 + idx * 0.002) * 100) / 100;
-      return { label, revenue: rev, aiCost };
+    const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const now = new Date();
+    const series: { label: string; year: number; month: number; revenue: number; aiCost: number }[] = [];
+
+    for (let offset = 5; offset >= 0; offset -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      series.push({
+        label: offset === 0 ? 'Atual' : monthShortNames[d.getMonth()],
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        revenue: 0,
+        aiCost: 0
+      });
+    }
+
+    ordersList.forEach((o) => {
+      if (o.status !== 'paid') return;
+      const dt = new Date(o.createdAt || '');
+      if (Number.isNaN(dt.getTime())) return;
+      const bucket = series.find((b) => b.year === dt.getFullYear() && b.month === dt.getMonth());
+      if (bucket) {
+        bucket.revenue += Number(o.amount) || 0;
+      }
     });
-  }, [financialMetrics.mrr]);
+
+    const currentBucket = series[series.length - 1];
+    if (currentBucket) {
+      currentBucket.aiCost = financialMetrics.apiCostTracking.monthCostUsd;
+    }
+
+    return series.map(({ label, revenue, aiCost }) => ({
+      label,
+      revenue: Math.round(revenue * 100) / 100,
+      aiCost: Math.round(aiCost * 100) / 100
+    }));
+  }, [ordersList, financialMetrics.apiCostTracking.monthCostUsd]);
 
   // Filtered Lists
   const filteredUsers = useMemo(() => {
@@ -767,6 +859,25 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
+  const handleApproveOrder = async (order: SaaSOrder) => {
+    try {
+      await updateOrderStatus(
+        order.id,
+        'paid',
+        'Pagamento confirmado pelo administrador e subscrição ativada.',
+        order
+      );
+      setOrdersList((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: 'paid' } : o))
+      );
+      showNotification(`Fatura ${order.orderNumber} aprovada e acesso de ${order.userName} ativado!`);
+      loadAllModules();
+    } catch (e) {
+      console.error(e);
+      showNotification('Erro ao aprovar pagamento.');
+    }
+  };
+
   const handleRefundOrder = async (order: SaaSOrder) => {
     if (!window.confirm(`Confirmar reembolso da fatura ${order.orderNumber} ($${order.amount})?`)) {
       return;
@@ -827,9 +938,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     setTestPromptResult(null);
 
     try {
+      const token = localStorage.getItem('curriculopro_auth_token');
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
       const res = await fetch('/api/admin/test-prompt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'include',
         body: JSON.stringify({
           systemInstruction: selectedPrompt.systemInstruction,
           userPromptTemplate: selectedPrompt.userPromptTemplate,
@@ -995,7 +1111,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         currency: newOrderForm.currency,
         paymentMethod: newOrderForm.paymentMethod,
         status: newOrderForm.status,
-        notes: newOrderForm.notes
+        notes: newOrderForm.notes,
+        adminManual: true
       });
       setOrdersList((prev) => [created, ...prev]);
       setShowNewOrderModal(false);
@@ -1619,7 +1736,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           {financialMetrics.grossMarginPercent}%
                         </div>
                         <p className="text-[11px] text-slate-500 mt-1">
-                          Líquida após Stripe &amp; Tokens IA
+                          Líquida após Taxas &amp; Tokens IA
                         </p>
                       </div>
                     </div>
@@ -1648,8 +1765,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                         <div className="grid grid-cols-6 gap-3 pt-2 items-end h-44">
                           {revenueSeries.map((pt) => {
-                            const revPct = Math.max(12, Math.round((pt.revenue / maxRevBar) * 100));
-                            const costPct = Math.max(4, Math.min(40, Math.round((pt.aiCost / maxRevBar) * 600)));
+                            const revPct = pt.revenue > 0 ? Math.max(8, Math.round((pt.revenue / maxRevBar) * 100)) : 0;
+                            const costPct = pt.aiCost > 0 ? Math.max(4, Math.min(40, Math.round((pt.aiCost / maxRevBar) * 600))) : 0;
                             return (
                               <div key={pt.label} className="flex flex-col items-center gap-2 h-full justify-end">
                                 <span className="text-[10px] font-mono font-bold text-slate-700 tabular-nums">
@@ -1672,6 +1789,11 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             );
                           })}
                         </div>
+                        {ordersList.length === 0 && (
+                          <p className="text-[11px] text-slate-400 text-center pt-1">
+                            Nenhuma fatura paga registada ainda — os valores atualizarão automaticamente com as primeiras transações.
+                          </p>
+                        )}
                       </div>
 
                       <div className="lg:col-span-5 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
@@ -1912,20 +2034,26 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             <span className="text-[11px] font-bold uppercase text-slate-400 block">
                               Templates Mais Usados
                             </span>
-                            {templateRanking.map(([tmplId, count]) => (
-                              <div key={tmplId} className="space-y-0.5">
-                                <div className="flex justify-between text-[11px]">
-                                  <span className="font-semibold text-slate-700 truncate">{tmplId}</span>
-                                  <span className="font-mono font-bold text-slate-900">{count}</span>
+                            {templateRanking.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 py-2">
+                                Ainda sem seleções de modelos registadas.
+                              </p>
+                            ) : (
+                              templateRanking.map(([tmplId, count]) => (
+                                <div key={tmplId} className="space-y-0.5">
+                                  <div className="flex justify-between text-[11px]">
+                                    <span className="font-semibold text-slate-700 truncate">{tmplId}</span>
+                                    <span className="font-mono font-bold text-slate-900">{count}</span>
+                                  </div>
+                                  <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-slate-900 rounded-full"
+                                      style={{ width: `${Math.round((count / maxTemplateSel) * 100)}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-slate-900 rounded-full"
-                                    style={{ width: `${Math.round((count / maxTemplateSel) * 100)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ))}
+                              ))
+                            )}
                           </div>
 
                           <div className="space-y-3">
@@ -1933,16 +2061,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               <span className="text-[11px] font-bold uppercase text-slate-400 block">
                                 Idiomas Ativos no Estúdio
                               </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {Object.entries(telemetry.languageSelections).map(([lang, cnt]) => (
-                                  <span
-                                    key={lang}
-                                    className="px-2 py-1 bg-slate-100 border border-slate-200 rounded font-mono text-[11px] font-bold text-slate-800"
-                                  >
-                                    {lang.toUpperCase()}: {Math.round((cnt / totalLangSwitches) * 100)}%
-                                  </span>
-                                ))}
-                              </div>
+                              {Object.keys(telemetry.languageSelections).length === 0 ? (
+                                <p className="text-[11px] text-slate-400 py-1">
+                                  Ainda sem alternâncias de idioma registadas.
+                                </p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {Object.entries(telemetry.languageSelections).map(([lang, cnt]) => (
+                                    <span
+                                      key={lang}
+                                      className="px-2 py-1 bg-slate-100 border border-slate-200 rounded font-mono text-[11px] font-bold text-slate-800"
+                                    >
+                                      {lang.toUpperCase()}: {Math.round((cnt / totalLangSwitches) * 100)}%
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             <div className="space-y-1.5 pt-2 border-t border-slate-100">
@@ -1997,27 +2131,35 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 font-mono tabular-nums">
-                              {financialMetrics.cohortRetention.map((row) => (
-                                <tr key={row.month}>
-                                  <td className="py-2.5 pr-3 font-sans font-semibold text-slate-800">{row.month}</td>
-                                  <td className="py-2.5 px-3 text-slate-700">{row.newUsers}</td>
-                                  <td className="py-2.5 px-3 text-center">
-                                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold">
-                                      {row.retainedMonth1}%
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 px-3 text-center">
-                                    <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold">
-                                      {row.retainedMonth2}%
-                                    </span>
-                                  </td>
-                                  <td className="py-2.5 pl-3 text-center">
-                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold">
-                                      {row.retainedMonth3}%
-                                    </span>
+                              {financialMetrics.cohortRetention.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-6 text-center font-sans text-xs text-slate-400">
+                                    Sem dados de coorte — aparecerão automaticamente conforme novos utilizadores se registarem.
                                   </td>
                                 </tr>
-                              ))}
+                              ) : (
+                                financialMetrics.cohortRetention.map((row) => (
+                                  <tr key={row.month}>
+                                    <td className="py-2.5 pr-3 font-sans font-semibold text-slate-800">{row.month}</td>
+                                    <td className="py-2.5 px-3 text-slate-700">{row.newUsers}</td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-bold">
+                                        {row.retainedMonth1}%
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center">
+                                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 font-bold">
+                                        {row.retainedMonth2}%
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 pl-3 text-center">
+                                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-bold">
+                                        {row.retainedMonth3}%
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
                             </tbody>
                           </table>
                         </div>
@@ -2592,8 +2734,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                     className="p-1.5 bg-slate-50 border border-slate-200 rounded-md font-semibold text-xs"
                                   >
                                     <option value="free">Gratuito</option>
-                                    <option value="pro">Pro ($2)</option>
-                                    <option value="executive">Executivo VIP ($4)</option>
+                                    <option value="pro">Pro ($8)</option>
+                                    <option value="executive">Executivo VIP ($12)</option>
                                   </select>
 
                                   <button
@@ -2801,8 +2943,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             >
                               <option value="all">Todos os Planos</option>
                               <option value="free">Gratuito</option>
-                              <option value="pro">Pro ($2)</option>
-                              <option value="executive">Executivo VIP ($4)</option>
+                              <option value="pro">Pro ($8)</option>
+                              <option value="executive">Executivo VIP ($12)</option>
                             </select>
 
                             <select
@@ -2851,97 +2993,105 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
-                                {filteredUsers.map((u) => (
-                                  <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="p-3">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-bold text-slate-900">{u.name}</span>
-                                        {u.role === 'admin' && (
-                                          <span className="px-1.5 py-0.5 rounded bg-slate-900 text-amber-400 text-[9px] font-bold uppercase">
-                                            Admin
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="font-mono text-[11px] text-slate-500">{u.email}</div>
-                                      {u.phone && <div className="text-[10px] text-slate-400">{u.phone}</div>}
-                                    </td>
-
-                                    <td className="p-3">
-                                      <div className="flex items-center gap-1.5">
-                                        <span
-                                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                            u.plan === 'executive'
-                                              ? 'bg-purple-100 text-purple-800'
-                                              : u.plan === 'pro'
-                                              ? 'bg-amber-100 text-amber-900'
-                                              : 'bg-slate-100 text-slate-600'
-                                          }`}
-                                        >
-                                          {u.plan}
-                                        </span>
-                                        {u.status === 'suspended' && (
-                                          <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold">
-                                            Suspenso
-                                          </span>
-                                        )}
-                                      </div>
-                                      {u.subscriptionExpiresAt && (
-                                        <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                                          Exp: {new Date(u.subscriptionExpiresAt).toLocaleDateString('pt-PT')}
-                                        </div>
-                                      )}
-                                    </td>
-
-                                    <td className="p-3 font-mono font-bold tabular-nums text-slate-800">
-                                      {u.creditsRemaining ?? 5}
-                                    </td>
-
-                                    <td className="p-3 font-mono font-bold tabular-nums text-slate-800">
-                                      {u.totalCvGenerated || 1}
-                                    </td>
-
-                                    <td className="p-3">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleQuickAddCredits(u.id, 50)}
-                                          className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded text-[10px]"
-                                        >
-                                          +50 Créd
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleExtendSubscription(u.id, 30)}
-                                          className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded text-[10px]"
-                                        >
-                                          +30d Pro
-                                        </button>
-                                      </div>
-                                    </td>
-
-                                    <td className="p-3 text-right">
-                                      <div className="inline-flex items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          onClick={() => openUserDrawer(u)}
-                                          className="px-2.5 py-1 border border-slate-200 hover:bg-slate-100 text-slate-800 font-bold rounded text-[11px] inline-flex items-center gap-1"
-                                        >
-                                          <UserCog className="w-3.5 h-3.5" />
-                                          <span>Inspecionar 360°</span>
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setImpersonatingTargetUser(u)}
-                                          className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-[11px] inline-flex items-center gap-1"
-                                          title="Entrar na conta com registo de auditoria"
-                                        >
-                                          <Eye className="w-3.5 h-3.5" />
-                                          <span>Personificar</span>
-                                        </button>
-                                      </div>
+                                {filteredUsers.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={6} className="p-8 text-center text-xs text-slate-400">
+                                      Nenhum utilizador encontrado com os filtros selecionados.
                                     </td>
                                   </tr>
-                                ))}
+                                ) : (
+                                  filteredUsers.map((u) => (
+                                    <tr key={u.id} className="hover:bg-slate-50/80 transition-colors">
+                                      <td className="p-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="font-bold text-slate-900">{u.name}</span>
+                                          {u.role === 'admin' && (
+                                            <span className="px-1.5 py-0.5 rounded bg-slate-900 text-amber-400 text-[9px] font-bold uppercase">
+                                              Admin
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="font-mono text-[11px] text-slate-500">{u.email}</div>
+                                        {u.phone && <div className="text-[10px] text-slate-400">{u.phone}</div>}
+                                      </td>
+
+                                      <td className="p-3">
+                                        <div className="flex items-center gap-1.5">
+                                          <span
+                                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                              u.plan === 'executive'
+                                                ? 'bg-purple-100 text-purple-800'
+                                                : u.plan === 'pro'
+                                                ? 'bg-amber-100 text-amber-900'
+                                                : 'bg-slate-100 text-slate-600'
+                                            }`}
+                                          >
+                                            {u.plan}
+                                          </span>
+                                          {u.status === 'suspended' && (
+                                            <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold">
+                                              Suspenso
+                                            </span>
+                                          )}
+                                        </div>
+                                        {u.subscriptionExpiresAt && (
+                                          <div className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                                            Exp: {new Date(u.subscriptionExpiresAt).toLocaleDateString('pt-PT')}
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td className="p-3 font-mono font-bold tabular-nums text-slate-800">
+                                        {u.creditsRemaining ?? 5}
+                                      </td>
+
+                                      <td className="p-3 font-mono font-bold tabular-nums text-slate-800">
+                                        {u.totalCvGenerated ?? 0}
+                                      </td>
+
+                                      <td className="p-3">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleQuickAddCredits(u.id, 50)}
+                                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded text-[10px]"
+                                          >
+                                            +50 Créd
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleExtendSubscription(u.id, 30)}
+                                            className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded text-[10px]"
+                                          >
+                                            +30d Pro
+                                          </button>
+                                        </div>
+                                      </td>
+
+                                      <td className="p-3 text-right">
+                                        <div className="inline-flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => openUserDrawer(u)}
+                                            className="px-2.5 py-1 border border-slate-200 hover:bg-slate-100 text-slate-800 font-bold rounded text-[11px] inline-flex items-center gap-1"
+                                          >
+                                            <UserCog className="w-3.5 h-3.5" />
+                                            <span>Inspecionar 360°</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => setImpersonatingTargetUser(u)}
+                                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded text-[11px] inline-flex items-center gap-1"
+                                            title="Entrar na conta com registo de auditoria"
+                                          >
+                                            <Eye className="w-3.5 h-3.5" />
+                                            <span>Personificar</span>
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
                               </tbody>
                             </table>
                           </div>
@@ -3010,56 +3160,74 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
-                                {filteredOrders.map((o) => (
-                                  <tr key={o.id} className="hover:bg-slate-50/70">
-                                    <td className="p-3 font-mono font-bold text-slate-900">{o.orderNumber}</td>
-                                    <td className="p-3">
-                                      <div className="font-semibold text-slate-900">{o.userName}</div>
-                                      <div className="text-[11px] font-mono text-slate-500">{o.userEmail}</div>
-                                    </td>
-                                    <td className="p-3 uppercase font-mono text-[11px]">
-                                      {o.plan} · {o.billingCycle}
-                                    </td>
-                                    <td className="p-3 font-mono font-bold tabular-nums text-slate-900">
-                                      ${o.amount} {o.currency}
-                                    </td>
-                                    <td className="p-3 uppercase text-[10px] font-mono text-slate-600">
-                                      {o.paymentMethod}
-                                    </td>
-                                    <td className="p-3">
-                                      <span
-                                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                          o.status === 'paid'
-                                            ? 'bg-emerald-100 text-emerald-800'
-                                            : o.status === 'refunded'
-                                            ? 'bg-rose-100 text-rose-800'
-                                            : 'bg-amber-100 text-amber-800'
-                                        }`}
-                                      >
-                                        {o.status}
-                                      </span>
-                                    </td>
-                                    <td className="p-3 text-right space-x-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedInvoice(o)}
-                                        className="px-2 py-1 border border-slate-200 hover:bg-slate-100 rounded text-[11px] font-semibold inline-flex items-center gap-1"
-                                      >
-                                        <Receipt className="w-3 h-3" />
-                                        <span>Recibo</span>
-                                      </button>
-                                      {o.status === 'paid' && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleRefundOrder(o)}
-                                          className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-bold"
-                                        >
-                                          Reembolsar
-                                        </button>
-                                      )}
+                                {filteredOrders.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={7} className="p-8 text-center text-xs text-slate-400">
+                                      Nenhuma fatura ou transação registada até o momento.
                                     </td>
                                   </tr>
-                                ))}
+                                ) : (
+                                  filteredOrders.map((o) => (
+                                    <tr key={o.id} className="hover:bg-slate-50/70">
+                                      <td className="p-3 font-mono font-bold text-slate-900">{o.orderNumber}</td>
+                                      <td className="p-3">
+                                        <div className="font-semibold text-slate-900">{o.userName}</div>
+                                        <div className="text-[11px] font-mono text-slate-500">{o.userEmail}</div>
+                                      </td>
+                                      <td className="p-3 uppercase font-mono text-[11px]">
+                                        {o.plan} · {formatCycleLabel(o.billingCycle)}
+                                      </td>
+                                      <td className="p-3 font-mono font-bold tabular-nums text-slate-900">
+                                        {o.currency === 'BRL' ? `R$ ${Number(o.amount).toFixed(2)}` : `$${o.amount} ${o.currency}`}
+                                      </td>
+                                      <td className="p-3 uppercase text-[10px] font-mono text-slate-600">
+                                        {o.paymentMethod === 'pix' ? 'PIX' : 'CARTÃO'}
+                                      </td>
+                                      <td className="p-3">
+                                        <span
+                                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                            o.status === 'paid'
+                                              ? 'bg-emerald-100 text-emerald-800'
+                                              : o.status === 'refunded'
+                                              ? 'bg-rose-100 text-rose-800'
+                                              : 'bg-amber-100 text-amber-800'
+                                          }`}
+                                        >
+                                          {o.status}
+                                        </span>
+                                      </td>
+                                      <td className="p-3 text-right space-x-1.5 whitespace-nowrap">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedInvoice(o)}
+                                          className="px-2 py-1 border border-slate-200 hover:bg-slate-100 rounded text-[11px] font-semibold inline-flex items-center gap-1"
+                                        >
+                                          <Receipt className="w-3 h-3" />
+                                          <span>Recibo</span>
+                                        </button>
+                                        {o.status === 'pending' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleApproveOrder(o)}
+                                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold inline-flex items-center gap-1"
+                                          >
+                                            <Check className="w-3 h-3" />
+                                            <span>Aprovar &amp; Ativar</span>
+                                          </button>
+                                        )}
+                                        {o.status === 'paid' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleRefundOrder(o)}
+                                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-bold"
+                                          >
+                                            Reembolsar
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))
+                                )}
                               </tbody>
                             </table>
                           </div>
@@ -3084,7 +3252,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        Editor de Planos &amp; Preços ($2 / $4)
+                        Editor de Planos &amp; Preços ($8 / $12)
                       </button>
                       <button
                         type="button"
@@ -3167,40 +3335,117 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="font-bold text-slate-700 block mb-1">Preço Mensal (USD)</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  step={0.5}
-                                  value={plan.priceMonthlyValue}
-                                  onChange={(e) =>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                                  Preços nos 4 Ciclos (USD)
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
                                     setEditablePlans((prev) =>
                                       prev.map((p) =>
-                                        p.id === plan.id ? { ...p, priceMonthlyValue: Number(e.target.value) } : p
+                                        p.id === plan.id
+                                          ? {
+                                              ...p,
+                                              priceQuarterlyValue: getDefaultCyclePriceUSD(
+                                                p.priceMonthlyValue,
+                                                'quarterly'
+                                              ),
+                                              priceSemiannualValue: getDefaultCyclePriceUSD(
+                                                p.priceMonthlyValue,
+                                                'semiannual'
+                                              ),
+                                              priceYearlyValue: getDefaultCyclePriceUSD(
+                                                p.priceMonthlyValue,
+                                                'yearly'
+                                              )
+                                            }
+                                          : p
                                       )
                                     )
                                   }
-                                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
-                                />
+                                  className="text-[11px] font-semibold text-indigo-600 hover:underline"
+                                >
+                                  Recalcular descontos (-10% / -18% / -25%)
+                                </button>
                               </div>
-                              <div>
-                                <label className="font-bold text-slate-700 block mb-1">Preço Anual (USD)</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  step={1}
-                                  value={plan.priceYearlyValue}
-                                  onChange={(e) =>
-                                    setEditablePlans((prev) =>
-                                      prev.map((p) =>
-                                        p.id === plan.id ? { ...p, priceYearlyValue: Number(e.target.value) } : p
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                <div>
+                                  <label className="font-bold text-slate-700 block mb-1">Mensal</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    step={0.5}
+                                    value={plan.priceMonthlyValue}
+                                    onChange={(e) =>
+                                      setEditablePlans((prev) =>
+                                        prev.map((p) =>
+                                          p.id === plan.id ? { ...p, priceMonthlyValue: Number(e.target.value) } : p
+                                        )
                                       )
-                                    )
-                                  }
-                                  className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
-                                />
+                                    }
+                                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-bold text-slate-700 block mb-1">Trimestral</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    step={0.01}
+                                    value={
+                                      plan.priceQuarterlyValue ??
+                                      getDefaultCyclePriceUSD(plan.priceMonthlyValue, 'quarterly')
+                                    }
+                                    onChange={(e) =>
+                                      setEditablePlans((prev) =>
+                                        prev.map((p) =>
+                                          p.id === plan.id ? { ...p, priceQuarterlyValue: Number(e.target.value) } : p
+                                        )
+                                      )
+                                    }
+                                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-bold text-slate-700 block mb-1">Semestral</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    step={0.01}
+                                    value={
+                                      plan.priceSemiannualValue ??
+                                      getDefaultCyclePriceUSD(plan.priceMonthlyValue, 'semiannual')
+                                    }
+                                    onChange={(e) =>
+                                      setEditablePlans((prev) =>
+                                        prev.map((p) =>
+                                          p.id === plan.id ? { ...p, priceSemiannualValue: Number(e.target.value) } : p
+                                        )
+                                      )
+                                    }
+                                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-bold text-slate-700 block mb-1">Anual</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    step={0.5}
+                                    value={plan.priceYearlyValue}
+                                    onChange={(e) =>
+                                      setEditablePlans((prev) =>
+                                        prev.map((p) =>
+                                          p.id === plan.id ? { ...p, priceYearlyValue: Number(e.target.value) } : p
+                                        )
+                                      )
+                                    }
+                                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-slate-900"
+                                  />
+                                </div>
                               </div>
                             </div>
 
@@ -3279,58 +3524,64 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           </button>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {couponsList.map((cp) => {
-                            const pct = Math.min(100, Math.round((cp.usedCount / Math.max(cp.maxUses, 1)) * 100));
-                            return (
-                              <div key={cp.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5 text-xs">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-mono font-black text-slate-900 text-sm">{cp.code}</span>
-                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded">
-                                    {cp.discountPercent}% OFF
-                                  </span>
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="flex justify-between text-[11px] text-slate-600 font-mono">
-                                    <span>Usos: {cp.usedCount} / {cp.maxUses}</span>
-                                    <span>Exp: {cp.expiresAt ? new Date(cp.expiresAt).toLocaleDateString('pt-PT') : 'Sem limite'}</span>
+                        {couponsList.length === 0 ? (
+                          <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                            Nenhum cupom promocional criado. Clique em &quot;Criar Cupom&quot; para lançar uma campanha real.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {couponsList.map((cp) => {
+                              const pct = Math.min(100, Math.round((cp.usedCount / Math.max(cp.maxUses, 1)) * 100));
+                              return (
+                                <div key={cp.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-mono font-black text-slate-900 text-sm">{cp.code}</span>
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded">
+                                      {cp.discountPercent}% OFF
+                                    </span>
                                   </div>
-                                  <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                                    <div className="h-full bg-slate-900 rounded-full" style={{ width: `${pct}%` }} />
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-[11px] text-slate-600 font-mono">
+                                      <span>Usos: {cp.usedCount} / {cp.maxUses}</span>
+                                      <span>Exp: {cp.expiresAt ? new Date(cp.expiresAt).toLocaleDateString('pt-PT') : 'Sem limite'}</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                      <div className="h-full bg-slate-900 rounded-full" style={{ width: `${pct}%` }} />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await toggleCouponActive(cp.id, cp.active);
+                                        setCouponsList((prev) =>
+                                          prev.map((item) => (item.id === cp.id ? { ...item, active: !cp.active } : item))
+                                        );
+                                        showNotification(`Cupom ${cp.code} ${!cp.active ? 'ATIVADO' : 'PAUSADO'}.`);
+                                      }}
+                                      className={`px-2.5 py-1 rounded text-[11px] font-bold ${
+                                        cp.active ? 'bg-slate-200 text-slate-700' : 'bg-emerald-600 text-white'
+                                      }`}
+                                    >
+                                      {cp.active ? 'Pausar' : 'Ativar'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await deleteCoupon(cp.id);
+                                        setCouponsList((prev) => prev.filter((item) => item.id !== cp.id));
+                                        showNotification(`Cupom ${cp.code} eliminado.`);
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
                                 </div>
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      await toggleCouponActive(cp.id, cp.active);
-                                      setCouponsList((prev) =>
-                                        prev.map((item) => (item.id === cp.id ? { ...item, active: !cp.active } : item))
-                                      );
-                                      showNotification(`Cupom ${cp.code} ${!cp.active ? 'ATIVADO' : 'PAUSADO'}.`);
-                                    }}
-                                    className={`px-2.5 py-1 rounded text-[11px] font-bold ${
-                                      cp.active ? 'bg-slate-200 text-slate-700' : 'bg-emerald-600 text-white'
-                                    }`}
-                                  >
-                                    {cp.active ? 'Pausar' : 'Ativar'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      await deleteCoupon(cp.id);
-                                      setCouponsList((prev) => prev.filter((item) => item.id !== cp.id));
-                                      showNotification(`Cupom ${cp.code} eliminado.`);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3354,49 +3605,55 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         </div>
 
                         <div className="space-y-3">
-                          {bannersList.map((banner) => (
-                            <div key={banner.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-bold text-slate-900 text-sm">{banner.title}</span>
-                                  <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase font-bold bg-blue-100 text-blue-800">
-                                    {banner.type}
-                                  </span>
-                                  <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase bg-slate-200 text-slate-700">
-                                    Público: {banner.targetAudience}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      const next = { ...banner, active: !banner.active };
-                                      await saveSystemBanner(next);
-                                      setBannersList((prev) => prev.map((b) => (b.id === banner.id ? next : b)));
-                                      showNotification(`Banner ${next.active ? 'ATIVADO' : 'PAUSADO'}.`);
-                                    }}
-                                    className={`px-2.5 py-1 rounded text-[11px] font-bold ${
-                                      banner.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
-                                    }`}
-                                  >
-                                    {banner.active ? 'Ativo' : 'Pausado'}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      await deleteSystemBanner(banner.id);
-                                      setBannersList((prev) => prev.filter((b) => b.id !== banner.id));
-                                      showNotification('Banner removido.');
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                              <p className="text-slate-600">{banner.message}</p>
+                          {bannersList.length === 0 ? (
+                            <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                              Nenhum banner ou aviso transversal ativo. Clique em &quot;Novo Banner&quot; para publicar um comunicado real no aplicativo.
                             </div>
-                          ))}
+                          ) : (
+                            bannersList.map((banner) => (
+                              <div key={banner.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-bold text-slate-900 text-sm">{banner.title}</span>
+                                    <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase font-bold bg-blue-100 text-blue-800">
+                                      {banner.type}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded font-mono text-[10px] uppercase bg-slate-200 text-slate-700">
+                                      Público: {banner.targetAudience}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const next = { ...banner, active: !banner.active };
+                                        await saveSystemBanner(next);
+                                        setBannersList((prev) => prev.map((b) => (b.id === banner.id ? next : b)));
+                                        showNotification(`Banner ${next.active ? 'ATIVADO' : 'PAUSADO'}.`);
+                                      }}
+                                      className={`px-2.5 py-1 rounded text-[11px] font-bold ${
+                                        banner.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                                      }`}
+                                    >
+                                      {banner.active ? 'Ativo' : 'Pausado'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await deleteSystemBanner(banner.id);
+                                        setBannersList((prev) => prev.filter((b) => b.id !== banner.id));
+                                        showNotification('Banner removido.');
+                                      }}
+                                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="text-slate-600">{banner.message}</p>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     )}
@@ -3596,6 +3853,115 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             className="w-24 p-2 bg-white border border-slate-200 rounded-lg font-mono font-bold text-center"
                           />
                         </div>
+
+                        {/* Personal Pix Key Configuration Card */}
+                        <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/50 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-2.5">
+                            <div>
+                              <h4 className="font-bold text-teal-950 flex items-center gap-1.5 text-xs">
+                                <QrCode className="w-4 h-4 text-teal-700" />
+                                <span>Sua Chave Pix Pessoal (Recebimentos Diretos)</span>
+                              </h4>
+                              <p className="text-[11px] text-teal-900/80 mt-0.5">
+                                Configure a sua chave Pix fixa (CPF, E-mail, Telefone, CNPJ ou Chave EVP) e o QR Code
+                                oficial exibido no checkout será atualizado imediatamente.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">Tipo da Chave</label>
+                              <select
+                                value={platformSettings.pixKeyType || 'evp'}
+                                onChange={(e) =>
+                                  setPlatformSettings({
+                                    ...platformSettings,
+                                    pixKeyType: e.target.value as PixKeyType
+                                  })
+                                }
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold"
+                              >
+                                <option value="cpf">CPF</option>
+                                <option value="email">E-mail</option>
+                                <option value="phone">Telefone (+55)</option>
+                                <option value="cnpj">CNPJ</option>
+                                <option value="evp">Chave EVP</option>
+                              </select>
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <label className="font-bold text-slate-700 block mb-1">Sua Chave Pix</label>
+                              <input
+                                type="text"
+                                value={platformSettings.pixKey || ''}
+                                onChange={(e) =>
+                                  setPlatformSettings({
+                                    ...platformSettings,
+                                    pixKey: e.target.value
+                                  })
+                                }
+                                placeholder="Ex: seuemail@dominio.com ou 123.456.789-00"
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg font-mono text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">Cidade</label>
+                              <input
+                                type="text"
+                                maxLength={15}
+                                value={platformSettings.pixCity || 'SAO PAULO'}
+                                onChange={(e) =>
+                                  setPlatformSettings({
+                                    ...platformSettings,
+                                    pixCity: e.target.value
+                                  })
+                                }
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                            <div>
+                              <label className="font-bold text-slate-700 block mb-1">
+                                Nome do Beneficiário (máx. 25 caracteres)
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={25}
+                                value={platformSettings.pixBeneficiaryName || ''}
+                                onChange={(e) =>
+                                  setPlatformSettings({
+                                    ...platformSettings,
+                                    pixBeneficiaryName: e.target.value
+                                  })
+                                }
+                                placeholder="Ex: SEU NOME OU EMPRESA"
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs"
+                              />
+                            </div>
+
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await savePlatformSettings({
+                                    ...platformSettings,
+                                    updatedBy: user?.email || 'admin'
+                                  });
+                                  emitAdminConfigUpdated('platform');
+                                  showNotification('Chave Pix pessoal e configurações salvas ao vivo!');
+                                }}
+                                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg flex items-center gap-1.5 text-xs"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                                <span>Guardar Chave Pix</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -3637,46 +4003,52 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         </div>
 
                         <div className="space-y-2.5">
-                          {filteredErrorLogs.map((err) => (
-                            <div
-                              key={err.id}
-                              className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
-                                err.resolved ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-rose-50/50 border-rose-200'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-mono font-bold text-slate-900 uppercase">
-                                    {err.operationType}
-                                  </span>
-                                  {err.userEmail && (
-                                    <span className="font-mono text-[11px] text-slate-500">{err.userEmail}</span>
-                                  )}
-                                  <span className="text-[10px] text-slate-400 font-mono">
-                                    {new Date(err.timestamp).toLocaleString('pt-PT')}
-                                  </span>
-                                </div>
-                                {!err.resolved ? (
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      await resolveErrorLog(err.id, user?.email || 'admin');
-                                      setErrorLogsList((prev) =>
-                                        prev.map((e) => (e.id === err.id ? { ...e, resolved: true } : e))
-                                      );
-                                      showNotification('Log técnico marcado como resolvido.');
-                                    }}
-                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px]"
-                                  >
-                                    Marcar Resolvido
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-emerald-700 font-bold">✓ Resolvido</span>
-                                )}
-                              </div>
-                              <p className="font-mono text-slate-700 text-[11px]">{err.errorMessage}</p>
+                          {filteredErrorLogs.length === 0 ? (
+                            <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                              Nenhum erro técnico registado — a operação encontra-se estável.
                             </div>
-                          ))}
+                          ) : (
+                            filteredErrorLogs.map((err) => (
+                              <div
+                                key={err.id}
+                                className={`p-3.5 rounded-xl border text-xs space-y-1.5 ${
+                                  err.resolved ? 'bg-slate-50 border-slate-200 opacity-75' : 'bg-rose-50/50 border-rose-200'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono font-bold text-slate-900 uppercase">
+                                      {err.operationType}
+                                    </span>
+                                    {err.userEmail && (
+                                      <span className="font-mono text-[11px] text-slate-500">{err.userEmail}</span>
+                                    )}
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      {new Date(err.timestamp).toLocaleString('pt-PT')}
+                                    </span>
+                                  </div>
+                                  {!err.resolved ? (
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await resolveErrorLog(err.id, user?.email || 'admin');
+                                        setErrorLogsList((prev) =>
+                                          prev.map((e) => (e.id === err.id ? { ...e, resolved: true } : e))
+                                        );
+                                        showNotification('Log técnico marcado como resolvido.');
+                                      }}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[10px]"
+                                    >
+                                      Marcar Resolvido
+                                    </button>
+                                  ) : (
+                                    <span className="text-[10px] text-emerald-700 font-bold">✓ Resolvido</span>
+                                  )}
+                                </div>
+                                <p className="font-mono text-slate-700 text-[11px]">{err.errorMessage}</p>
+                              </div>
+                            ))
+                          )}
                         </div>
                       </div>
                     )}
@@ -3693,59 +4065,65 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         </div>
 
                         <div className="space-y-3">
-                          {gdprList.map((g) => (
-                            <div key={g.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5 text-xs">
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <span className="font-bold text-slate-900">{g.userEmail}</span>
-                                  <span className="ml-2 font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200">
-                                    {g.requestType}
+                          {gdprList.length === 0 ? (
+                            <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                              Nenhum pedido RGPD submetido pelos titulares até o momento.
+                            </div>
+                          ) : (
+                            gdprList.map((g) => (
+                              <div key={g.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5 text-xs">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div>
+                                    <span className="font-bold text-slate-900">{g.userEmail}</span>
+                                    <span className="ml-2 font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-slate-200">
+                                      {g.requestType}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                      g.status === 'completed'
+                                        ? 'bg-emerald-100 text-emerald-800'
+                                        : 'bg-amber-100 text-amber-800'
+                                    }`}
+                                  >
+                                    {g.status}
                                   </span>
                                 </div>
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                    g.status === 'completed'
-                                      ? 'bg-emerald-100 text-emerald-800'
-                                      : 'bg-amber-100 text-amber-800'
-                                  }`}
-                                >
-                                  {g.status}
-                                </span>
-                              </div>
-                              <p className="text-slate-600 text-[11px]">
-                                {g.notes || 'Pedido submetido pelo titular da conta.'}
-                              </p>
+                                <p className="text-slate-600 text-[11px]">
+                                  {g.notes || 'Pedido submetido pelo titular da conta.'}
+                                </p>
 
-                              <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-end gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleExportGdprJson(g)}
-                                  className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-lg text-[11px] flex items-center gap-1.5"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                  <span>Exportar JSON</span>
-                                </button>
-                                {g.status === 'pending' && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleAnonymizeGdpr(g)}
-                                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[11px]"
-                                    >
-                                      Anonimizar Dados
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteGdpr(g)}
-                                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-[11px]"
-                                    >
-                                      Eliminar Conta
-                                    </button>
-                                  </>
-                                )}
+                                <div className="pt-2 border-t border-slate-200 flex flex-wrap justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExportGdprJson(g)}
+                                    className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 font-bold rounded-lg text-[11px] flex items-center gap-1.5"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    <span>Exportar JSON</span>
+                                  </button>
+                                  {g.status === 'pending' && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAnonymizeGdpr(g)}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-[11px]"
+                                      >
+                                        Anonimizar Dados
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGdpr(g)}
+                                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-[11px]"
+                                      >
+                                        Eliminar Conta
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ))
+                          )}
                         </div>
                       </div>
                     )}
@@ -3777,22 +4155,28 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             Registo de Auditoria de Personificação (Impersonate)
                           </h3>
                           <div className="space-y-2">
-                            {impersonationLogs.map((log: any) => (
-                              <div
-                                key={log.id}
-                                className="p-3 rounded-lg border border-slate-100 bg-slate-50 text-xs flex flex-wrap items-center justify-between gap-2"
-                              >
-                                <div>
-                                  <span className="font-bold text-slate-900">{log.adminEmail}</span>
-                                  <span className="text-slate-400 mx-1.5">→</span>
-                                  <span className="font-mono text-purple-700 font-bold">{log.targetUserEmail}</span>
-                                  <p className="text-[11px] text-slate-500 mt-0.5">{log.details}</p>
-                                </div>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {new Date(log.timestamp).toLocaleString('pt-PT')}
-                                </span>
+                            {impersonationLogs.length === 0 ? (
+                              <div className="p-6 text-center bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-500">
+                                Nenhuma sessão de personificação registada.
                               </div>
-                            ))}
+                            ) : (
+                              impersonationLogs.map((log: any) => (
+                                <div
+                                  key={log.id}
+                                  className="p-3 rounded-lg border border-slate-100 bg-slate-50 text-xs flex flex-wrap items-center justify-between gap-2"
+                                >
+                                  <div>
+                                    <span className="font-bold text-slate-900">{log.adminEmail}</span>
+                                    <span className="text-slate-400 mx-1.5">→</span>
+                                    <span className="font-mono text-purple-700 font-bold">{log.targetUserEmail}</span>
+                                    <p className="text-[11px] text-slate-500 mt-0.5">{log.details}</p>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {new Date(log.timestamp).toLocaleString('pt-PT')}
+                                  </span>
+                                </div>
+                              ))
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3840,13 +4224,13 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">CVs Gerados</span>
                   <span className="text-base font-black font-mono text-slate-900">
-                    {inspectedUser.totalCvGenerated || 1}
+                    {inspectedUser.totalCvGenerated ?? 0}
                   </span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">Ciclo</span>
                   <span className="text-xs font-bold uppercase text-slate-900 mt-1 block">
-                    {inspectedUser.billingCycle || 'monthly'}
+                    {formatCycleLabel(inspectedUser.billingCycle)}
                   </span>
                 </div>
               </div>
@@ -4134,8 +4518,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
                   >
                     <option value="free">Gratuito</option>
-                    <option value="pro">Pro ($2)</option>
-                    <option value="executive">Executivo VIP ($4)</option>
+                    <option value="pro">Pro ($8)</option>
+                    <option value="executive">Executivo VIP ($12)</option>
                   </select>
                 </div>
 
@@ -4200,23 +4584,46 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Plano</label>
                   <select
                     value={newOrderForm.plan}
                     onChange={(e) => {
                       const pl = e.target.value as SubscriptionPlan;
+                      const srcPlan = editablePlans.find((p) => p.id === pl);
                       setNewOrderForm({
                         ...newOrderForm,
                         plan: pl,
-                        amount: pl === 'executive' ? 4 : 2
+                        amount: getCyclePriceUSD(srcPlan || { id: pl }, newOrderForm.billingCycle)
                       });
                     }}
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   >
-                    <option value="pro">Pro ($2)</option>
-                    <option value="executive">Executivo ($4)</option>
+                    <option value="pro">Profissional Pro</option>
+                    <option value="executive">Executivo VIP</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Ciclo</label>
+                  <select
+                    value={newOrderForm.billingCycle}
+                    onChange={(e) => {
+                      const cyc = e.target.value as BillingCycle;
+                      const srcPlan = editablePlans.find((p) => p.id === newOrderForm.plan);
+                      setNewOrderForm({
+                        ...newOrderForm,
+                        billingCycle: cyc,
+                        amount: getCyclePriceUSD(srcPlan || { id: newOrderForm.plan }, cyc)
+                      });
+                    }}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                  >
+                    {BILLING_CYCLES.map((c) => (
+                      <option key={c} value={c}>
+                        {BILLING_CYCLE_META[c].label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -4236,7 +4643,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     onChange={(e) => setNewOrderForm({ ...newOrderForm, paymentMethod: e.target.value as PaymentMethod })}
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
                   >
-                    <option value="stripe">Cartão (Stripe)</option>
+                    <option value="card">Cartão de Crédito/Débito</option>
                     <option value="pix">PIX Instantâneo</option>
                   </select>
                 </div>
@@ -4282,16 +4689,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Plano Subscrito:</span>
-                <strong className="uppercase">{selectedInvoice.plan} ({selectedInvoice.billingCycle})</strong>
+                <strong className="uppercase">
+                  {selectedInvoice.plan} ({formatCycleLabel(selectedInvoice.billingCycle)})
+                </strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Método / Gateway:</span>
-                <span className="uppercase font-mono">{selectedInvoice.paymentMethod}</span>
+                <span className="text-slate-500">Método / Canal:</span>
+                <span className="uppercase font-mono">
+                  {selectedInvoice.paymentMethod === 'pix' ? 'PIX' : 'CARTÃO'}
+                </span>
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-100 text-sm">
                 <span className="font-bold text-slate-700">Total Liquidado:</span>
                 <strong className="font-mono text-slate-950">
-                  ${selectedInvoice.amount} {selectedInvoice.currency}
+                  {selectedInvoice.currency === 'BRL'
+                    ? `R$ ${Number(selectedInvoice.amount).toFixed(2)} BRL`
+                    : `$${selectedInvoice.amount} ${selectedInvoice.currency}`}
                 </strong>
               </div>
             </div>
