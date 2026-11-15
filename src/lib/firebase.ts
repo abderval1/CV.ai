@@ -134,6 +134,10 @@ async function testConnection() {
 }
 
 if (typeof window !== 'undefined') {
+  // Configure persistence once at boot so signInWithPopup runs synchronously inside mobile tap gestures
+  void setPersistence(auth, browserLocalPersistence).catch(() => {
+    void setPersistence(auth, browserSessionPersistence).catch(() => {});
+  });
   void testConnection();
 }
 

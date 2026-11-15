@@ -40,8 +40,66 @@ import { isUserAdmin } from '../services/saasDbService';
 const LOCAL_STORAGE_USER_KEY = 'curriculopro_user_session';
 const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
 const AUTH_TOKEN_KEY = 'curriculopro_auth_token';
+const REDIRECT_PENDING_KEY = 'ce_google_redirect_pending';
+const REDIRECT_PENDING_TTL_MS = 5 * 60 * 1000;
 
 let inMemoryAuthToken: string | null = null;
+
+function setRedirectPendingMarker() {
+  const stamp = String(Date.now());
+  try {
+    sessionStorage.setItem(REDIRECT_PENDING_KEY, stamp);
+  } catch {
+    // ignore
+  }
+  try {
+    localStorage.setItem(REDIRECT_PENDING_KEY, stamp);
+  } catch {
+    // ignore
+  }
+}
+
+function peekRedirectPendingMarker(): boolean {
+  try {
+    const raw =
+      sessionStorage.getItem(REDIRECT_PENDING_KEY) || localStorage.getItem(REDIRECT_PENDING_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < REDIRECT_PENDING_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function consumeRedirectPendingMarker(): boolean {
+  const active = peekRedirectPendingMarker();
+  try {
+    sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+  } catch {
+    // ignore
+  }
+  try {
+    localStorage.removeItem(REDIRECT_PENDING_KEY);
+  } catch {
+    // ignore
+  }
+  return active;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timeout (${ms}ms): ${label}`)), ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 function getStoredAuthToken(): string | null {
   try {
@@ -126,9 +184,16 @@ export function getAuthErrorMessage(err: any): string {
       return 'Demasiadas tentativas consecutivas. Por favor, aguarde alguns minutos antes de tentar novamente.';
     case 'auth/popup-closed-by-user':
     case 'auth/cancelled-popup-request':
-      return 'A janela de autenticação foi fechada antes de concluir o processo.';
+      return 'A janela de autenticação Google foi fechada antes de concluir o processo. Tente novamente ou entre com E-mail e Palavra-passe abaixo.';
     case 'auth/popup-blocked':
-      return 'A janela de autenticação foi bloqueada pelo navegador do telemóvel. Utilize o acesso por e-mail e palavra-passe abaixo.';
+      return 'A janela de autenticação foi bloqueada pelo navegador do telemóvel. Permita pop-ups ou utilize o acesso por e-mail e palavra-passe abaixo.';
+    case 'auth/web-storage-unsupported':
+    case 'auth/cookie-blocked':
+      return 'O navegador está com cookies ou armazenamento bloqueados (ex.: navegação privada restrita). Ative os cookies ou entre com E-mail e Palavra-passe abaixo.';
+    case 'auth/redirect-cancelled-by-user':
+    case 'auth/redirect-operation-pending':
+    case 'auth/missing-or-invalid-nonce':
+      return 'O processo de redirecionamento Google foi interrompido pelo navegador do telemóvel. Tente novamente ou entre com E-mail e Palavra-passe abaixo.';
     case 'auth/unauthorized-domain':
       return 'Este domínio não está autorizado para autenticação Google. Utilize e-mail e palavra-passe abaixo.';
     case 'auth/account-exists-with-different-credential':
@@ -174,6 +239,8 @@ interface AuthContextType {
   isExecutive: boolean;
   hasActivePlan: boolean;
   isFirebaseConnected: boolean;
+  authRedirectError: string | null;
+  clearAuthRedirectError: () => void;
   login: (email: string, password?: string, rememberMe?: boolean) => Promise<boolean>;
   register: (
     name: string,
@@ -221,6 +288,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
+  const [authRedirectError, setAuthRedirectError] = useState<string | null>(null);
+  const clearAuthRedirectError = () => setAuthRedirectError(null);
   const [originalAdminUser, setOriginalAdminUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem('curriculopro_impersonating_admin');
@@ -306,13 +375,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [savedResumes]);
 
-  // Handle redirect auth result if Google popup fell back to redirect
+  // Handle redirect auth result if Google popup fell back to redirect on mobile
   useEffect(() => {
-    getRedirectResult(auth).catch((err) => {
-      if (err?.code) {
-        console.warn('Aviso getRedirectResult:', err.code);
-      }
-    });
+    let cancelled = false;
+    const hadPendingRedirect = peekRedirectPendingMarker();
+
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (cancelled) return;
+        if (result?.user) {
+          consumeRedirectPendingMarker();
+          sessionEpochRef.current += 1;
+          const cleanEmail = (result.user.email || '').trim().toLowerCase();
+          const isAdmin = isUserAdmin(cleanEmail);
+          const profile: User = {
+            id: result.user.uid,
+            name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
+            email: cleanEmail,
+            role: isAdmin ? 'admin' : 'user',
+            status: 'active',
+            avatarUrl: result.user.photoURL || undefined,
+            plan: isAdmin ? 'executive' : 'free',
+            creditsRemaining: isAdmin ? 9999 : 5,
+            createdAt: new Date().toISOString()
+          };
+          const synced = await syncFirebaseUserToBackend(profile, 'google', true);
+          if (!cancelled) {
+            setUser(synced);
+            setAuthRedirectError(null);
+            setAuthLoading(false);
+          }
+          return;
+        }
+
+        if (hadPendingRedirect) {
+          consumeRedirectPendingMarker();
+          // Allow brief grace in case onAuthStateChanged hydrates auth.currentUser cleanly
+          setTimeout(() => {
+            if (cancelled) return;
+            if (!auth.currentUser) {
+              setAuthRedirectError(
+                'O navegador do telemóvel bloqueou os cookies de retorno do Google após selecionar a conta (prevenção de rastreio do Safari/Chrome). Permita pop-ups para este site, abra fora de aplicações (WhatsApp/Instagram) diretamente no Chrome/Safari, ou entre abaixo com E-mail e Palavra-passe.'
+              );
+            }
+          }, 900);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        consumeRedirectPendingMarker();
+        if (err?.code) {
+          console.warn('Aviso getRedirectResult:', err.code);
+          setAuthRedirectError(getAuthErrorMessage(err));
+        } else if (hadPendingRedirect) {
+          setAuthRedirectError(
+            'Não foi possível concluir o login Google após o redirecionamento no telemóvel. Permita pop-ups ou utilize E-mail e Palavra-passe abaixo.'
+          );
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Listen to Firebase Auth state & sync seamlessly with Firestore + Backend session
@@ -332,6 +456,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (authSyncLockRef.current) {
             return;
           }
+          sessionEpochRef.current += 1;
 
           const uid = currentFbUser.uid;
           const userDocRef = doc(db, 'users', uid);
@@ -351,7 +476,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           try {
-            const docSnap = await getDoc(userDocRef);
+            const docSnap = await withTimeout(
+              getDoc(userDocRef),
+              4500,
+              `users/${uid}`
+            );
             if (docSnap.exists()) {
               const data = docSnap.data();
               if (data.status === 'suspended') {
@@ -384,18 +513,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 notes: data.notes || undefined
               };
             } else {
-              await setDoc(
-                userDocRef,
-                sanitizeForFirestore({
-                  id: hydratedUser.id,
-                  name: hydratedUser.name,
-                  email: hydratedUser.email,
-                  role: hydratedUser.role,
-                  status: 'active',
-                  plan: hydratedUser.plan,
-                  creditsRemaining: hydratedUser.creditsRemaining,
-                  createdAt: hydratedUser.createdAt
-                })
+              await withTimeout(
+                setDoc(
+                  userDocRef,
+                  sanitizeForFirestore({
+                    id: hydratedUser.id,
+                    name: hydratedUser.name,
+                    email: hydratedUser.email,
+                    role: hydratedUser.role,
+                    status: 'active',
+                    plan: hydratedUser.plan,
+                    creditsRemaining: hydratedUser.creditsRemaining,
+                    createdAt: hydratedUser.createdAt
+                  })
+                ),
+                4500,
+                `setDoc users/${uid}`
               );
             }
             setIsFirebaseConnected(true);
@@ -442,6 +575,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setUser(hydratedUser);
+          setAuthRedirectError(null);
 
           // Attach listener for user's resumes subcollection
           try {
@@ -555,9 +689,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithProvider = async (provider: 'google' | 'linkedin'): Promise<boolean> => {
     if (provider === 'google') {
       try {
-        await setPersistence(auth, browserLocalPersistence).catch(() => {});
+        // Call signInWithPopup SYNCHRONOUSLY inside user click/tap gesture without preceding awaits
+        // so mobile Safari & Android Chrome preserve transient activation for the popup window.
         const result = await signInWithPopup(auth, googleProvider);
-        if (result.user) {
+        if (result?.user) {
+          consumeRedirectPendingMarker();
+          sessionEpochRef.current += 1;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
           const isAdmin = isUserAdmin(cleanEmail);
           const profile: User = {
@@ -572,15 +709,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           const synced = await syncFirebaseUserToBackend(profile, 'google', true);
-          setUser((prev) => prev || synced);
+          setUser(synced);
+          setAuthRedirectError(null);
           return true;
         }
         return false;
       } catch (err: any) {
         // Fallback to redirect ONLY if popup is strictly blocked in non-iframe standalone tab
         if (err?.code === 'auth/popup-blocked' && window.self === window.top) {
+          setRedirectPendingMarker();
           await signInWithRedirect(auth, googleProvider);
-          return true;
+          return false;
         }
         console.error('Firebase Google Auth error:', err);
         throw err;
@@ -1206,6 +1345,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isExecutive,
         hasActivePlan,
         isFirebaseConnected,
+        authRedirectError,
+        clearAuthRedirectError,
         login,
         register,
         resetPassword,

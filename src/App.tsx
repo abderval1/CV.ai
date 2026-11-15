@@ -47,7 +47,7 @@ import {
 import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase } from 'lucide-react';
 
 export default function App() {
-  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating } = useAuth();
+  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const { language: appLanguage, setLanguage } = useLanguage();
 
@@ -169,6 +169,13 @@ export default function App() {
     setAuthDefaultMode(mode);
     setIsAuthModalOpen(true);
   };
+
+  useEffect(() => {
+    if (authRedirectError && !isAuthenticated) {
+      setAuthDefaultMode('login');
+      setIsAuthModalOpen(true);
+    }
+  }, [authRedirectError, isAuthenticated]);
 
   const handleOpenPricingModal = (prompt?: string) => {
     setPricingPromptMessage(
