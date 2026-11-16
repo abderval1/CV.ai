@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CVData, InterviewQuestion, InterviewAnswerEvaluation } from '../types/cv';
 import { SAMPLE_JOB_OFFERS } from '../data/initialCV';
+import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
   getStoredPlatformSettingsSync,
@@ -8,7 +9,6 @@ import {
   logGenerationError
 } from '../services/adminModulesService';
 import {
-  Sparkles,
   MessageSquare,
   CheckCircle2,
   AlertTriangle,
@@ -126,9 +126,8 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
     setErrorMessage(null);
     const adminPromptConfig = getStoredPromptSync('interviewSim');
     try {
-      const res = await fetch('/api/interview/generate-questions', {
+      const res = await authorizedFetch('/api/interview/generate-questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobDescription: activeJobDesc,
           cvData: currentCV,
@@ -137,6 +136,9 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Falha ao gerar perguntas de entrevista.');
+      }
       if (data.questions && Array.isArray(data.questions)) {
         setQuestions(data.questions);
         setCurrentQuestionIndex(0);
@@ -154,7 +156,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         userEmail: currentCV.personalDetails.email || 'anonymous',
         operationType: 'gemini_ai_call',
         errorMessage: `[InterviewQuestions] ${err?.message || 'Erro ao gerar perguntas'}`,
-        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-4-hydrogen',
         resolved: false
       });
     } finally {
@@ -190,9 +192,8 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
     const adminPromptConfig = getStoredPromptSync('interviewSim');
 
     try {
-      const res = await fetch('/api/interview/score-answer', {
+      const res = await authorizedFetch('/api/interview/score-answer', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: currentQ,
           answer: currentAnswer,
@@ -203,6 +204,9 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Erro ao avaliar resposta.');
+      }
       setEvaluations((prev) => ({
         ...prev,
         [currentQ.id]: {
@@ -223,7 +227,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         userEmail: currentCV.personalDetails.email || 'anonymous',
         operationType: 'gemini_ai_call',
         errorMessage: `[InterviewScore] ${err?.message || 'Erro ao avaliar resposta'}`,
-        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-4-hydrogen',
         resolved: false
       });
     } finally {
@@ -250,8 +254,8 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                Inteligência Artificial de Recrutamento
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                Preparação de Entrevista Executiva
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
@@ -376,12 +380,12 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
                         currentQ.type === 'behavioral'
-                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          ? 'bg-amber-50 text-amber-900 border-amber-200'
                           : currentQ.type === 'technical'
-                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          ? 'bg-slate-100 text-slate-800 border-slate-200'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       }`}
                     >
                       {currentQ.type === 'behavioral'
@@ -465,7 +469,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                    <MessageSquare className="w-3.5 h-3.5 text-slate-700" />
                     <span>A Sua Resposta para Esta Pergunta:</span>
                   </label>
 
@@ -488,7 +492,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                           </>
                         ) : (
                           <>
-                            <Mic className="w-3.5 h-3.5 text-indigo-600" />
+                            <Mic className="w-3.5 h-3.5 text-slate-700" />
                             <span>Ditado por Voz</span>
                           </>
                         )}
@@ -508,7 +512,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     }}
                     rows={5}
                     placeholder="Digite a sua resposta como se estivesse diante do painel de recrutadores. Descreva o contexto real, a ação que você tomou pessoalmente e o resultado alcançado com dados ou métricas..."
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-600 focus:bg-white transition-all leading-relaxed"
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all leading-relaxed"
                   />
                   <div className="absolute right-3 bottom-3 text-[10px] text-slate-400 font-mono">
                     {currentAnswer.length} caracteres ·{' '}
@@ -527,17 +531,17 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     type="button"
                     onClick={handleScoreAnswer}
                     disabled={isEvaluating || !currentAnswer.trim()}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full sm:w-auto min-h-[42px] px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     {isEvaluating ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>A Avaliar com IA...</span>
+                        <span>A Avaliar Resposta...</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                        <span>Avaliar Resposta com IA</span>
+                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Avaliar Resposta (Método STAR)</span>
                         <Send className="w-3 h-3" />
                       </>
                     )}
@@ -626,12 +630,12 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
                   {/* Model Answer Recommendation */}
                   {currentEval.recommendedAnswer && (
-                    <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2 text-xs">
-                      <div className="flex items-center gap-1.5 font-bold text-indigo-950">
-                        <Award className="w-4 h-4 text-indigo-600" />
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                        <Award className="w-4 h-4 text-amber-600" />
                         <span>Sugestão de Resposta Modelo Executiva (Padrão STAR):</span>
                       </div>
-                      <p className="text-indigo-900 text-[11px] leading-relaxed italic">
+                      <p className="text-slate-700 text-[11px] leading-relaxed italic">
                         "{currentEval.recommendedAnswer}"
                       </p>
                     </div>

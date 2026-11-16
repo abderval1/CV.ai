@@ -306,3 +306,45 @@ export interface FrontendTelemetryData {
   lastUpdated: string;
 }
 
+// -------------------------------------------------------------
+// 8. Logs de Auditoria de Segurança e Ações Sensíveis (Firestore)
+// -------------------------------------------------------------
+export type AuditLogCategory = 'subscription' | 'cv_export' | 'profile' | 'security' | 'admin';
+export type AuditLogSeverity = 'info' | 'warning' | 'critical';
+export type AuditLogStatus = 'success' | 'blocked' | 'failure';
+
+export type AuditLogAction =
+  | 'subscription_upgraded'
+  | 'subscription_canceled'
+  | 'subscription_plan_sync_blocked'
+  | 'payment_order_created'
+  | 'payment_order_status_changed'
+  | 'cv_exported_pdf'
+  | 'cv_exported_docx'
+  | 'cv_exported_json'
+  | 'cv_export_blocked_unauthorized'
+  | 'profile_updated'
+  | 'password_changed'
+  | 'account_login'
+  | 'account_registered'
+  | 'gdpr_request_submitted'
+  | 'unauthorized_access_attempt'
+  | 'admin_user_modified'
+  | 'impersonation_event';
+
+export interface SecurityAuditLog {
+  id: string;
+  timestamp: string;
+  actorUserId: string;
+  actorEmail: string;
+  actorRole: 'user' | 'admin' | 'anonymous' | 'system';
+  action: AuditLogAction;
+  category: AuditLogCategory;
+  severity: AuditLogSeverity;
+  status: AuditLogStatus;
+  targetResource: string;
+  details: string;
+  metadata?: Record<string, string | number | boolean>;
+  userAgent?: string;
+  ipAddress?: string;
+}

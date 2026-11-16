@@ -23,12 +23,22 @@ import {
   Briefcase,
   SlidersHorizontal,
   CreditCard,
-  FileCheck2
+  FileCheck2,
+  Bell,
+  CheckCheck,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from '../context/LanguageContext';
 import { isUserAdmin } from '../services/saasDbService';
+import { UserNotificationItem } from '../types/cv';
+import {
+  loadNotificationPreferences,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+  subscribeToUserNotifications
+} from '../services/notificationService';
 
 export type AppTab =
   | 'home'
@@ -56,6 +66,7 @@ interface HeaderProps {
   onOpenAdminDashboard: () => void;
   onOpenTemplateAdvisor?: () => void;
   onOpenUserProfile?: () => void;
+  onOpenNotificationPreferences?: () => void;
   onSelectLanguage?: (lang: LanguageCode) => void;
   isTranslatingContent?: boolean;
 }
@@ -71,6 +82,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdminDashboard,
   onOpenTemplateAdvisor,
   onOpenUserProfile,
+  onOpenNotificationPreferences,
   onSelectLanguage,
   isTranslatingContent = false
 }) => {
@@ -90,7 +102,21 @@ export const Header: React.FC<HeaderProps> = ({
   const [toolsDropdownOpen, setToolsDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [prefsDropdownOpen, setPrefsDropdownOpen] = useState(false);
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notifications, setNotifications] = useState<UserNotificationItem[]>([]);
+
+  React.useEffect(() => {
+    if (!isAuthenticated || !user?.id) {
+      setNotifications([]);
+      return;
+    }
+    void loadNotificationPreferences(user.id).catch(() => {});
+    const unsub = subscribeToUserNotifications(user.id, setNotifications);
+    return () => unsub();
+  }, [isAuthenticated, user?.id]);
+
+  const unreadCount = notifications.filter((n) => n.channelSystem && !n.read).length;
 
   const isAdmin = isUserAdmin(user?.email, user?.role);
   const isToolActive = ['raw', 'ats', 'jobs', 'ai', 'interview', 'cover'].includes(activeTab);
@@ -465,7 +491,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Idioma de tradução e moeda"
             >
               {isTranslatingContent ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-700 shrink-0" />
               ) : (
                 <span className="text-sm leading-none">{currentLanguage.flag}</span>
               )}
@@ -553,6 +579,129 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
+          {/* System Notifications Bell (Authenticated Users) */}
+          {isAuthenticated && user && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifDropdownOpen(!notifDropdownOpen);
+                  setUserDropdownOpen(false);
+                  setPrefsDropdownOpen(false);
+                  setToolsDropdownOpen(false);
+                  setShowcaseDropdownOpen(false);
+                }}
+                className="relative min-w-[36px] min-h-[36px] flex items-center justify-center p-1.5 text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors"
+                title="Notificações & Preferências"
+                aria-label="Abrir centro de notificações"
+              >
+                <Bell className="w-4 h-4 text-slate-700" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-extrabold tabular-nums flex items-center justify-center leading-none border border-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notifDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setNotifDropdownOpen(false)}
+                  />
+                  <div className="absolute right-0 mt-1.5 w-80 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div className="px-3.5 py-2.5 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/80">
+                      <span className="text-xs font-bold text-slate-900">
+                        Notificações do Sistema
+                      </span>
+                      {unreadCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => void markAllNotificationsAsRead(user.id, notifications)}
+                          className="text-[11px] font-semibold text-slate-600 hover:text-slate-950 flex items-center gap-1"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>Marcar lidas</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          Sem notificações recentes. Traduções, exportações e atualizações dos seus currículos aparecerão aqui.
+                        </div>
+                      ) : (
+                        notifications.slice(0, 12).map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => void markNotificationAsRead(user.id, item.id)}
+                            className={`w-full text-left px-3.5 py-2.5 hover:bg-slate-50 transition-colors space-y-1 ${
+                              !item.read && item.channelSystem
+                                ? 'bg-amber-50/45 border-l-2 border-l-amber-500'
+                                : 'bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5 truncate">
+                                {!item.read && item.channelSystem && (
+                                  <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-200/80 text-amber-950 shrink-0">
+                                    Nova
+                                  </span>
+                                )}
+                                <span className="truncate">{item.title}</span>
+                              </span>
+                              <span className="text-[10px] font-mono tabular-nums text-slate-400 shrink-0">
+                                {new Date(item.createdAt).toLocaleTimeString('pt-PT', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 leading-snug line-clamp-2">
+                              {item.message}
+                            </p>
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              {item.channelSystem && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                                  Sistema
+                                </span>
+                              )}
+                              {item.channelEmail && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium">
+                                  {item.emailDeliveryStatus === 'sent' ? 'E-mail Enviado' : 'E-mail Registado'}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+
+                    <div className="px-3.5 py-2 border-t border-slate-100 bg-slate-50/80">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotifDropdownOpen(false);
+                          if (onOpenNotificationPreferences) {
+                            onOpenNotificationPreferences();
+                          } else {
+                            setActiveTab('profile');
+                          }
+                        }}
+                        className="w-full py-1.5 text-xs font-semibold text-slate-800 hover:text-slate-950 flex items-center justify-center gap-1.5 rounded-lg hover:bg-slate-200/60 transition-colors"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Configurar Preferências de Notificações</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           {/* Account Menu (Unified for Authenticated & Unauthenticated) */}
           {isAuthenticated && user ? (
             <div className="relative">
@@ -561,6 +710,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => {
                   setUserDropdownOpen(!userDropdownOpen);
                   setPrefsDropdownOpen(false);
+                  setNotifDropdownOpen(false);
                   setToolsDropdownOpen(false);
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
@@ -623,7 +773,23 @@ export const Header: React.FC<HeaderProps> = ({
                       className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
                     >
                       <Receipt className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Assinatura & Faturas</span>
+                      <span>Assinatura &amp; Faturas</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUserDropdownOpen(false);
+                        if (onOpenNotificationPreferences) {
+                          onOpenNotificationPreferences();
+                        } else {
+                          setActiveTab('profile');
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Bell className="w-3.5 h-3.5 text-slate-500" />
+                      <span>Preferências &amp; Notificações</span>
                     </button>
 
                     <button

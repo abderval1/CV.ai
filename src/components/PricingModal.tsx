@@ -27,7 +27,6 @@ import {
 import {
   X,
   Check,
-  Sparkles,
   ShieldCheck,
   Zap,
   CreditCard,
@@ -50,6 +49,8 @@ interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   promptMessage?: string;
+  initialPlan?: SubscriptionPlan;
+  initialCycle?: BillingCycle;
 }
 
 // Chave Pix padrão de fallback (pode ser substituída no Painel Administrativo)
@@ -90,13 +91,43 @@ function translateCardGatewayError(message?: string): string {
   return message.replace(/stripe/gi, 'processador de pagamentos');
 }
 
-export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, promptMessage }) => {
+function getPaymentAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token =
+      localStorage.getItem('curriculopro_auth_token') ||
+      sessionStorage.getItem('curriculopro_auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch {
+    // ignore storage access errors
+  }
+  return headers;
+}
+
+function getSafeExternalUrl(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return null;
+}
+
+export const PricingModal: React.FC<PricingModalProps> = ({
+  isOpen,
+  onClose,
+  promptMessage,
+  initialPlan,
+  initialCycle
+}) => {
   const { user, upgradePlan, refreshUser } = useAuth();
   const { currency, setCurrency, config: currencyConfig, formatPrice } = useCurrency();
   const { showSuccess, showError, showInfo } = useToast();
 
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('pro');
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>(initialCycle || 'monthly');
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(
+    initialPlan === 'executive' ? 'executive' : 'pro'
+  );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('stripe');
   const [cardFlowMode, setCardFlowMode] = useState<'embedded' | 'checkout'>('embedded');
 
@@ -149,6 +180,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     pixKeyTypeLabel: string;
     txId: string;
   } | null>(null);
+  const [billingPortalUrl, setBillingPortalUrl] = useState<string | null>(null);
 
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
@@ -294,6 +326,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     });
   }, [adminPlans]);
 
+  // Sync pre-selected plan & cycle from Landing/Showcase triggers (skip when returning from Stripe Checkout)
+  useEffect(() => {
+    if (!isOpen) return;
+    const queryParams = new URLSearchParams(window.location.search);
+    if (queryParams.get('stripe_status') === 'success') return;
+
+    if (initialPlan === 'pro' || initialPlan === 'executive') {
+      setSelectedPlan(initialPlan);
+    }
+    if (initialCycle) {
+      setBillingCycle(normalizeBillingCycle(initialCycle));
+    }
+  }, [isOpen, initialPlan, initialCycle]);
+
   // Hosted Checkout Return Verification & Analytics
   useEffect(() => {
     if (!isOpen) return;
@@ -322,7 +368,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     try {
       const res = await fetch('/api/stripe/verify-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getPaymentAuthHeaders(),
         body: JSON.stringify({ sessionId })
       });
       const data = await res.json();
@@ -577,7 +624,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
       try {
         const res = await fetch('/api/payments/create-subscription-intent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getPaymentAuthHeaders(),
           body: JSON.stringify({
             plan: selectedPlan,
             billingCycle,
@@ -585,7 +633,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
             userName: user.name || cardholderName || user.email,
             userEmail: user.email,
             couponCode,
-            discountPercent: appliedDiscount,
             currency: currency === 'BRL' ? 'BRL' : 'USD'
           })
         });
@@ -639,22 +686,23 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
         try {
           const res = await fetch('/api/stripe/create-checkout-session', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            headers: getPaymentAuthHeaders(),
             body: JSON.stringify({
               plan: selectedPlan,
               billingCycle,
               userId: user.id,
               userName: user.name || cardholderName || user.email,
               userEmail: user.email,
-              discountPercent: appliedDiscount,
               couponCode: couponCode || undefined,
               currency: currency === 'BRL' ? 'BRL' : 'USD',
               originUrl: window.location.origin + window.location.pathname
             })
           });
           const data = await res.json();
-          if (data.url) {
-            window.location.href = data.url;
+          const safeCheckoutUrl = getSafeExternalUrl(data.url);
+          if (safeCheckoutUrl) {
+            window.location.href = safeCheckoutUrl;
             return;
           }
           throw new Error(data.error || 'Não foi possível abrir a página segura de pagamento.');
@@ -685,7 +733,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
       try {
         const intentRes = await fetch('/api/payments/create-subscription-intent', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getPaymentAuthHeaders(),
           body: JSON.stringify({
             plan: selectedPlan,
             billingCycle,
@@ -693,7 +742,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
             userName: cardholderName.trim(),
             userEmail: user.email,
             couponCode: couponCode || undefined,
-            discountPercent: appliedDiscount,
             currency: currency === 'BRL' ? 'BRL' : 'USD'
           })
         });
@@ -722,7 +770,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
         const confirmRes = await fetch('/api/payments/confirm-subscription', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          headers: getPaymentAuthHeaders(),
           body: JSON.stringify({
             subscriptionId: intentData.subscriptionId,
             paymentIntentId: confirmation.paymentIntent.id,
@@ -837,15 +886,24 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
     try {
       const res = await fetch('/api/stripe/customer-portal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: getPaymentAuthHeaders(),
         body: JSON.stringify({
           customerId: user.stripeCustomerId,
           returnUrl: window.location.href
         })
       });
       const data = await res.json();
-      if (data.url) {
-        window.open(data.url, '_blank');
+      const safePortalUrl = getSafeExternalUrl(data.url);
+      if (safePortalUrl) {
+        setBillingPortalUrl(safePortalUrl);
+        const anchor = document.createElement('a');
+        anchor.href = safePortalUrl;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
       } else {
         showError('Portal Indisponível', data?.error || 'Não foi possível abrir o portal de faturação.');
       }
@@ -857,24 +915,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
   const cycleMeta = BILLING_CYCLE_META[billingCycle];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-x-hidden overflow-y-auto">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94vh] overflow-y-auto overflow-x-hidden animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-x-hidden overflow-y-auto">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[94dvh] overflow-y-auto overflow-x-hidden animate-in zoom-in-95 duration-200">
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 pb-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-20">
+        <div className="p-4 sm:p-6 pb-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-sm z-20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
-              <Sparkles className="w-5 h-5 text-indigo-600 fill-indigo-100" />
+            <div className="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center shadow-xs shrink-0">
+              <CreditCard className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-slate-900">Planos & Assinaturas Profissionais</h2>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <CreditCard className="w-3 h-3 text-indigo-600" />
-                  Cartão & Pix
-                </span>
-              </div>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
+                Planos &amp; Ativação de Assinatura
+              </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Desbloqueie exportação Word (.docx), IA sem limites e aprovação máxima nos robôs ATS.
+                Exportação Word (.docx), Radar ATS e tradução em 5 idiomas via Cartão ou Pix sem fidelidade.
               </p>
             </div>
           </div>
@@ -882,7 +936,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+            className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
             aria-label="Fechar"
           >
             <X className="w-5 h-5" />
@@ -922,7 +976,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                 <span className="text-xs font-semibold text-slate-600">Ciclo de Faturação:</span>
-                <span className="text-xs font-bold text-indigo-600 uppercase">
+                <span className="text-xs font-bold text-slate-900 uppercase">
                   {formatCycleLabel(successDetails.billingCycle)} ({getCycleDurationDays(successDetails.billingCycle)} dias)
                 </span>
               </div>
@@ -930,7 +984,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
               {successDetails.subscriptionId && (
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                   <span className="text-xs font-semibold text-slate-600">ID da Assinatura:</span>
-                  <span className="text-xs font-mono font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                  <span className="text-xs font-mono font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                     {successDetails.subscriptionId}
                   </span>
                 </div>
@@ -964,7 +1018,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full sm:w-auto px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                className="w-full sm:w-auto min-h-[44px] px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
               >
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
                 <span>Começar a Usar Agora</span>
@@ -974,13 +1028,27 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                 <button
                   type="button"
                   onClick={handleOpenBillingPortal}
-                  className="w-full sm:w-auto px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto min-h-[44px] px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
                   <span>Gerir Cartão &amp; Faturas</span>
                 </button>
               )}
             </div>
+            {billingPortalUrl && getSafeExternalUrl(billingPortalUrl) && (
+              <p className="text-xs text-slate-600">
+                Se o separador não abriu automaticamente,{' '}
+                <a
+                  href={getSafeExternalUrl(billingPortalUrl)!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-slate-900 underline"
+                >
+                  clique aqui para abrir o portal de faturação
+                </a>
+                .
+              </p>
+            )}
           </div>
         ) : pixPendingDetails ? (
           /* View 2: Pix Pending Verification (Direct Personal Pix Transfer) */
@@ -1061,11 +1129,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                   <Lock className="w-5 h-5 text-slate-950" />
                 </div>
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">
-                      Download Protegido por Subscrição
+                      Recurso Exclusivo para Assinantes
                     </h4>
-                    <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded-md border border-amber-500/40 uppercase tracking-wide">
                       Requer Plano Ativo
                     </span>
                   </div>
@@ -1116,7 +1184,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                     >
                       <span>{meta.label}</span>
                       {meta.badgeText && (
-                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded-full font-bold">
+                        <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-bold tabular-nums">
                           {meta.badgeText}
                         </span>
                       )}
@@ -1141,14 +1209,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                   <div
                     key={plan.id}
                     onClick={() => handleSelectPlan(plan.id)}
-                    className={`rounded-2xl p-6 border cursor-pointer transition-all flex flex-col justify-between relative ${
+                    className={`rounded-2xl p-5 sm:p-6 border cursor-pointer transition-all flex flex-col justify-between relative ${
                       isSelected
-                        ? 'border-indigo-600 ring-2 ring-indigo-600/30 shadow-lg bg-white'
+                        ? 'border-slate-900 ring-2 ring-slate-900/15 shadow-lg bg-white'
                         : 'border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300'
                     }`}
                   >
                     {plan.isPopular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-black px-3 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
+                      <div className="absolute -top-3 left-4 bg-slate-900 text-amber-400 text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider shadow-sm border border-slate-800">
                         Mais Escolhido
                       </div>
                     )}
@@ -1160,11 +1228,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                       </div>
 
                       <div className="pt-2 border-t border-slate-100">
-                        <div className="text-2xl font-black font-mono text-slate-900">
+                        <div className="text-2xl font-black font-mono tabular-nums text-slate-900">
                           {displayPrice}
                           <span className="text-xs font-normal text-slate-500">{periodSuffix}</span>
                         </div>
-                        <span className="text-[11px] text-slate-500 font-mono block">
+                        <span className="text-[11px] text-slate-500 font-mono tabular-nums block">
                           {currency === 'BRL'
                             ? `Equivalente a $${cycleUsd} USD`
                             : `Equivalente a R$ ${(cycleUsd * 5.4).toFixed(2)} BRL`}
@@ -1196,11 +1264,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                           e.stopPropagation();
                           handleSelectPlan(plan.id);
                         }}
-                        className={`w-full py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+                        className={`w-full min-h-[42px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
                           isCurrent
                             ? 'bg-slate-100 text-slate-500 cursor-default'
                             : isSelected && plan.id !== 'free'
-                            ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md'
+                            ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm'
                             : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
                       >
@@ -1219,11 +1287,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4 text-indigo-600" />
-                      <span>Conclusão da Assinatura</span>
+                      <CreditCard className="w-4 h-4 text-slate-800" />
+                      <span>Resumo &amp; Pagamento</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Escolha entre Cartão de Crédito/Débito (cobrança protegida) ou Pix em Reais (QR Code).
+                      Ativação imediata no Cartão (Stripe PCI-DSS) ou via Pix em Reais com QR Code. Cancele quando quiser.
                     </p>
                   </div>
 
@@ -1233,7 +1301,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                         {formatPrice(basePriceUSD)}
                       </span>
                     )}
-                    <span className="text-2xl font-black text-slate-900 font-mono">
+                    <span className="text-2xl font-black text-slate-900 font-mono tabular-nums">
                       {paymentMethod === 'pix' ? `R$ ${priceBRL.toFixed(2)}` : formatPrice(finalPriceUSD)}
                     </span>
                     <span className="text-[11px] text-slate-500 block font-medium">
@@ -1247,7 +1315,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                 {/* Coupon Code Input */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-purple-600" />
+                    <Tag className="w-3.5 h-3.5 text-amber-600" />
                     <span>Tem um Cupom de Desconto?</span>
                   </label>
                   <div className="flex gap-2 max-w-md">
@@ -1256,13 +1324,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                       placeholder="Insira o código do cupom"
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      className="flex-1 px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-xl uppercase focus:outline-hidden focus:ring-2 focus:ring-indigo-600"
+                      className="flex-1 min-h-[40px] px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-xl uppercase focus:outline-hidden focus:ring-2 focus:ring-slate-900"
                     />
                     <button
                       type="button"
                       onClick={handleApplyCoupon}
                       disabled={isCheckingCoupon || !couponCode.trim()}
-                      className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors whitespace-nowrap"
+                      className="min-h-[40px] px-4 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors whitespace-nowrap"
                     >
                       {isCheckingCoupon ? 'A validar...' : 'Aplicar Cupom'}
                     </button>
@@ -1284,18 +1352,18 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                       onClick={() => setPaymentMethod('stripe')}
                       className={`p-3.5 rounded-2xl border text-left transition-all relative ${
                         paymentMethod === 'stripe' || paymentMethod === 'card'
-                          ? 'border-indigo-600 bg-white ring-2 ring-indigo-600/30 shadow-md'
+                          ? 'border-slate-900 bg-white ring-2 ring-slate-900/15 shadow-md'
                           : 'border-slate-200 bg-white/70 hover:bg-white'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <CreditCard className="w-4 h-4 text-indigo-600" />
-                        <span className="text-[9px] font-bold uppercase bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded font-mono">
+                        <CreditCard className="w-4 h-4 text-slate-800" />
+                        <span className="text-[9px] font-bold uppercase bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono">
                           Seguro
                         </span>
                       </div>
                       <div className="font-bold text-xs text-slate-900">Cartão de Crédito / Débito</div>
-                      <div className="text-[10px] text-slate-400">Visa, Mastercard, Apple Pay &amp; Google Pay</div>
+                      <div className="text-[10px] text-slate-500">Visa, Mastercard, Apple Pay &amp; Google Pay</div>
                     </button>
 
                     {/* Pix */}
@@ -1323,7 +1391,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
 
                   {/* 1. CARD PAYMENT CONTAINER */}
                   {(paymentMethod === 'stripe' || paymentMethod === 'card') && (
-                    <div className="mt-3 p-4 sm:p-5 bg-white border border-indigo-100 rounded-2xl shadow-xs space-y-4">
+                    <div className="mt-3 p-4 sm:p-5 bg-white border border-slate-200 rounded-2xl shadow-xs space-y-4">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                         <div className="flex items-center gap-2">
                           <Lock className="w-4 h-4 text-emerald-600" />
@@ -1338,7 +1406,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                             onClick={() => setCardFlowMode('embedded')}
                             className={`px-2 py-1 rounded-md transition-colors ${
                               cardFlowMode === 'embedded'
-                                ? 'bg-white text-indigo-700 shadow-2xs'
+                                ? 'bg-white text-slate-900 shadow-2xs'
                                 : 'text-slate-500 hover:text-slate-800'
                             }`}
                           >
@@ -1349,7 +1417,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                             onClick={() => setCardFlowMode('checkout')}
                             className={`px-2 py-1 rounded-md transition-colors ${
                               cardFlowMode === 'checkout'
-                                ? 'bg-white text-indigo-700 shadow-2xs'
+                                ? 'bg-white text-slate-900 shadow-2xs'
                                 : 'text-slate-500 hover:text-slate-800'
                             }`}
                           >
@@ -1378,7 +1446,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                                 setCardError(null);
                               }}
                               placeholder="Nome completo conforme impresso no cartão"
-                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-indigo-600 focus:bg-white"
+                              className="w-full min-h-[40px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900 focus:bg-white"
                             />
                           </div>
 
@@ -1389,7 +1457,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                                 <Lock className="w-3 h-3" /> Tokenização Segura
                               </span>
                             </label>
-                            <div className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-indigo-600 focus-within:bg-white transition-colors min-h-[42px]">
+                            <div className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-slate-900 focus-within:bg-white transition-colors min-h-[42px]">
                               <div ref={cardMountRef} />
                               {!isCardElementReady && (
                                 <p className="text-[11px] text-slate-400">
@@ -1408,14 +1476,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                             </div>
                           )}
 
-                          <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-[11px] text-indigo-950 space-y-1">
-                            <div className="flex items-center gap-1.5 font-bold text-indigo-900">
-                              <RefreshCw className="w-3.5 h-3.5 text-indigo-700" />
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-800 space-y-1">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <RefreshCw className="w-3.5 h-3.5 text-slate-700" />
                               <span>Renovação Automática ({cycleMeta.label})</span>
                             </div>
-                            <p className="text-indigo-800 leading-relaxed">
+                            <p className="text-slate-600 leading-relaxed">
                               O valor de{' '}
-                              <strong>
+                              <strong className="text-slate-900">
                                 {currency === 'BRL' ? `R$ ${priceBRL.toFixed(2)} BRL` : `$${finalPriceUSD} USD`}
                               </strong>{' '}
                               será cobrado a cada {cycleMeta.durationDays} dias. Pode gerir o cartão ou cancelar a
@@ -1425,7 +1493,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                         </div>
                       ) : (
                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center space-y-2.5">
-                          <CreditCard className="w-8 h-8 text-indigo-600 mx-auto" />
+                          <CreditCard className="w-8 h-8 text-slate-700 mx-auto" />
                           <div>
                             <h4 className="text-xs font-bold text-slate-900">
                               Redirecionamento para Ambiente Seguro de Pagamento
@@ -1637,10 +1705,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, pro
                     type="button"
                     onClick={handleProcessSubscription}
                     disabled={isProcessing}
-                    className={`w-full sm:w-auto px-7 py-3 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50 ${
+                    className={`w-full sm:w-auto min-h-[44px] px-7 py-3 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50 ${
                       paymentMethod === 'pix'
                         ? 'bg-teal-600 hover:bg-teal-700'
-                        : 'bg-indigo-600 hover:bg-indigo-700'
+                        : 'bg-slate-900 hover:bg-slate-800'
                     }`}
                   >
                     {isProcessing ? (

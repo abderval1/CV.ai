@@ -8,15 +8,23 @@ import {
   FileText,
   Activity,
   Target,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Minus
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
+import { GENERIC_DEFAULT_CV } from '../data/initialCV';
 import { useCurrency } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
-import { CVData } from '../types/cv';
+import { BillingCycle, CVData, SubscriptionPlan, TemplateStyle } from '../types/cv';
 import { CVHealthScoreOverview } from './CVHealthScoreOverview';
 import { DocumentMiniPreview } from './DocumentMiniPreview';
 import { ShowcaseMode } from './ShowcaseGalleryView';
+import {
+  BILLING_CYCLES,
+  BILLING_CYCLE_META,
+  getCyclePriceUSD,
+  getMonthlyEquivalentUSD
+} from '../utils/billingCycles';
 import {
   getStoredTemplatesSync,
   getStoredPlansSync,
@@ -26,6 +34,7 @@ import {
 interface LandingHeroViewProps {
   onStartCreating: () => void;
   onOpenPricing: () => void;
+  onSelectPlanForCheckout?: (plan: SubscriptionPlan, cycle: BillingCycle) => void;
   onSelectTemplate: (templateId: string) => void;
   onOpenTemplateAdvisor: () => void;
   onOpenShowcase: (mode: ShowcaseMode) => void;
@@ -33,9 +42,44 @@ interface LandingHeroViewProps {
   onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview') => void;
 }
 
+const HERO_PREVIEW_MODELS: Array<{
+  id: TemplateStyle;
+  label: string;
+  atsLabel: string;
+  ruleLabel: string;
+  accentColor: string;
+  hasPhoto: boolean;
+}> = [
+  {
+    id: 'executive_harvard',
+    label: 'Harvard ATS',
+    atsLabel: '96% ATS',
+    ruleLabel: 'Sem Foto · C-Level / EUA',
+    accentColor: '#1e293b',
+    hasPhoto: false
+  },
+  {
+    id: 'ats_compact',
+    label: 'ATS Estrito',
+    atsLabel: '100% ATS',
+    ruleLabel: 'Sem Foto · Workday / Taleo',
+    accentColor: '#0f172a',
+    hasPhoto: false
+  },
+  {
+    id: 'european_europass',
+    label: 'Europass UE',
+    atsLabel: '88% ATS',
+    ruleLabel: 'Com Foto · União Europeia',
+    accentColor: '#1d4ed8',
+    hasPhoto: true
+  }
+];
+
 export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   onStartCreating,
   onOpenPricing,
+  onSelectPlanForCheckout,
   onSelectTemplate,
   onOpenTemplateAdvisor,
   onOpenShowcase,
@@ -44,9 +88,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 }) => {
   const { formatPrice, convertFromUSD } = useCurrency();
   const { t } = useLanguage();
+  const [heroModelIdx, setHeroModelIdx] = useState<number>(0);
+  const [heroPreviewLang, setHeroPreviewLang] = useState<'pt' | 'en'>('pt');
   const [atsHubTab, setAtsHubTab] = useState<'health' | 'simulator'>('health');
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
+  const [pricingCycle, setPricingCycle] = useState<BillingCycle>('yearly');
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [adminTemplates, setAdminTemplates] = useState(() => getStoredTemplatesSync());
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
@@ -66,6 +113,56 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
   const proPlan = adminPlans.find((p) => p.id === 'pro') || adminPlans[0];
   const execPlan = adminPlans.find((p) => p.id === 'executive') || adminPlans[1];
+  const activeHeroModel = HERO_PREVIEW_MODELS[heroModelIdx] || HERO_PREVIEW_MODELS[0];
+
+  const heroPreviewCVData = useMemo<CVData>(() => {
+    const base = GENERIC_DEFAULT_CV;
+    if (heroPreviewLang === 'pt') {
+      return {
+        ...base,
+        templateStyle: activeHeroModel.id,
+        accentColor: activeHeroModel.accentColor,
+        personalDetails: {
+          ...base.personalDetails,
+          showPhoto: activeHeroModel.hasPhoto
+        }
+      };
+    }
+
+    return {
+      ...base,
+      templateStyle: activeHeroModel.id,
+      accentColor: activeHeroModel.accentColor,
+      personalDetails: {
+        ...base.personalDetails,
+        title: 'Director of Operations & Corporate Strategy',
+        location: 'Lisbon, Portugal (Global Mobility)',
+        showPhoto: activeHeroModel.hasPhoto
+      },
+      summary:
+        'Operations executive with 12+ years leading multi-site P&L turnarounds across Europe and LATAM. Reduced logistics OPEX by 32% and scaled recurring operational EBITDA by $4.8M/year.',
+      experiences: base.experiences.slice(0, 2).map((exp, idx) =>
+        idx === 0
+          ? {
+              ...exp,
+              role: 'Chief Operating Officer (COO)',
+              period: '2021 – Present',
+              highlights: [
+                'Restructured 4 European fulfillment hubs (140 staff), cutting operating cost by 32% YoY.',
+                'Delivered 99.4% on-time SLA across $62M annual volume while improving EBITDA margin by 8.4 pts.'
+              ]
+            }
+          : {
+              ...exp,
+              role: 'Senior Supply Chain Manager',
+              period: '2017 – 2021',
+              highlights: [
+                'Automated SAP ERP procurement pipelines, reducing vendor lead times from 18 to 6 days.'
+              ]
+            }
+      )
+    };
+  }, [activeHeroModel, heroPreviewLang]);
 
   // Interactive Live ATS Quick-Checker State
   const [atsPreset, setAtsPreset] = useState<'coo' | 'tech' | 'cfo'>('coo');
@@ -138,11 +235,11 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const faqs = [
     {
       q: 'Como funciona o pagamento via Cartão e Pix?',
-      a: 'Aceitamos cartões de crédito e débito internacionais com renovação transparente, além de Pix em Reais com QR Code e chave oficial.'
+      a: 'Aceitamos cartões de crédito e débito internacionais com renovação transparente, além de Pix em Reais (BRL) com QR Code e chave oficial para conferência bancária.'
     },
     {
       q: 'O currículo passa mesmo pelos robôs ATS (Workday, Taleo, Greenhouse)?',
-      a: 'Sim. Os nossos modelos estritos (como Harvard Executivo e ATS Estrito) seguem leitura linear sem caixas de texto que corrompem o OCR, e o Radar ATS valida as palavras-chave da vaga.'
+      a: 'Sim. Os nossos modelos estritos (como Harvard Executivo e ATS Estrito) seguem leitura linear em coluna única sem caixas flutuantes que corrompem o OCR, e o Radar ATS valida as palavras-chave exatas da vaga.'
     },
     {
       q: 'O ficheiro Word (.docx) baixado mantém a formatação exata do site?',
@@ -150,107 +247,283 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     },
     {
       q: 'A tradução traduz também o conteúdo que eu escrevi?',
-      a: 'Sim. Ao trocar entre Português, Inglês, Espanhol, Francês e Alemão, a plataforma traduz os títulos das secções e o conteúdo completo do seu CV e carta de apresentação.'
+      a: 'Sim. Ao trocar entre Português, Inglês, Espanhol, Francês e Alemão, a plataforma traduz os títulos das secções e o texto completo das suas experiências, resumo e carta mantendo siglas técnicas.'
     },
     {
       q: 'Posso cancelar ou mudar de plano quando quiser?',
-      a: 'Sim, com 1 clique na sua Área do Utilizador, sem multas ou fidelização.'
+      a: 'Sim, diretamente na sua Área do Utilizador, sem multas ou período de fidelização.'
     }
+  ];
+
+  const handleCheckoutTrigger = (plan: SubscriptionPlan) => {
+    if (onSelectPlanForCheckout) {
+      onSelectPlanForCheckout(plan, pricingCycle);
+    } else {
+      onOpenPricing();
+    }
+  };
+
+  const proCycleUsd = getCyclePriceUSD(proPlan, pricingCycle);
+  const execCycleUsd = getCyclePriceUSD(execPlan, pricingCycle);
+  const proMonthlyEq = getMonthlyEquivalentUSD(proPlan, pricingCycle);
+  const execMonthlyEq = getMonthlyEquivalentUSD(execPlan, pricingCycle);
+  const cycleMeta = BILLING_CYCLE_META[pricingCycle];
+
+  const comparisonRows: Array<{
+    feature: string;
+    free: string | boolean;
+    pro: string | boolean;
+    exec: string | boolean;
+  }> = [
+    { feature: 'Pré-visualização A4 ao vivo dos modelos', free: true, pro: true, exec: true },
+    { feature: 'Importação estruturada de LinkedIn, PDF e Word', free: false, pro: true, exec: true },
+    { feature: 'Exportação nativa Word (.docx) e PDF A4 limpo', free: false, pro: true, exec: true },
+    { feature: 'Tradução integral CV + Carta (PT, EN, ES, FR, DE)', free: false, pro: true, exec: true },
+    { feature: 'Radar ATS Semântico & Otimizador Google XYZ', free: false, pro: true, exec: true },
+    { feature: 'Modelos Harvard Executivo, C-Level & Diplomático ONU', free: false, pro: false, exec: true },
+    { feature: 'Simulador de Entrevista por voz/texto com notas STAR', free: false, pro: false, exec: true }
   ];
 
   return (
     <div className="w-full max-w-full bg-[#0B0F17] text-white min-h-full overflow-x-hidden selection:bg-amber-400 selection:text-slate-950">
-      {/* 1. UNIFIED EDITORIAL HERO & METRICS STRIP */}
-      <section className="relative pt-12 pb-10 lg:pt-20 lg:pb-14 border-b border-slate-800/80 bg-[#0B0F17]">
+      {/* 1. EDITORIAL ASYMMETRIC HERO + INTERACTIVE LIVE A4 STUDIO PREVIEW */}
+      <section className="relative pt-10 pb-10 lg:pt-16 lg:pb-14 border-b border-slate-800/80 bg-[#0B0F17]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto space-y-5">
-            <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-amber-400">
-              {t('hero.kicker', 'Currículos ATS · Cartas de Apresentação · 5 Idiomas')}
-            </p>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+            {/* Left Column: Positioning, Action Pair & Proof */}
+            <div className="lg:col-span-7 space-y-5 text-center lg:text-left">
+              <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-amber-400">
+                {t('hero.kicker', 'Currículos ATS · Cartas de Apresentação A4 · 5 Idiomas')}
+              </p>
 
-            <h1
-              className="font-bold tracking-[-0.03em] text-slate-50 leading-[1.1]"
-              style={{ fontSize: 'clamp(2rem, 4.2vw, 3.35rem)', textWrap: 'balance' }}
-            >
-              {t('hero.title', 'Passe pelos filtros das maiores empresas do mundo e receba 3x mais entrevistas.')}
-            </h1>
-
-            <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto">
-              {t(
-                'hero.subtitle',
-                'Construa currículos e cartas de apresentação calibrados para sistemas ATS (Workday, Taleo, Greenhouse) com tradução integral e exportação fiel em Word (.docx) e PDF A4.'
-              )}
-            </p>
-
-            {/* Focused Primary & Secondary Action Pair */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={onStartCreating}
-                className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation"
+              <h1
+                className="font-bold tracking-[-0.03em] text-slate-50 leading-[1.08]"
+                style={{ fontSize: 'clamp(2rem, 3.8vw, 3.2rem)', textWrap: 'balance' }}
               >
-                <span>{t('hero.ctaStart', 'Criar Meu Currículo Profissional')}</span>
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </button>
+                {t(
+                  'hero.title',
+                  'Currículos executivos calibrados para triagem ATS e exportação fiel em Word e PDF.'
+                )}
+              </h1>
 
-              <button
-                type="button"
-                onClick={() => onOpenShowcase('models-cv')}
-                className="w-full sm:w-auto min-h-[46px] px-6 py-3 text-sm font-medium text-slate-100 bg-transparent hover:bg-slate-800/70 border border-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap touch-manipulation"
-              >
-                <FileText className="w-4 h-4 text-slate-400" />
-                <span>Ver Modelos &amp; Exemplos Grátis</span>
-              </button>
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto lg:mx-0">
+                {t(
+                  'hero.subtitle',
+                  'Construa currículos e cartas de apresentação compatíveis com Workday, Taleo e Greenhouse, com tradução integral em 5 idiomas e compilação nativa OpenXML (.docx) em escala A4.'
+                )}
+              </p>
+
+              {/* Focused Primary & Secondary Action Pair */}
+              <div className="pt-1 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
+                <button
+                  type="button"
+                  onClick={onStartCreating}
+                  className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation"
+                >
+                  <span>{t('hero.ctaStart', 'Construir Meu Currículo')}</span>
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenShowcase('models-cv')}
+                  className="w-full sm:w-auto min-h-[46px] px-6 py-3 text-sm font-medium text-slate-100 bg-transparent hover:bg-slate-800/70 border border-slate-700 rounded-lg transition-colors flex items-center justify-center gap-2 whitespace-nowrap touch-manipulation"
+                >
+                  <FileText className="w-4 h-4 text-slate-400" />
+                  <span>Explorar Modelos A4</span>
+                </button>
+              </div>
+
+              <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-1 text-xs text-slate-400">
+                <button
+                  type="button"
+                  onClick={() => onOpenShowcase('models-cv')}
+                  className="hover:text-amber-300 underline underline-offset-4"
+                >
+                  Modelos de CV
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenShowcase('examples-cv')}
+                  className="hover:text-amber-300 underline underline-offset-4"
+                >
+                  Exemplos Reais
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={() => onOpenShowcase('models-cover')}
+                  className="hover:text-amber-300 underline underline-offset-4"
+                >
+                  Modelos de Carta
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
+                  onClick={onOpenPricing}
+                  className="hover:text-amber-300 underline underline-offset-4"
+                >
+                  Planos a partir de {formatPrice(proPlan?.priceMonthlyValue ?? 8)}/mês · Cartão &amp; Pix
+                </button>
+              </div>
             </div>
 
-            <div className="pt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-400">
-              <button type="button" onClick={() => onOpenShowcase('models-cv')} className="hover:text-amber-300 underline underline-offset-4">
-                Modelos de CV
-              </button>
-              <span aria-hidden="true">·</span>
-              <button type="button" onClick={() => onOpenShowcase('examples-cv')} className="hover:text-amber-300 underline underline-offset-4">
-                Exemplos de CV
-              </button>
-              <span aria-hidden="true">·</span>
-              <button type="button" onClick={() => onOpenShowcase('models-cover')} className="hover:text-amber-300 underline underline-offset-4">
-                Modelos de Carta
-              </button>
-              <span aria-hidden="true">·</span>
-              <button type="button" onClick={() => onOpenShowcase('examples-cover')} className="hover:text-amber-300 underline underline-offset-4">
-                Exemplos de Carta
-              </button>
-            </div>
+            {/* Right Column: Interactive Live A4 Studio Preview */}
+            <div className="lg:col-span-5">
+              <div className="bg-[#111724] border border-slate-800 rounded-xl p-4 space-y-3">
+                {/* Interactive Studio Controls Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg text-[11px]">
+                    {HERO_PREVIEW_MODELS.map((m, idx) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setHeroModelIdx(idx)}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                          heroModelIdx === idx
+                            ? 'bg-amber-400 text-slate-950'
+                            : 'text-slate-300 hover:text-white'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
 
-            <p className="pt-1 text-xs text-slate-400">
-              Visualização gratuita · Planos a partir de {formatPrice(proPlan?.priceMonthlyValue ?? 8)}/mês · Cartão &amp; Pix
-            </p>
+                  <div className="flex items-center gap-1 p-0.5 bg-slate-900 border border-slate-800 rounded-lg text-[11px] font-mono">
+                    {(['pt', 'en'] as const).map((lng) => (
+                      <button
+                        key={lng}
+                        type="button"
+                        onClick={() => setHeroPreviewLang(lng)}
+                        className={`px-2 py-1 rounded-md font-bold uppercase transition-colors ${
+                          heroPreviewLang === lng
+                            ? 'bg-slate-800 text-amber-300'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {lng}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live A4 Paper Sheet */}
+                <div
+                  onClick={() => onSelectTemplate(activeHeroModel.id)}
+                  className="bg-slate-900/90 border border-slate-800 rounded-lg p-3.5 flex items-center justify-center cursor-pointer group"
+                >
+                  <div className="w-full max-w-[265px] aspect-[210/297] bg-white shadow-xl rounded-xs overflow-hidden transition-transform duration-200 group-hover:scale-[1.015]">
+                    <DocumentMiniPreview
+                      kind="cv"
+                      templateStyle={activeHeroModel.id}
+                      accentColor={activeHeroModel.accentColor}
+                      hasPhoto={activeHeroModel.hasPhoto}
+                      cvData={heroPreviewCVData}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Studio Caption & Quick Trigger */}
+                <div className="flex items-center justify-between gap-2 text-[11px] pt-0.5">
+                  <div className="min-w-0">
+                    <p className="text-slate-200 font-semibold truncate">{activeHeroModel.ruleLabel}</p>
+                    <p className="text-slate-400 font-mono tabular-nums">
+                      Compatibilidade {activeHeroModel.atsLabel} · Saída .docx / PDF
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackFrontendTelemetry({ type: 'template_selected', templateStyle: activeHeroModel.id });
+                      onSelectTemplate(activeHeroModel.id);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold rounded-md transition-colors whitespace-nowrap shrink-0"
+                  >
+                    Editar este modelo
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Integrated 4-Metric Hairline Strip */}
           <div className="mt-12 pt-8 border-t border-slate-800/80 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
             <div>
               <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">98.7%</p>
-              <p className="text-xs text-slate-400 mt-1">Aprovação em triagem ATS</p>
+              <p className="text-xs text-slate-400 mt-1">Leitura limpa em parsers ATS</p>
             </div>
             <div>
               <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">+48.000</p>
-              <p className="text-xs text-slate-400 mt-1">Profissionais contratados</p>
+              <p className="text-xs text-slate-400 mt-1">Candidaturas estruturadas</p>
             </div>
             <div>
               <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">14 Dias</p>
-              <p className="text-xs text-slate-400 mt-1">Tempo médio até entrevista</p>
+              <p className="text-xs text-slate-400 mt-1">Prazo médio até primeira entrevista</p>
             </div>
             <div>
               <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-white tabular-nums">5 Idiomas</p>
-              <p className="text-xs text-slate-400 mt-1">Tradução total com 1 clique</p>
+              <p className="text-xs text-slate-400 mt-1">PT · EN · ES · FR · DE em 1 clique</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 2. CENTRAL INTERATIVA ATS (Grouped Health Diagnostics + Job Match Simulator) */}
-      <section className="py-14 lg:py-16 bg-[#0E131D] border-b border-slate-800/80">
+      {/* 2. MECHANISM: ENGENHARIA DE CANDIDATURA (01–04 Editorial Grid) */}
+      <section className="py-12 lg:py-14 bg-[#0B0F17] border-b border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
+                Arquitetura do Estúdio
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mt-1">
+                Do rascunho à entrevista em quatro camadas técnicas
+              </h2>
+            </div>
+            <p className="text-xs text-slate-400 max-w-md">
+              Desenhado para eliminar bloqueios de OCR em portais corporativos e substituir descrições vagas por provas numéricas.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border border-slate-800 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-800 bg-[#0E131D] overflow-hidden">
+            {[
+              {
+                num: '01',
+                title: 'Leitura Linear ATS',
+                desc: 'Hierarquia semântica de coluna única compatível com Workday, Greenhouse, Taleo e Gupy sem quebra de texto.'
+              },
+              {
+                num: '02',
+                title: 'Fórmula Google XYZ',
+                desc: 'Cada experiência é estruturada em impacto quantificável, métrica de negócio e ação executiva direta.'
+              },
+              {
+                num: '03',
+                title: 'Tradução Integral 5x',
+                desc: 'Alterna títulos de secções, resumo, cargos e carta de apresentação mantendo termos técnicos originais.'
+              },
+              {
+                num: '04',
+                title: 'Word OpenXML (.docx)',
+                desc: 'Exportação nativa editável no Microsoft Word com margens A4, fontes e alinhamento fiéis ao painel.'
+              }
+            ].map((step) => (
+              <div key={step.num} className="p-5 space-y-2.5">
+                <span className="font-mono text-xs font-bold text-amber-400 tabular-nums">{step.num}</span>
+                <h3 className="text-sm font-bold text-white tracking-tight">{step.title}</h3>
+                <p className="text-xs text-slate-400 leading-relaxed">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 3. CENTRAL INTERATIVA ATS + PROVA REAL (Antes vs. Depois & Casos) */}
+      <section className="py-14 lg:py-16 bg-[#0E131D] border-b border-slate-800/80">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div className="space-y-1">
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
@@ -261,7 +534,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </h2>
             </div>
 
-            {/* Clean Segmented Switch between Diagnostics and Simulator */}
             <div className="inline-flex items-center p-1 bg-slate-900 border border-slate-800 rounded-xl self-start md:self-auto text-xs">
               <button
                 type="button"
@@ -299,7 +571,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             />
           ) : (
             <div className="bg-[#0B0F17] border border-slate-800 rounded-xl p-6 sm:p-7 space-y-6">
-              {/* Role Preset Selector */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800 text-xs">
                 <span className="text-slate-400 font-medium">Selecione uma vaga de referência:</span>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -339,7 +610,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 </div>
               </div>
 
-              {/* Clean Split Simulation */}
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
                 <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-slate-800 pb-5 md:pb-0 md:pr-6 text-center space-y-2">
                   <p className="text-[11px] uppercase font-mono tracking-wider text-slate-400">
@@ -417,10 +687,82 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </div>
             </div>
           )}
+
+          {/* Proof: Before / After Contrast + Documented Outcomes */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+            {/* Before vs After Quantitative Rewrite */}
+            <div className="lg:col-span-5 bg-[#0B0F17] border border-slate-800 rounded-xl p-5 space-y-4">
+              <div className="space-y-1 border-b border-slate-800 pb-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+                  Comparação Direta
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  De descrição passiva a argumento de entrevista
+                </h3>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800 space-y-1">
+                  <span className="text-[10px] font-mono uppercase font-bold text-rose-400">
+                    Antes · Triagem 38% ATS
+                  </span>
+                  <p className="text-slate-400 leading-relaxed">
+                    &ldquo;Responsável pelo atendimento corporativo, gestão da equipa comercial e acompanhamento de metas mensais da filial.&rdquo;
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-500/30 space-y-1">
+                  <span className="text-[10px] font-mono uppercase font-bold text-emerald-400">
+                    Depois (Fórmula Google XYZ) · 96% ATS
+                  </span>
+                  <p className="text-slate-200 leading-relaxed">
+                    &ldquo;Liderou equipa comercial de 18 consultores B2B, expandindo o pipeline anual em $4.2M (+34% YoY) com SLA de resposta abaixo de 2h.&rdquo;
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3 Attributable Candidate Results */}
+            <div className="lg:col-span-7 bg-[#0B0F17] border border-slate-800 rounded-xl p-5 space-y-4">
+              <div className="space-y-1 border-b border-slate-800 pb-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-400">
+                  Candidaturas em Produção
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  Resultados reportados por assinantes em processos seletivos
+                </h3>
+              </div>
+
+              <div className="divide-y divide-slate-800 text-xs">
+                {[
+                  {
+                    role: 'M. Oliveira · Diretor de Operações (Setor Logístico · Lisboa / Madrid)',
+                    detail:
+                      'Substituiu um CV de 4 páginas pelo formato Harvard ATS em inglês e espanhol; avançou para 4 painéis finais em 19 dias.'
+                  },
+                  {
+                    role: 'R. Tavares · Arquiteto Cloud Sênior (Fintech · São Paulo / Remoto EUA)',
+                    detail:
+                      'Ajustou 11 competências técnicas com o Radar ATS para vagas Workday; passou de 44% para 96% de aderência semântica.'
+                  },
+                  {
+                    role: 'C. Ferreira · Gestora Financeira (Indústria · Porto / Zurique)',
+                    detail:
+                      'Emitiu CV Europass e carta executiva bilíngue PT/DE com exportação direta em .docx mantendo formatação integral.'
+                  }
+                ].map((item) => (
+                  <div key={item.role} className="py-3 first:pt-1 last:pb-0 space-y-1">
+                    <p className="font-semibold text-slate-100">{item.role}</p>
+                    <p className="text-slate-400 leading-relaxed">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* 3. MODELOS INTERNACIONAIS (Hairline Bento Grid — Clean & Scannable) */}
+      {/* 4. MODELOS INTERNACIONAIS (Hairline Bento Grid) */}
       <section className="py-14 lg:py-16 bg-[#0B0F17] border-b border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
@@ -481,7 +823,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 className="bg-[#0B0F17] p-5 flex flex-col justify-between hover:bg-slate-900/90 transition-colors group"
               >
                 <div className="space-y-3">
-                  {/* Live Miniature A4 Photo Preview */}
                   <div
                     onClick={() => onOpenShowcase('models-cv')}
                     className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-center cursor-pointer overflow-hidden"
@@ -517,7 +858,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   <span className="text-[11px] text-slate-500">
                     Visualizar grátis ·{' '}
                     <span className="text-slate-300 font-medium">
-                      {tmpl.tierRequired === 'executive' ? 'VIP ($12)' : 'Pro ($8)'}
+                      {tmpl.tierRequired === 'executive'
+                        ? `VIP ($${execPlan?.priceMonthlyValue ?? 12})`
+                        : `Pro ($${proPlan?.priceMonthlyValue ?? 8})`}
                     </span>
                   </span>
                   <button
@@ -564,12 +907,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
         </div>
       </section>
 
-      {/* 4. PLANOS & DÚVIDAS FREQUENTES (Unified Conversion & Trust Section) */}
+      {/* 5. PLANOS INTERATIVOS, MATRIZ COMPARATIVA & FAQ */}
       <section className="py-14 lg:py-20 bg-[#0E131D]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
           {/* Pricing Block */}
           <div className="space-y-8">
-            <div className="text-center max-w-xl mx-auto space-y-2">
+            <div className="text-center max-w-2xl mx-auto space-y-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-400">
                 Preços Transparentes
               </span>
@@ -577,33 +920,111 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 Escolha o plano ideal para a sua candidatura
               </h2>
               <p className="text-sm text-slate-400">
-                Acesso completo à edição, tradução em 5 idiomas e exportação Word/PDF. Ciclos Mensal, Trimestral (-10%), Semestral (-18%) e Anual (-25%).
+                Acesso completo à edição, tradução em 5 idiomas e exportação nativa Word/PDF. Pagamento via Cartão Internacional ou Pix em Reais.
               </p>
+
+              {/* Interactive 4-Cycle Billing Toggle */}
+              <div className="pt-2 inline-flex flex-wrap items-center justify-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs">
+                {BILLING_CYCLES.map((cycle) => {
+                  const meta = BILLING_CYCLE_META[cycle];
+                  const isActive = pricingCycle === cycle;
+                  return (
+                    <button
+                      key={cycle}
+                      type="button"
+                      onClick={() => setPricingCycle(cycle)}
+                      className={`px-3 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                        isActive
+                          ? 'bg-amber-400 text-slate-950 font-bold'
+                          : 'text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      <span>{meta.label}</span>
+                      {meta.badgeText && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
+                            isActive
+                              ? 'bg-slate-950/15 text-slate-950'
+                              : 'bg-emerald-950 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                        >
+                          {meta.badgeText}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+            {/* 3 Plan Cards: Gratuito | Pro | Executivo VIP */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+              {/* Free Visual Tier */}
+              <div className="bg-[#0B0F17] p-6 rounded-xl border border-slate-800 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                      Gratuito
+                    </span>
+                    <span className="text-[11px] text-slate-500">Exploração</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold text-white tracking-tight tabular-nums">
+                      $0 <span className="text-xs font-normal text-slate-400">/ sempre</span>
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Pré-visualização A4 dos modelos e diagnóstico inicial antes de subscrever.
+                    </p>
+                  </div>
+
+                  <ul className="space-y-2.5 text-xs text-slate-300 pt-3 border-t border-slate-800">
+                    {[
+                      'Galeria completa de modelos CV & Carta',
+                      'Leitura do Diagnóstico de Saúde do CV',
+                      'Consultor de escolha por país e área'
+                    ].map((feat) => (
+                      <li key={feat} className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-slate-500 shrink-0" />
+                        <span>{feat}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onOpenShowcase('models-cv')}
+                  className="mt-6 w-full min-h-[44px] py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
+                >
+                  <span>Explorar Modelos Grátis</span>
+                </button>
+              </div>
+
               {/* Pro Plan */}
-              <div className="bg-[#0B0F17] p-6 sm:p-7 rounded-xl border border-amber-400/50 flex flex-col justify-between">
+              <div className="bg-[#0B0F17] p-6 sm:p-7 rounded-xl border border-amber-400/60 flex flex-col justify-between">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">
                       {proPlan?.name || 'Profissional Pro'}
                     </span>
-                    <span className="text-[11px] font-medium text-amber-300">
-                      {proPlan?.badgeText || 'Recomendado'}
+                    <span className="text-[11px] font-semibold text-amber-300">
+                      {proPlan?.badgeText || 'Mais Escolhido'}
                     </span>
                   </div>
 
                   <div className="space-y-1">
                     <p className="text-3xl font-bold text-white tracking-tight tabular-nums">
-                      {formatPrice(proPlan?.priceMonthlyValue ?? 8)}{' '}
-                      <span className="text-xs font-normal text-slate-400">/ Mês</span>
+                      {formatPrice(proCycleUsd)}{' '}
+                      <span className="text-xs font-normal text-slate-400">/ {cycleMeta.shortUnit}</span>
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      Equivalente: ${proPlan?.priceMonthlyValue ?? 8} USD · R$ {convertFromUSD(proPlan?.priceMonthlyValue ?? 8, 'BRL').toFixed(2).replace('.', ',')} BRL
+                    <p className="text-[11px] text-slate-400 font-mono tabular-nums">
+                      Equivalente: ${proCycleUsd} USD · R$ {convertFromUSD(proCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL
                     </p>
-                    <p className="text-xs text-emerald-400">
-                      Ou {formatPrice(proPlan?.priceYearlyValue ?? 72)} / Ano (Poupe 25%)
+                    <p className="text-xs text-emerald-400 tabular-nums">
+                      {proMonthlyEq
+                        ? `Equivalente a ${formatPrice(proMonthlyEq)}/mês (${cycleMeta.badgeText})`
+                        : `Acesso completo por ${cycleMeta.durationDays} dias`}
                     </p>
                   </div>
 
@@ -626,10 +1047,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={onOpenPricing}
+                  onClick={() => handleCheckoutTrigger('pro')}
                   className="mt-6 w-full min-h-[44px] py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
                 >
-                  <span>Subscrever {proPlan?.name || 'Profissional'}</span>
+                  <span>Subscrever {proPlan?.name || 'Profissional Pro'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -646,14 +1067,16 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                   <div className="space-y-1">
                     <p className="text-3xl font-bold text-white tracking-tight tabular-nums">
-                      {formatPrice(execPlan?.priceMonthlyValue ?? 12)}{' '}
-                      <span className="text-xs font-normal text-slate-400">/ Mês</span>
+                      {formatPrice(execCycleUsd)}{' '}
+                      <span className="text-xs font-normal text-slate-400">/ {cycleMeta.shortUnit}</span>
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono">
-                      Equivalente: ${execPlan?.priceMonthlyValue ?? 12} USD · R$ {convertFromUSD(execPlan?.priceMonthlyValue ?? 12, 'BRL').toFixed(2).replace('.', ',')} BRL
+                    <p className="text-[11px] text-slate-400 font-mono tabular-nums">
+                      Equivalente: ${execCycleUsd} USD · R$ {convertFromUSD(execCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL
                     </p>
-                    <p className="text-xs text-slate-300">
-                      Ou {formatPrice(execPlan?.priceYearlyValue ?? 108)} / Ano (Poupe 25%)
+                    <p className="text-xs text-slate-300 tabular-nums">
+                      {execMonthlyEq
+                        ? `Equivalente a ${formatPrice(execMonthlyEq)}/mês (${cycleMeta.badgeText})`
+                        : `Inclui Simulador STAR e Modelos C-Level`}
                     </p>
                   </div>
 
@@ -676,12 +1099,53 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={onOpenPricing}
+                  onClick={() => handleCheckoutTrigger('executive')}
                   className="mt-6 w-full min-h-[44px] py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
                 >
                   <span>Subscrever {execPlan?.name || 'Executivo VIP'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            </div>
+
+            {/* Clean Feature Comparison Table */}
+            <div className="bg-[#0B0F17] border border-slate-800 rounded-xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                  Comparativo Detalhado de Recursos
+                </h3>
+                <span className="text-[11px] text-slate-500">Todos os planos sem fidelização</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/70 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="py-3 px-5">Capacidade</th>
+                      <th className="py-3 px-4 text-center">Gratuito</th>
+                      <th className="py-3 px-4 text-center text-amber-400">Profissional Pro</th>
+                      <th className="py-3 px-4 text-center text-slate-100">Executivo VIP</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                    {comparisonRows.map((row) => (
+                      <tr key={row.feature} className="hover:bg-slate-900/40">
+                        <td className="py-3 px-5 font-medium text-slate-200">{row.feature}</td>
+                        {(['free', 'pro', 'exec'] as const).map((tierKey) => {
+                          const val = row[tierKey];
+                          return (
+                            <td key={tierKey} className="py-3 px-4 text-center">
+                              {val ? (
+                                <Check className="w-4 h-4 text-emerald-400 mx-auto" />
+                              ) : (
+                                <Minus className="w-4 h-4 text-slate-600 mx-auto" />
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -725,7 +1189,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© {new Date().getFullYear()} Currículo Estratégico. Todos os direitos reservados.</p>
           <div className="flex items-center gap-3 text-slate-400">
-            <span>Privacidade &amp; Dados</span>
+            <span>Privacidade &amp; Dados (RGPD)</span>
             <span aria-hidden="true">·</span>
             <span>Pagamentos via Cartão &amp; Pix</span>
             <span aria-hidden="true">·</span>

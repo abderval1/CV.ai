@@ -21,6 +21,7 @@ import {
   BillingCycle
 } from '../types/cv';
 import { getCycleDurationDays, getCyclePriceUSD, normalizeBillingCycle } from '../utils/billingCycles';
+import { recordAuditLog } from './auditLogService';
 
 export const ADMIN_EMAILS = [
   'gugurai923@gmail.com',
@@ -320,10 +321,11 @@ export async function createSaaSOrder(
   saveOrderToLocalCache(newOrder);
 
   const authToken = getAuthToken();
+  let backendOrderSaved = false;
   if (authToken) {
     const endpoint = order.adminManual ? '/api/admin/orders' : '/api/orders';
     try {
-      await fetch(endpoint, {
+      const resp = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -332,6 +334,7 @@ export async function createSaaSOrder(
         },
         body: JSON.stringify(newOrder)
       });
+      backendOrderSaved = resp.ok;
     } catch {
       // non-fatal
     }
@@ -363,6 +366,11 @@ export async function createSaaSOrder(
 
     return newOrder;
   } catch (error: any) {
+    // Non-admin Card / 100% Promo verified paid orders are persisted authoritatively on the Express backend;
+    // Firestore denies direct client writes of status='paid' by non-admins to prevent SDK spoofing.
+    if (!order.adminManual && newOrder.status === 'paid' && backendOrderSaved) {
+      return newOrder;
+    }
     if (String(error?.code || '').includes('permission-denied')) {
       handleFirestoreError(error, OperationType.CREATE, `orders/${orderId}`);
     }
@@ -511,13 +519,12 @@ export async function cancelUserSubscription(
   try {
     if (subscriptionId) {
       try {
-        await fetch('/api/stripe/cancel-subscription', {
+        await apiRequest('/api/stripe/cancel-subscription', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subscriptionId })
         });
       } catch (e) {
-        console.warn('Falha na chamada da API Stripe de cancelamento:', e);
+        console.warn('Falha na chamada da API de cancelamento:', e);
       }
     }
 
@@ -542,6 +549,21 @@ export async function cancelUserSubscription(
         updatedAt: new Date().toISOString()
       });
     }
+
+    void recordAuditLog({
+      actorUserId: userId,
+      actorEmail: auth.currentUser?.email || 'user',
+      actorRole: 'user',
+      action: 'subscription_canceled',
+      category: 'subscription',
+      severity: 'warning',
+      status: 'success',
+      targetResource: `users/${userId}`,
+      details: subscriptionId
+        ? `Subscrição ${subscriptionId} cancelada pelo cliente.`
+        : 'Subscrição cancelada pelo cliente.',
+      metadata: subscriptionId ? { subscriptionId } : undefined
+    });
 
     return {
       success: true,

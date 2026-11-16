@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Lightbulb, X, Sparkles } from 'lucide-react';
+import { Lightbulb, X } from 'lucide-react';
 
 interface ExpertTipProps {
   title: string;
@@ -125,7 +125,7 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
         >
           <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-800">
             <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0" />
               <span className="text-[11px] font-bold text-amber-300 tracking-wide">
                 {title}
               </span>

@@ -13,7 +13,6 @@ import {
   FileCheck,
   Check,
   ChevronDown,
-  Sparkles,
   Info,
   Layers,
   ArrowRight
@@ -41,36 +40,48 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   const [copiedRawText, setCopiedRawText] = useState<boolean>(false);
 
   const auditResult = auditCVAgainstJob(cv, jobDescription);
+  const hasJobContext = jobDescription.trim().length >= 20;
 
-  // Flexible Keyword Injection Engine
+  // Flexible Keyword Injection Engine (with duplicate guard)
   const handleAddKeyword = (keyword: string, destination: KeywordDestination = keywordDestination) => {
     const capitalized = keyword.charAt(0).toUpperCase() + keyword.slice(1);
+    const normalizedKw = keyword.trim().toLowerCase();
 
     if (destination === 'competencies') {
+      const alreadyExists = cv.competencies.some(
+        (c) =>
+          c.category.trim().toLowerCase() === normalizedKw ||
+          c.description.toLowerCase().includes(normalizedKw)
+      );
+      if (alreadyExists) return;
+
       const updatedCompetencies = [
         ...cv.competencies,
         {
-          id: `comp-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          id: `comp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           category: capitalized,
           description: `Experiência comprovada em ${keyword} aplicada a contextos profissionais de alto impacto e conformidade institucional.`
         }
       ];
       onChange({ ...cv, competencies: updatedCompetencies });
     } else if (destination === 'summary') {
+      if ((cv.summary || '').toLowerCase().includes(normalizedKw)) return;
       const addition = ` Especialista em ${keyword} com histórico consistente de geração de resultados e liderança técnica.`;
       const updatedSummary = cv.summary ? `${cv.summary.trim()}${addition}` : addition.trim();
       onChange({ ...cv, summary: updatedSummary });
     } else if (destination === 'experience') {
       if (!cv.experiences || cv.experiences.length === 0) {
-        // Fallback to competencies if no experience
         handleAddKeyword(keyword, 'competencies');
         return;
       }
+      const firstExp = cv.experiences[0];
+      if (firstExp.highlights.some((h) => h.toLowerCase().includes(normalizedKw))) return;
       const updatedExperiences = [...cv.experiences];
-      const targetExp = { ...updatedExperiences[0] };
       const newHighlight = `Alavancou ${keyword} em iniciativas de alto impacto, garantindo conformidade operacional e maximização de resultados mensuráveis.`;
-      targetExp.highlights = [...targetExp.highlights, newHighlight];
-      updatedExperiences[0] = targetExp;
+      updatedExperiences[0] = {
+        ...firstExp,
+        highlights: [...firstExp.highlights, newHighlight]
+      };
       onChange({ ...cv, experiences: updatedExperiences });
     }
   };
@@ -79,27 +90,50 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
     if (auditResult.missingKeywords.length === 0) return;
 
     if (keywordDestination === 'competencies') {
-      const newItems = auditResult.missingKeywords.map((kw, i) => ({
+      const toAdd = auditResult.missingKeywords.filter((kw) => {
+        const norm = kw.trim().toLowerCase();
+        return !cv.competencies.some(
+          (c) => c.category.trim().toLowerCase() === norm || c.description.toLowerCase().includes(norm)
+        );
+      });
+      if (toAdd.length === 0) return;
+      const newItems = toAdd.map((kw, i) => ({
         id: `comp-all-${Date.now()}-${i}`,
         category: kw.charAt(0).toUpperCase() + kw.slice(1),
         description: `Domínio prático de ${kw} com foco em entregas estratégicas e boas práticas internacionais.`
       }));
       onChange({ ...cv, competencies: [...cv.competencies, ...newItems] });
     } else if (keywordDestination === 'summary') {
-      const joined = auditResult.missingKeywords.join(', ');
+      const toAdd = auditResult.missingKeywords.filter(
+        (kw) => !(cv.summary || '').toLowerCase().includes(kw.trim().toLowerCase())
+      );
+      if (toAdd.length === 0) return;
+      const joined = toAdd.join(', ');
       const addition = ` Domínio técnico aprofundado em ${joined}.`;
-      onChange({ ...cv, summary: `${(cv.summary || '').trim()}${addition}` });
+      onChange({ ...cv, summary: `${(cv.summary || '').trim()}${addition}`.trim() });
     } else if (keywordDestination === 'experience') {
       if (cv.experiences && cv.experiences.length > 0) {
         const updatedExperiences = [...cv.experiences];
-        const newBullets = auditResult.missingKeywords.map(
+        const firstExp = updatedExperiences[0];
+        const toAdd = auditResult.missingKeywords.filter(
+          (kw) => !firstExp.highlights.some((h) => h.toLowerCase().includes(kw.trim().toLowerCase()))
+        );
+        if (toAdd.length === 0) return;
+        const newBullets = toAdd.map(
           (kw) => `Aplicou ativamente ${kw} em processos executivos críticos, otimizando fluxos de entrega e conformidade internacional.`
         );
         updatedExperiences[0] = {
-          ...updatedExperiences[0],
-          highlights: [...updatedExperiences[0].highlights, ...newBullets]
+          ...firstExp,
+          highlights: [...firstExp.highlights, ...newBullets]
         };
         onChange({ ...cv, experiences: updatedExperiences });
+      } else {
+        const newItems = auditResult.missingKeywords.map((kw, i) => ({
+          id: `comp-all-${Date.now()}-${i}`,
+          category: kw.charAt(0).toUpperCase() + kw.slice(1),
+          description: `Domínio prático de ${kw} com foco em entregas estratégicas e boas práticas internacionais.`
+        }));
+        onChange({ ...cv, competencies: [...cv.competencies, ...newItems] });
       }
     }
   };
@@ -111,18 +145,45 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
     }
   };
 
+  // Genuine structural OCR & layout parseability assessment from real CV data
+  const isTwoColumnTemplate =
+    cv.templateStyle === 'creative_split' ||
+    cv.templateStyle === 'european_modern' ||
+    cv.templateStyle === 'european_europass';
+  const hasPhotoEnabled = Boolean(cv.personalDetails.showPhoto && cv.personalDetails.photoUrl);
+  const contactFieldsFilled = [
+    cv.personalDetails.name,
+    cv.personalDetails.title,
+    cv.personalDetails.email,
+    cv.personalDetails.phone,
+    cv.personalDetails.location
+  ].filter((v) => Boolean(v && v.trim())).length;
+  const totalHighlightsCount = cv.experiences.reduce((acc, exp) => acc + (exp.highlights?.length || 0), 0);
+
+  let computedOcrScore = isTwoColumnTemplate ? 86 : 99;
+  if (hasPhotoEnabled) computedOcrScore -= 5;
+  if (contactFieldsFilled < 4) computedOcrScore -= (4 - contactFieldsFilled) * 3;
+  if (cv.experiences.length === 0) computedOcrScore -= 8;
+  computedOcrScore = Math.max(55, Math.min(99, computedOcrScore));
+
   // Determine score color
   const scoreColor =
-    auditResult.score >= 85
+    !hasJobContext
+      ? 'text-slate-800 bg-slate-50 border-slate-200'
+      : auditResult.score >= 85
       ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
       : auditResult.score >= 70
       ? 'text-amber-700 bg-amber-50 border-amber-200'
       : 'text-rose-700 bg-rose-50 border-rose-200';
 
   // Construct raw OCR / parser text
+  const parserStatusLine = isTwoColumnTemplate
+    ? `[STATUS: PARSED WITH LAYOUT WARNING | LAYOUT: 2-COLUMN | LINEARITY: ${computedOcrScore}%]`
+    : `[STATUS: PARSED CLEANLY | LAYOUT: SINGLE-COLUMN ATS | LINEARITY: ${computedOcrScore}%]`;
+
   const parserRawTokens = [
-    `=== APPLICANT TRACKING SYSTEM (ATS) OCR EXTRACTION ===`,
-    `[STATUS: 200 OK | PARSER: WORKDAY/TALEO COMPATIBLE]`,
+    `=== APPLICANT TRACKING SYSTEM (ATS) TEXT EXTRACTION ===`,
+    parserStatusLine,
     ``,
     `[CANDIDATE_HEADER]`,
     `NAME: ${cv.personalDetails.name || 'NOT_DETECTED'}`,
@@ -159,10 +220,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   };
 
   // Checklist criteria
-  const isHarvardOrAts =
-    cv.templateStyle === 'executive_harvard' ||
-    cv.templateStyle === 'ats_compact' ||
-    cv.templateStyle === 'un_classic';
+  const isHarvardOrAts = !isTwoColumnTemplate;
 
   const hasStandardContact =
     Boolean(cv.personalDetails.email?.includes('@')) &&
@@ -179,14 +237,16 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
       <div className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${scoreColor}`}>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-white/80 border flex items-center justify-center font-mono font-bold text-xl tabular-nums text-slate-900 shadow-xs">
-            {auditResult.score}%
+            {hasJobContext ? `${auditResult.score}%` : '—'}
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-900">
               Taxa de Compatibilidade ATS (Applicant Tracking System)
             </h2>
             <p className="text-xs text-slate-700 mt-0.5">
-              {auditResult.score >= 85
+              {!hasJobContext
+                ? 'Cole a descrição da vaga alvo abaixo (ou escolha um exemplo) para calcular o match exato de palavras-chave.'
+                : auditResult.score >= 85
                 ? 'Excelente! Forte densidade de palavras-chave e alinhamento com a vaga.'
                 : auditResult.score >= 70
                 ? 'Bom alinhamento, mas faltam termos técnicos decisivos.'
@@ -288,9 +348,18 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               placeholder="Cole aqui a descrição completa da vaga que deseja disputar (requisitos, competências, termos de referência)..."
               className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans"
             />
-            <p className="text-[11px] text-slate-400">
-              O analisador compara automaticamente cada linha do seu CV contra os requisitos essenciais desta vaga.
-            </p>
+            {!hasJobContext ? (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-center gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  Sem descrição de vaga ativa: cole o anúncio acima ou clique num dos exemplos para ativar o rastreio real de palavras-chave ATS.
+                </span>
+              </div>
+            ) : (
+              <p className="text-[11px] text-slate-400">
+                O analisador compara automaticamente cada linha do seu CV contra os requisitos essenciais desta vaga.
+              </p>
+            )}
           </div>
 
           {/* Missing Keywords Analysis with Target Destination Selector */}
@@ -299,7 +368,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Palavras-Chave Faltantes ({auditResult.missingKeywords.length})
+                  Palavras-Chave Faltantes (<span className="tabular-nums">{auditResult.missingKeywords.length}</span>)
                 </h3>
               </div>
 
@@ -360,7 +429,11 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               </div>
             )}
 
-            {auditResult.missingKeywords.length === 0 ? (
+            {!hasJobContext ? (
+              <p className="text-xs text-slate-500">
+                Aguardando a descrição da vaga para identificar termos em falta no seu currículo.
+              </p>
+            ) : auditResult.missingKeywords.length === 0 ? (
               <p className="text-xs text-emerald-700 font-medium">
                 Parabéns! Todas as palavras-chave críticas da vaga estão mencionadas no seu currículo.
               </p>
@@ -368,7 +441,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="flex flex-wrap gap-2 pt-1">
                 {auditResult.missingKeywords.map((kw, i) => (
                   <div
-                    key={i}
+                    key={`${kw}-${i}`}
                     className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-md shadow-2xs"
                   >
                     <span className="font-medium">{kw}</span>
@@ -376,6 +449,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                       type="button"
                       onClick={() => handleAddKeyword(kw)}
                       className="p-1 hover:bg-amber-200 rounded text-amber-800 transition-colors"
+                      aria-label={`Inserir "${kw}" no CV em ${keywordDestination}`}
                       title={`Inserir "${kw}" no CV em ${keywordDestination}`}
                     >
                       <Plus className="w-3 h-3" />
@@ -391,20 +465,26 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Palavras-Chave Validadas no seu CV ({auditResult.matchedKeywords.length})
+                Palavras-Chave Validadas no seu CV (<span className="tabular-nums">{auditResult.matchedKeywords.length}</span>)
               </h3>
             </div>
 
-            <div className="flex flex-wrap gap-1.5 text-xs text-slate-600">
-              {auditResult.matchedKeywords.map((kw, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-0.5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded font-medium text-[11px]"
-                >
-                  ✓ {kw}
-                </span>
-              ))}
-            </div>
+            {auditResult.matchedKeywords.length === 0 ? (
+              <p className="text-xs text-slate-500">
+                Nenhuma correspondência direta validada ainda para os termos da vaga atual.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 text-xs text-slate-600">
+                {auditResult.matchedKeywords.map((kw, i) => (
+                  <span
+                    key={`${kw}-${i}`}
+                    className="px-2 py-0.5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded font-medium text-[11px]"
+                  >
+                    ✓ {kw}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Quantifiable Metrics & Action Verbs Breakdown */}
@@ -488,26 +568,41 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-400">
-            <div className="bg-slate-900 p-2 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Taxa OCR</span>
-              <span className="text-emerald-400 font-bold text-sm">99.8%</span>
+            <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
+              <span className="block text-slate-500 text-[10px]">Legibilidade Linear</span>
+              <span
+                className={`font-bold text-sm tabular-nums ${
+                  computedOcrScore >= 92 ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {computedOcrScore}%
+              </span>
             </div>
-            <div className="bg-slate-900 p-2 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Cargos Lidos</span>
-              <span className="text-white font-bold text-sm">{cv.experiences.length}</span>
+            <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
+              <span className="block text-slate-500 text-[10px]">Cargos / Bullets</span>
+              <span className="text-white font-bold text-sm tabular-nums">
+                {cv.experiences.length} / {totalHighlightsCount}
+              </span>
             </div>
-            <div className="bg-slate-900 p-2 rounded border border-slate-800">
+            <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
               <span className="block text-slate-500 text-[10px]">Competências</span>
-              <span className="text-white font-bold text-sm">{cv.competencies.length}</span>
+              <span className="text-white font-bold text-sm tabular-nums">{cv.competencies.length}</span>
             </div>
-            <div className="bg-slate-900 p-2 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Tabelas / Imagens</span>
-              <span className="text-emerald-400 font-bold text-sm">0 (Seguro)</span>
+            <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
+              <span className="block text-slate-500 text-[10px]">Estrutura / Foto</span>
+              <span
+                className={`font-bold text-sm ${
+                  !isTwoColumnTemplate && !hasPhotoEnabled ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {isTwoColumnTemplate ? '2 Colunas' : 'Coluna Única'}
+                {hasPhotoEnabled ? ' · Foto' : ''}
+              </span>
             </div>
           </div>
 
           <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-            Abaixo está a representação exata do fluxo textual lido pelos motores de inteligência artificial de grandes corporações. Se um dado não aparecer aqui, ele é invisível para a triagem.
+            Abaixo está a representação exata do fluxo textual extraído pelos motores de triagem automáticos. Se um dado não aparecer aqui, ele é invisível para a filtragem inicial.
           </p>
 
           <pre className="bg-black/60 p-3.5 rounded-lg border border-slate-800 text-[11px] text-emerald-300/90 whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
@@ -618,7 +713,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                     Métricas de Impacto Comprovadas (Fórmula Google XYZ)
                   </h4>
                   <span
-                    className={`text-[10px] px-2 py-0.2 rounded font-bold ${
+                    className={`text-[10px] px-2 py-0.2 rounded font-bold tabular-nums ${
                       hasQuantifiableMetrics ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }`}
                   >

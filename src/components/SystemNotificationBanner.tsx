@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { fetchSystemBanners } from '../services/adminModulesService';
 import { SystemAnnouncementBanner } from '../types/adminModules';
 import { useAuth } from '../context/AuthContext';
-import { Info, AlertTriangle, Sparkles, Wrench, X, ArrowRight } from 'lucide-react';
+import { Info, AlertTriangle, Tag, Wrench, X, ArrowRight } from 'lucide-react';
 
 interface SystemNotificationBannerProps {
   onOpenPricing?: () => void;
@@ -68,7 +68,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
       case 'maintenance':
         return 'bg-rose-500/10 border-rose-500/30 text-rose-900 dark:text-rose-200';
       case 'promo':
-        return 'bg-purple-500/10 border-purple-500/30 text-purple-900 dark:text-purple-200';
+        return 'bg-amber-50 border-amber-200 text-amber-950';
       default:
         return 'bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-200';
     }
@@ -81,7 +81,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
       case 'maintenance':
         return <Wrench className="w-4 h-4 text-rose-600 shrink-0" />;
       case 'promo':
-        return <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />;
+        return <Tag className="w-4 h-4 text-amber-600 shrink-0" />;
       default:
         return <Info className="w-4 h-4 text-blue-600 shrink-0" />;
     }

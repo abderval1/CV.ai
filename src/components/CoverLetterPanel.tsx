@@ -3,7 +3,8 @@ import { CVData } from '../types/cv';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
 import {
-  Sparkles,
+  FileText,
+  PenLine,
   Copy,
   Check,
   Printer,
@@ -12,6 +13,7 @@ import {
   Lock
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
+import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
   getStoredPlatformSettingsSync,
@@ -224,9 +226,8 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
     const adminPromptConfig = getStoredPromptSync('coverLetter');
 
     try {
-      const response = await fetch('/api/cover-letter', {
+      const response = await authorizedFetch('/api/cover-letter', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cvData: {
             name: cv.personalDetails.name,
@@ -256,7 +257,8 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
       });
 
       if (!response.ok) {
-        throw new Error('Servidor retornou erro na geração.');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error || 'Servidor retornou erro na geração.');
       }
 
       const data = await response.json();
@@ -273,7 +275,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         userEmail: cv.personalDetails.email || 'anonymous',
         operationType: 'gemini_ai_call',
         errorMessage: `[CoverLetter] ${err?.message || 'Fallback local aplicado'}`,
-        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-4-hydrogen',
         resolved: false
       });
       // Heuristic dynamic fallback tailored to user's real data
@@ -331,11 +333,11 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500 fill-amber-400" />
-              <span>Gerador Inteligente de Carta de Apresentação / Motivação</span>
+              <FileText className="w-4 h-4 text-slate-700" />
+              <span>Carta de Apresentação &amp; Motivação</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Personalize o destinatário, empresa e idioma para gerar uma carta formal de alto impacto.
+              Personalize o destinatário, empresa e idioma para redigir uma carta formal alinhada ao currículo.
             </p>
           </div>
 
@@ -362,7 +364,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               </button>
             ))}
             {isTranslatingContent && (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 mx-1" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-700 mx-1" />
             )}
           </div>
         </div>
@@ -425,8 +427,8 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Gerar Carta Adaptada com IA</span>
+                  <PenLine className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Gerar Carta Adaptada ao Perfil</span>
                 </>
               )}
             </button>

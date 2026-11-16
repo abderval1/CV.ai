@@ -4,9 +4,7 @@ import {
   AlertCircle,
   Info,
   X,
-  XCircle,
-  Sparkles,
-  Zap
+  XCircle
 } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -89,12 +87,12 @@ const ToastCard: React.FC<{ toast: ToastItem; onDismiss: (id: string) => void }>
       badgeClass: 'bg-amber-50 text-amber-900 border-amber-200'
     },
     info: {
-      bg: 'bg-white border-indigo-300 shadow-indigo-500/10 text-slate-900',
-      iconBg: 'bg-indigo-100 text-indigo-700 ring-2 ring-indigo-200/60',
-      icon: <Info className="w-5 h-5 shrink-0 text-indigo-600" />,
-      progressBar: 'bg-gradient-to-r from-indigo-500 to-blue-500',
+      bg: 'bg-white border-slate-300 shadow-slate-500/10 text-slate-900',
+      iconBg: 'bg-slate-100 text-slate-800 ring-1 ring-slate-200',
+      icon: <Info className="w-5 h-5 shrink-0 text-slate-700" />,
+      progressBar: 'bg-slate-800',
       badge: 'Informação',
-      badgeClass: 'bg-indigo-50 text-indigo-800 border-indigo-200'
+      badgeClass: 'bg-slate-100 text-slate-800 border-slate-200'
     }
   }[toast.type];
 

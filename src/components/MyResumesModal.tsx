@@ -91,20 +91,20 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[92dvh] sm:max-h-[85vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-bold text-slate-900">Os Meus Currículos Salvos</h2>
               {user ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Conta Ativa: Sincronização na Nuvem
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                  Nuvem Ativa
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
                   Armazenamento Local
                 </span>
               )}
@@ -118,6 +118,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Fechar janela de currículos guardados"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
@@ -152,7 +153,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         {/* List of Saved Resumes */}
         <div className="p-5 flex-1 overflow-y-auto space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500 pb-1">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">
+            <span className="font-semibold uppercase tracking-wider text-[11px] tabular-nums">
               Currículos Guardados ({savedResumes.length})
             </span>
 
@@ -175,48 +176,59 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
             </div>
           </div>
 
-          {savedResumes.map((resume) => (
-            <div
-              key={resume.id}
-              className="p-3.5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-all shadow-2xs flex items-center justify-between gap-3 group"
-            >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-                  <FileText className="w-4 h-4" />
+          {savedResumes.length === 0 ? (
+            <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-2">
+              <FileText className="w-7 h-7 text-slate-400 mx-auto" />
+              <p className="text-xs font-bold text-slate-800">Nenhum currículo guardado na nuvem ainda</p>
+              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                Dê um nome à versão atual no campo acima e clique em Guardar Versão para criar cópias personalizadas por vaga.
+              </p>
+            </div>
+          ) : (
+            savedResumes.map((resume) => (
+              <div
+                key={resume.id}
+                className="p-3.5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-all shadow-2xs flex items-center justify-between gap-3 group"
+              >
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div className="truncate">
+                    <h4 className="text-xs font-bold text-slate-900 truncate">{resume.title}</h4>
+                    <p className="text-[11px] text-slate-500 truncate tabular-nums">
+                      {resume.targetJob} · Modificado em {resume.updatedAt}
+                    </p>
+                  </div>
                 </div>
-                <div className="truncate">
-                  <h4 className="text-xs font-bold text-slate-900 truncate">{resume.title}</h4>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    {resume.targetJob} · Modificado em {resume.updatedAt}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => handleSelectResume(resume.data, resume.title)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1"
-                >
-                  <span>Abrir</span>
-                  <ArrowUpRight className="w-3 h-3" />
-                </button>
-                {savedResumes.length > 1 && (
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      deleteResume(resume.id);
-                      showInfo('Currículo Removido', `"${resume.title}" foi removido da sua lista.`);
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                    title="Eliminar versão"
+                    onClick={() => handleSelectResume(resume.data, resume.title)}
+                    className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Abrir</span>
+                    <ArrowUpRight className="w-3 h-3" />
                   </button>
-                )}
+                  {savedResumes.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        deleteResume(resume.id);
+                        showInfo('Currículo Removido', `"${resume.title}" foi removido da sua lista.`);
+                      }}
+                      aria-label={`Eliminar "${resume.title}"`}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                      title="Eliminar versão"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

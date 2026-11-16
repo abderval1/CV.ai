@@ -78,8 +78,20 @@ import {
   EditablePlanConfig,
   PlatformSettingsConfig,
   FrontendTelemetryData,
-  FinancialMetrics
+  FinancialMetrics,
+  SecurityAuditLog,
+  AuditLogCategory,
+  AuditLogSeverity,
+  AuditLogStatus
 } from '../types/adminModules';
+import {
+  fetchAuditLogs,
+  recordAuditLog,
+  subscribeToAuditLogs,
+  isCriticalAuditLog,
+  mergeAuditLogLists,
+  AuditStreamStatus
+} from '../services/auditLogService';
 import { useAuth } from '../context/AuthContext';
 import {
   TrendingUp,
@@ -115,11 +127,18 @@ import {
   ArrowRight,
   Ban,
   FileJson,
-  Sparkles,
   UserCog,
   Globe,
-  QrCode
+  QrCode,
+  Edit3
 } from 'lucide-react';
+import {
+  AdminFinancialCharts,
+  MonthlyMrrPoint,
+  ChurnCohortPoint,
+  TierAiEconomicsPoint,
+  SubscriberAiCostRow
+} from './AdminFinancialCharts';
 
 interface SaaSAdminDashboardProps {
   isOpen: boolean;
@@ -168,8 +187,36 @@ const MODULE_META: Record<
   security_monitoring: {
     label: '6. Segurança, RGPD & Governança',
     shortLabel: 'Segurança & Governança',
-    subtitle: 'Modo manutenção, controlo global da plataforma, logs técnicos, RGPD e auditoria RBAC'
+    subtitle: 'Modo manutenção, controlo global, logs de auditoria Firestore, RGPD e RBAC'
   }
+};
+
+const ADMIN_AUDIT_ACTION_LABELS: Record<string, string> = {
+  subscription_upgraded: 'Upgrade / Ativação de Subscrição',
+  subscription_canceled: 'Cancelamento de Subscrição',
+  subscription_plan_sync_blocked: 'Tentativa Bloqueada de Alteração de Plano',
+  payment_order_created: 'Pedido / Fatura Criada',
+  payment_order_status_changed: 'Estado de Pagamento Alterado',
+  cv_exported_pdf: 'Exportação de CV (PDF)',
+  cv_exported_docx: 'Exportação de CV (Word .docx)',
+  cv_exported_json: 'Exportação de CV (JSON)',
+  cv_export_blocked_unauthorized: 'Exportação de CV Bloqueada',
+  profile_updated: 'Edição de Perfil',
+  password_changed: 'Alteração de Palavra-passe',
+  account_login: 'Início de Sessão',
+  account_registered: 'Registo de Nova Conta',
+  gdpr_request_submitted: 'Pedido RGPD / LGPD',
+  unauthorized_access_attempt: 'Acesso Não Autorizado Bloqueado',
+  admin_user_modified: 'Alteração Administrativa de Utilizador',
+  impersonation_event: 'Sessão de Personificação'
+};
+
+const ADMIN_AUDIT_CATEGORY_LABELS: Record<AuditLogCategory, string> = {
+  subscription: 'Subscrições',
+  cv_export: 'Exportações CV',
+  profile: 'Perfil & Acesso',
+  security: 'Segurança / Bloqueios',
+  admin: 'Administração'
 };
 
 export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, onClose }) => {
@@ -183,7 +230,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [contentSubTab, setContentSubTab] = useState<'templates' | 'snippets' | 'locales'>('templates');
   const [crmSubTab, setCrmSubTab] = useState<'users' | 'orders'>('users');
   const [monetizationSubTab, setMonetizationSubTab] = useState<'plans' | 'coupons' | 'banners'>('plans');
-  const [securitySubTab, setSecuritySubTab] = useState<'governance' | 'error_logs' | 'gdpr' | 'rbac'>(
+  const [securitySubTab, setSecuritySubTab] = useState<'governance' | 'audit_logs' | 'error_logs' | 'gdpr' | 'rbac'>(
     'governance'
   );
 
@@ -199,6 +246,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [localesList, setLocalesList] = useState<SystemLocaleTranslation[]>([]);
   const [bannersList, setBannersList] = useState<SystemAnnouncementBanner[]>([]);
   const [errorLogsList, setErrorLogsList] = useState<TechnicalGenerationErrorLog[]>([]);
+  const [auditLogsList, setAuditLogsList] = useState<SecurityAuditLog[]>([]);
   const [gdprList, setGdprList] = useState<GdprDataRequest[]>([]);
   const [impersonationLogs, setImpersonationLogs] = useState<any[]>([]);
   const [editablePlans, setEditablePlans] = useState<EditablePlanConfig[]>([]);
@@ -215,8 +263,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [userStatusFilter, setUserStatusFilter] = useState<string>('all');
   const [orderSearch, setOrderSearch] = useState<string>('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+  const [templateSearch, setTemplateSearch] = useState<string>('');
+  const [templateVisibilityFilter, setTemplateVisibilityFilter] = useState<'all' | 'ats' | 'photo' | 'hidden'>('all');
+  const [editingTemplate, setEditingTemplate] = useState<TemplateAdminItem | null>(null);
   const [snippetSearch, setSnippetSearch] = useState<string>('');
   const [errorFilterMode, setErrorFilterMode] = useState<'all' | 'unresolved'>('all');
+  const [auditSearch, setAuditSearch] = useState<string>('');
+  const [auditUserFilter, setAuditUserFilter] = useState<string>('all');
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<'all' | AuditLogCategory>('all');
+  const [auditStatusFilter, setAuditStatusFilter] = useState<'all' | AuditLogStatus>('all');
+  const [auditSeverityFilter, setAuditSeverityFilter] = useState<'all' | AuditLogSeverity>('all');
+  const [auditCriticalOnly, setAuditCriticalOnly] = useState<boolean>(true);
+  const [auditLiveStatus, setAuditLiveStatus] = useState<AuditStreamStatus>('connecting');
+  const [auditLiveLastAt, setAuditLiveLastAt] = useState<string | null>(null);
+  const [auditLiveError, setAuditLiveError] = useState<string | null>(null);
+  const unauthorizedAuditRecordedRef = React.useRef<boolean>(false);
 
   // Prompt Studio State
   const [selectedPrompt, setSelectedPrompt] = useState<PromptTemplateConfig | null>(null);
@@ -246,6 +307,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [selectedInvoice, setSelectedInvoice] = useState<SaaSOrder | null>(null);
   const [impersonatingTargetUser, setImpersonatingTargetUser] = useState<User | null>(null);
   const [impersonateReason, setImpersonateReason] = useState<string>('Diagnóstico de layout reportado pelo cliente');
+  const [pendingConfirm, setPendingConfirm] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant?: 'danger' | 'warning';
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
+  const [isRunningConfirm, setIsRunningConfirm] = useState<boolean>(false);
 
   // Form States
   const [newUserForm, setNewUserForm] = useState({
@@ -320,7 +389,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         gdpr,
         plans,
         settings,
-        impLogs
+        impLogs,
+        auditLogs
       ] = await Promise.all([
         fetchAllUsers(),
         fetchAllOrders(),
@@ -336,7 +406,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         fetchGdprRequests(),
         fetchEditablePlans(),
         fetchPlatformSettings(),
-        fetchImpersonationLogsAsync()
+        fetchImpersonationLogsAsync(),
+        fetchAuditLogs()
       ]);
 
       setUsersList(users);
@@ -354,6 +425,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setLocalesList(locales);
       setBannersList(banners);
       setErrorLogsList(errors);
+      setAuditLogsList((prev) => mergeAuditLogLists(auditLogs, prev));
       setGdprList(gdpr);
       setEditablePlans(plans);
       setPlatformSettings(settings);
@@ -367,11 +439,55 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
+  const isAdminAccess = isUserAdmin(user?.email || firebaseUser?.email, user?.role);
+
   useEffect(() => {
-    if (isOpen) {
-      loadAllModules();
+    if (!isOpen) {
+      unauthorizedAuditRecordedRef.current = false;
+      return;
     }
-  }, [isOpen]);
+    if (isAdminAccess || isImpersonating) {
+      loadAllModules();
+    } else {
+      setIsLoading(false);
+      if (!unauthorizedAuditRecordedRef.current) {
+        unauthorizedAuditRecordedRef.current = true;
+        void recordAuditLog({
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: 'ui/SaaSAdminDashboard',
+          details: 'Tentativa não autorizada de abrir o Painel Administrativo SaaS bloqueada pela interface.',
+          actorUserId: user?.id || firebaseUser?.uid || 'anonymous',
+          actorEmail: user?.email || firebaseUser?.email || 'anonymous',
+          actorRole: 'user'
+        });
+      }
+    }
+  }, [isOpen, isAdminAccess, isImpersonating]);
+
+  // Real-time Firestore listener for /auditLogs
+  useEffect(() => {
+    if (!isOpen || (!isAdminAccess && !isImpersonating)) {
+      return;
+    }
+    setAuditLiveError(null);
+    const unsubscribe = subscribeToAuditLogs({
+      limitCount: 250,
+      onLogs: (liveLogs, meta) => {
+        setAuditLogsList((prev) => mergeAuditLogLists(liveLogs, prev));
+        setAuditLiveLastAt(meta.lastUpdatedAt);
+      },
+      onStatusChange: (status, message) => {
+        setAuditLiveStatus(status);
+        setAuditLiveError(status === 'error' ? message || 'Erro no listener Firestore.' : null);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, isAdminAccess, isImpersonating]);
 
   // Open User 360° Drawer
   const openUserDrawer = (target: User) => {
@@ -395,6 +511,18 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       await updateUserManagement(inspectedUser.id, updates);
       setUsersList((prev) => prev.map((u) => (u.id === inspectedUser.id ? { ...u, ...updates } : u)));
       setInspectedUser((prev) => (prev ? { ...prev, ...updates } : null));
+      void recordAuditLog({
+        action: 'admin_user_modified',
+        category: 'admin',
+        severity: drawerRole === 'admin' || drawerStatus === 'suspended' ? 'warning' : 'info',
+        status: 'success',
+        targetResource: `users/${inspectedUser.id}`,
+        details: `Ficha CRM atualizada pelo admin: plano=${drawerPlan}, role=${drawerRole}, status=${drawerStatus}.`,
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: 'admin',
+        metadata: { targetEmail: inspectedUser.email, plan: drawerPlan, role: drawerRole, status: drawerStatus }
+      });
       showNotification(`Perfil de ${inspectedUser.name} atualizado na base de dados!`);
     } catch (e) {
       console.error(e);
@@ -413,8 +541,20 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     executiveUsers: number;
     freeUsers: number;
     paidUsers: number;
+    proPrice: number;
+    execPrice: number;
+    proMrr: number;
+    execMrr: number;
+    churnedUsersCount: number;
+    paidArpu: number;
     totalRevenue: number;
     periodOrdersCount: number;
+    avgAiCostPerPaidSubscriberUsd: number;
+    avgAiCostPerRegisteredUserUsd: number;
+    monthlyMrrSeries: MonthlyMrrPoint[];
+    churnCohortSeries: ChurnCohortPoint[];
+    tierAiEconomics: TierAiEconomicsPoint[];
+    subscriberAiCostList: SubscriberAiCostRow[];
   } = useMemo(() => {
     const nowMs = Date.now();
     const cutoffMs =
@@ -476,17 +616,112 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const checkoutReached = telemetry.checkoutOpenedCount;
     const purchasesCompleted = Math.max(paidUsers, periodPaidOrders.length);
 
-    const totalAiCalls =
-      usersList.reduce((acc, u) => acc + (u.creditsUsed || 0), 0) + telemetry.aiCallsCount;
+    const GEMINI_COST_PER_CALL_USD = 0.00032;
+    const totalUserAiCalls = usersList.reduce((acc, u) => acc + (u.creditsUsed || 0), 0);
+    const totalAiCalls = totalUserAiCalls + telemetry.aiCallsCount;
     const todayCostUsd =
       totalAiCalls > 0 ? Number(((totalAiCalls * 0.00028) / 14).toFixed(2)) : 0;
     const monthCostUsd =
-      totalAiCalls > 0 ? Number((totalAiCalls * 0.00032).toFixed(2)) : 0;
+      totalAiCalls > 0 ? Number((totalAiCalls * GEMINI_COST_PER_CALL_USD).toFixed(2)) : 0;
     const revBase = Math.max(totalRevenue, mrr);
     const costToRevenuePercent =
       revBase > 0 ? Number(((monthCostUsd / revBase) * 100).toFixed(1)) : 0;
     const grossMarginPercent =
       revBase > 0 ? Number(Math.max(0, 100 - costToRevenuePercent - 3.9).toFixed(1)) : 0;
+
+    const proMrr = Number((proUsers * proPrice).toFixed(2));
+    const execMrr = Number((executiveUsers * execPrice).toFixed(2));
+
+    // Per-subscriber Gemini AI utilization & unit economics
+    const subscriberAiCostList: SubscriberAiCostRow[] = usersList
+      .map((u) => {
+        const callsCount = u.creditsUsed || 0;
+        const aiCostUsd = Number((callsCount * GEMINI_COST_PER_CALL_USD).toFixed(4));
+        const isPaid =
+          (u.plan === 'pro' || u.plan === 'executive') &&
+          u.status !== 'suspended' &&
+          u.stripeStatus !== 'canceled';
+        const monthlyArpuUsd = isPaid
+          ? u.plan === 'executive'
+            ? execPrice
+            : proPrice
+          : 0;
+        const netContributionUsd = Number((monthlyArpuUsd - aiCostUsd).toFixed(2));
+        const costShareOfArpuPct =
+          monthlyArpuUsd > 0 ? Number(((aiCostUsd / monthlyArpuUsd) * 100).toFixed(2)) : 0;
+        const planLabel =
+          u.plan === 'executive'
+            ? 'Executivo VIP'
+            : u.plan === 'pro'
+            ? 'Profissional Pro'
+            : 'Gratuito';
+        const cleanName = (u.name || u.email || 'Utilizador').trim();
+        const shortName =
+          cleanName.length > 16 ? `${cleanName.slice(0, 15)}…` : cleanName;
+
+        return {
+          userId: u.id,
+          name: cleanName,
+          shortName,
+          email: u.email,
+          plan: u.plan,
+          planLabel,
+          status: u.status || 'active',
+          isPaid,
+          callsCount,
+          aiCostUsd,
+          monthlyArpuUsd,
+          netContributionUsd,
+          costShareOfArpuPct
+        };
+      })
+      .sort((a, b) => b.aiCostUsd - a.aiCostUsd || b.monthlyArpuUsd - a.monthlyArpuUsd);
+
+    const paidSubscribersCalls = subscriberAiCostList
+      .filter((s) => s.isPaid)
+      .reduce((acc, s) => acc + s.callsCount, 0);
+    const paidSubscribersAiCostUsd = paidSubscribersCalls * GEMINI_COST_PER_CALL_USD;
+    const avgAiCostPerPaidSubscriberUsd =
+      paidUsers > 0 ? Number((paidSubscribersAiCostUsd / paidUsers).toFixed(4)) : 0;
+    const avgAiCostPerRegisteredUserUsd =
+      totalUsers > 0
+        ? Number(((totalUserAiCalls * GEMINI_COST_PER_CALL_USD) / totalUsers).toFixed(4))
+        : 0;
+
+    const buildTierEconomics = (
+      tierKey: SubscriptionPlan,
+      tierLabel: string,
+      arpuUsd: number
+    ): TierAiEconomicsPoint => {
+      const matching = subscriberAiCostList.filter((s) =>
+        tierKey === 'free' ? s.plan === 'free' : s.plan === tierKey && s.isPaid
+      );
+      const subscribers = matching.length;
+      const totalCalls = matching.reduce((acc, s) => acc + s.callsCount, 0);
+      const totalAiCostUsd = Number((totalCalls * GEMINI_COST_PER_CALL_USD).toFixed(4));
+      const avgCostPerSubscriberUsd =
+        subscribers > 0 ? Number((totalAiCostUsd / subscribers).toFixed(4)) : 0;
+      const netMarginPct =
+        arpuUsd > 0
+          ? Number(Math.max(0, ((arpuUsd - avgCostPerSubscriberUsd) / arpuUsd) * 100).toFixed(1))
+          : 0;
+      return {
+        tierKey,
+        tierLabel,
+        subscribers,
+        totalCalls,
+        totalAiCostUsd,
+        avgCostPerSubscriberUsd,
+        arpuUsd,
+        netMarginPct
+      };
+    };
+
+    const tierAiEconomics: TierAiEconomicsPoint[] = [
+      buildTierEconomics('executive', 'Executivo VIP', execPrice),
+      buildTierEconomics('pro', 'Profissional Pro', proPrice),
+      buildTierEconomics('free', 'Gratuito', 0)
+    ];
 
     const highUsageAlerts = usersList
       .filter((u) => (u.creditsUsed || 0) > 25)
@@ -503,7 +738,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         };
       });
 
-    // Real Cohort Retention derived strictly from registered users' createdAt months
+    // Real Cohort Retention & Churn derived strictly from registered users' createdAt months
     const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const cohortBuckets = new Map<string, { label: string; sortKey: number; users: User[] }>();
     usersList.forEach((u) => {
@@ -521,24 +756,156 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
     const nowDate = new Date();
     const currentMonthIdx = nowDate.getFullYear() * 12 + nowDate.getMonth();
-    const cohortRetention = Array.from(cohortBuckets.values())
+    const sortedCohorts = Array.from(cohortBuckets.values())
       .sort((a, b) => a.sortKey - b.sortKey)
-      .slice(-6)
-      .map((bucket) => {
-        const monthsElapsed = Math.max(0, currentMonthIdx - bucket.sortKey);
-        const totalInCohort = bucket.users.length;
-        const activeCount = bucket.users.filter(
-          (u) => u.status !== 'suspended' && u.stripeStatus !== 'canceled'
-        ).length;
-        const retainedPct = totalInCohort > 0 ? Math.round((activeCount / totalInCohort) * 100) : 0;
-        return {
-          month: bucket.label,
-          newUsers: totalInCohort,
-          retainedMonth1: retainedPct,
-          retainedMonth2: monthsElapsed >= 1 ? retainedPct : 0,
-          retainedMonth3: monthsElapsed >= 2 ? retainedPct : 0
-        };
-      });
+      .slice(periodFilter === 'all' ? -12 : -6);
+
+    const cohortRetention = sortedCohorts.map((bucket) => {
+      const monthsElapsed = Math.max(0, currentMonthIdx - bucket.sortKey);
+      const totalInCohort = bucket.users.length;
+      const activeCount = bucket.users.filter(
+        (u) => u.status !== 'suspended' && u.stripeStatus !== 'canceled'
+      ).length;
+      const retainedPct = totalInCohort > 0 ? Math.round((activeCount / totalInCohort) * 100) : 0;
+      return {
+        month: bucket.label,
+        newUsers: totalInCohort,
+        retainedMonth1: retainedPct,
+        retainedMonth2: monthsElapsed >= 1 ? retainedPct : 0,
+        retainedMonth3: monthsElapsed >= 2 ? retainedPct : 0
+      };
+    });
+
+    const churnCohortSeries: ChurnCohortPoint[] = sortedCohorts.map((bucket) => {
+      const totalInCohort = bucket.users.length;
+      const churnedCount = bucket.users.filter(
+        (u) => u.status === 'suspended' || u.stripeStatus === 'canceled'
+      ).length;
+      const retainedCount = Math.max(0, totalInCohort - churnedCount);
+      const retentionRate =
+        totalInCohort > 0 ? Number(((retainedCount / totalInCohort) * 100).toFixed(1)) : 0;
+      const bucketChurnRate =
+        totalInCohort > 0 ? Number(((churnedCount / totalInCohort) * 100).toFixed(1)) : 0;
+      return {
+        month: bucket.label,
+        newUsers: totalInCohort,
+        retainedCount,
+        churnedCount,
+        retentionRate,
+        churnRate: bucketChurnRate
+      };
+    });
+
+    // Real MRR, Paid Revenue & AI Cost Series tailored to periodFilter
+    const monthlyMrrSeries: MonthlyMrrPoint[] = [];
+    if (periodFilter === '7d') {
+      for (let offset = 6; offset >= 0; offset -= 1) {
+        const dayStart = new Date(
+          nowDate.getFullYear(),
+          nowDate.getMonth(),
+          nowDate.getDate() - offset,
+          0,
+          0,
+          0,
+          0
+        );
+        const dayEnd = new Date(
+          nowDate.getFullYear(),
+          nowDate.getMonth(),
+          nowDate.getDate() - offset,
+          23,
+          59,
+          59,
+          999
+        );
+        const dayLabel =
+          offset === 0
+            ? 'Hoje'
+            : `${String(dayStart.getDate()).padStart(2, '0')}/${String(
+                dayStart.getMonth() + 1
+              ).padStart(2, '0')}`;
+
+        const dayRevenue = ordersList
+          .filter((o) => {
+            if (o.status !== 'paid') return false;
+            const dt = new Date(o.createdAt || '');
+            return !Number.isNaN(dt.getTime()) && dt >= dayStart && dt <= dayEnd;
+          })
+          .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+
+        const activeUpToDay = usersList.filter((u) => {
+          if (u.status === 'suspended' || u.stripeStatus === 'canceled') return false;
+          if (u.plan !== 'pro' && u.plan !== 'executive') return false;
+          const dt = new Date(u.createdAt || '');
+          return Number.isNaN(dt.getTime()) || dt <= dayEnd;
+        });
+
+        const dayProMrr =
+          activeUpToDay.filter((u) => u.plan === 'pro').length * proPrice;
+        const dayExecMrr =
+          activeUpToDay.filter((u) => u.plan === 'executive').length * execPrice;
+
+        monthlyMrrSeries.push({
+          label: dayLabel,
+          mrr: Number((dayProMrr + dayExecMrr).toFixed(2)),
+          proMrr: Number(dayProMrr.toFixed(2)),
+          execMrr: Number(dayExecMrr.toFixed(2)),
+          revenue: Number(dayRevenue.toFixed(2)),
+          aiCost: offset === 0 ? todayCostUsd : 0,
+          activePaid: activeUpToDay.length
+        });
+      }
+    } else {
+      const monthCount = periodFilter === 'all' ? 12 : 6;
+      for (let offset = monthCount - 1; offset >= 0; offset -= 1) {
+        const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth() - offset, 1);
+        const monthEnd = new Date(
+          monthStart.getFullYear(),
+          monthStart.getMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        );
+        const label =
+          offset === 0
+            ? 'Atual'
+            : `${monthShortNames[monthStart.getMonth()]}/${String(
+                monthStart.getFullYear()
+              ).slice(-2)}`;
+
+        const monthRevenue = ordersList
+          .filter((o) => {
+            if (o.status !== 'paid') return false;
+            const dt = new Date(o.createdAt || '');
+            return !Number.isNaN(dt.getTime()) && dt >= monthStart && dt <= monthEnd;
+          })
+          .reduce((acc, o) => acc + (Number(o.amount) || 0), 0);
+
+        const activePaidInMonth = usersList.filter((u) => {
+          if (u.status === 'suspended' || u.stripeStatus === 'canceled') return false;
+          if (u.plan !== 'pro' && u.plan !== 'executive') return false;
+          const dt = new Date(u.createdAt || '');
+          return Number.isNaN(dt.getTime()) || dt <= monthEnd;
+        });
+
+        const bucketProMrr =
+          activePaidInMonth.filter((u) => u.plan === 'pro').length * proPrice;
+        const bucketExecMrr =
+          activePaidInMonth.filter((u) => u.plan === 'executive').length * execPrice;
+
+        monthlyMrrSeries.push({
+          label,
+          mrr: Number((bucketProMrr + bucketExecMrr).toFixed(2)),
+          proMrr: Number(bucketProMrr.toFixed(2)),
+          execMrr: Number(bucketExecMrr.toFixed(2)),
+          revenue: Number(monthRevenue.toFixed(2)),
+          aiCost: offset === 0 ? monthCostUsd : 0,
+          activePaid: activePaidInMonth.length
+        });
+      }
+    }
 
     // Real MoM Growth Rate from paid orders in current vs previous calendar month
     const curYr = nowDate.getFullYear();
@@ -620,7 +987,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         id: 'ins-ai-eff',
         type: 'efficiency',
         title: `Margem Operacional Estimada em ${grossMarginPercent}%`,
-        description: `O consumo estimado da API Gemini representa ${costToRevenuePercent}% da receita registada (${totalAiCalls} chamadas totais).`,
+        description: `O consumo estimado da API Gemini representa ${costToRevenuePercent}% da receita registada (${totalAiCalls} chamadas totais, média $${avgAiCostPerPaidSubscriberUsd.toFixed(4)}/subscritor pago).`,
         impact: `Custo estimado mensal: $${monthCostUsd}`,
         recommendedAction: 'Ajustar Modelos & Quotas'
       });
@@ -632,6 +999,12 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       executiveUsers,
       freeUsers,
       paidUsers,
+      proPrice,
+      execPrice,
+      proMrr,
+      execMrr,
+      churnedUsersCount: churnedUsers,
+      paidArpu: Number(avgPaidArpu.toFixed(2)),
       totalRevenue,
       periodOrdersCount: periodPaidOrders.length,
       mrr,
@@ -659,48 +1032,15 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         totalRevenueUsd: totalRevenue,
         costToRevenuePercent,
         highUsageAlerts
-      }
+      },
+      avgAiCostPerPaidSubscriberUsd,
+      avgAiCostPerRegisteredUserUsd,
+      monthlyMrrSeries,
+      churnCohortSeries,
+      tierAiEconomics,
+      subscriberAiCostList
     };
   }, [usersList, ordersList, periodFilter, editablePlans, telemetry, errorLogsList, gdprList]);
-
-  // Real 6-Month Revenue vs AI Cost Series derived from actual paid orders & AI usage
-  const revenueSeries = useMemo(() => {
-    const monthShortNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const now = new Date();
-    const series: { label: string; year: number; month: number; revenue: number; aiCost: number }[] = [];
-
-    for (let offset = 5; offset >= 0; offset -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-      series.push({
-        label: offset === 0 ? 'Atual' : monthShortNames[d.getMonth()],
-        year: d.getFullYear(),
-        month: d.getMonth(),
-        revenue: 0,
-        aiCost: 0
-      });
-    }
-
-    ordersList.forEach((o) => {
-      if (o.status !== 'paid') return;
-      const dt = new Date(o.createdAt || '');
-      if (Number.isNaN(dt.getTime())) return;
-      const bucket = series.find((b) => b.year === dt.getFullYear() && b.month === dt.getMonth());
-      if (bucket) {
-        bucket.revenue += Number(o.amount) || 0;
-      }
-    });
-
-    const currentBucket = series[series.length - 1];
-    if (currentBucket) {
-      currentBucket.aiCost = financialMetrics.apiCostTracking.monthCostUsd;
-    }
-
-    return series.map(({ label, revenue, aiCost }) => ({
-      label,
-      revenue: Math.round(revenue * 100) / 100,
-      aiCost: Math.round(aiCost * 100) / 100
-    }));
-  }, [ordersList, financialMetrics.apiCostTracking.monthCostUsd]);
 
   // Filtered Lists
   const filteredUsers = useMemo(() => {
@@ -741,6 +1081,109 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (errorFilterMode === 'unresolved') return errorLogsList.filter((e) => !e.resolved);
     return errorLogsList;
   }, [errorLogsList, errorFilterMode]);
+
+  const auditActorOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string; count: number }>();
+    for (const u of usersList) {
+      const emailKey = (u.email || '').trim().toLowerCase();
+      if (!emailKey) continue;
+      if (!map.has(emailKey)) {
+        map.set(emailKey, {
+          value: emailKey,
+          label: `${u.name ? `${u.name} · ` : ''}${emailKey}`,
+          count: 0
+        });
+      }
+    }
+    for (const log of auditLogsList) {
+      const emailKey = (log.actorEmail || log.actorUserId || 'anonymous').trim().toLowerCase();
+      const existing = map.get(emailKey);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        const displayLabel =
+          emailKey === 'anonymous'
+            ? 'anonymous (Visitante / Não Autenticado)'
+            : emailKey;
+        map.set(emailKey, { value: emailKey, label: displayLabel, count: 1 });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }, [auditLogsList, usersList]);
+
+  const criticalAuditLogs = useMemo(
+    () => auditLogsList.filter(isCriticalAuditLog),
+    [auditLogsList]
+  );
+
+  const filteredCriticalLiveLogs = useMemo(() => {
+    const term = auditSearch.trim().toLowerCase();
+    return criticalAuditLogs.filter((log) => {
+      const actorKey = (log.actorEmail || log.actorUserId || 'anonymous').trim().toLowerCase();
+      const matchUser =
+        auditUserFilter === 'all' ||
+        actorKey === auditUserFilter ||
+        log.actorUserId.toLowerCase() === auditUserFilter;
+      const matchCategory = auditCategoryFilter === 'all' || log.category === auditCategoryFilter;
+      const matchSearch =
+        !term ||
+        log.actorEmail.toLowerCase().includes(term) ||
+        log.targetResource.toLowerCase().includes(term) ||
+        log.details.toLowerCase().includes(term) ||
+        log.action.toLowerCase().includes(term) ||
+        (log.ipAddress && log.ipAddress.toLowerCase().includes(term));
+      return matchUser && matchCategory && matchSearch;
+    });
+  }, [criticalAuditLogs, auditUserFilter, auditCategoryFilter, auditSearch]);
+
+  const filteredAuditLogs = useMemo(() => {
+    const term = auditSearch.trim().toLowerCase();
+    return auditLogsList.filter((log) => {
+      if (auditCriticalOnly && !isCriticalAuditLog(log)) return false;
+      const actorKey = (log.actorEmail || log.actorUserId || 'anonymous').trim().toLowerCase();
+      const matchUser =
+        auditUserFilter === 'all' ||
+        actorKey === auditUserFilter ||
+        log.actorUserId.toLowerCase() === auditUserFilter;
+      const matchSearch =
+        !term ||
+        log.actorEmail.toLowerCase().includes(term) ||
+        log.targetResource.toLowerCase().includes(term) ||
+        log.details.toLowerCase().includes(term) ||
+        log.action.toLowerCase().includes(term) ||
+        (log.ipAddress && log.ipAddress.toLowerCase().includes(term));
+      const matchCategory = auditCategoryFilter === 'all' || log.category === auditCategoryFilter;
+      const matchStatus = auditStatusFilter === 'all' || log.status === auditStatusFilter;
+      const matchSeverity = auditSeverityFilter === 'all' || log.severity === auditSeverityFilter;
+      return matchUser && matchSearch && matchCategory && matchStatus && matchSeverity;
+    });
+  }, [
+    auditLogsList,
+    auditCriticalOnly,
+    auditUserFilter,
+    auditSearch,
+    auditCategoryFilter,
+    auditStatusFilter,
+    auditSeverityFilter
+  ]);
+
+  const auditStats = useMemo(() => {
+    const blockedCount = auditLogsList.filter(
+      (l) => l.status === 'blocked' || l.action === 'unauthorized_access_attempt' || l.action === 'cv_export_blocked_unauthorized'
+    ).length;
+    const criticalCount = criticalAuditLogs.length;
+    const subscriptionCount = auditLogsList.filter((l) => l.category === 'subscription').length;
+    const cvExportCount = auditLogsList.filter((l) => l.category === 'cv_export').length;
+    const profileCount = auditLogsList.filter((l) => l.category === 'profile').length;
+    return {
+      total: auditLogsList.length,
+      criticalCount,
+      blockedCount,
+      subscriptionCount,
+      cvExportCount,
+      profileCount
+    };
+  }, [auditLogsList, criticalAuditLogs]);
 
   // -------------------------------------------------------------
   // ACTION HANDLERS
@@ -840,23 +1283,24 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
-  const handleDeleteUserAccount = async (target: User) => {
-    if (
-      !window.confirm(
-        `Eliminar permanentemente a conta de ${target.name} (${target.email}) da coleção de utilizadores?`
-      )
-    ) {
-      return;
-    }
-    try {
-      await deleteUserAccountRecord(target.id);
-      setUsersList((prev) => prev.filter((u) => u.id !== target.id));
-      if (inspectedUser?.id === target.id) setInspectedUser(null);
-      showNotification(`Conta ${target.email} eliminada.`);
-    } catch (e) {
-      console.error(e);
-      showNotification('Erro ao eliminar conta.');
-    }
+  const handleDeleteUserAccount = (target: User) => {
+    setPendingConfirm({
+      title: 'Eliminar Conta Permanentemente',
+      message: `Tem a certeza que pretende eliminar a conta de ${target.name} (${target.email})? Esta ação remove o registo da base de utilizadores.`,
+      confirmLabel: 'Eliminar Conta',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await deleteUserAccountRecord(target.id);
+          setUsersList((prev) => prev.filter((u) => u.id !== target.id));
+          if (inspectedUser?.id === target.id) setInspectedUser(null);
+          showNotification(`Conta ${target.email} eliminada.`);
+        } catch (e) {
+          console.error(e);
+          showNotification('Erro ao eliminar conta.');
+        }
+      }
+    });
   };
 
   const handleApproveOrder = async (order: SaaSOrder) => {
@@ -878,20 +1322,25 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
-  const handleRefundOrder = async (order: SaaSOrder) => {
-    if (!window.confirm(`Confirmar reembolso da fatura ${order.orderNumber} ($${order.amount})?`)) {
-      return;
-    }
-    try {
-      await updateOrderStatus(order.id, 'refunded', 'Reembolso autorizado via painel administrativo');
-      setOrdersList((prev) =>
-        prev.map((o) => (o.id === order.id ? { ...o, status: 'refunded' } : o))
-      );
-      showNotification(`Fatura ${order.orderNumber} marcada como REEMBOLSADA.`);
-    } catch (e) {
-      console.error(e);
-      showNotification('Erro ao processar reembolso.');
-    }
+  const handleRefundOrder = (order: SaaSOrder) => {
+    setPendingConfirm({
+      title: 'Confirmar Reembolso de Fatura',
+      message: `Autorizar reembolso da fatura ${order.orderNumber} no valor de $${order.amount}?`,
+      confirmLabel: 'Confirmar Reembolso',
+      variant: 'warning',
+      onConfirm: async () => {
+        try {
+          await updateOrderStatus(order.id, 'refunded', 'Reembolso autorizado via painel administrativo');
+          setOrdersList((prev) =>
+            prev.map((o) => (o.id === order.id ? { ...o, status: 'refunded' } : o))
+          );
+          showNotification(`Fatura ${order.orderNumber} marcada como REEMBOLSADA.`);
+        } catch (e) {
+          console.error(e);
+          showNotification('Erro ao processar reembolso.');
+        }
+      }
+    });
   };
 
   const handleStartImpersonate = async (targetUser: User) => {
@@ -1015,6 +1464,19 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     showNotification(`Nível do modelo "${target.shortName}" alterado para ${newTier.toUpperCase()}.`);
   };
 
+  const handleSaveTemplateMeta = async (updatedItem: TemplateAdminItem) => {
+    const cleaned: TemplateAdminItem = {
+      ...updatedItem,
+      shortName: updatedItem.shortName.trim() || updatedItem.name,
+      badge: updatedItem.badge.trim() || 'ATS',
+      atsScore: Math.max(50, Math.min(100, Number(updatedItem.atsScore) || 95))
+    };
+    await saveAdminTemplate(cleaned);
+    setTemplatesList((prev) => prev.map((t) => (t.id === cleaned.id ? cleaned : t)));
+    setEditingTemplate(null);
+    showNotification(`Metadados de "${cleaned.shortName}" guardados ao vivo!`);
+  };
+
   const handleExportGdprJson = (req: GdprDataRequest) => {
     const matchingUser = usersList.find(
       (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
@@ -1074,24 +1536,31 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     showNotification(`Dados de ${req.userEmail} anonimizados e pedido concluído.`);
   };
 
-  const handleDeleteGdpr = async (req: GdprDataRequest) => {
-    if (!window.confirm(`Confirmar eliminação definitiva da conta ${req.userEmail}?`)) return;
-    const matchingUser = usersList.find(
-      (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
-    );
-    if (matchingUser) {
-      await deleteUserAccountRecord(matchingUser.id);
-      setUsersList((prev) => prev.filter((u) => u.id !== matchingUser.id));
-    }
-    await updateGdprRequestStatus(req.id, 'completed', 'Conta eliminada definitivamente conforme Art. 17 RGPD.');
-    setGdprList((prev) =>
-      prev.map((item) =>
-        item.id === req.id
-          ? { ...item, status: 'completed', notes: 'Conta eliminada definitivamente conforme Art. 17 RGPD.' }
-          : item
-      )
-    );
-    showNotification(`Conta ${req.userEmail} eliminada em conformidade RGPD.`);
+  const handleDeleteGdpr = (req: GdprDataRequest) => {
+    setPendingConfirm({
+      title: 'Confirmar Eliminação RGPD (Art. 17)',
+      message: `Eliminar definitivamente a conta e dados pessoais associados a ${req.userEmail}?`,
+      confirmLabel: 'Eliminar em Conformidade RGPD',
+      variant: 'danger',
+      onConfirm: async () => {
+        const matchingUser = usersList.find(
+          (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
+        );
+        if (matchingUser) {
+          await deleteUserAccountRecord(matchingUser.id);
+          setUsersList((prev) => prev.filter((u) => u.id !== matchingUser.id));
+        }
+        await updateGdprRequestStatus(req.id, 'completed', 'Conta eliminada definitivamente conforme Art. 17 RGPD.');
+        setGdprList((prev) =>
+          prev.map((item) =>
+            item.id === req.id
+              ? { ...item, status: 'completed', notes: 'Conta eliminada definitivamente conforme Art. 17 RGPD.' }
+              : item
+          )
+        );
+        showNotification(`Conta ${req.userEmail} eliminada em conformidade RGPD.`);
+      }
+    });
   };
 
   const handleCreateOrderSubmit = async (e: React.FormEvent) => {
@@ -1223,7 +1692,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
-  const handleExportCSV = (type: 'users' | 'orders' | 'errors') => {
+  const handleExportCSV = (type: 'users' | 'orders' | 'errors' | 'audit_logs') => {
     let csvContent = '';
     let filename = '';
 
@@ -1238,6 +1707,12 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       csvContent = 'Fatura,Cliente,Email,Plano,Ciclo,Valor,Moeda,Metodo,Status,Data\n';
       ordersList.forEach((o) => {
         csvContent += `"${o.orderNumber}","${o.userName}","${o.userEmail}","${o.plan}","${o.billingCycle}","${o.amount}","${o.currency}","${o.paymentMethod}","${o.status}","${o.createdAt}"\n`;
+      });
+    } else if (type === 'audit_logs') {
+      filename = `Auditoria_Seguranca_Firestore_${new Date().toISOString().slice(0, 10)}.csv`;
+      csvContent = 'ID,DataHora,Utilizador,Email,Perfil,Acao,Categoria,Severidade,Status,RecursoAlvo,IP,Detalhes\n';
+      filteredAuditLogs.forEach((log) => {
+        csvContent += `"${log.id}","${log.timestamp}","${log.actorUserId}","${log.actorEmail}","${log.actorRole}","${log.action}","${log.category}","${log.severity}","${log.status}","${log.targetResource}","${log.ipAddress || ''}","${log.details.replace(/"/g, '""')}"\n`;
       });
     } else {
       filename = `Logs_Erros_Tecnicos_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -1325,6 +1800,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
   const unresolvedErrorsCount = errorLogsList.filter((e) => !e.resolved).length;
   const pendingGdprCount = gdprList.filter((g) => g.status === 'pending').length;
+  const blockedSecurityCount = auditStats.blockedCount;
 
   const navItems: Array<{
     id: AdminActiveModule;
@@ -1366,12 +1842,11 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       id: 'security_monitoring',
       label: 'Segurança & Governança',
       icon: <Shield className="w-4 h-4" />,
-      badge: unresolvedErrorsCount + pendingGdprCount || undefined,
-      badgeAlert: unresolvedErrorsCount + pendingGdprCount > 0
+      badge: unresolvedErrorsCount + pendingGdprCount + blockedSecurityCount || undefined,
+      badgeAlert: unresolvedErrorsCount + pendingGdprCount + blockedSecurityCount > 0
     }
   ];
 
-  const maxRevBar = Math.max(...revenueSeries.map((s) => s.revenue), 1);
   const templateRanking = Object.entries(telemetry.templateSelections)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 6);
@@ -1404,7 +1879,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     Executive Admin
                   </p>
                   <p className="text-[10px] text-slate-500 font-mono truncate">
-                    SaaS Backoffice v2
+                    Operações &amp; Receita
                   </p>
                 </div>
               </div>
@@ -1464,26 +1939,34 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
             {/* Live Frontend Governance Snapshot */}
             <div className="mx-3 mt-2 p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2 text-[11px]">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-slate-700">Estado em Produção</span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span
+                  className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase ${
+                    platformSettings?.maintenanceMode
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {platformSettings?.maintenanceMode ? 'Manutenção' : 'Operacional'}
+                </span>
               </div>
               <div className="space-y-1 text-slate-600">
                 <div className="flex justify-between">
                   <span>Manutenção</span>
-                  <span className="font-mono font-bold">
+                  <span className="font-mono font-bold tabular-nums">
                     {platformSettings?.maintenanceMode ? 'ATIVA' : 'OFF'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>IA Global</span>
-                  <span className="font-mono font-bold">
+                  <span className="font-mono font-bold tabular-nums">
                     {platformSettings?.enableAiFeaturesGlobally !== false ? 'ON' : 'PAUSA'}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Novos Cadastros</span>
-                  <span className="font-mono font-bold">
+                  <span className="font-mono font-bold tabular-nums">
                     {platformSettings?.allowNewRegistrations !== false ? 'ABERTO' : 'PAUSA'}
                   </span>
                 </div>
@@ -1628,6 +2111,135 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                       </div>
                     </div>
 
+                    {/* Action Triage Strip & Pending Pix Quick Approval */}
+                    {(() => {
+                      const pendingOrders = ordersList.filter((o) => o.status === 'pending');
+                      const hasPendingWork =
+                        pendingOrders.length > 0 ||
+                        unresolvedErrorsCount > 0 ||
+                        pendingGdprCount > 0 ||
+                        blockedSecurityCount > 0;
+
+                      if (!hasPendingWork) return null;
+
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span className="text-xs font-bold text-slate-900">
+                                Fila de Ação Operacional
+                              </span>
+                              <span className="text-[11px] text-slate-500">
+                                Itens prioritários que exigem revisão ou aprovação direta.
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                              {pendingOrders.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveModule('users_support');
+                                    setCrmSubTab('orders');
+                                    setOrderStatusFilter('pending');
+                                  }}
+                                  className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold rounded-md font-mono tabular-nums"
+                                >
+                                  {pendingOrders.length} Pix/Fatura(s) Pendente(s)
+                                </button>
+                              )}
+                              {unresolvedErrorsCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveModule('security_monitoring');
+                                    setSecuritySubTab('error_logs');
+                                    setErrorFilterMode('unresolved');
+                                  }}
+                                  className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-900 font-bold rounded-md font-mono tabular-nums"
+                                >
+                                  {unresolvedErrorsCount} Erro(s) Técnico(s)
+                                </button>
+                              )}
+                              {pendingGdprCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveModule('security_monitoring');
+                                    setSecuritySubTab('gdpr');
+                                  }}
+                                  className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-900 font-bold rounded-md font-mono tabular-nums"
+                                >
+                                  {pendingGdprCount} Pedido(s) RGPD
+                                </button>
+                              )}
+                              {blockedSecurityCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveModule('security_monitoring');
+                                    setSecuritySubTab('audit_logs');
+                                    setAuditCategoryFilter('security');
+                                  }}
+                                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-md font-mono tabular-nums"
+                                >
+                                  {blockedSecurityCount} Bloqueio(s) Segurança
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {pendingOrders.length > 0 && (
+                            <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                Comprovantes Pix Aguardando Conferência &amp; Ativação
+                              </p>
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                                {pendingOrders.slice(0, 4).map((o) => (
+                                  <div
+                                    key={o.id}
+                                    className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 flex items-center justify-between gap-2 text-xs"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-slate-900 truncate">
+                                        {o.userName}{' '}
+                                        <span className="font-mono text-[10px] text-slate-500">
+                                          ({o.orderNumber})
+                                        </span>
+                                      </p>
+                                      <p className="text-[11px] font-mono text-slate-600 truncate">
+                                        {o.plan.toUpperCase()} · {formatCycleLabel(o.billingCycle)} ·{' '}
+                                        {o.currency === 'BRL'
+                                          ? `R$ ${Number(o.amount).toFixed(2)}`
+                                          : `$${o.amount} ${o.currency}`}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedInvoice(o)}
+                                        className="px-2 py-1 border border-slate-200 bg-white hover:bg-slate-50 rounded text-[11px] font-semibold"
+                                      >
+                                        Recibo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleApproveOrder(o)}
+                                        className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold whitespace-nowrap"
+                                      >
+                                        Aprovar &amp; Ativar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* 8 KPI Cards (2 rows of 4) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
                       <div className="bg-white p-4 rounded-xl border border-slate-200">
@@ -1635,8 +2247,9 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                             MRR (Receita Recorrente)
                           </span>
-                          <span className="text-[11px] font-mono font-bold text-emerald-600">
-                            +{financialMetrics.monthlyGrowthRate}% MoM
+                          <span className="text-[11px] font-mono font-bold text-emerald-600 tabular-nums">
+                            {financialMetrics.monthlyGrowthRate >= 0 ? '+' : ''}
+                            {financialMetrics.monthlyGrowthRate}% MoM
                           </span>
                         </div>
                         <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
@@ -1653,7 +2266,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                             Faturas Pagas ({periodFilter})
                           </span>
-                          <span className="text-[11px] font-mono text-slate-500">
+                          <span className="text-[11px] font-mono text-slate-500 tabular-nums">
                             {financialMetrics.periodOrdersCount} ordens
                           </span>
                         </div>
@@ -1681,13 +2294,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                       <div className="bg-white p-4 rounded-xl border border-slate-200">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Rácio LTV : CAC
+                          ARPU Pagantes &amp; Canal
                         </span>
                         <div className="text-2xl font-black text-emerald-700 font-mono tabular-nums mt-1.5">
-                          {financialMetrics.cacRatio}x
+                          ${financialMetrics.paidArpu}
+                          <span className="text-xs font-normal text-slate-400 ml-1">/assinante</span>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-1">
-                          Saúde unitária SaaS: <strong className="text-emerald-700">Excelente (&gt;3x)</strong>
+                          Aquisição: <strong className="text-emerald-700">100% Orgânica (CAC $0)</strong>
                         </p>
                       </div>
 
@@ -1718,13 +2332,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                       <div className="bg-white p-4 rounded-xl border border-slate-200">
                         <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          Custo API Gemini (Mês)
+                          Custo IA por Subscritor
                         </span>
                         <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
-                          ${financialMetrics.apiCostTracking.monthCostUsd}
+                          ${financialMetrics.avgAiCostPerPaidSubscriberUsd.toFixed(4)}
+                          <span className="text-xs font-normal text-slate-400 ml-1">/pago</span>
                         </div>
                         <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
-                          Hoje: <strong>${financialMetrics.apiCostTracking.todayCostUsd}</strong> ({financialMetrics.apiCostTracking.costToRevenuePercent}% rev.)
+                          Total Mês: <strong>${financialMetrics.apiCostTracking.monthCostUsd}</strong> ({financialMetrics.apiCostTracking.costToRevenuePercent}% rev.)
                         </p>
                       </div>
 
@@ -1741,132 +2356,43 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                       </div>
                     </div>
 
-                    {/* Row 2: Revenue vs API Cost Chart + Plan Mix */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                      <div className="lg:col-span-7 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                          <div>
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                              Evolução de Receita vs Custo de IA (6 Meses)
-                            </h3>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              Comparativo de faturamento mensal contra consumo de tokens Gemini.
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-3 text-[11px]">
-                            <span className="flex items-center gap-1.5 text-slate-700 font-medium">
-                              <span className="w-2.5 h-2.5 rounded-xs bg-slate-900" /> Receita
-                            </span>
-                            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
-                              <span className="w-2.5 h-2.5 rounded-xs bg-amber-400" /> Custo IA
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-6 gap-3 pt-2 items-end h-44">
-                          {revenueSeries.map((pt) => {
-                            const revPct = pt.revenue > 0 ? Math.max(8, Math.round((pt.revenue / maxRevBar) * 100)) : 0;
-                            const costPct = pt.aiCost > 0 ? Math.max(4, Math.min(40, Math.round((pt.aiCost / maxRevBar) * 600))) : 0;
-                            return (
-                              <div key={pt.label} className="flex flex-col items-center gap-2 h-full justify-end">
-                                <span className="text-[10px] font-mono font-bold text-slate-700 tabular-nums">
-                                  ${pt.revenue}
-                                </span>
-                                <div className="w-full max-w-[44px] flex items-end justify-center gap-1 h-28 bg-slate-50 rounded-md p-1 border border-slate-100">
-                                  <div
-                                    className="w-4 bg-slate-900 rounded-t-xs transition-all"
-                                    style={{ height: `${revPct}%` }}
-                                    title={`Receita: $${pt.revenue}`}
-                                  />
-                                  <div
-                                    className="w-2.5 bg-amber-400 rounded-t-xs transition-all"
-                                    style={{ height: `${costPct}%` }}
-                                    title={`Custo IA: $${pt.aiCost}`}
-                                  />
-                                </div>
-                                <span className="text-[11px] font-semibold text-slate-500">{pt.label}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {ordersList.length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center pt-1">
-                            Nenhuma fatura paga registada ainda — os valores atualizarão automaticamente com as primeiras transações.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="lg:col-span-5 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                            Distribuição por Plano &amp; Participação MRR
-                          </h3>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            Composição da base de {financialMetrics.totalUsers} utilizadores registados.
-                          </p>
-                        </div>
-
-                        <div className="space-y-3.5 text-xs">
-                          {[
-                            {
-                              label: 'Executivo VIP ($12/mês)',
-                              count: financialMetrics.executiveUsers,
-                              color: 'bg-purple-600',
-                              mrrPart: financialMetrics.executiveUsers * (editablePlans.find((p) => p.id === 'executive')?.priceMonthlyValue ?? 12)
-                            },
-                            {
-                              label: 'Profissional Pro ($8/mês)',
-                              count: financialMetrics.proUsers,
-                              color: 'bg-amber-500',
-                              mrrPart: financialMetrics.proUsers * (editablePlans.find((p) => p.id === 'pro')?.priceMonthlyValue ?? 8)
-                            },
-                            {
-                              label: 'Visitante / Sem Plano',
-                              count: financialMetrics.freeUsers,
-                              color: 'bg-slate-400',
-                              mrrPart: 0
-                            }
-                          ].map((tier) => {
-                            const pct =
-                              financialMetrics.totalUsers > 0
-                                ? Math.round((tier.count / financialMetrics.totalUsers) * 100)
-                                : 0;
-                            return (
-                              <div key={tier.label} className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-slate-800">{tier.label}</span>
-                                  <span className="font-mono tabular-nums text-slate-700 font-bold">
-                                    {tier.count} ({pct}%) · ${tier.mrrPart}/mês
-                                  </span>
-                                </div>
-                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                                  <div className={`h-full ${tier.color} rounded-full`} style={{ width: `${pct}%` }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-3 text-xs">
-                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                            <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                              Exports Word (.docx)
-                            </span>
-                            <span className="text-base font-black font-mono tabular-nums text-slate-900">
-                              {telemetry.wordExportsCount}
-                            </span>
-                          </div>
-                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
-                            <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                              Tokens IA Estimados
-                            </span>
-                            <span className="text-base font-black font-mono tabular-nums text-slate-900">
-                              {(telemetry.estimatedTokensUsed / 1000).toFixed(1)}k
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    {/* Row 2: Recharts Financial Visualizations (MRR, Churn Rate, AI API Cost per Subscriber) */}
+                    <AdminFinancialCharts
+                      periodLabel={
+                        periodFilter === '7d'
+                          ? '7 Dias'
+                          : periodFilter === '30d'
+                          ? '30 Dias'
+                          : periodFilter === '90d'
+                          ? '90 Dias'
+                          : 'Todo Período'
+                      }
+                      mrr={financialMetrics.mrr}
+                      arr={financialMetrics.arr}
+                      proMrr={financialMetrics.proMrr}
+                      execMrr={financialMetrics.execMrr}
+                      proUsers={financialMetrics.proUsers}
+                      executiveUsers={financialMetrics.executiveUsers}
+                      monthlyGrowthRate={financialMetrics.monthlyGrowthRate}
+                      churnRate={financialMetrics.churnRate}
+                      churnedUsersCount={financialMetrics.churnedUsersCount}
+                      paidUsersCount={financialMetrics.paidUsers}
+                      totalUsersCount={financialMetrics.totalUsers}
+                      monthAiCostUsd={financialMetrics.apiCostTracking.monthCostUsd}
+                      todayAiCostUsd={financialMetrics.apiCostTracking.todayCostUsd}
+                      avgAiCostPerPaidSubscriberUsd={financialMetrics.avgAiCostPerPaidSubscriberUsd}
+                      avgAiCostPerRegisteredUserUsd={financialMetrics.avgAiCostPerRegisteredUserUsd}
+                      costToRevenuePercent={financialMetrics.apiCostTracking.costToRevenuePercent}
+                      grossMarginPercent={financialMetrics.grossMarginPercent}
+                      monthlyMrrSeries={financialMetrics.monthlyMrrSeries}
+                      churnCohortSeries={financialMetrics.churnCohortSeries}
+                      tierAiEconomics={financialMetrics.tierAiEconomics}
+                      subscriberAiCostList={financialMetrics.subscriberAiCostList}
+                      onInspectUser={(uid) => {
+                        const found = usersList.find((u) => u.id === uid);
+                        if (found) openUserDrawer(found);
+                      }}
+                    />
 
                     {/* Row 3: Actionable Strategic Insights Engine */}
                     <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
@@ -2201,6 +2727,165 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         )}
                       </div>
                     </div>
+
+                    {/* Row 6: Real-Time Firestore Critical Audit Stream Panel */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 text-rose-400 flex items-center justify-center shrink-0">
+                            <ShieldCheck className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                Ações Críticas em Tempo Real (Firestore Listener)
+                              </h3>
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  auditLiveStatus === 'live'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : auditLiveStatus === 'error'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    auditLiveStatus === 'live'
+                                      ? 'bg-emerald-600 animate-pulse'
+                                      : auditLiveStatus === 'error'
+                                      ? 'bg-rose-600'
+                                      : 'bg-amber-600'
+                                  }`}
+                                />
+                                {auditLiveStatus === 'live'
+                                  ? 'Ao Vivo · Firestore'
+                                  : auditLiveStatus === 'connecting'
+                                  ? 'A conectar...'
+                                  : auditLiveStatus === 'error'
+                                  ? 'Erro Listener'
+                                  : 'Modo Servidor'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              {auditStats.criticalCount} evento(s) críticos/sensíveis monitorizados
+                              {auditLiveLastAt
+                                ? ` · Última atualização ${new Date(auditLiveLastAt).toLocaleTimeString('pt-PT')}`
+                                : ''}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveModule('security_monitoring');
+                            setSecuritySubTab('audit_logs');
+                          }}
+                          className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-[11px] inline-flex items-center gap-1.5"
+                        >
+                          <span>Abrir Auditoria Completa</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Quick Filters by User & Category */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                        <select
+                          aria-label="Filtrar ações críticas por utilizador"
+                          value={auditUserFilter}
+                          onChange={(e) => setAuditUserFilter(e.target.value)}
+                          className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                        >
+                          <option value="all">Todos os Utilizadores ({auditActorOptions.length})</option>
+                          {auditActorOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label} ({opt.count})
+                            </option>
+                          ))}
+                        </select>
+
+                        <select
+                          aria-label="Filtrar ações críticas por categoria"
+                          value={auditCategoryFilter}
+                          onChange={(e) => setAuditCategoryFilter(e.target.value as 'all' | AuditLogCategory)}
+                          className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                        >
+                          <option value="all">Todas Categorias</option>
+                          <option value="security">Segurança / Bloqueios</option>
+                          <option value="subscription">Subscrições</option>
+                          <option value="cv_export">Exportações CV</option>
+                          <option value="profile">Perfil &amp; Senha</option>
+                          <option value="admin">Administração</option>
+                        </select>
+
+                        <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                          <span className="text-[11px] text-slate-600 font-semibold">
+                            {filteredCriticalLiveLogs.length} críticos visíveis
+                          </span>
+                          {(auditUserFilter !== 'all' || auditCategoryFilter !== 'all') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAuditUserFilter('all');
+                                setAuditCategoryFilter('all');
+                              }}
+                              className="text-[11px] font-bold text-slate-900 underline"
+                            >
+                              Limpar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {filteredCriticalLiveLogs.length === 0 ? (
+                        <div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                          Nenhuma ação crítica encontrada para o utilizador e categoria selecionados.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
+                          {filteredCriticalLiveLogs.slice(0, 10).map((log) => (
+                            <div
+                              key={log.id}
+                              className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                                log.status === 'blocked' || log.severity === 'critical'
+                                  ? 'bg-rose-50/70 border-rose-200'
+                                  : 'bg-amber-50/60 border-amber-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold uppercase shrink-0 ${
+                                      log.status === 'blocked' || log.severity === 'critical'
+                                        ? 'bg-rose-600 text-white'
+                                        : 'bg-amber-200 text-amber-950'
+                                    }`}
+                                  >
+                                    {log.status === 'blocked' ? 'BLOQ' : log.severity.toUpperCase()}
+                                  </span>
+                                  <span className="font-bold text-slate-900 truncate">
+                                    {ADMIN_AUDIT_ACTION_LABELS[log.action] || log.action}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                                  {new Date(log.timestamp).toLocaleTimeString('pt-PT')}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-700 line-clamp-2">{log.details}</p>
+                              <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-slate-500">
+                                <span className="truncate font-semibold text-slate-800">
+                                  {log.actorEmail}
+                                </span>
+                                <span className="px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-600 shrink-0">
+                                  {ADMIN_AUDIT_CATEGORY_LABELS[log.category] || log.category}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -2370,7 +3055,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                     }
                                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono text-[11px]"
                                   >
-                                    <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                                    <option value="gemini-4-hydrogen">gemini-4-hydrogen</option>
                                     <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                                     <option value="gemini-flash-latest">gemini-flash-latest</option>
                                   </select>
@@ -2387,7 +3072,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                   >
                                     <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                                     <option value="gemini-flash-latest">gemini-flash-latest</option>
-                                    <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                                    <option value="gemini-4-hydrogen">gemini-4-hydrogen</option>
                                   </select>
                                 </div>
                               </div>
@@ -2395,7 +3080,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               {/* Live Prompt Test Sandbox */}
                               <div className="pt-3 border-t border-slate-100 space-y-2.5">
                                 <label className="font-bold text-slate-900 flex items-center gap-1.5">
-                                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                  <Zap className="w-3.5 h-3.5 text-amber-500" />
                                   <span>Laboratório de Teste ao Vivo (/api/admin/test-prompt)</span>
                                 </label>
                                 <div className="flex flex-col sm:flex-row gap-2">
@@ -2410,7 +3095,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                     type="button"
                                     onClick={handleTestPromptWithAI}
                                     disabled={isTestingPrompt}
-                                    className="px-4 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
+                                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50"
                                   >
                                     {isTestingPrompt ? (
                                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -2472,7 +3157,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               onChange={(e) => setAiRouting({ ...aiRouting, primaryModel: e.target.value })}
                               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono"
                             >
-                              <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                              <option value="gemini-4-hydrogen">gemini-4-hydrogen</option>
                               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                               <option value="gemini-flash-latest">gemini-flash-latest</option>
                             </select>
@@ -2486,7 +3171,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             >
                               <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
                               <option value="gemini-flash-latest">gemini-flash-latest</option>
-                              <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+                              <option value="gemini-4-hydrogen">gemini-4-hydrogen</option>
                             </select>
                           </div>
                           <div>
@@ -2672,90 +3357,218 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                       </button>
                     </div>
 
-                    {contentSubTab === 'templates' && (
-                      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                        <div className="border-b border-slate-100 pb-3">
-                          <h3 className="text-sm font-bold text-slate-900">
-                            Gestor de Modelos (Ordem, Visibilidade e Tier)
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            A ordem e os níveis configurados refletem instantaneamente na Home e no seletor do Editor.
-                          </p>
-                        </div>
+                    {contentSubTab === 'templates' && (() => {
+                      const visibleTemplates = templatesList.filter((tmpl) => {
+                        const q = templateSearch.trim().toLowerCase();
+                        const matchQuery =
+                          !q ||
+                          tmpl.shortName.toLowerCase().includes(q) ||
+                          tmpl.name.toLowerCase().includes(q) ||
+                          tmpl.badge.toLowerCase().includes(q);
+                        const matchFilter =
+                          templateVisibilityFilter === 'all' ||
+                          (templateVisibilityFilter === 'ats' && !tmpl.hasPhoto) ||
+                          (templateVisibilityFilter === 'photo' && tmpl.hasPhoto) ||
+                          (templateVisibilityFilter === 'hidden' && !tmpl.isActive);
+                        return matchQuery && matchFilter;
+                      });
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {templatesList.map((tmpl, idx) => {
-                            const usageCount = telemetry.templateSelections[tmpl.id] || 0;
-                            return (
-                              <div
-                                key={tmpl.id}
-                                className={`p-4 rounded-xl border text-xs space-y-3 ${
-                                  tmpl.isActive ? 'bg-white border-slate-200' : 'bg-slate-100 border-slate-200 opacity-65'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-mono text-[10px] font-bold text-slate-400">
-                                        #{tmpl.displayOrder}
-                                      </span>
-                                      <h4 className="font-bold text-slate-900 text-sm">{tmpl.shortName}</h4>
-                                    </div>
-                                    <p className="text-[11px] text-slate-500 font-mono">
-                                      ATS {tmpl.atsScore}% · {usageCount} seleções
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      type="button"
-                                      disabled={idx === 0}
-                                      onClick={() => handleMoveTemplateOrder(tmpl.id, 'up')}
-                                      className="p-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-30"
-                                      title="Mover para cima"
-                                    >
-                                      <ArrowUp className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={idx === templatesList.length - 1}
-                                      onClick={() => handleMoveTemplateOrder(tmpl.id, 'down')}
-                                      className="p-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-30"
-                                      title="Mover para baixo"
-                                    >
-                                      <ArrowDown className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
+                      return (
+                        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900">
+                                Gestor de Modelos (Ordem, Visibilidade, Nome e Tier)
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Alterações de nome, selo, pontuação ATS, ordem e tier refletem ao vivo na Home e no Editor.
+                              </p>
+                            </div>
 
-                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                                  <select
-                                    value={tmpl.tierRequired}
-                                    onChange={(e) => handleTemplateTierChange(tmpl.id, e.target.value as any)}
-                                    className="p-1.5 bg-slate-50 border border-slate-200 rounded-md font-semibold text-xs"
-                                  >
-                                    <option value="free">Gratuito</option>
-                                    <option value="pro">Pro ($8)</option>
-                                    <option value="executive">Executivo VIP ($12)</option>
-                                  </select>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleTemplate(tmpl.id, tmpl.isActive)}
-                                    className={`px-3 py-1 rounded-md font-bold text-[11px] ${
-                                      tmpl.isActive
-                                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                        : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
-                                    }`}
-                                  >
-                                    {tmpl.isActive ? 'Ativo no Site' : 'Oculto'}
-                                  </button>
-                                </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="relative w-48 sm:w-56">
+                                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                  type="text"
+                                  value={templateSearch}
+                                  onChange={(e) => setTemplateSearch(e.target.value)}
+                                  placeholder="Filtrar modelo..."
+                                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                                />
                               </div>
-                            );
-                          })}
+
+                              <select
+                                value={templateVisibilityFilter}
+                                onChange={(e) => setTemplateVisibilityFilter(e.target.value as any)}
+                                className="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700"
+                              >
+                                <option value="all">Todos ({templatesList.length})</option>
+                                <option value="ats">Sem Foto · ATS</option>
+                                <option value="photo">Com Foto · Europa</option>
+                                <option value="hidden">Ocultos ({templatesList.filter((t) => !t.isActive).length})</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {visibleTemplates.map((tmpl, idx) => {
+                              const usageCount = telemetry.templateSelections[tmpl.id] || 0;
+                              const isEditingThis = editingTemplate?.id === tmpl.id;
+                              return (
+                                <div
+                                  key={tmpl.id}
+                                  className={`p-4 rounded-xl border text-xs space-y-3 ${
+                                    tmpl.isActive ? 'bg-white border-slate-200' : 'bg-slate-100 border-slate-200 opacity-75'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-mono text-[10px] font-bold text-slate-400">
+                                          #{tmpl.displayOrder}
+                                        </span>
+                                        <h4 className="font-bold text-slate-900 text-sm truncate">{tmpl.shortName}</h4>
+                                        {tmpl.badge && (
+                                          <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[9px] font-bold text-slate-700 uppercase">
+                                            {tmpl.badge}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">
+                                        ATS {tmpl.atsScore}% · {usageCount} seleções
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingTemplate(isEditingThis ? null : { ...tmpl })}
+                                        className={`p-1 rounded border transition-colors ${
+                                          isEditingThis
+                                            ? 'bg-slate-900 text-white border-slate-900'
+                                            : 'border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                                        }`}
+                                        title="Editar metadados do modelo"
+                                      >
+                                        <Edit3 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={idx === 0}
+                                        onClick={() => handleMoveTemplateOrder(tmpl.id, 'up')}
+                                        className="p-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-30"
+                                        title="Mover para cima"
+                                      >
+                                        <ArrowUp className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={idx === visibleTemplates.length - 1}
+                                        onClick={() => handleMoveTemplateOrder(tmpl.id, 'down')}
+                                        className="p-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-30"
+                                        title="Mover para baixo"
+                                      >
+                                        <ArrowDown className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {isEditingThis && editingTemplate && (
+                                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                                      <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
+                                          Nome curto
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={editingTemplate.shortName}
+                                          onChange={(e) =>
+                                            setEditingTemplate({ ...editingTemplate, shortName: e.target.value })
+                                          }
+                                          className="w-full p-1.5 bg-white border border-slate-200 rounded text-xs font-semibold"
+                                        />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                          <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
+                                            Selo (Badge)
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={editingTemplate.badge}
+                                            onChange={(e) =>
+                                              setEditingTemplate({ ...editingTemplate, badge: e.target.value })
+                                            }
+                                            className="w-full p-1.5 bg-white border border-slate-200 rounded text-xs"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="text-[10px] font-bold uppercase text-slate-500 block mb-0.5">
+                                            Score ATS %
+                                          </label>
+                                          <input
+                                            type="number"
+                                            min={50}
+                                            max={100}
+                                            value={editingTemplate.atsScore}
+                                            onChange={(e) =>
+                                              setEditingTemplate({
+                                                ...editingTemplate,
+                                                atsScore: Number(e.target.value)
+                                              })
+                                            }
+                                            className="w-full p-1.5 bg-white border border-slate-200 rounded text-xs font-mono"
+                                          />
+                                        </div>
+                                      </div>
+                                      <div className="flex justify-end gap-1.5 pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingTemplate(null)}
+                                          className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                                        >
+                                          Cancelar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSaveTemplateMeta(editingTemplate)}
+                                          className="px-2.5 py-1 bg-slate-900 text-white rounded text-[11px] font-bold"
+                                        >
+                                          Salvar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                                    <select
+                                      value={tmpl.tierRequired}
+                                      onChange={(e) => handleTemplateTierChange(tmpl.id, e.target.value as any)}
+                                      className="p-1.5 bg-slate-50 border border-slate-200 rounded-md font-semibold text-xs"
+                                    >
+                                      <option value="free">Gratuito</option>
+                                      <option value="pro">Pro (${financialMetrics.proPrice})</option>
+                                      <option value="executive">Executivo VIP (${financialMetrics.execPrice})</option>
+                                    </select>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleTemplate(tmpl.id, tmpl.isActive)}
+                                      className={`px-3 py-1 rounded-md font-bold text-[11px] whitespace-nowrap ${
+                                        tmpl.isActive
+                                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                          : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                                      }`}
+                                    >
+                                      {tmpl.isActive ? 'Ativo no Site' : 'Oculto'}
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {contentSubTab === 'snippets' && (
                       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
@@ -3020,7 +3833,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                           <span
                                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                                               u.plan === 'executive'
-                                                ? 'bg-purple-100 text-purple-800'
+                                                ? 'bg-slate-900 text-amber-400'
                                                 : u.plan === 'pro'
                                                 ? 'bg-amber-100 text-amber-900'
                                                 : 'bg-slate-100 text-slate-600'
@@ -3054,7 +3867,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                           <button
                                             type="button"
                                             onClick={() => handleQuickAddCredits(u.id, 50)}
-                                            className="px-2 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded text-[10px]"
+                                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded text-[10px]"
                                           >
                                             +50 Créd
                                           </button>
@@ -3365,7 +4178,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                       )
                                     )
                                   }
-                                  className="text-[11px] font-semibold text-indigo-600 hover:underline"
+                                  className="text-[11px] font-semibold text-slate-800 hover:text-slate-950 underline underline-offset-2"
                                 >
                                   Recalcular descontos (-10% / -18% / -25%)
                                 </button>
@@ -3507,9 +4320,9 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                     {monetizationSubTab === 'coupons' && (
                       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
                           <div>
-                            <h3 className="text-sm font-bold text-slate-900">Gerador de Códigos Promocionais</h3>
+                            <h3 className="text-sm font-bold text-slate-900">Gerador de Códigos Promocionais &amp; Campanhas</h3>
                             <p className="text-xs text-slate-500 mt-0.5">
                               Validado automaticamente no checkout com controlo de validade e limite de usos.
                             </p>
@@ -3524,9 +4337,39 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           </button>
                         </div>
 
+                        {/* 1-Click Marketing Coupon Presets */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-bold text-slate-700">Modelos de Campanha (1 Clique):</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {[
+                              { label: 'Boas-Vindas (-20%)', code: 'CARREIRA20', discountPercent: 20, maxUses: 150, expiresDays: 30 },
+                              { label: 'Recuperação Checkout (-30%)', code: 'VOLTA30', discountPercent: 30, maxUses: 80, expiresDays: 14 },
+                              { label: 'Parceria Corporativa (-50%)', code: 'CORP50', discountPercent: 50, maxUses: 40, expiresDays: 60 },
+                              { label: 'Cortesia VIP (100%)', code: 'VIPGRATIS100', discountPercent: 100, maxUses: 10, expiresDays: 15 }
+                            ].map((preset) => (
+                              <button
+                                key={preset.code}
+                                type="button"
+                                onClick={() => {
+                                  setNewCouponForm({
+                                    code: preset.code,
+                                    discountPercent: preset.discountPercent,
+                                    maxUses: preset.maxUses,
+                                    expiresDays: preset.expiresDays
+                                  });
+                                  setShowNewCouponModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-md font-semibold text-slate-800 transition-colors"
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         {couponsList.length === 0 ? (
                           <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
-                            Nenhum cupom promocional criado. Clique em &quot;Criar Cupom&quot; para lançar uma campanha real.
+                            Nenhum cupom promocional criado. Clique em &quot;Criar Cupom&quot; ou escolha um modelo acima.
                           </div>
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -3536,12 +4379,12 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                 <div key={cp.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2.5 text-xs">
                                   <div className="flex items-center justify-between">
                                     <span className="font-mono font-black text-slate-900 text-sm">{cp.code}</span>
-                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded">
+                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded tabular-nums">
                                       {cp.discountPercent}% OFF
                                     </span>
                                   </div>
                                   <div className="space-y-1">
-                                    <div className="flex justify-between text-[11px] text-slate-600 font-mono">
+                                    <div className="flex justify-between text-[11px] text-slate-600 font-mono tabular-nums">
                                       <span>Usos: {cp.usedCount} / {cp.maxUses}</span>
                                       <span>Exp: {cp.expiresAt ? new Date(cp.expiresAt).toLocaleDateString('pt-PT') : 'Sem limite'}</span>
                                     </div>
@@ -3587,7 +4430,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                     {monetizationSubTab === 'banners' && (
                       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
                           <div>
                             <h3 className="text-sm font-bold text-slate-900">Banners e Avisos Transversais no App</h3>
                             <p className="text-xs text-slate-500 mt-0.5">
@@ -3604,10 +4447,69 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           </button>
                         </div>
 
+                        {/* 1-Click Marketing Banner Presets */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-bold text-slate-700">Campanhas Prontas:</span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {[
+                              {
+                                label: 'Conversão Free → Pro (20% OFF)',
+                                title: 'Oferta Limitada · -20% no Plano Anual',
+                                message: 'Use o código CARREIRA20 no checkout para liberar exportação Word (.docx), Radar ATS e tradução em 5 idiomas.',
+                                type: 'promo' as const,
+                                targetAudience: 'free_only' as const,
+                                actionUrl: '#pricing',
+                                actionLabel: 'Ver Planos',
+                                daysActive: 14
+                              },
+                              {
+                                label: 'Destaque Tradução Global',
+                                title: 'Candidaturas Internacionais em 5 Idiomas',
+                                message: 'Converta o seu currículo e carta de apresentação entre Português, Inglês, Espanhol, Francês e Alemão preservando a formatação A4.',
+                                type: 'info' as const,
+                                targetAudience: 'all' as const,
+                                actionUrl: '#editor',
+                                actionLabel: 'Abrir Estúdio',
+                                daysActive: 30
+                              },
+                              {
+                                label: 'Aviso de Pagamento Pix',
+                                title: 'Pagamento Pix Disponível em Reais (BRL)',
+                                message: 'Subscreva diretamente via QR Code Pix com confirmação administrativa rápida ou Cartão Internacional imediato.',
+                                type: 'promo' as const,
+                                targetAudience: 'free_only' as const,
+                                actionUrl: '#pricing',
+                                actionLabel: 'Ativar Acesso',
+                                daysActive: 21
+                              }
+                            ].map((preset) => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => {
+                                  setNewBannerForm({
+                                    title: preset.title,
+                                    message: preset.message,
+                                    type: preset.type,
+                                    targetAudience: preset.targetAudience,
+                                    actionUrl: preset.actionUrl,
+                                    actionLabel: preset.actionLabel,
+                                    daysActive: preset.daysActive
+                                  });
+                                  setShowNewBannerModal(true);
+                                }}
+                                className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-md font-semibold text-slate-800 transition-colors"
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="space-y-3">
                           {bannersList.length === 0 ? (
                             <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
-                              Nenhum banner ou aviso transversal ativo. Clique em &quot;Novo Banner&quot; para publicar um comunicado real no aplicativo.
+                              Nenhum banner ou aviso transversal ativo. Clique em &quot;Novo Banner&quot; ou use uma campanha pronta acima.
                             </div>
                           ) : (
                             bannersList.map((banner) => (
@@ -3679,6 +4581,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                       </button>
                       <button
                         type="button"
+                        onClick={() => setSecuritySubTab('audit_logs')}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition-colors flex items-center gap-1.5 ${
+                          securitySubTab === 'audit_logs'
+                            ? 'bg-white text-slate-950 shadow-2xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>Auditoria de Segurança ({auditStats.total})</span>
+                        {auditStats.blockedCount > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[10px] font-mono">
+                            {auditStats.blockedCount} bloq.
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setSecuritySubTab('error_logs')}
                         className={`px-3 py-1.5 rounded-lg font-bold transition-colors ${
                           securitySubTab === 'error_logs'
@@ -3711,6 +4629,376 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                         RBAC &amp; Auditoria Impersonate
                       </button>
                     </div>
+
+                    {securitySubTab === 'audit_logs' && (
+                      <div className="space-y-4">
+                        {/* Live Firestore Stream Banner */}
+                        <div className="bg-slate-900 text-white rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                                auditLiveStatus === 'live'
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                  : auditLiveStatus === 'error'
+                                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              }`}
+                            >
+                              <Activity className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-xs font-extrabold uppercase tracking-wider">
+                                  Monitor em Tempo Real — Auditoria Firestore
+                                </h3>
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                    auditLiveStatus === 'live'
+                                      ? 'bg-emerald-500 text-slate-950'
+                                      : auditLiveStatus === 'error'
+                                      ? 'bg-rose-500 text-white'
+                                      : 'bg-amber-400 text-slate-950'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      auditLiveStatus === 'live' ? 'bg-slate-950 animate-ping' : 'bg-white'
+                                    }`}
+                                  />
+                                  {auditLiveStatus === 'live'
+                                    ? 'Stream Firestore Ativo'
+                                    : auditLiveStatus === 'connecting'
+                                    ? 'A conectar listener...'
+                                    : auditLiveStatus === 'error'
+                                    ? 'Erro no Listener'
+                                    : 'Sem Sessão Firebase'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-300 mt-0.5">
+                                {auditLiveError
+                                  ? auditLiveError
+                                  : auditLiveStatus === 'live'
+                                  ? `A receber eventos críticos e sensíveis em tempo real via onSnapshot.${
+                                      auditLiveLastAt
+                                        ? ` Último pacote: ${new Date(auditLiveLastAt).toLocaleTimeString('pt-PT')}`
+                                        : ''
+                                    }`
+                                  : 'Eventos do servidor carregados; inicie sessão Google/Firebase para escuta em tempo real do Firestore.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 p-1 bg-slate-800 rounded-lg text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setAuditCriticalOnly(true)}
+                              className={`px-3 py-1.5 rounded-md font-bold transition-colors ${
+                                auditCriticalOnly
+                                  ? 'bg-rose-600 text-white'
+                                  : 'text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              Ações Críticas ({auditStats.criticalCount})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAuditCriticalOnly(false)}
+                              className={`px-3 py-1.5 rounded-md font-bold transition-colors ${
+                                !auditCriticalOnly
+                                  ? 'bg-white text-slate-950'
+                                  : 'text-slate-300 hover:text-white'
+                              }`}
+                            >
+                              Todos os Eventos ({auditStats.total})
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* KPI Strip */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Ações Críticas
+                            </span>
+                            <span className="text-lg font-black font-mono text-slate-900 mt-0.5 block">
+                              {auditStats.criticalCount}
+                            </span>
+                          </div>
+                          <div className="bg-rose-50/70 border border-rose-200 rounded-xl p-3.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-rose-700 block">
+                              Acessos Bloqueados
+                            </span>
+                            <span className="text-lg font-black font-mono text-rose-900 mt-0.5 block">
+                              {auditStats.blockedCount}
+                            </span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Subscrições
+                            </span>
+                            <span className="text-lg font-black font-mono text-slate-900 mt-0.5 block">
+                              {auditStats.subscriptionCount}
+                            </span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Exportações CV
+                            </span>
+                            <span className="text-lg font-black font-mono text-slate-900 mt-0.5 block">
+                              {auditStats.cvExportCount}
+                            </span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-3.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Perfil &amp; Senha
+                            </span>
+                            <span className="text-lg font-black font-mono text-slate-900 mt-0.5 block">
+                              {auditStats.profileCount}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                            <div>
+                              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                                <span>
+                                  {auditCriticalOnly
+                                    ? 'Feed em Tempo Real de Ações Críticas & Bloqueios'
+                                    : 'Registo Imutável Completo de Auditoria (Firestore + Servidor)'}
+                                </span>
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Filtragem instantânea por utilizador, categoria, severidade e palavra-chave sem recarregar a página.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={loadAllModules}
+                                disabled={isRefreshing}
+                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg flex items-center gap-1.5"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                <span>Espelhar Servidor → Firestore</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleExportCSV('audit_logs')}
+                                className="px-3 py-1.5 border border-slate-200 hover:bg-slate-50 text-xs font-semibold rounded-lg flex items-center gap-1.5"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Exportar CSV</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Category Quick Filter Buttons */}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                            <span className="font-bold text-slate-500 uppercase tracking-wider mr-1">
+                              Categoria:
+                            </span>
+                            {(
+                              [
+                                { id: 'all', label: 'Todas' },
+                                { id: 'security', label: 'Segurança / Bloqueios' },
+                                { id: 'subscription', label: 'Subscrições' },
+                                { id: 'cv_export', label: 'Exportações CV' },
+                                { id: 'profile', label: 'Perfil & Acesso' },
+                                { id: 'admin', label: 'Administração' }
+                              ] as const
+                            ).map((cat) => (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => setAuditCategoryFilter(cat.id)}
+                                className={`px-2.5 py-1 rounded-lg font-bold border transition-colors ${
+                                  auditCategoryFilter === cat.id
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {cat.label}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Filters Bar: User, Search, Category, Status, Severity */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs">
+                            <select
+                              aria-label="Filtrar auditoria por utilizador"
+                              value={auditUserFilter}
+                              onChange={(e) => setAuditUserFilter(e.target.value)}
+                              className="lg:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-800"
+                            >
+                              <option value="all">Utilizador: Todos ({auditActorOptions.length})</option>
+                              {auditActorOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label} ({opt.count})
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="lg:col-span-2 relative">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                value={auditSearch}
+                                onChange={(e) => setAuditSearch(e.target.value)}
+                                placeholder="Pesquisar recurso, ação, detalhe ou IP..."
+                                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                              />
+                            </div>
+
+                            <select
+                              aria-label="Filtrar auditoria por estado"
+                              value={auditStatusFilter}
+                              onChange={(e) => setAuditStatusFilter(e.target.value as 'all' | AuditLogStatus)}
+                              className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                            >
+                              <option value="all">Estado: Todos</option>
+                              <option value="blocked">Bloqueado</option>
+                              <option value="failure">Falha</option>
+                              <option value="success">Sucesso</option>
+                            </select>
+
+                            <select
+                              aria-label="Filtrar auditoria por severidade"
+                              value={auditSeverityFilter}
+                              onChange={(e) => setAuditSeverityFilter(e.target.value as 'all' | AuditLogSeverity)}
+                              className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold"
+                            >
+                              <option value="all">Severidade: Todas</option>
+                              <option value="critical">Crítico</option>
+                              <option value="warning">Aviso</option>
+                              <option value="info">Info</option>
+                            </select>
+                          </div>
+
+                          {/* Active Filter Clear Bar */}
+                          {(auditUserFilter !== 'all' ||
+                            auditCategoryFilter !== 'all' ||
+                            auditStatusFilter !== 'all' ||
+                            auditSeverityFilter !== 'all' ||
+                            auditSearch.trim() !== '') && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px]">
+                              <span className="text-slate-600">
+                                A exibir <strong>{filteredAuditLogs.length}</strong> registo(s) com os filtros ativos.
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAuditUserFilter('all');
+                                  setAuditCategoryFilter('all');
+                                  setAuditStatusFilter('all');
+                                  setAuditSeverityFilter('all');
+                                  setAuditSearch('');
+                                }}
+                                className="font-bold text-slate-900 underline"
+                              >
+                                Repor todos os filtros
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Audit Entries */}
+                          <div className="space-y-2.5 max-h-[520px] overflow-y-auto pr-1">
+                            {filteredAuditLogs.length === 0 ? (
+                              <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-500">
+                                Nenhum registo de auditoria encontrado com os filtros selecionados.
+                              </div>
+                            ) : (
+                              filteredAuditLogs.map((log) => (
+                                <div
+                                  key={log.id}
+                                  className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                                    log.status === 'blocked' || log.severity === 'critical'
+                                      ? 'bg-rose-50/70 border-rose-200'
+                                      : log.severity === 'warning'
+                                      ? 'bg-amber-50/50 border-amber-200'
+                                      : 'bg-slate-50/80 border-slate-200'
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase ${
+                                          log.severity === 'critical'
+                                            ? 'bg-rose-600 text-white'
+                                            : log.severity === 'warning'
+                                            ? 'bg-amber-200 text-amber-950'
+                                            : 'bg-slate-200 text-slate-700'
+                                        }`}
+                                      >
+                                        {log.severity}
+                                      </span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase ${
+                                          log.status === 'blocked'
+                                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                            : log.status === 'failure'
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-100 text-emerald-800'
+                                        }`}
+                                      >
+                                        {log.status === 'blocked'
+                                          ? 'BLOQUEADO'
+                                          : log.status === 'failure'
+                                          ? 'FALHA'
+                                          : 'SUCESSO'}
+                                      </span>
+                                      <span className="font-bold text-slate-900">
+                                        {ADMIN_AUDIT_ACTION_LABELS[log.action] || log.action}
+                                      </span>
+                                      <span className="px-2 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-semibold text-slate-600">
+                                        {ADMIN_AUDIT_CATEGORY_LABELS[log.category] || log.category}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                      {new Date(log.timestamp).toLocaleString('pt-PT')}
+                                    </span>
+                                  </div>
+
+                                  <p className="text-slate-700 leading-relaxed">{log.details}</p>
+
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono text-slate-500 pt-1 border-t border-slate-200/70">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setAuditUserFilter(
+                                          (log.actorEmail || log.actorUserId || 'anonymous').trim().toLowerCase()
+                                        )
+                                      }
+                                      className="text-left hover:underline"
+                                      title="Filtrar apenas eventos deste utilizador"
+                                    >
+                                      Ator: <strong className="text-slate-800">{log.actorEmail}</strong> ({log.actorRole})
+                                    </button>
+                                    <span>
+                                      Alvo: <strong className="text-slate-800">{log.targetResource}</strong>
+                                    </span>
+                                    {log.ipAddress && (
+                                      <span>
+                                        IP: <strong className="text-slate-800">{log.ipAddress}</strong>
+                                      </span>
+                                    )}
+                                    {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                      <span className="text-[10px] text-slate-500">
+                                        {Object.entries(log.metadata)
+                                          .slice(0, 4)
+                                          .map(([k, v]) => `${k}=${String(v)}`)
+                                          .join(' · ')}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {securitySubTab === 'governance' && platformSettings && (
                       <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-5 text-xs">
@@ -4168,7 +5456,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                   <div>
                                     <span className="font-bold text-slate-900">{log.adminEmail}</span>
                                     <span className="text-slate-400 mx-1.5">→</span>
-                                    <span className="font-mono text-purple-700 font-bold">{log.targetUserEmail}</span>
+                                    <span className="font-mono text-slate-900 font-bold">{log.targetUserEmail}</span>
                                     <p className="text-[11px] text-slate-500 mt-0.5">{log.details}</p>
                                   </div>
                                   <span className="text-[10px] text-slate-400 font-mono">
@@ -4310,7 +5598,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                   <button
                     type="button"
                     onClick={() => handleQuickAddCredits(inspectedUser.id, 50)}
-                    className="py-2 px-3 bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold rounded-lg border border-purple-200"
+                    className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg border border-slate-200"
                   >
                     +50 Créditos Cortesia
                   </button>
@@ -4414,7 +5702,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         <div className="fixed inset-0 z-80 flex items-center justify-center p-4 bg-slate-950/75">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 text-xs">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold">
                 <Eye className="w-5 h-5" />
               </div>
               <div>
@@ -4423,7 +5711,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               </div>
             </div>
 
-            <div className="p-3 bg-purple-50 rounded-xl text-purple-900 border border-purple-200 leading-relaxed">
+            <div className="p-3 bg-slate-50 rounded-xl text-slate-800 border border-slate-200 leading-relaxed">
               Entrará como <strong>{impersonatingTargetUser.name}</strong> ({impersonatingTargetUser.email}) para
               reproduzir o ecrã exato do cliente.
             </div>
@@ -4449,7 +5737,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               <button
                 type="button"
                 onClick={() => handleStartImpersonate(impersonatingTargetUser)}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg"
               >
                 Confirmar &amp; Entrar na Conta
               </button>
@@ -4967,6 +6255,60 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* IN-APP CONFIRMATION DIALOG */}
+      {pendingConfirm && (
+        <div className="fixed inset-0 z-90 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 text-xs">
+            <div className="flex items-start gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  pendingConfirm.variant === 'danger'
+                    ? 'bg-rose-100 text-rose-700'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">{pendingConfirm.title}</h3>
+                <p className="text-slate-600 text-xs mt-1 leading-relaxed">{pendingConfirm.message}</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isRunningConfirm}
+                onClick={() => setPendingConfirm(null)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isRunningConfirm}
+                onClick={async () => {
+                  try {
+                    setIsRunningConfirm(true);
+                    await pendingConfirm.onConfirm();
+                    setPendingConfirm(null);
+                  } finally {
+                    setIsRunningConfirm(false);
+                  }
+                }}
+                className={`px-4 py-2 font-bold rounded-lg text-white disabled:opacity-50 ${
+                  pendingConfirm.variant === 'danger'
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-slate-900 hover:bg-slate-800'
+                }`}
+              >
+                {isRunningConfirm ? 'A processar...' : pendingConfirm.confirmLabel}
+              </button>
+            </div>
           </div>
         </div>
       )}

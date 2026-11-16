@@ -21,48 +21,236 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Bootstrapped Admin logic (matching user email or explicitly registered in admins doc)
+    function isVerifiedEmailAdmin() {
+      return request.auth.token.email is string &&
+             request.auth.token.email_verified == true &&
+             request.auth.token.email.lower() in [
+               'gugurai923@gmail.com',
+               'admin@curriculoestrategico.com',
+               'mballoaliou2000@yahoo.fr'
+             ];
+    }
+
+    // Bootstrapped Admin logic (requires verified email claim OR explicit admin document)
     function isAdmin() {
       return isSignedIn() && (
-        (request.auth.token.email is string && request.auth.token.email.lower() == 'gugurai923@gmail.com') ||
+        isVerifiedEmailAdmin() ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
+    function isValidOptionalString(data, key, maxLen) {
+      return !(key in data) || data[key] == null || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, key, minVal) {
+      return !(key in data) || data[key] == null || (data[key] is number && data[key] >= minVal);
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['id', 'name', 'email', 'plan']) &&
-             data.id is string && data.id.size() <= 128 &&
+             data.keys().hasOnly([
+               'id', 'name', 'email', 'role', 'status', 'plan', 'targetRole',
+               'phone', 'company', 'avatarUrl', 'creditsRemaining', 'creditsUsed',
+               'totalCvGenerated', 'billingCycle', 'subscriptionExpiresAt',
+               'stripeCustomerId', 'stripeSubscriptionId', 'stripeStatus',
+               'createdAt', 'updatedAt', 'lastLoginAt', 'notes'
+             ]) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
              data.name is string && data.name.size() <= 120 &&
              data.email is string && data.email.size() <= 180 &&
-             data.plan in ['free', 'pro', 'executive'];
+             data.plan in ['free', 'pro', 'executive'] &&
+             (!('role' in data) || data.role in ['admin', 'user']) &&
+             (!('status' in data) || data.status in ['active', 'suspended']) &&
+             (!('billingCycle' in data) || data.billingCycle in ['monthly', 'quarterly', 'semiannual', 'yearly']) &&
+             (!('stripeStatus' in data) || data.stripeStatus == null || data.stripeStatus in ['active', 'trialing', 'past_due', 'canceled', 'incomplete']) &&
+             isValidOptionalString(data, 'targetRole', 180) &&
+             isValidOptionalString(data, 'phone', 50) &&
+             isValidOptionalString(data, 'company', 120) &&
+             isValidOptionalString(data, 'avatarUrl', 500) &&
+             isValidOptionalString(data, 'subscriptionExpiresAt', 50) &&
+             isValidOptionalString(data, 'stripeCustomerId', 128) &&
+             isValidOptionalString(data, 'stripeSubscriptionId', 128) &&
+             isValidOptionalString(data, 'createdAt', 50) &&
+             isValidOptionalString(data, 'updatedAt', 50) &&
+             isValidOptionalString(data, 'lastLoginAt', 50) &&
+             isValidOptionalString(data, 'notes', 1000) &&
+             isValidOptionalNumber(data, 'creditsRemaining', 0) &&
+             isValidOptionalNumber(data, 'creditsUsed', 0) &&
+             isValidOptionalNumber(data, 'totalCvGenerated', 0);
     }
 
     function isValidResume(data) {
       return data.keys().hasAll(['id', 'userId', 'title']) &&
-             data.id is string && data.id.size() <= 128 &&
-             data.userId is string && data.userId.size() <= 128 &&
-             data.title is string && data.title.size() <= 150;
+             data.keys().hasOnly(['id', 'userId', 'title', 'targetJob', 'updatedAt', 'createdAt', 'data']) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() <= 150 &&
+             isValidOptionalString(data, 'targetJob', 180) &&
+             isValidOptionalString(data, 'updatedAt', 50) &&
+             isValidOptionalString(data, 'createdAt', 50) &&
+             (!('data' in data) || data.data is map);
     }
 
     function isValidOrder(data) {
       return data.keys().hasAll(['id', 'orderNumber', 'userId', 'plan', 'amount', 'status']) &&
-             data.id is string && data.id.size() <= 128 &&
+             data.keys().hasOnly([
+               'id', 'orderNumber', 'userId', 'userName', 'userEmail', 'plan',
+               'billingCycle', 'amount', 'currency', 'paymentMethod', 'status',
+               'stripeSubscriptionId', 'stripePaymentIntentId', 'receiptUrl',
+               'createdAt', 'updatedAt', 'notes'
+             ]) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
              data.orderNumber is string && data.orderNumber.size() <= 60 &&
-             data.userId is string && data.userId.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isValidOptionalString(data, 'userName', 120) &&
+             isValidOptionalString(data, 'userEmail', 180) &&
              data.plan in ['free', 'pro', 'executive'] &&
-             data.amount is number &&
-             data.status in ['paid', 'pending', 'refunded', 'failed'];
+             (!('billingCycle' in data) || data.billingCycle in ['monthly', 'quarterly', 'semiannual', 'yearly']) &&
+             data.amount is number && data.amount >= 0 &&
+             isValidOptionalString(data, 'currency', 10) &&
+             (!('paymentMethod' in data) || data.paymentMethod in ['multicaixa', 'card', 'transfer', 'pix', 'stripe', 'manual']) &&
+             data.status in ['paid', 'pending', 'refunded', 'failed'] &&
+             isValidOptionalString(data, 'stripeSubscriptionId', 128) &&
+             isValidOptionalString(data, 'stripePaymentIntentId', 128) &&
+             isValidOptionalString(data, 'receiptUrl', 500) &&
+             isValidOptionalString(data, 'createdAt', 50) &&
+             isValidOptionalString(data, 'updatedAt', 50) &&
+             isValidOptionalString(data, 'notes', 500);
     }
 
     function isValidCoupon(data) {
       return data.keys().hasAll(['id', 'code', 'discountPercent', 'active']) &&
-             data.id is string && data.id.size() <= 128 &&
-             data.code is string && data.code.size() <= 40 &&
+             data.keys().hasOnly(['id', 'code', 'discountPercent', 'maxUses', 'usedCount', 'expiresAt', 'active', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.code is string && data.code.size() >= 1 && data.code.size() <= 40 &&
              data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100 &&
-             data.active is bool;
+             data.active is bool &&
+             isValidOptionalNumber(data, 'maxUses', 0) &&
+             isValidOptionalNumber(data, 'usedCount', 0) &&
+             isValidOptionalString(data, 'expiresAt', 50) &&
+             isValidOptionalString(data, 'createdAt', 50) &&
+             isValidOptionalString(data, 'updatedAt', 50);
+    }
+
+    function isValidGdprRequest(data) {
+      return data.keys().hasAll(['id', 'userId', 'userEmail', 'requestType', 'status', 'requestedAt']) &&
+             data.keys().hasOnly(['id', 'userId', 'userEmail', 'requestType', 'status', 'requestedAt', 'completedAt', 'notes']) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userEmail is string && data.userEmail.size() <= 180 &&
+             data.requestType in ['export_data', 'delete_account'] &&
+             data.status in ['pending', 'completed', 'rejected'] &&
+             data.requestedAt is string && data.requestedAt.size() <= 50 &&
+             isValidOptionalString(data, 'completedAt', 50) &&
+             isValidOptionalString(data, 'notes', 500);
+    }
+
+    function isValidErrorLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'operationType', 'errorMessage', 'resolved']) &&
+             data.keys().hasOnly(['id', 'timestamp', 'userEmail', 'operationType', 'errorMessage', 'model', 'resolved', 'resolvedAt', 'resolvedBy']) &&
+             data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.timestamp is string && data.timestamp.size() <= 50 &&
+             data.operationType is string && data.operationType.size() <= 80 &&
+             data.errorMessage is string && data.errorMessage.size() <= 1000 &&
+             data.resolved is bool &&
+             isValidOptionalString(data, 'userEmail', 180) &&
+             isValidOptionalString(data, 'model', 80) &&
+             isValidOptionalString(data, 'resolvedAt', 50) &&
+             isValidOptionalString(data, 'resolvedBy', 180);
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll([
+               'id', 'timestamp', 'actorUserId', 'actorEmail', 'actorRole',
+               'action', 'category', 'severity', 'status', 'targetResource', 'details'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'timestamp', 'actorUserId', 'actorEmail', 'actorRole',
+               'action', 'category', 'severity', 'status', 'targetResource',
+               'details', 'metadata', 'userAgent', 'ipAddress'
+             ]) &&
+             isValidId(data.id) &&
+             data.timestamp is string && data.timestamp.size() >= 10 && data.timestamp.size() <= 50 &&
+             data.actorUserId is string && data.actorUserId.size() >= 1 && data.actorUserId.size() <= 128 &&
+             data.actorEmail is string && data.actorEmail.size() <= 180 &&
+             data.actorRole in ['user', 'admin', 'anonymous', 'system'] &&
+             data.action in [
+               'subscription_upgraded',
+               'subscription_canceled',
+               'subscription_plan_sync_blocked',
+               'payment_order_created',
+               'payment_order_status_changed',
+               'cv_exported_pdf',
+               'cv_exported_docx',
+               'cv_exported_json',
+               'cv_export_blocked_unauthorized',
+               'profile_updated',
+               'password_changed',
+               'account_login',
+               'account_registered',
+               'gdpr_request_submitted',
+               'unauthorized_access_attempt',
+               'admin_user_modified',
+               'impersonation_event'
+             ] &&
+             data.category in ['subscription', 'cv_export', 'profile', 'security', 'admin'] &&
+             data.severity in ['info', 'warning', 'critical'] &&
+             data.status in ['success', 'blocked', 'failure'] &&
+             data.targetResource is string && data.targetResource.size() >= 1 && data.targetResource.size() <= 180 &&
+             data.details is string && data.details.size() >= 1 && data.details.size() <= 600 &&
+             (!('metadata' in data) || data.metadata == null || (data.metadata is map && data.metadata.keys().size() <= 12)) &&
+             isValidOptionalString(data, 'userAgent', 250) &&
+             isValidOptionalString(data, 'ipAddress', 80);
+    }
+
+    function isValidChannelConfig(cfg) {
+      return cfg is map &&
+             cfg.keys().hasAll(['system', 'email']) &&
+             cfg.keys().hasOnly(['system', 'email']) &&
+             cfg.system is bool &&
+             cfg.email is bool;
+    }
+
+    function isValidNotificationPreferences(data) {
+      return data.keys().hasAll(['id', 'userId', 'systemEnabled', 'emailEnabled', 'events', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'userId', 'systemEnabled', 'emailEnabled', 'events', 'updatedAt']) &&
+             isValidId(data.id) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.systemEnabled is bool &&
+             data.emailEnabled is bool &&
+             data.events is map &&
+             data.events.keys().hasAll(['translation', 'export', 'resumeUpdate']) &&
+             data.events.keys().hasOnly(['translation', 'export', 'resumeUpdate']) &&
+             isValidChannelConfig(data.events.translation) &&
+             isValidChannelConfig(data.events.export) &&
+             isValidChannelConfig(data.events.resumeUpdate) &&
+             data.updatedAt is string && data.updatedAt.size() >= 10 && data.updatedAt.size() <= 50;
+    }
+
+    function isValidUserNotification(data) {
+      return data.keys().hasAll([
+               'id', 'userId', 'eventType', 'title', 'message',
+               'channelSystem', 'channelEmail', 'emailDeliveryStatus', 'read', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'userId', 'eventType', 'title', 'message',
+               'channelSystem', 'channelEmail', 'emailDeliveryStatus', 'read', 'createdAt', 'targetResource'
+             ]) &&
+             isValidId(data.id) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.eventType in ['translation', 'export', 'resume_update'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 500 &&
+             data.channelSystem is bool &&
+             data.channelEmail is bool &&
+             data.emailDeliveryStatus in ['not_requested', 'sent', 'queued'] &&
+             data.read is bool &&
+             data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 50 &&
+             isValidOptionalString(data, 'targetResource', 180);
     }
 
     // Connection testing doc
@@ -80,55 +268,155 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(userId);
       allow list: if isAdmin();
 
-      allow create: if (
-        (isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && incoming().id == request.auth.uid) ||
-        (isAdmin() && isValidUser(incoming()))
-      );
-
-      allow update: if (
+      // Non-admin signup locked strictly to user role, active status, free plan, <= 5 credits, matching verified uid/email
+      allow create: if isValidId(userId) && isValidUser(incoming()) && (
         isAdmin() ||
         (
           isSignedIn() &&
           request.auth.uid == userId &&
-          isValidUser(incoming()) &&
-          incoming().id == existing().id &&
-          incoming().email == existing().email &&
-          (!('role' in incoming()) || incoming().role == existing().get('role', 'user'))
+          incoming().id == request.auth.uid &&
+          incoming().email == request.auth.token.email &&
+          (!('role' in incoming()) || incoming().role == 'user') &&
+          (!('status' in incoming()) || incoming().status == 'active') &&
+          incoming().plan == 'free' &&
+          (!('creditsRemaining' in incoming()) || incoming().creditsRemaining <= 5)
         )
       );
 
-      allow delete: if isAdmin();
+      // Non-admin updates strictly limited to profile info OR self-cancellation (plan/credits/role/status immutable)
+      allow update: if isValidId(userId) && isValidUser(incoming()) && (
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          request.auth.uid == userId &&
+          incoming().id == existing().id &&
+          incoming().email == existing().email &&
+          (!('role' in incoming()) || incoming().role == existing().get('role', 'user')) &&
+          (!('status' in incoming()) || incoming().status == existing().get('status', 'active')) &&
+          incoming().plan == existing().plan &&
+          incoming().get('creditsRemaining', 5) == existing().get('creditsRemaining', 5) &&
+          incoming().get('creditsUsed', 0) == existing().get('creditsUsed', 0) &&
+          (
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'targetRole', 'phone', 'company', 'avatarUrl', 'totalCvGenerated', 'updatedAt']) ||
+            (
+              incoming().get('stripeStatus', '') == 'canceled' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['stripeStatus', 'notes', 'updatedAt'])
+            )
+          )
+        )
+      );
+
+      allow delete: if isAdmin() && isValidId(userId);
 
       // User resumes subcollection
       match /resumes/{resumeId} {
         allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(resumeId);
         allow list: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
-        allow create: if isSignedIn() && 
-                         (request.auth.uid == userId || isAdmin()) && 
-                         isValidId(resumeId) && 
+        allow create: if isSignedIn() &&
+                         (request.auth.uid == userId || isAdmin()) &&
+                         isValidId(resumeId) &&
                          isValidResume(incoming()) &&
                          (incoming().userId == request.auth.uid || isAdmin());
 
-        allow update: if isSignedIn() && 
-                         (request.auth.uid == userId || isAdmin()) && 
-                         isValidId(resumeId) && 
+        allow update: if isSignedIn() &&
+                         (request.auth.uid == userId || isAdmin()) &&
+                         isValidId(resumeId) &&
                          isValidResume(incoming()) &&
                          incoming().userId == existing().userId;
 
-        allow delete: if isSignedIn() && 
-                         (request.auth.uid == userId || isAdmin()) && 
+        allow delete: if isSignedIn() &&
+                         (request.auth.uid == userId || isAdmin()) &&
                          isValidId(resumeId);
+      }
+
+      // User notification preferences subcollection
+      match /preferences/{prefId} {
+        allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(prefId);
+        allow list: if isSignedIn() && (isAdmin() || (request.auth.uid == userId && resource.data.userId == request.auth.uid));
+
+        allow create: if isSignedIn() &&
+                         isValidId(prefId) &&
+                         isValidNotificationPreferences(incoming()) &&
+                         incoming().id == prefId &&
+                         (
+                           isAdmin() ||
+                           (
+                             request.auth.uid == userId &&
+                             incoming().userId == request.auth.uid &&
+                             prefId == 'notifications'
+                           )
+                         );
+
+        allow update: if isSignedIn() &&
+                         isValidId(prefId) &&
+                         isValidNotificationPreferences(incoming()) &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         (
+                           isAdmin() ||
+                           (
+                             request.auth.uid == userId &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['systemEnabled', 'emailEnabled', 'events', 'updatedAt'])
+                           )
+                         );
+
+        allow delete: if isAdmin() && isValidId(prefId);
+      }
+
+      // User notifications inbox subcollection
+      match /notifications/{notificationId} {
+        allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin()) && isValidId(notificationId);
+        allow list: if isSignedIn() && (isAdmin() || (request.auth.uid == userId && resource.data.userId == request.auth.uid));
+
+        allow create: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         isValidUserNotification(incoming()) &&
+                         incoming().id == notificationId &&
+                         (
+                           isAdmin() ||
+                           (request.auth.uid == userId && incoming().userId == request.auth.uid)
+                         );
+
+        allow update: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         isValidUserNotification(incoming()) &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           isAdmin() ||
+                           (
+                             request.auth.uid == userId &&
+                             incoming().diff(existing()).affectedKeys().hasOnly(['read'])
+                           )
+                         );
+
+        allow delete: if isSignedIn() &&
+                         (request.auth.uid == userId || isAdmin()) &&
+                         isValidId(notificationId);
       }
     }
 
     // Orders & Transactions collection
     match /orders/{orderId} {
-      allow get: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid) || (resource.data.userEmail == request.auth.token.email)) && isValidId(orderId);
-      allow list: if isSignedIn() && (isAdmin() || (resource.data.userId == request.auth.uid) || (resource.data.userEmail == request.auth.token.email));
+      allow get: if isSignedIn() && isValidId(orderId) && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        (request.auth.token.email_verified == true && resource.data.userEmail == request.auth.token.email)
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.userId == request.auth.uid ||
+        (request.auth.token.email_verified == true && resource.data.userEmail == request.auth.token.email)
+      );
 
-      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && (isAdmin() || incoming().userId == request.auth.uid);
-      allow update: if isSignedIn() && isValidId(orderId) && (isAdmin() || (existing().userId == request.auth.uid));
+      // Non-admin direct Firestore order creation is strictly restricted to pending manual/Pix submissions
+      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming()) && (
+        isAdmin() ||
+        (incoming().userId == request.auth.uid && incoming().status == 'pending')
+      );
+      allow update: if isAdmin() && isValidId(orderId) && isValidOrder(incoming());
       allow delete: if isAdmin() && isValidId(orderId);
     }
 
@@ -145,66 +433,105 @@ service cloud.firestore {
     // System SaaS Plan Configurations
     match /plansConfig/{planId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(planId);
+      allow write: if isAdmin() && isValidId(planId) && incoming().keys().size() <= 30;
     }
 
     // AI Prompts Configuration (No-Code Prompt Management)
     match /promptsConfig/{promptId} {
       allow read: if isAdmin() && isValidId(promptId);
-      allow write: if isAdmin() && isValidId(promptId);
+      allow write: if isAdmin() && isValidId(promptId) && incoming().keys().size() <= 30;
     }
 
     // System Broadcast Banners
     match /systemBanners/{bannerId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(bannerId);
+      allow write: if isAdmin() && isValidId(bannerId) && incoming().keys().size() <= 20;
     }
 
     // System Settings & Routing (editablePlans and platformGovernance readable by frontend; aiRouting & all writes strictly Admin)
     match /systemSettings/{settingId} {
       allow get: if isValidId(settingId) && (settingId in ['editablePlans', 'platformGovernance'] || isAdmin());
       allow list: if isAdmin();
-      allow write: if isAdmin() && isValidId(settingId);
+      allow write: if isAdmin() && isValidId(settingId) && incoming().keys().size() <= 40;
     }
 
     // Plan Quotas
     match /planQuotas/{quotaId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(quotaId);
+      allow write: if isAdmin() && isValidId(quotaId) && incoming().keys().size() <= 20;
     }
 
     // Template Catalog Admin Config
     match /templateCatalogConfig/{templateId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(templateId);
+      allow write: if isAdmin() && isValidId(templateId) && incoming().keys().size() <= 20;
     }
 
     // Profession Snippet Library
     match /professionSnippets/{snippetId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(snippetId);
+      allow write: if isAdmin() && isValidId(snippetId) && incoming().keys().size() <= 20;
     }
 
     // System Locales
     match /systemLocales/{localeId} {
       allow read: if true;
-      allow write: if isAdmin() && isValidId(localeId);
+      allow write: if isAdmin() && isValidId(localeId) && incoming().keys().size() <= 25;
     }
 
-    // Technical Generation Error Logs (clients can log failures, only Admins can read/resolve/delete)
+    // Technical Generation Error Logs (clients can only log unresolved errors; Admins manage/resolve)
     match /generationErrorLogs/{logId} {
-      allow read, update, delete: if isAdmin() && isValidId(logId);
-      allow create: if isSignedIn() && isValidId(logId) && incoming().keys().hasAll(['id', 'timestamp', 'operationType', 'errorMessage', 'resolved']);
+      allow read, delete: if isAdmin() && isValidId(logId);
+      allow update: if isAdmin() && isValidId(logId) && isValidErrorLog(incoming());
+      allow create: if isSignedIn() && isValidId(logId) && isValidErrorLog(incoming()) && incoming().resolved == false;
     }
 
     // GDPR / LGPD Requests
     match /gdprRequests/{requestId} {
-      allow read, write: if isAdmin() && isValidId(requestId);
+      allow read, delete: if isAdmin() && isValidId(requestId);
+      allow update: if isAdmin() && isValidId(requestId) && isValidGdprRequest(incoming());
+      allow create: if isValidId(requestId) && isValidGdprRequest(incoming()) && (
+        isAdmin() ||
+        (isSignedIn() && incoming().userId == request.auth.uid && incoming().status == 'pending')
+      );
     }
 
     // Impersonation Audit Logs
     match /impersonationAuditLogs/{logId} {
-      allow read, write: if isAdmin() && isValidId(logId);
+      allow read, write: if isAdmin() && isValidId(logId) && (!('action' in incoming()) || incoming().action in ['started', 'ended']);
+    }
+
+    // Security & Sensitive Action Audit Logs (strictly append-only & tamper-evident)
+    match /auditLogs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && (
+        isAdmin() ||
+        resource.data.actorUserId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.actorUserId == request.auth.uid
+      );
+      allow create: if isSignedIn() &&
+                       isValidId(logId) &&
+                       isValidAuditLog(incoming()) &&
+                       incoming().id == logId && (
+                         isAdmin() ||
+                         (
+                           incoming().actorUserId == request.auth.uid &&
+                           incoming().actorRole == 'user' &&
+                           (
+                             !('email' in request.auth.token) ||
+                             request.auth.token.email == null ||
+                             incoming().actorEmail.lower() == request.auth.token.email.lower()
+                           ) &&
+                           !(incoming().action in [
+                             'admin_user_modified',
+                             'impersonation_event',
+                             'payment_order_status_changed'
+                           ])
+                         )
+                       );
+      allow update, delete: if false;
     }
   }
 }

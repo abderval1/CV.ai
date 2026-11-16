@@ -5,7 +5,7 @@ import {
   ExternalLink,
   RefreshCw,
   Search,
-  Sparkles,
+  Target,
   AlertCircle,
   Loader2,
   Globe,
@@ -185,6 +185,12 @@ function formatRelativeDate(iso?: string | null): string {
   if (diffDays === 1) return 'Ontem';
   if (diffDays < 30) return `Há ${diffDays}d`;
   return new Date(iso).toLocaleDateString('pt-PT');
+}
+
+function getSafeExternalHttpUrl(raw?: string | null): string {
+  if (!raw || typeof raw !== 'string') return '#';
+  const trimmed = raw.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : '#';
 }
 
 export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
@@ -647,10 +653,12 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {externalPortals.map((portal) => (
+            {externalPortals
+              .filter((portal) => getSafeExternalHttpUrl(portal.url) !== '#')
+              .map((portal) => (
               <a
                 key={portal.id}
-                href={portal.url}
+                href={getSafeExternalHttpUrl(portal.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
@@ -834,7 +842,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <a
-                      href={job.applyUrl}
+                      href={getSafeExternalHttpUrl(job.applyUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm font-bold text-slate-950 hover:text-blue-700 transition-colors leading-snug block"
@@ -888,7 +896,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                   <div className="flex items-center gap-2">
                     <a
-                      href={job.applyUrl}
+                      href={getSafeExternalHttpUrl(job.applyUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
@@ -897,9 +905,9 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                       <ExternalLink className="w-3 h-3" />
                     </a>
 
-                    {job.radarUrl && job.radarUrl !== job.applyUrl && (
+                    {job.radarUrl && job.radarUrl !== job.applyUrl && getSafeExternalHttpUrl(job.radarUrl) !== '#' && (
                       <a
-                        href={job.radarUrl}
+                        href={getSafeExternalHttpUrl(job.radarUrl)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
@@ -918,7 +926,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                     {tailoringJobId === job.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <Target className="w-3.5 h-3.5 text-amber-600" />
                     )}
                     <span>Adaptar CV (ATS)</span>
                   </button>

@@ -5,7 +5,7 @@ import {
   Check,
   Globe,
   ShieldCheck,
-  Sparkles,
+  Award,
   Info,
   X,
   Camera,
@@ -413,7 +413,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
                 <div className="bg-slate-800/80 rounded-lg p-3.5 border border-slate-700/80 flex flex-col justify-between">
                   <div>
                     <h5 className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <Award className="w-3.5 h-3.5 text-amber-400" />
                       <span>Dica de Ouro do Recrutador:</span>
                     </h5>
                     <p className="text-slate-200 text-[11px] leading-relaxed italic">

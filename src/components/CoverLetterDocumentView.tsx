@@ -17,6 +17,8 @@ import {
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 import { COVER_CHROME_LABELS } from '../utils/cvDocumentLabels';
 import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
+import { recordAuditLog } from '../services/auditLogService';
+import { dispatchUserNotification } from '../services/notificationService';
 
 interface CoverLetterDocumentViewProps {
   cv: CVData;
@@ -41,7 +43,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   isTranslatingContent = false,
   translatingTargetLang = null
 }) => {
-  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
   const { language: appLang, setLanguage } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -81,26 +83,80 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
 
   const handlePrint = () => {
     if (exportRequiresPaidPlan && !isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'cover-letter/pdf',
+        details: 'Impressão PDF da carta bloqueada: utilizador não autenticado.',
+        metadata: { format: 'pdf', documentType: 'cover_letter' }
+      });
       showWarning('Registo Obrigatório', 'Faça login para imprimir ou descarregar a sua carta em PDF.');
       onOpenAuthModal?.('O registo é obrigatório para imprimir ou guardar a sua carta em PDF.');
       return;
     }
     if (!canExportClean) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'cover-letter/pdf',
+        details: 'Impressão PDF da carta bloqueada: plano pago exigido.',
+        metadata: { format: 'pdf', documentType: 'cover_letter' }
+      });
       showWarning('Plano Requerido', 'A exportação oficial da carta requer um plano Pro ou Executivo VIP ativo.');
       onOpenPricingModal?.(
         'A impressão e download da Carta de Apresentação sem marca de água são exclusivos para subscritores.'
       );
       return;
     }
+    void recordAuditLog({
+      action: 'cv_exported_pdf',
+      category: 'cv_export',
+      severity: 'info',
+      status: 'success',
+      targetResource: 'cover-letter/pdf',
+      details: `Carta de apresentação exportada/impressa em PDF (${appLang.toUpperCase()}).`,
+      metadata: { format: 'pdf', documentType: 'cover_letter', language: appLang }
+    });
+    if (user) {
+      void dispatchUserNotification({
+        user,
+        eventType: 'export',
+        title: 'Exportação PDF da Carta',
+        message: `Carta de apresentação (${appLang.toUpperCase()}) preparada para exportação/impressão em PDF.`,
+        targetResource: 'cover-letter/pdf'
+      });
+    }
     window.print();
   };
 
   const handleDownloadWord = async () => {
     if (exportRequiresPaidPlan && !isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'cover-letter/docx',
+        details: 'Download Word da carta bloqueado: utilizador não autenticado.',
+        metadata: { format: 'docx', documentType: 'cover_letter' }
+      });
       onOpenAuthModal?.('Faça login para descarregar a sua carta oficial em formato Word (.docx).');
       return;
     }
     if (!canExportClean) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'cover-letter/docx',
+        details: 'Download Word da carta bloqueado: plano pago exigido.',
+        metadata: { format: 'docx', documentType: 'cover_letter' }
+      });
       onOpenPricingModal?.(
         'O download da Carta de Apresentação em formato Word (.docx) requer um plano Pro ou Executive ativo.'
       );
@@ -117,6 +173,24 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
       const blob = await generateCoverLetterDocx(cv, letterBody, true, appLang);
       const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta_Apresentacao';
       triggerDownload(blob, `Carta_${nameClean}.docx`);
+      void recordAuditLog({
+        action: 'cv_exported_docx',
+        category: 'cv_export',
+        severity: 'info',
+        status: 'success',
+        targetResource: 'cover-letter/docx',
+        details: `Carta de apresentação exportada em Word (.docx) (${appLang.toUpperCase()}).`,
+        metadata: { format: 'docx', documentType: 'cover_letter', language: appLang }
+      });
+      if (user) {
+        void dispatchUserNotification({
+          user,
+          eventType: 'export',
+          title: 'Carta Exportada em Word',
+          message: `A carta Carta_${nameClean}.docx foi exportada com sucesso (${appLang.toUpperCase()}).`,
+          targetResource: 'cover-letter/docx'
+        });
+      }
       showSuccess('Word Descarregado!', 'A carta foi compilada em formato nativo Microsoft Word (.docx).');
     } catch (err: any) {
       console.error('Erro ao compilar Word:', err);
@@ -185,14 +259,14 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
                     }`}
                     title={`Traduzir carta para ${lang.toUpperCase()}`}
                   >
-                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />}
+                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-700" />}
                     <span>{lang.toUpperCase()}</span>
                   </button>
                 );
               })}
             </div>
             {isTranslatingContent && (
-              <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
+              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span className="hidden sm:inline">{chrome.translating}</span>
               </span>

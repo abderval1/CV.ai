@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   User as UserIcon,
-  Sparkles,
+  Award,
   CreditCard,
   QrCode,
   ShieldCheck,
@@ -11,7 +11,6 @@ import {
   ExternalLink,
   FolderOpen,
   LogOut,
-  Zap,
   Lock,
   Receipt,
   RefreshCw,
@@ -20,7 +19,8 @@ import {
   Check,
   Ban,
   Clock,
-  ArrowUpRight
+  ArrowUpRight,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -35,13 +35,21 @@ interface UserProfileModalProps {
   onClose: () => void;
   onOpenPricing: () => void;
   onOpenMyResumes: () => void;
+  onOpenNotificationPreferences?: () => void;
+}
+
+function getSafeExternalUrl(raw?: string | null): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
   onOpenPricing,
-  onOpenMyResumes
+  onOpenMyResumes,
+  onOpenNotificationPreferences
 }) => {
   const { user, logout, hasActivePlan } = useAuth();
   const { formatPrice } = useCurrency();
@@ -54,6 +62,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedPix, setCopiedPix] = useState<boolean>(false);
   const [isSubmittingGdpr, setIsSubmittingGdpr] = useState<boolean>(false);
+  const [confirmCancelStep, setConfirmCancelStep] = useState<boolean>(false);
+  const [billingPortalUrl, setBillingPortalUrl] = useState<string | null>(null);
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
 
   useEffect(() => {
@@ -106,18 +116,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   };
 
   const handleCancelSubscription = async () => {
-    if (
-      !confirm(
-        'Tem a certeza de que deseja cancelar a renovação da sua assinatura? O seu acesso ao editor continuará disponível até ao fim do período já faturado, mas não haverá novas cobranças.'
-      )
-    ) {
-      return;
-    }
-
     setIsCanceling(true);
     try {
       const res = await cancelUserSubscription(user.id, user.stripeSubscriptionId);
       if (res.success) {
+        setConfirmCancelStep(false);
         showSuccess('Assinatura Cancelada', res.message);
         // Refresh local orders list to show updated status
         await loadOrders();
@@ -137,17 +140,37 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       return;
     }
     try {
+      let token: string | null = null;
+      try {
+        token =
+          localStorage.getItem('curriculopro_auth_token') ||
+          sessionStorage.getItem('curriculopro_auth_token');
+      } catch {
+        token = null;
+      }
       const res = await fetch('/api/stripe/customer-portal', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
           customerId: user.stripeCustomerId,
           returnUrl: window.location.href
         })
       });
       const data = await res.json();
-      if (data.url) {
-        window.open(data.url, '_blank');
+      const safeUrl = getSafeExternalUrl(data.url);
+      if (safeUrl) {
+        setBillingPortalUrl(safeUrl);
+        const anchor = document.createElement('a');
+        anchor.href = safeUrl;
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
         showInfo('Portal de Faturação', 'A redirecionar para a gestão de cartões e faturas.');
       } else {
         showInfo('Gestão de Faturação', 'Subscrição gerida via faturação direta na plataforma.');
@@ -190,14 +213,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const planBadgeColor =
     user.plan === 'executive'
-      ? 'bg-purple-100 text-purple-800 border-purple-200'
+      ? 'bg-slate-900 text-amber-400 border-slate-800'
       : user.plan === 'pro'
-      ? 'bg-amber-100 text-amber-800 border-amber-200'
-      : 'bg-rose-100 text-rose-800 border-rose-200';
+      ? 'bg-amber-100 text-amber-900 border-amber-200'
+      : 'bg-slate-100 text-slate-700 border-slate-200';
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-slate-950/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="relative w-full max-w-2xl bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[94dvh] flex flex-col">
         {/* Header */}
         <div className="px-6 py-5 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -247,14 +270,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             }}
             className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-bold border-b-2 transition-all relative ${
               activeTab === 'billing'
-                ? 'border-indigo-600 text-indigo-900'
+                ? 'border-slate-900 text-slate-950'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+            <Receipt className="w-3.5 h-3.5 text-slate-700" />
             <span>Assinatura &amp; Faturas</span>
             {isSubscriptionActive && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-600" />
             )}
             {isSubscriptionCanceled && (
               <span className="w-2 h-2 rounded-full bg-amber-500" />
@@ -263,7 +286,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 max-h-[75vh] overflow-y-auto space-y-6">
+        <div className="p-5 sm:p-6 flex-1 min-h-0 overflow-y-auto space-y-6">
           {activeTab === 'profile' ? (
             /* TAB 1: PROFILE & ACCESS OVERVIEW */
             <div className="space-y-6">
@@ -357,7 +380,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Award className="w-3.5 h-3.5" />
                     <span>
                       {!hasActivePlan
                         ? 'Ativar Plano & Desbloquear Downloads'
@@ -384,7 +407,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     }}
                     className="p-3 text-left bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-3 shadow-2xs"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
                       <FolderOpen className="w-4 h-4" />
                     </div>
                     <div>
@@ -401,7 +424,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     }}
                     className="p-3 text-left bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center gap-3 shadow-2xs"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
                       <Receipt className="w-4 h-4" />
                     </div>
                     <div>
@@ -409,6 +432,30 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       <p className="text-[11px] text-slate-500">Faturas e recibos de pagamento</p>
                     </div>
                   </button>
+
+                  {onOpenNotificationPreferences && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenNotificationPreferences();
+                      }}
+                      className="sm:col-span-2 p-3 text-left bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors flex items-center justify-between gap-3 shadow-2xs"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+                          <Bell className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800">Preferências de Notificações &amp; Segurança</p>
+                          <p className="text-[11px] text-slate-500">
+                            Configurar alertas por e-mail e sistema para traduções, exportações e currículos
+                          </p>
+                        </div>
+                      </div>
+                      <ArrowUpRight className="w-4 h-4 text-slate-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -465,12 +512,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           ) : (
             /* TAB 2: SUBSCRIPTION DETAILS & TRANSACTION HISTORY (STRIPE + FIRESTORE) */
             <div className="space-y-6 animate-in fade-in duration-150">
-              {/* 1. Subscription Status & Stripe Management Card */}
-              <div className="p-5 bg-gradient-to-br from-slate-50 to-indigo-50/30 rounded-2xl border border-slate-200 space-y-4">
+              {/* 1. Subscription Status & Management Card */}
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4 text-indigo-600" />
+                      <CreditCard className="w-4 h-4 text-slate-700" />
                       <span>Status da Assinatura</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
@@ -544,46 +591,84 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 )}
 
                 {/* Action Buttons: Billing Portal & Cancel Subscription */}
-                <div className="flex flex-wrap items-center gap-2 pt-1">
-                  {user.stripeCustomerId && (
-                    <button
-                      type="button"
-                      onClick={handleOpenStripePortal}
-                      className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Gerir Cartão &amp; Faturas</span>
-                    </button>
-                  )}
+                <div className="space-y-2.5 pt-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {user.stripeCustomerId && (
+                      <button
+                        type="button"
+                        onClick={handleOpenStripePortal}
+                        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5 shadow-2xs"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Gerir Cartão &amp; Faturas</span>
+                      </button>
+                    )}
 
-                  {isSubscriptionActive && (
-                    <button
-                      type="button"
-                      onClick={handleCancelSubscription}
-                      disabled={isCanceling}
-                      className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {isCanceling ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
-                      ) : (
+                    {isSubscriptionActive && !confirmCancelStep && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmCancelStep(true)}
+                        disabled={isCanceling}
+                        className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
                         <Ban className="w-3.5 h-3.5 text-rose-600" />
-                      )}
-                      <span>{isCanceling ? 'A cancelar...' : 'Cancelar Renovação'}</span>
-                    </button>
+                        <span>Cancelar Renovação</span>
+                      </button>
+                    )}
+
+                    {!hasActivePlan && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenPricing();
+                        }}
+                        className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Ativar Plano de Assinatura</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {confirmCancelStep && (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2.5 text-xs">
+                      <p className="text-rose-900 leading-relaxed font-medium">
+                        Tem a certeza? O seu acesso continuará disponível até ao fim do período já faturado, sem novas cobranças.
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelSubscription}
+                          disabled={isCanceling}
+                          className="px-3.5 py-1.5 bg-rose-700 hover:bg-rose-800 text-white font-bold rounded-lg text-xs transition-colors disabled:opacity-50"
+                        >
+                          {isCanceling ? 'A cancelar...' : 'Confirmar Cancelamento'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmCancelStep(false)}
+                          disabled={isCanceling}
+                          className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-semibold rounded-lg text-xs transition-colors"
+                        >
+                          Manter Assinatura
+                        </button>
+                      </div>
+                    </div>
                   )}
 
-                  {!hasActivePlan && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onOpenPricing();
-                      }}
-                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Ativar Plano de Assinatura</span>
-                    </button>
+                  {billingPortalUrl && getSafeExternalUrl(billingPortalUrl) && (
+                    <p className="text-[11px] text-slate-600">
+                      Portal pronto:{' '}
+                      <a
+                        href={getSafeExternalUrl(billingPortalUrl)!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-slate-900 underline"
+                      >
+                        Abrir gestão de cartões e faturas
+                      </a>
+                    </p>
                   )}
                 </div>
               </div>
@@ -615,7 +700,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 {/* Orders Content */}
                 {isLoadingOrders ? (
                   <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-                    <RefreshCw className="w-6 h-6 animate-spin text-indigo-600 mx-auto" />
+                    <RefreshCw className="w-6 h-6 animate-spin text-slate-700 mx-auto" />
                     <p className="text-xs text-slate-500 font-medium">A carregar faturas...</p>
                   </div>
                 ) : orders.length === 0 ? (
@@ -638,8 +723,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       }}
                       className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors inline-flex items-center gap-1.5 shadow-xs"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Ver Planos & Efetuar Pagamento</span>
+                      <Award className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Ver Planos &amp; Efetuar Pagamento</span>
                     </button>
                   </div>
                 ) : (
@@ -658,7 +743,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                               <div
                                 className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
                                   isStripe
-                                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                                    ? 'bg-slate-100 text-slate-800 border border-slate-200'
                                     : isPix
                                     ? 'bg-teal-50 text-teal-700 border border-teal-200'
                                     : 'bg-slate-100 text-slate-700 border border-slate-200'
@@ -698,7 +783,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                                   order.status === 'paid'
                                     ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                     : order.status === 'refunded'
-                                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                                    ? 'bg-slate-100 text-slate-700 border-slate-300'
                                     : order.status === 'failed'
                                     ? 'bg-rose-50 text-rose-800 border-rose-200'
                                     : 'bg-amber-50 text-amber-800 border-amber-200'
@@ -725,12 +810,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                               <span>{isPix ? 'Pix' : 'Cartão'}</span>
                             </span>
 
-                            {order.receiptUrl && (
+                            {order.receiptUrl && getSafeExternalUrl(order.receiptUrl) && (
                               <a
-                                href={order.receiptUrl}
+                                href={getSafeExternalUrl(order.receiptUrl)!}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1"
+                                className="text-slate-800 hover:text-slate-950 font-semibold flex items-center gap-1"
                               >
                                 <span>Ver Recibo</span>
                                 <ArrowUpRight className="w-3 h-3" />

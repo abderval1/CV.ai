@@ -6,7 +6,7 @@ import {
   ChevronDown,
   Camera,
   ShieldCheck,
-  Sparkles,
+  FileText,
   HelpCircle,
   Check,
   Briefcase,
@@ -111,7 +111,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
           <div className="p-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
             <div>
               <div className="text-xs font-bold flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <FileText className="w-3.5 h-3.5 text-amber-400" />
                 <span>Modelos Oficiais de Currículo</span>
               </div>
               <p className="text-[10px] text-slate-300 mt-0.5">
@@ -165,7 +165,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                           {adminConfigMap.get(item.id)?.tierRequired && (
                             <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
                               adminConfigMap.get(item.id)?.tierRequired === 'executive'
-                                ? 'bg-purple-100 text-purple-800'
+                                ? 'bg-slate-900 text-amber-400'
                                 : adminConfigMap.get(item.id)?.tierRequired === 'pro'
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-slate-100 text-slate-600'
@@ -222,7 +222,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                           {adminConfigMap.get(item.id)?.tierRequired && (
                             <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
                               adminConfigMap.get(item.id)?.tierRequired === 'executive'
-                                ? 'bg-purple-100 text-purple-800'
+                                ? 'bg-slate-900 text-amber-400'
                                 : adminConfigMap.get(item.id)?.tierRequired === 'pro'
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-slate-100 text-slate-600'

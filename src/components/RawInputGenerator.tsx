@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV } from '../data/initialCV';
 import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
+import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
   getStoredPlatformSettingsSync,
@@ -9,7 +10,7 @@ import {
   logGenerationError
 } from '../services/adminModulesService';
 import {
-  Sparkles,
+  Wand2,
   Upload,
   FileText,
   Target,
@@ -211,9 +212,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       reader.readAsDataURL(file);
     });
 
-    const response = await fetch('/api/extract-document', {
+    const response = await authorizedFetch('/api/extract-document', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         fileName: file.name,
         base64Data
@@ -310,9 +310,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         );
       }, 700);
 
-      const res = await fetch('/api/extract-linkedin', {
+      const res = await authorizedFetch('/api/extract-linkedin', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: linkedInUrl,
           rawText: candidateRawText
@@ -502,9 +501,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     const adminPromptConfig = getStoredPromptSync('resumeSummary');
 
     try {
-      const response = await fetch('/api/generate-from-raw', {
+      const response = await authorizedFetch('/api/generate-from-raw', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           generationMode: activeMode,
           rawCandidateInfo: candidateRawText,
@@ -627,7 +625,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
+            <FileText className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <h2 className="text-base font-bold">
                 Importador & Gerador de Currículo ATS
@@ -985,7 +983,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                           }}
                           className="flex-1 py-1.5 px-3 bg-blue-700 hover:bg-blue-800 text-white rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <Check className="w-3.5 h-3.5 text-amber-300" />
                           <span>Aplicar Diretamente ao Currículo</span>
                         </button>
 
@@ -1212,7 +1210,7 @@ COMPETÊNCIAS:
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <Wand2 className="w-4 h-4 text-amber-400" />
                   <span>
                     {generationMode === 'standard'
                       ? 'Gerar Apenas o CV Estruturado'

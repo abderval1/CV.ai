@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CVData } from './types/cv';
+import { CVData, BillingCycle, SubscriptionPlan } from './types/cv';
 import { GENERIC_DEFAULT_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
 import { Header, AppTab } from './components/Header';
 import { LandingHeroView } from './components/LandingHeroView';
@@ -29,6 +29,9 @@ import { detectCVLanguage, detectTextLanguage } from './utils/languageDetect';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
 import { getTemplateById } from './data/templateCatalog';
 import { isUserAdmin } from './services/saasDbService';
+import { recordAuditLog } from './services/auditLogService';
+import { dispatchUserNotification } from './services/notificationService';
+import { authorizedFetch } from './utils/authHeaders';
 import {
   fetchPlatformSettings,
   fetchEditablePlans,
@@ -44,7 +47,7 @@ import {
   logGenerationError,
   emitAdminConfigUpdated
 } from './services/adminModulesService';
-import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Sparkles, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase } from 'lucide-react';
+import { FileText, SlidersHorizontal, Check, Home, Edit3, Target, Download, Wand2, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase } from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError } = useAuth();
@@ -118,6 +121,8 @@ export default function App() {
   const [authDefaultMode, setAuthDefaultMode] = useState<'login' | 'register'>('login');
   const [isPricingModalOpen, setIsPricingModalOpen] = useState<boolean>(false);
   const [pricingPromptMessage, setPricingPromptMessage] = useState<string | undefined>(undefined);
+  const [pricingInitialPlan, setPricingInitialPlan] = useState<SubscriptionPlan | undefined>(undefined);
+  const [pricingInitialCycle, setPricingInitialCycle] = useState<BillingCycle | undefined>(undefined);
   const [pendingModelTarget, setPendingModelTarget] = useState<{
     targetTab: 'editor' | 'cover' | 'raw';
     label: string;
@@ -127,6 +132,7 @@ export default function App() {
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState<boolean>(false);
+  const [profileInitialSubTab, setProfileInitialSubTab] = useState<'overview' | 'resumes' | 'settings'>('overview');
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
   const resumeStartedTrackedRef = useRef<boolean>(false);
 
@@ -177,13 +183,25 @@ export default function App() {
     }
   }, [authRedirectError, isAuthenticated]);
 
-  const handleOpenPricingModal = (prompt?: string) => {
+  const handleOpenPricingModal = (
+    prompt?: string,
+    initialPlan?: SubscriptionPlan,
+    initialCycle?: BillingCycle
+  ) => {
     setPricingPromptMessage(
       prompt ||
-        'Para descarregar o seu currículo em Microsoft Word (.docx) ou PDF limpo sem marcas de água, subscreva um plano Pro ou Executive.'
+        'Para descarregar o seu currículo em Microsoft Word (.docx) ou PDF limpo sem marcas de água, ative um plano Pro ou Executivo VIP.'
     );
+    setPricingInitialPlan(initialPlan);
+    setPricingInitialCycle(initialCycle);
     setIsPricingModalOpen(true);
   };
+
+  const handleOpenNotificationPreferences = useCallback(() => {
+    setIsUserProfileModalOpen(false);
+    setProfileInitialSubTab('settings');
+    setActiveTab('profile');
+  }, []);
 
   const [letterBody, setLetterBodyState] = useState<string>(() => {
     try {
@@ -490,9 +508,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       const cvPromise =
         sourceCvLang === targetLang && actualCvLang === targetLang
           ? Promise.resolve(sourceEntry.cv)
-          : fetch('/api/translate-cv', {
+          : authorizedFetch('/api/translate-cv', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 cvData: sourceEntry.cv,
                 targetLanguage: targetLang,
@@ -513,9 +530,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       const letterPromise =
         !sourceHasLetter || (sourceLetterLang === targetLang && actualLetterLang === targetLang)
           ? Promise.resolve(sourceEntry.letterBody)
-          : fetch('/api/translate-letter', {
+          : authorizedFetch('/api/translate-letter', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 text: sourceEntry.letterBody,
                 targetLanguage: targetLang,
@@ -563,6 +579,15 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         'Conteúdo Traduzido!',
         `Currículo e Carta de Apresentação traduzidos para ${langLabel}.`
       );
+      if (user) {
+        void dispatchUserNotification({
+          user,
+          eventType: 'translation',
+          title: 'Tradução Concluída',
+          message: `O seu currículo e carta de apresentação foram traduzidos para ${langLabel}.`,
+          targetResource: `translation/${targetLang}`
+        });
+      }
     } catch (err: any) {
       if (reqId !== translationReqIdRef.current) return;
       console.error('Erro ao traduzir conteúdo:', err);
@@ -584,15 +609,36 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setTranslatingTargetLang(null);
       }
     }
-  }, [cv, hasActivePlan, isAuthenticated, letterBody, setLanguage, showError, showInfo, showSuccess, user?.email]);
+  }, [cv, hasActivePlan, isAuthenticated, letterBody, setLanguage, showError, showInfo, showSuccess, user]);
 
   const handleExportWord = async () => {
     const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
     if (requirePaidPlanForExport && !isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: activeTab === 'cover' ? 'cover-letter/docx' : 'resumes/docx',
+        details: 'Tentativa de exportação Word (.docx) bloqueada: utilizador não autenticado.',
+        metadata: { format: 'docx', reason: 'unauthenticated' }
+      });
       handleOpenAuth('O registo é obrigatório para descarregar o currículo em formato Word (.docx). Registe-se ou inicie sessão para continuar.');
       return;
     }
     if (requirePaidPlanForExport && !hasActivePlan) {
+      void recordAuditLog({
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role === 'admin' ? 'admin' : 'user',
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: activeTab === 'cover' ? 'cover-letter/docx' : 'resumes/docx',
+        details: `Tentativa de exportação Word (.docx) bloqueada: plano '${user?.plan || 'free'}' sem permissão de exportação oficial.`,
+        metadata: { format: 'docx', plan: user?.plan || 'free', reason: 'plan_required' }
+      });
       handleOpenPricingModal(
         'Os downloads oficiais em formato Microsoft Word (.docx) e PDF de Alta Resolução são exclusivos para subscritores. Ative o seu plano para descarregar o documento oficial sem marca de água.'
       );
@@ -606,22 +652,64 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         const blob = await generateCoverLetterDocx(cv, letterBody, true, appLanguage);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
         trackFrontendTelemetry({ type: 'word_exported' });
+        void recordAuditLog({
+          actorUserId: user?.id,
+          actorEmail: user?.email,
+          actorRole: user?.role === 'admin' ? 'admin' : 'user',
+          action: 'cv_exported_docx',
+          category: 'cv_export',
+          severity: 'info',
+          status: 'success',
+          targetResource: 'cover-letter/docx',
+          details: `Carta de apresentação exportada em Word (.docx) no idioma ${appLanguage.toUpperCase()}.`,
+          metadata: { format: 'docx', documentType: 'cover_letter', language: appLanguage }
+        });
         setWordNotificationMessage('Carta de Apresentação em Word (.docx) Oficial Descarregada!');
         showSuccess(
           'Carta de Apresentação Descarregada!',
           `O ficheiro Carta_Apresentacao_${sanitizedName}.docx foi gerado com sucesso sem marcas de água.`
         );
+        if (user) {
+          void dispatchUserNotification({
+            user,
+            eventType: 'export',
+            title: 'Exportação Word Concluída',
+            message: `Carta de apresentação Carta_Apresentacao_${sanitizedName}.docx exportada com sucesso (${appLanguage.toUpperCase()}).`,
+            targetResource: 'cover-letter/docx'
+          });
+        }
       } else {
         const templateInfo = getTemplateById(cv.templateStyle);
         const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
         const blob = await generateWordDocument(cv, true, density, appLanguage);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
         trackFrontendTelemetry({ type: 'word_exported', templateStyle: cv.templateStyle });
+        void recordAuditLog({
+          actorUserId: user?.id,
+          actorEmail: user?.email,
+          actorRole: user?.role === 'admin' ? 'admin' : 'user',
+          action: 'cv_exported_docx',
+          category: 'cv_export',
+          severity: 'info',
+          status: 'success',
+          targetResource: `resumes/${cv.templateStyle}/docx`,
+          details: `Currículo exportado em Word (.docx) — modelo ${templateInfo.shortName} (${appLanguage.toUpperCase()}).`,
+          metadata: { format: 'docx', templateStyle: cv.templateStyle, language: appLanguage }
+        });
         setWordNotificationMessage(`Currículo Word (${templateInfo.shortName}) Oficial Descarregado com Sucesso!`);
         showSuccess(
           'Currículo Word Descarregado!',
           `Modelo ${templateInfo.shortName} gerado com formatação nativa OpenXML e compatibilidade ATS 100%.`
         );
+        if (user) {
+          void dispatchUserNotification({
+            user,
+            eventType: 'export',
+            title: 'Exportação Word Concluída',
+            message: `Currículo ${templateInfo.shortName} (${appLanguage.toUpperCase()}) exportado em Microsoft Word (.docx).`,
+            targetResource: `resumes/${cv.templateStyle}/docx`
+          });
+        }
       }
 
       setWordSuccessNotification(true);
@@ -718,9 +806,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
       {/* Impersonation Active Banner */}
       {isImpersonating && (
-        <div className="no-print bg-purple-950 text-purple-100 px-4 py-2 text-xs flex items-center justify-between border-b border-purple-800 z-50 shadow-md">
+        <div className="no-print bg-slate-900 text-amber-100 px-4 py-2 text-xs flex items-center justify-between border-b border-amber-500/40 z-50 shadow-md">
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-purple-400 shrink-0" />
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
               <strong>Modo de Personificação Ativo:</strong> A navegar como{' '}
               <span className="font-semibold text-white underline">{user?.name}</span> ({user?.email}).
@@ -729,7 +817,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           <button
             type="button"
             onClick={stopImpersonating}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600 hover:bg-purple-500 rounded text-xs font-bold text-white transition-colors shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400 hover:bg-amber-300 rounded text-xs font-bold text-slate-950 transition-colors shadow-xs"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sair e Voltar ao Admin
@@ -755,6 +843,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onOpenAdminDashboard={() => setIsAdminDashboardOpen(true)}
         onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
         onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
+        onOpenNotificationPreferences={handleOpenNotificationPreferences}
         onSelectLanguage={handleSwitchLanguage}
         isTranslatingContent={isTranslatingContent}
       />
@@ -782,7 +871,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 label: 'Construtor de Currículo'
               })
             }
-            onOpenPricing={() => setIsPricingModalOpen(true)}
+            onOpenPricing={() => handleOpenPricingModal()}
+            onSelectPlanForCheckout={(plan, cycle) => handleOpenPricingModal(undefined, plan, cycle)}
             onSelectTemplate={(templateId) => {
               const info = getTemplateById(templateId as any);
               handleUseShowcaseItem({
@@ -818,6 +908,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
             }}
             currentCV={cv}
             onOpenAuth={() => handleOpenAuth()}
+            initialSubTab={profileInitialSubTab}
           />
         </main>
       ) : (
@@ -925,7 +1016,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'text-slate-600 hover:text-slate-950'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                     <span>Otimizar IA</span>
                   </button>
 
@@ -1013,6 +1104,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAiTailor={() => setActiveTab('ai')}
                       onOpenCoverLetter={() => setActiveTab('cover')}
                       onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
+                      onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+                      density={density}
+                      onDensityChange={setDensity}
                     />
                   )
                 )}
@@ -1347,11 +1441,15 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onClose={() => {
           setIsPricingModalOpen(false);
           setPricingPromptMessage(undefined);
+          setPricingInitialPlan(undefined);
+          setPricingInitialCycle(undefined);
           if (!hasActivePlan) {
             setPendingModelTarget(null);
           }
         }}
         promptMessage={pricingPromptMessage}
+        initialPlan={pricingInitialPlan}
+        initialCycle={pricingInitialCycle}
       />
 
       {/* Dedicated User Profile & Subscription Account Area Modal */}
@@ -1360,6 +1458,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onClose={() => setIsUserProfileModalOpen(false)}
         onOpenPricing={() => handleOpenPricingModal()}
         onOpenMyResumes={() => setIsMyResumesModalOpen(true)}
+        onOpenNotificationPreferences={handleOpenNotificationPreferences}
       />
 
       {/* My Saved Resumes Library Modal */}

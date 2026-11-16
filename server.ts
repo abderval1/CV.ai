@@ -2,6 +2,8 @@ import express from 'express';
 import http from 'http';
 import crypto from 'crypto';
 import fs from 'fs';
+import dns from 'dns/promises';
+import net from 'net';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,7 +22,233 @@ const PORT = Number(process.env.PORT) || 3000;
 
 export function createApiApp() {
   const app = express();
-  app.use(express.json({ limit: '25mb' }));
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1);
+
+  // Security HTTP headers (iframe-compatible for AI Studio preview, no X-Frame-Options: DENY)
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), usb=()');
+    res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    if (isProduction || req.secure || req.headers['x-forwarded-proto'] === 'https') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+
+  // Strict per-endpoint JSON body limits: 2mb default, 14mb allowed only on /api/extract-document
+  const defaultJsonParser = express.json({ limit: '2mb' });
+  const uploadJsonParser = express.json({ limit: '14mb' });
+  app.use((req, res, next) => {
+    if (req.path === '/api/extract-document') {
+      return uploadJsonParser(req, res, next);
+    }
+    return defaultJsonParser(req, res, next);
+  });
+
+  // -------------------------------------------------------------
+  // SECURITY HELPERS: RATE LIMITING, SSRF GUARD & REDIRECT CHECKS
+  // -------------------------------------------------------------
+  function getClientIp(req: express.Request): string {
+    return String(req.ip || req.socket.remoteAddress || 'local').slice(0, 128);
+  }
+
+  function createRateLimiter(maxRequests: number, windowMs: number) {
+    const store = new Map<string, { count: number; resetAt: number }>();
+    return (req: express.Request): boolean => {
+      const now = Date.now();
+      if (store.size > 5000) {
+        for (const [k, v] of store.entries()) {
+          if (now > v.resetAt) store.delete(k);
+        }
+        if (store.size > 5000) store.clear();
+      }
+      const ip = getClientIp(req);
+      const cur = store.get(ip);
+      if (!cur || now > cur.resetAt) {
+        store.set(ip, { count: 1, resetAt: now + windowMs });
+        return true;
+      }
+      cur.count += 1;
+      return cur.count <= maxRequests;
+    };
+  }
+
+  const checkAiRateLimit = createRateLimiter(35, 60_000);
+  const checkUploadRateLimit = createRateLimiter(15, 60_000);
+  const checkProxyRateLimit = createRateLimiter(45, 60_000);
+  const checkPaymentRateLimit = createRateLimiter(25, 60_000);
+  const checkTelemetryRateLimit = createRateLimiter(25, 60_000);
+  const checkJobsRateLimit = createRateLimiter(30, 60_000);
+
+  function aiRateLimitMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+    if (!checkAiRateLimit(req)) {
+      return res.status(429).json({
+        error: 'Demasiados pedidos de IA em pouco tempo. Aguarde um minuto antes de tentar novamente.',
+        fallback: true
+      });
+    }
+    next();
+  }
+
+  function isPrivateOrReservedIpv4(ipv4: string): boolean {
+    const parts = ipv4.split('.').map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    const [a, b, c] = parts;
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a === 169 && b === 254) return true; // Link-local / Cloud Metadata
+    if (a === 172 && b >= 16 && b <= 31) return true; // RFC1918
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+    if (a === 192 && b === 168) return true; // RFC1918
+    if (a === 198 && (b === 18 || b === 19)) return true;
+    if (a >= 224) return true; // Multicast & Reserved
+    return false;
+  }
+
+  function isPrivateOrReservedIp(ip: string): boolean {
+    const clean = ip.trim().toLowerCase().split('%')[0];
+    if (!clean) return true;
+    if (net.isIPv4(clean)) return isPrivateOrReservedIpv4(clean);
+    if (!net.isIPv6(clean)) return true;
+    if (clean === '::' || clean === '::1') return true;
+    if (clean.startsWith('::ffff:')) {
+      const mapped = clean.slice(7);
+      if (net.isIPv4(mapped)) return isPrivateOrReservedIpv4(mapped);
+      return true;
+    }
+    // Block link-local (fe80::/10), ULA (fc00::/7), multicast (ff00::/8)
+    const firstWordHex = clean.split(':')[0] || '0';
+    const firstWord = parseInt(firstWordHex, 16);
+    if (Number.isNaN(firstWord)) return true;
+    if ((firstWord & 0xfe00) === 0xfc00) return true; // fc00::/7
+    if ((firstWord & 0xffc0) === 0xfe80) return true; // fe80::/10
+    if ((firstWord & 0xff00) === 0xff00) return true; // ff00::/8
+    return false;
+  }
+
+  async function assertSafeExternalUrl(rawUrl: string): Promise<URL> {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      throw new Error('URL inválida');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Protocolo não permitido');
+    }
+    if (parsed.username || parsed.password) {
+      throw new Error('Credenciais na URL não permitidas');
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (!host || host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) {
+      throw new Error('Destino interno bloqueado');
+    }
+    if (net.isIP(host)) {
+      if (isPrivateOrReservedIp(host)) {
+        throw new Error('Endereço IP privado ou reservado bloqueado');
+      }
+      return parsed;
+    }
+    const resolved = await dns.lookup(host, { all: true });
+    if (!resolved || resolved.length === 0) {
+      throw new Error('Falha ao resolver domínio externo');
+    }
+    for (const entry of resolved) {
+      if (isPrivateOrReservedIp(entry.address)) {
+        throw new Error('Endereço IP interno resolvido bloqueado');
+      }
+    }
+    return parsed;
+  }
+
+  function resolveSafeAppRedirectUrl(req: express.Request, candidate?: string): string {
+    const hostHeader = req.get('host');
+    const proto = req.headers['x-forwarded-proto'] === 'https' || req.secure ? 'https' : req.protocol || 'http';
+    const fallbackOrigin = process.env.APP_URL || (hostHeader ? `${proto}://${hostHeader}` : `http://localhost:${PORT}`);
+    if (!candidate || typeof candidate !== 'string') return fallbackOrigin;
+    try {
+      const target = new URL(candidate);
+      if (target.protocol !== 'http:' && target.protocol !== 'https:') return fallbackOrigin;
+      const allowedOrigins = new Set<string>();
+      if (process.env.APP_URL) {
+        try {
+          allowedOrigins.add(new URL(process.env.APP_URL).origin);
+        } catch { /* ignore */ }
+      }
+      if (hostHeader) {
+        allowedOrigins.add(`https://${hostHeader}`);
+        allowedOrigins.add(`http://${hostHeader}`);
+      }
+      if (req.headers.origin) {
+        try {
+          const reqOrig = new URL(String(req.headers.origin));
+          if (reqOrig.host === hostHeader || reqOrig.hostname.endsWith('.run.app') || reqOrig.hostname === 'localhost') {
+            allowedOrigins.add(reqOrig.origin);
+          }
+        } catch { /* ignore */ }
+      }
+      if (
+        allowedOrigins.has(target.origin) ||
+        (target.protocol === 'https:' && target.hostname.endsWith('.run.app'))
+      ) {
+        return `${target.origin}${target.pathname}`;
+      }
+      return fallbackOrigin;
+    } catch {
+      return fallbackOrigin;
+    }
+  }
+
+  function sanitizeTelemetryText(input: unknown, maxLen = 1000): string {
+    return String(input || '')
+      .replace(/Bearer\s+[A-Za-z0-9\-_.~+/]+=*/gi, 'Bearer [REDACTED]')
+      .replace(/sk_(live|test)_[A-Za-z0-9]+/gi, '[STRIPE_KEY_REDACTED]')
+      .replace(/rk_(live|test)_[A-Za-z0-9]+/gi, '[STRIPE_KEY_REDACTED]')
+      .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[API_KEY_REDACTED]')
+      .slice(0, maxLen);
+  }
+
+  function sanitizeAiErrorMessage(err: any, fallbackMsg: string): string {
+    const raw = sanitizeTelemetryText(err?.message || '', 300);
+    if (!raw) return fallbackMsg;
+    if (/api[_-]?key|credential|token|secret|permission|quota|429|resource_exhausted/i.test(raw)) {
+      return fallbackMsg;
+    }
+    return raw;
+  }
+
+  function trackAuthenticatedAiUsage(req: express.Request): {
+    quotaExceeded?: boolean;
+    creditsRemaining?: number;
+  } {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) return {};
+      const record = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!record || record.status === 'suspended') return {};
+
+      const isAdmin = record.role === 'admin' || ADMIN_EMAILS_BACKEND.has(record.email.toLowerCase());
+      const isPaid = record.plan === 'pro' || record.plan === 'executive';
+
+      if (!isAdmin && !isPaid) {
+        const remaining = typeof record.creditsRemaining === 'number' ? record.creditsRemaining : 5;
+        if (remaining <= 0) {
+          return { quotaExceeded: true, creditsRemaining: 0 };
+        }
+        record.creditsRemaining = remaining - 1;
+      }
+      record.creditsUsed = (record.creditsUsed || 0) + 1;
+      record.updatedAt = new Date().toISOString();
+      persistAuthStore();
+      return { creditsRemaining: record.creditsRemaining };
+    } catch {
+      return {};
+    }
+  }
 
   // Initialize Gemini API client if key is available
   const apiKey = process.env.GEMINI_API_KEY;
@@ -172,18 +400,29 @@ export function createApiApp() {
   // Extract clean text from binary documents (PDF, DOCX, DOC, RTF)
   app.post('/api/extract-document', async (req, res) => {
     try {
+      if (!checkUploadRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados uploads em sequência. Aguarde um minuto.' });
+      }
       const { fileName, base64Data } = req.body as {
         fileName?: string;
         base64Data?: string;
       };
 
-      if (!fileName || !base64Data) {
+      if (!fileName || typeof fileName !== 'string' || !base64Data || typeof base64Data !== 'string') {
         return res.status(400).json({ error: 'Ficheiro inválido ou vazio.' });
+      }
+
+      const ext = path.extname(fileName).toLowerCase();
+      const allowedExtensions = new Set(['.pdf', '.docx', '.doc', '.rtf', '.txt', '.md', '.csv']);
+      if (!allowedExtensions.has(ext)) {
+        return res.status(400).json({ error: 'Formato de ficheiro não suportado. Utilize PDF, DOCX, DOC, RTF ou TXT.' });
       }
 
       const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
       const buffer = Buffer.from(cleanBase64, 'base64');
-      const ext = path.extname(fileName).toLowerCase();
+      if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+        return res.status(413).json({ error: 'O documento excede o limite máximo de 10 MB.' });
+      }
 
       let extractedText = '';
 
@@ -245,39 +484,103 @@ export function createApiApp() {
         });
       }
 
-      return res.json({ text: extractedText, fileName });
+      return res.json({ text: extractedText, fileName: path.basename(fileName).slice(0, 120) });
     } catch (err: any) {
       console.error('Erro em /api/extract-document:', err);
       return res.status(500).json({
-        error: 'Erro ao processar o documento: ' + (err.message || 'Falha desconhecida')
+        error: 'Erro ao processar o documento.'
       });
     }
   });
 
-  // Image proxy endpoint for CORS-free binary embedding during document exports
+  // Image proxy endpoint with strict anti-SSRF, raster-only MIME & size protections
   app.get('/api/proxy-image', async (req, res) => {
     try {
-      const imageUrl = req.query.url as string;
-      if (!imageUrl || !imageUrl.startsWith('http')) {
+      if (!checkProxyRateLimit(req)) {
+        return res.status(429).send('Limite de requisições excedido');
+      }
+      const imageUrl = String(req.query.url || '').trim();
+      if (!imageUrl || imageUrl.length > 1500) {
         return res.status(400).send('URL de imagem inválida');
       }
-      const response = await fetch(imageUrl);
-      if (!response.ok) {
-        return res.status(response.status).send('Erro ao buscar imagem externa');
+
+      let currentUrl = await assertSafeExternalUrl(imageUrl);
+      let upstreamResponse: Response | null = null;
+
+      for (let hop = 0; hop < 3; hop += 1) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        try {
+          const resp = await fetch(currentUrl.toString(), {
+            redirect: 'manual',
+            signal: controller.signal,
+            headers: { 'User-Agent': 'CurriculoEstrategico-ImageProxy/1.0' }
+          });
+          if (resp.status >= 300 && resp.status < 400) {
+            const loc = resp.headers.get('location');
+            if (!loc) break;
+            currentUrl = await assertSafeExternalUrl(new URL(loc, currentUrl).toString());
+            continue;
+          }
+          upstreamResponse = resp;
+          break;
+        } finally {
+          clearTimeout(timer);
+        }
       }
-      const contentType = response.headers.get('content-type') || 'image/jpeg';
-      res.setHeader('Content-Type', contentType);
+
+      if (!upstreamResponse) {
+        return res.status(400).send('Redirecionamento externo não permitido');
+      }
+      if (!upstreamResponse.ok) {
+        return res.status(upstreamResponse.status).send('Erro ao buscar imagem externa');
+      }
+
+      const rawCt = (upstreamResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const allowedImageMimes = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+      if (!allowedImageMimes.has(rawCt)) {
+        return res.status(415).send('Tipo de imagem não suportado');
+      }
+
+      const declaredLen = Number(upstreamResponse.headers.get('content-length') || '0');
+      if (declaredLen > 5 * 1024 * 1024) {
+        return res.status(413).send('Imagem excede o tamanho máximo permitido');
+      }
+
+      const arrayBuffer = await upstreamResponse.arrayBuffer();
+      if (arrayBuffer.byteLength > 5 * 1024 * 1024) {
+        return res.status(413).send('Imagem excede o tamanho máximo permitido');
+      }
+
+      res.setHeader('Content-Type', rawCt);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      const arrayBuffer = await response.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
+      return res.send(Buffer.from(arrayBuffer));
     } catch (err: any) {
-      console.warn('Erro ao processar proxy de imagem:', err);
-      res.status(500).send('Falha no proxy de imagem');
+      const msg = String(err?.message || '');
+      if (
+        msg.includes('inválida') ||
+        msg.includes('bloqueado') ||
+        msg.includes('permitido') ||
+        msg.includes('resolver')
+      ) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: '/api/proxy-image',
+          details: `Tentativa de SSRF / URL externa bloqueada no proxy de imagem: ${msg.slice(0, 160)}`,
+          metadata: { httpStatus: 403 }
+        });
+        return res.status(403).send(msg);
+      }
+      return res.status(500).send('Falha no proxy de imagem');
     }
   });
 
   // AI Tailor CV endpoint
-  app.post('/api/tailor-cv', async (req, res) => {
+  app.post('/api/tailor-cv', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { cvData, jobDescription, targetStandard, adminPromptConfig } = req.body;
 
@@ -292,8 +595,18 @@ export function createApiApp() {
         });
       }
 
+      const usageCheck = trackAuthenticatedAiUsage(req);
+      if (usageCheck.quotaExceeded) {
+        return res.status(402).json({
+          error: 'Os seus 5 créditos gratuitos de avaliação esgotaram. Faça upgrade para Pro ou Executivo VIP para uso ilimitado.',
+          quotaExceeded: true,
+          fallback: true
+        });
+      }
+
+      const safeJobDescription = typeof jobDescription === 'string' ? jobDescription.slice(0, 12000) : '';
       const customInstructionBlock = adminPromptConfig?.systemInstruction
-        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${String(adminPromptConfig.systemInstruction).slice(0, 2000)}\n`
         : '';
 
       const prompt = `
@@ -307,7 +620,7 @@ DADOS ATUAIS DO CANDIDATO:
 ${JSON.stringify(cvData, null, 2)}
 
 DESCRIÇÃO DA VAGA (Termos de Referência / Requisitos):
-${jobDescription || 'Posição de Liderança Executiva, Gestão de Operações ou Direção Estratégica.'}
+${safeJobDescription || 'Posição de Liderança Executiva, Gestão de Operações ou Direção Estratégica.'}
 
 INSTRUÇÕES ESTRITAS:
 1. Resumo Executivo (Summary): Reescreva em tom executivo de alto impacto (4-6 linhas), destacando anos de experiência, liderança estratégica, orçamentos ou equipas geridas e impacto comprovado na geração de resultados.
@@ -356,14 +669,14 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
     } catch (err: any) {
       console.error('Erro na rota /api/tailor-cv:', err);
       return res.status(500).json({
-        error: 'Erro ao processar otimização com IA: ' + (err.message || 'Falha desconhecida'),
+        error: sanitizeAiErrorMessage(err, 'Erro temporário ao processar otimização com IA. O modo local será ativado.'),
         fallback: true
       });
     }
   });
 
   // Generate full structured CV from raw inputs & target job description
-  app.post('/api/generate-from-raw', async (req, res) => {
+  app.post('/api/generate-from-raw', aiRateLimitMiddleware, async (req, res) => {
     try {
       const {
         rawCandidateInfo,
@@ -381,6 +694,15 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
       if (!ai) {
         return res.status(503).json({
           error: 'Chave GEMINI_API_KEY não configurada no servidor.',
+          fallback: true
+        });
+      }
+
+      const usageCheck = trackAuthenticatedAiUsage(req);
+      if (usageCheck.quotaExceeded) {
+        return res.status(402).json({
+          error: 'Os seus créditos gratuitos esgotaram. Faça upgrade para gerar novos currículos com IA ilimitada.',
+          quotaExceeded: true,
           fallback: true
         });
       }
@@ -541,12 +863,15 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/generate-from-raw:', err);
-      return res.status(500).json({ error: err.message, fallback: true });
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Erro ao estruturar currículo via IA. A usar analisador inteligente.'),
+        fallback: true
+      });
     }
   });
 
   // AI Cover Letter endpoint with language support
-  app.post('/api/cover-letter', async (req, res) => {
+  app.post('/api/cover-letter', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { cvData, jobDescription, recipientName, organizationName, language, adminPromptConfig } = req.body;
 
@@ -556,6 +881,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
           fallback: true
         });
       }
+      trackAuthenticatedAiUsage(req);
 
       const candidateName = cvData?.personalDetails?.name || cvData?.name || 'Candidato Executivo';
       const candidateTitle = cvData?.personalDetails?.title || cvData?.title || 'Especialista Sênior';
@@ -616,17 +942,23 @@ Responda ESTRITAMENTE em JSON:
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/cover-letter:', err);
-      return res.status(500).json({ error: err.message, fallback: true });
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Erro temporário ao gerar carta de apresentação com IA.'),
+        fallback: true
+      });
     }
   });
 
   // Dedicated AI Translation endpoint for Cover Letters & CV text
-  app.post('/api/translate-letter', async (req, res) => {
+  app.post('/api/translate-letter', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { text, targetLanguage, adminPromptConfig } = req.body;
 
       if (!text || !String(text).trim()) {
         return res.status(400).json({ error: 'Texto da carta não fornecido.' });
+      }
+      if (String(text).length > 25000) {
+        return res.status(400).json({ error: 'O texto excede o limite permitido para tradução.' });
       }
 
       if (!ai) {
@@ -635,6 +967,7 @@ Responda ESTRITAMENTE em JSON:
           fallback: true
         });
       }
+      trackAuthenticatedAiUsage(req);
 
       const langMap: Record<string, string> = {
         pt: 'Portuguese (Português Corporativo e Executivo Formal)',
@@ -680,7 +1013,7 @@ Respond STRICTLY in valid JSON:
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/translate-letter:', err);
-      return res.status(500).json({ error: err.message || 'Falha ao traduzir a carta.' });
+      return res.status(500).json({ error: sanitizeAiErrorMessage(err, 'Falha ao traduzir a carta.') });
     }
   });
 
@@ -688,7 +1021,7 @@ Respond STRICTLY in valid JSON:
   // DEDICATED FULL CV TRANSLATION ENDPOINT
   // Translates entire CVData into target language (PT, EN, ES, FR, DE)
   // -------------------------------------------------------------
-  app.post('/api/translate-cv', async (req, res) => {
+  app.post('/api/translate-cv', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { cvData, targetLanguage, adminPromptConfig } = req.body;
 
@@ -713,6 +1046,7 @@ Respond STRICTLY in valid JSON:
           fallback: true
         });
       }
+      trackAuthenticatedAiUsage(req);
 
       const cvForTranslation = {
         personalDetails: {
@@ -824,7 +1158,7 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
       return res.json({ translatedCV: mergedCV });
     } catch (err: any) {
       console.error('Erro na rota /api/translate-cv:', err);
-      return res.status(500).json({ error: err.message || 'Falha ao traduzir o currículo.' });
+      return res.status(500).json({ error: sanitizeAiErrorMessage(err, 'Falha ao traduzir o currículo.') });
     }
   });
 
@@ -832,16 +1166,17 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
   // -------------------------------------------------------------
   // LINKEDIN PUBLIC PROFILE EXTRACTION JOB
   // -------------------------------------------------------------
-  app.post('/api/extract-linkedin', async (req, res) => {
+  app.post('/api/extract-linkedin', aiRateLimitMiddleware, async (req, res) => {
     try {
-      const { url, rawText } = req.body;
-      const jobId = `job_lk_${Math.random().toString(36).substring(2, 9)}`;
+      const { url, rawText } = req.body || {};
+      const jobId = `job_lk_${crypto.randomUUID().slice(0, 8)}`;
 
       if (!url && !rawText) {
         return res.status(400).json({ error: 'URL do perfil ou texto de apoio não fornecido.' });
       }
 
-      const cleanUrl = (url || '').trim();
+      const cleanUrl = String(url || '').trim().slice(0, 500);
+      const boundedRawText = String(rawText || '').slice(0, 30000);
       const usernameMatch = cleanUrl.match(/linkedin\.com\/in\/([^/?#]+)/i);
       const usernameSlug = usernameMatch ? usernameMatch[1] : 'perfil-profissional';
       const cleanName = usernameSlug
@@ -856,7 +1191,7 @@ Você é um especialista em recrutamento executivo e engenharia de dados de perf
 O utilizador solicitou a extração e formatação do histórico profissional a partir do URL público do LinkedIn:
 URL: ${cleanUrl}
 Nome identificado a partir do perfil: ${cleanName}
-Texto adicional fornecido: ${rawText || 'Nenhum texto adicional'}
+Texto adicional fornecido: ${boundedRawText || 'Nenhum texto adicional'}
 
 Gere um modelo completo de currículo executivo (CVData) baseado neste perfil profissional, estruturado segundo os padrões mais rigorosos de ATS e recrutamento executivo (com conquistas quantificadas no padrão Google XYZ, competências categorizadas e histórico de carreira realista).
 
@@ -1058,7 +1393,7 @@ Retorne ESTRITAMENTE em formato JSON com esta estrutura:
   // -------------------------------------------------------------
   // INTERVIEW SIMULATION API ROUTES
   // -------------------------------------------------------------
-  app.post('/api/interview/generate-questions', async (req, res) => {
+  app.post('/api/interview/generate-questions', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { jobDescription, cvData, adminPromptConfig } = req.body;
 
@@ -1150,14 +1485,17 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
       );
 
       const parsed = parseAiJson(response.text);
+      trackAuthenticatedAiUsage(req);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/generate-questions:', err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Falha ao gerar perguntas de entrevista.')
+      });
     }
   });
 
-  app.post('/api/interview/score-answer', async (req, res) => {
+  app.post('/api/interview/score-answer', aiRateLimitMiddleware, async (req, res) => {
     try {
       const { question, answer, jobDescription, adminPromptConfig } = req.body;
 
@@ -1244,10 +1582,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       );
 
       const parsed = parseAiJson(response.text);
+      trackAuthenticatedAiUsage(req);
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/score-answer:', err);
-      return res.status(500).json({ error: err.message });
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Falha ao avaliar resposta da entrevista.')
+      });
     }
   });
 
@@ -1342,8 +1683,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   function resolveServerPlanPricing(
     rawPlan?: string,
     rawCycle?: string,
-    couponCode?: string,
-    fallbackDiscountPercent?: number
+    couponCode?: string
   ) {
     const plan: 'pro' | 'executive' = rawPlan === 'executive' ? 'executive' : 'pro';
     const billingCycle = normalizeServerCycle(rawCycle);
@@ -1392,8 +1732,6 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           validDiscountPct = Math.min(100, Math.max(0, Number(foundCoupon.discountPercent) || 0));
           appliedCoupon = foundCoupon;
         }
-      } else if (typeof fallbackDiscountPercent === 'number' && fallbackDiscountPercent > 0 && fallbackDiscountPercent < 100) {
-        validDiscountPct = Math.min(90, Math.max(0, Number(fallbackDiscountPercent)));
       }
     }
 
@@ -1461,19 +1799,30 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // 2. Create Tokenized Card Recurring Subscription Intent (In-Modal PCI-DSS Flow)
   app.post('/api/payments/create-subscription-intent', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas tentativas de pagamento. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Inicie sessão na sua conta antes de concluir a subscrição.' });
+      }
+      const sessionUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (sessionUser?.status === 'suspended') {
+        return res.status(403).json({ error: 'Esta conta encontra-se suspensa.' });
+      }
+
       const {
         plan: rawPlan = 'pro',
         billingCycle: rawCycle = 'monthly',
-        userId,
         userName,
-        userEmail,
         couponCode,
-        discountPercent,
         currency: rawCurrency = 'USD'
       } = req.body || {};
 
-      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
-      const cleanEmail = String(userEmail || '').trim().toLowerCase();
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode);
+      const cleanEmail = String(sessionUser?.email || payload.email || '').trim().toLowerCase();
+      const verifiedUserId = sessionUser?.id || payload.uid;
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         return res.status(400).json({ error: 'Inicie sessão com um e-mail válido antes de concluir a subscrição.' });
       }
@@ -1497,8 +1846,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         const promoOrder = {
           id: `ord-${Date.now()}`,
           orderNumber,
-          userId: userId || 'client',
-          userName: userName || cleanEmail,
+          userId: verifiedUserId,
+          userName: String(userName || sessionUser?.name || cleanEmail).slice(0, 120),
           userEmail: cleanEmail,
           plan: pricing.plan,
           billingCycle: pricing.billingCycle,
@@ -1511,20 +1860,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           notes: `Assinatura ${pricing.spec.label.toLowerCase()} ativada com cupom 100% (${pricing.appliedCoupon.code}).`
         };
 
-        const targetUser = (userId && authStore.users[userId]) || findBackendUserByEmail(cleanEmail);
-        if (targetUser) {
-          targetUser.plan = pricing.plan;
-          targetUser.billingCycle = pricing.billingCycle;
-          targetUser.creditsRemaining = 9999;
-          targetUser.subscriptionExpiresAt = nextBillingDate;
-          targetUser.stripeSubscriptionId = promoSubId;
-          targetUser.stripeStatus = 'active';
-          targetUser.status = 'active';
-          targetUser.updatedAt = now.toISOString();
+        if (sessionUser) {
+          sessionUser.plan = pricing.plan;
+          sessionUser.billingCycle = pricing.billingCycle;
+          sessionUser.creditsRemaining = 9999;
+          sessionUser.subscriptionExpiresAt = nextBillingDate;
+          sessionUser.stripeSubscriptionId = promoSubId;
+          sessionUser.stripeStatus = 'active';
+          sessionUser.status = 'active';
+          sessionUser.updatedAt = now.toISOString();
         }
-        const uidKey = targetUser?.id || userId || cleanEmail;
         if (!authStore.ordersByUser) authStore.ordersByUser = {};
-        authStore.ordersByUser[uidKey] = [promoOrder, ...(authStore.ordersByUser[uidKey] || [])].slice(0, 50);
+        authStore.ordersByUser[verifiedUserId] = [promoOrder, ...(authStore.ordersByUser[verifiedUserId] || [])].slice(0, 50);
         persistAuthStore();
 
         return res.json({
@@ -1547,8 +1894,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
-      const existingUser = (userId && authStore.users[userId]) || findBackendUserByEmail(cleanEmail);
-      let customerId = existingUser?.stripeCustomerId;
+      let customerId = sessionUser?.stripeCustomerId;
       if (!customerId) {
         const existingCustomers = await stripeClient.customers.list({ email: cleanEmail, limit: 1 });
         if (existingCustomers.data.length > 0) {
@@ -1556,8 +1902,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         } else {
           const createdCustomer = await stripeClient.customers.create({
             email: cleanEmail,
-            name: String(userName || existingUser?.name || cleanEmail).slice(0, 120),
-            metadata: { userId: existingUser?.id || userId || 'client' }
+            name: String(userName || sessionUser?.name || cleanEmail).slice(0, 120),
+            metadata: { userId: verifiedUserId }
           });
           customerId = createdCustomer.id;
         }
@@ -1582,9 +1928,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         payment_behavior: 'default_incomplete',
         payment_settings: { save_default_payment_method: 'on_subscription' },
         metadata: {
-          userId: existingUser?.id || userId || 'client',
+          userId: verifiedUserId,
           userEmail: cleanEmail,
-          userName: String(userName || existingUser?.name || cleanEmail).slice(0, 120),
+          userName: String(userName || sessionUser?.name || cleanEmail).slice(0, 120),
           plan: pricing.plan,
           billingCycle: pricing.billingCycle,
           couponCode: pricing.appliedCoupon?.code || ''
@@ -1634,6 +1980,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // 3. Verify & Finalize Tokenized Card Subscription After 3DS/Card Confirmation
   app.post('/api/payments/confirm-subscription', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ verified: false, error: 'Demasiadas tentativas. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ verified: false, error: 'Sessão inválida ou expirada.' });
+      }
+      const callerUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+
       const { subscriptionId, paymentIntentId, plan: rawPlan, billingCycle: rawCycle, cardLast4, cardBrand } =
         req.body || {};
 
@@ -1643,19 +1999,33 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           error: 'Serviço de validação de cartão temporariamente indisponível.'
         });
       }
-      if (!subscriptionId || typeof subscriptionId !== 'string') {
-        return res.status(400).json({ verified: false, error: 'Identificador da assinatura ausente.' });
+      if (!subscriptionId || typeof subscriptionId !== 'string' || !subscriptionId.startsWith('sub_')) {
+        return res.status(400).json({ verified: false, error: 'Identificador da assinatura inválido.' });
       }
 
       const subscription = await stripeClient.subscriptions.retrieve(subscriptionId, {
         expand: ['latest_invoice']
       });
 
+      const subCustomerId =
+        typeof subscription.customer === 'string'
+          ? subscription.customer
+          : (subscription.customer as any)?.id;
+      const metaUserId = subscription.metadata?.userId;
+      const metaUserEmail = String(subscription.metadata?.userEmail || '').trim().toLowerCase();
+      const ownsSubscription =
+        metaUserId === payload.uid ||
+        (metaUserEmail && metaUserEmail === String(payload.email || '').toLowerCase()) ||
+        (callerUser?.stripeCustomerId && callerUser.stripeCustomerId === subCustomerId);
+      if (!ownsSubscription && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())) {
+        return res.status(403).json({ verified: false, error: 'Assinatura não pertence à conta autenticada.' });
+      }
+
       let paymentSucceeded = false;
       let verifiedIntentId = typeof paymentIntentId === 'string' ? paymentIntentId : '';
       if (verifiedIntentId) {
         const pi = await stripeClient.paymentIntents.retrieve(verifiedIntentId);
-        if (pi.status === 'succeeded') {
+        if (pi.status === 'succeeded' && (!pi.customer || pi.customer === subCustomerId)) {
           paymentSucceeded = true;
         }
       }
@@ -1681,14 +2051,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         subscription.metadata?.plan === 'executive' || rawPlan === 'executive' ? 'executive' : 'pro';
       const billingCycle = normalizeServerCycle(subscription.metadata?.billingCycle || rawCycle);
       const spec = getServerCycleSpec(billingCycle);
-      const customerId =
-        typeof subscription.customer === 'string'
-          ? subscription.customer
-          : (subscription.customer as any)?.id;
+      const customerId = subCustomerId;
 
-      const metaUserId = subscription.metadata?.userId;
-      const metaUserEmail = String(subscription.metadata?.userEmail || '').trim().toLowerCase();
       const targetUser =
+        callerUser ||
         (metaUserId && authStore.users[metaUserId]) ||
         (metaUserEmail ? findBackendUserByEmail(metaUserEmail) : undefined);
 
@@ -1773,19 +2139,33 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // 4. Hosted Checkout Session (Backwards-compatible for top-level redirects & 4 cycles)
   app.post('/api/stripe/create-checkout-session', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas tentativas de pagamento. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Inicie sessão antes de prosseguir com o pagamento.' });
+      }
+      const sessionUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (sessionUser?.status === 'suspended') {
+        return res.status(403).json({ error: 'Esta conta encontra-se suspensa.' });
+      }
+
       const {
         plan: rawPlan = 'pro',
         billingCycle: rawCycle = 'monthly',
-        userId,
         userName,
-        userEmail,
-        discountPercent = 0,
         couponCode,
         originUrl,
         currency: rawCurrency = 'USD'
       } = req.body || {};
 
-      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
+      const verifiedUserId = sessionUser?.id || payload.uid;
+      const verifiedUserEmail = String(sessionUser?.email || payload.email || '').trim().toLowerCase();
+      const verifiedUserName = String(userName || sessionUser?.name || 'Cliente').slice(0, 120);
+
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode);
       const targetCurrency = String(rawCurrency || 'USD').toUpperCase() === 'BRL' ? 'brl' : 'usd';
       const chargeAmount =
         targetCurrency === 'brl'
@@ -1793,7 +2173,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           : pricing.finalPriceUSD;
       const unitAmountCents = Math.round(chargeAmount * 100);
 
-      const appBaseUrl = originUrl || process.env.APP_URL || `http://localhost:${PORT}`;
+      const appBaseUrl = resolveSafeAppRedirectUrl(req, originUrl);
 
       if (pricing.finalPriceUSD === 0 && pricing.appliedCoupon) {
         const promoSessionId = `cs_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
@@ -1802,8 +2182,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         authStore.promoSessions[promoSessionId] = {
           sessionId: promoSessionId,
           subscriptionId: promoSubId,
-          userId: userId || 'anonymous',
-          userEmail: userEmail || '',
+          userId: verifiedUserId,
+          userEmail: verifiedUserEmail,
           plan: pricing.plan,
           billingCycle: pricing.billingCycle,
           couponCode: pricing.appliedCoupon.code,
@@ -1829,18 +2209,19 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const session = await stripeClient.checkout.sessions.create({
         mode: 'subscription',
-        customer_email: userEmail || undefined,
-        client_reference_id: userId || undefined,
+        customer_email: verifiedUserEmail || undefined,
+        client_reference_id: verifiedUserId,
         metadata: {
-          userId: userId || 'usr-client',
-          userName: userName || 'Cliente',
+          userId: verifiedUserId,
+          userName: verifiedUserName,
           plan: pricing.plan,
           billingCycle: pricing.billingCycle,
           couponCode: pricing.appliedCoupon?.code || ''
         },
         subscription_data: {
           metadata: {
-            userId: userId || 'usr-client',
+            userId: verifiedUserId,
+            userEmail: verifiedUserEmail,
             plan: pricing.plan,
             billingCycle: pricing.billingCycle,
             couponCode: pricing.appliedCoupon?.code || ''
@@ -1886,8 +2267,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // 5. Legacy Direct Process Subscription (Disabled for unconfirmed non-zero card charges)
   app.post('/api/stripe/process-subscription', async (req, res) => {
     try {
-      const { plan: rawPlan = 'pro', billingCycle: rawCycle = 'monthly', couponCode, discountPercent } = req.body || {};
-      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode, discountPercent);
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão inválida.' });
+      }
+      const { plan: rawPlan = 'pro', billingCycle: rawCycle = 'monthly', couponCode } = req.body || {};
+      const pricing = resolveServerPlanPricing(rawPlan, rawCycle, couponCode);
 
       if (pricing.finalPriceUSD === 0 && pricing.appliedCoupon) {
         const promoSubId = `sub_promo_${crypto.randomUUID().replace(/-/g, '').slice(0, 14)}`;
@@ -1912,7 +2298,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       return res.status(400).json({
         error: 'Para sua segurança, finalize o pagamento diretamente no formulário seguro de cartão.'
       });
-    } catch (err: any) {
+    } catch {
       return res.status(500).json({
         error: 'Falha ao processar solicitação de subscrição.'
       });
@@ -1922,6 +2308,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // 6. Strict Checkout Session Verification
   app.post('/api/stripe/verify-session', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ verified: false, error: 'Demasiadas tentativas. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ verified: false, error: 'Sessão não autenticada.' });
+      }
+
       const { sessionId } = req.body || {};
       if (!sessionId || typeof sessionId !== 'string') {
         return res.status(400).json({ verified: false, error: 'Identificador da sessão obrigatório.' });
@@ -1931,6 +2326,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         const promo = authStore.promoSessions?.[sessionId];
         if (!promo) {
           return res.status(404).json({ verified: false, error: 'Sessão promocional não encontrada.' });
+        }
+        if (
+          promo.userId !== payload.uid &&
+          String(promo.userEmail || '').toLowerCase() !== String(payload.email || '').toLowerCase()
+        ) {
+          return res.status(403).json({ verified: false, error: 'Sessão promocional não pertence à conta autenticada.' });
         }
         return res.json({
           verified: true,
@@ -1953,6 +2354,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const session = await stripeClient.checkout.sessions.retrieve(sessionId, {
         expand: ['subscription', 'customer']
       });
+
+      const sessionOwnerMatch =
+        session.client_reference_id === payload.uid ||
+        session.metadata?.userId === payload.uid ||
+        String(session.customer_email || session.customer_details?.email || '').toLowerCase() ===
+          String(payload.email || '').toLowerCase();
+      if (!sessionOwnerMatch && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())) {
+        return res.status(403).json({ verified: false, error: 'Sessão de pagamento não pertence à conta autenticada.' });
+      }
 
       const isPaid =
         session.status === 'complete' &&
@@ -1994,11 +2404,57 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  // 7. Customer Billing Portal (Hidden gateway branding)
+  // 7. Customer Billing Portal (Authenticated + ownership verified)
   app.post('/api/stripe/customer-portal', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas tentativas. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/stripe/customer-portal',
+          details: 'Tentativa não autenticada de acesso ao portal de faturação.',
+          metadata: { httpStatus: 401 }
+        });
+        return res.status(401).json({ error: 'Autenticação necessária para aceder ao portal de faturação.' });
+      }
+
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
       const { customerId, returnUrl } = req.body || {};
-      const appBaseUrl = returnUrl || process.env.APP_URL || `http://localhost:${PORT}`;
+      const resolvedCustomerId = typeof customerId === 'string' ? customerId.trim() : userRec?.stripeCustomerId || '';
+      const isAdmin =
+        userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+
+      if (!resolvedCustomerId || !resolvedCustomerId.startsWith('cus_')) {
+        return res.status(400).json({
+          error: 'Nenhuma conta de pagamento recorrente encontrada para este perfil.'
+        });
+      }
+      if (!isAdmin && userRec?.stripeCustomerId !== resolvedCustomerId) {
+        appendServerAuditLog(req, {
+          actorUserId: payload.uid,
+          actorEmail: payload.email,
+          actorRole: 'user',
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: `/api/stripe/customer-portal/${resolvedCustomerId}`,
+          details: 'Tentativa IDOR bloqueada: utilizador tentou abrir portal de faturação de outro cliente.',
+          metadata: { httpStatus: 403 }
+        });
+        return res.status(403).json({
+          error: 'Acesso negado ao portal de faturação de outro utilizador.'
+        });
+      }
+
+      const appBaseUrl = resolveSafeAppRedirectUrl(req, returnUrl);
 
       if (!stripeClient) {
         return res.status(503).json({
@@ -2006,32 +2462,79 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
-      if (!customerId || typeof customerId !== 'string' || !customerId.startsWith('cus_')) {
-        return res.status(400).json({
-          error: 'Nenhuma conta de pagamento recorrente encontrada para este perfil.'
-        });
-      }
-
       const portalSession = await stripeClient.billingPortal.sessions.create({
-        customer: customerId,
+        customer: resolvedCustomerId,
         return_url: appBaseUrl
       });
       return res.json({ url: portalSession.url, active: true });
-    } catch (err: any) {
+    } catch {
       return res.status(500).json({ error: 'Não foi possível abrir o portal de faturação neste momento.' });
     }
   });
 
-  // 8. Cancel Subscription Endpoint
+  // 8. Cancel Subscription Endpoint (Authenticated + ownership verified)
   app.post('/api/stripe/cancel-subscription', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas tentativas. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/stripe/cancel-subscription',
+          details: 'Tentativa não autenticada de cancelar subscrição.',
+          metadata: { httpStatus: 401 }
+        });
+        return res.status(401).json({ error: 'Autenticação necessária para cancelar subscrição.' });
+      }
+
       const { subscriptionId } = req.body || {};
       if (!subscriptionId || typeof subscriptionId !== 'string') {
         return res.status(400).json({ error: 'Identificador de assinatura obrigatório.' });
       }
 
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const isAdmin =
+        userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+      const userOrders = authStore.ordersByUser?.[payload.uid] || [];
+      const ownsSub =
+        userRec?.stripeSubscriptionId === subscriptionId ||
+        userOrders.some((o) => o?.stripeSubscriptionId === subscriptionId);
+
+      if (!isAdmin && !ownsSub) {
+        appendServerAuditLog(req, {
+          actorUserId: payload.uid,
+          actorEmail: payload.email,
+          actorRole: 'user',
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: `/api/stripe/cancel-subscription/${subscriptionId.slice(0, 40)}`,
+          details: 'Tentativa IDOR bloqueada: utilizador tentou cancelar subscrição que não lhe pertence.',
+          metadata: { httpStatus: 403 }
+        });
+        return res.status(403).json({ error: 'Não tem permissão para cancelar esta subscrição.' });
+      }
+
       if (stripeClient && subscriptionId.startsWith('sub_') && !subscriptionId.startsWith('sub_promo_')) {
         const canceled = await stripeClient.subscriptions.cancel(subscriptionId);
+        appendServerAuditLog(req, {
+          actorUserId: payload.uid,
+          actorEmail: payload.email,
+          actorRole: isAdmin ? 'admin' : 'user',
+          action: 'subscription_canceled',
+          category: 'subscription',
+          severity: 'warning',
+          status: 'success',
+          targetResource: `subscriptions/${subscriptionId.slice(0, 64)}`,
+          details: 'Renovação automática da subscrição cancelada pelo titular.'
+        });
         return res.json({
           success: true,
           status: canceled.status,
@@ -2039,6 +2542,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
+      appendServerAuditLog(req, {
+        actorUserId: payload.uid,
+        actorEmail: payload.email,
+        actorRole: isAdmin ? 'admin' : 'user',
+        action: 'subscription_canceled',
+        category: 'subscription',
+        severity: 'warning',
+        status: 'success',
+        targetResource: `subscriptions/${subscriptionId.slice(0, 64)}`,
+        details: 'Subscrição cancelada pelo titular.'
+      });
       return res.json({
         success: true,
         status: 'canceled',
@@ -2058,7 +2572,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     try {
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
-      if (!payload || (payload.role !== 'admin' && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase()))) {
+      const userRec = payload ? (authStore.users[payload.uid] || findBackendUserByEmail(payload.email)) : undefined;
+      if (
+        !payload ||
+        userRec?.status === 'suspended' ||
+        (payload.role !== 'admin' && userRec?.role !== 'admin' && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase()))
+      ) {
         return res.status(403).json({ error: 'Acesso restrito a administradores autenticados.' });
       }
 
@@ -2084,7 +2603,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       return res.json({
         output: textOut,
-        modelUsed: preferredModel || 'gemini-3.8-flash',
+        modelUsed: preferredModel || 'gemini-4-hydrogen',
         latencyMs,
         estimatedTokens
       });
@@ -2159,9 +2678,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     errorLogs?: any[];
     gdprRequests?: any[];
     impersonationLogs?: any[];
+    auditLogs?: any[];
+    notificationPrefsByUser?: Record<string, any>;
+    notificationsByUser?: Record<string, any[]>;
     promoSessions?: Record<string, any>;
   }
 
+  let runtimeFallbackSecret: string | null = null;
   function ensureAuthSecret(): string {
     if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16) {
       return process.env.AUTH_SECRET;
@@ -2178,11 +2701,103 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       fs.writeFileSync(AUTH_SECRET_FILE, generated, { mode: 0o600 });
       return generated;
     } catch {
-      return crypto.createHash('sha256').update(process.cwd() + ':cv-studio-fallback-secret').digest('hex');
+      if (!runtimeFallbackSecret) {
+        runtimeFallbackSecret = crypto.randomBytes(48).toString('hex');
+      }
+      return runtimeFallbackSecret;
     }
   }
 
   const AUTH_TOKEN_SECRET = ensureAuthSecret();
+
+  const FIREBASE_PROJECT_ID = (() => {
+    if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
+    try {
+      const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
+      if (fs.existsSync(cfgPath)) {
+        const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+        if (parsed?.projectId) return String(parsed.projectId);
+      }
+    } catch { /* ignore */ }
+    return 'gen-lang-client-0398048262';
+  })();
+
+  let cachedFirebaseCerts: { certs: Record<string, string>; expiresAt: number } | null = null;
+  async function fetchFirebasePublicCerts(): Promise<Record<string, string>> {
+    const now = Date.now();
+    if (cachedFirebaseCerts && now < cachedFirebaseCerts.expiresAt) {
+      return cachedFirebaseCerts.certs;
+    }
+    const resp = await fetch(
+      'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com'
+    );
+    if (!resp.ok) {
+      throw new Error('Falha ao obter certificados públicos Firebase.');
+    }
+    const certs = (await resp.json()) as Record<string, string>;
+    const cc = resp.headers.get('cache-control') || '';
+    const maxAgeMatch = cc.match(/max-age=(\d+)/i);
+    const ttlMs = maxAgeMatch ? Math.max(60_000, Number(maxAgeMatch[1]) * 1000) : 3600_000;
+    cachedFirebaseCerts = { certs, expiresAt: now + ttlMs };
+    return certs;
+  }
+
+  interface VerifiedFirebaseClaims {
+    sub: string;
+    email: string;
+    email_verified: boolean;
+    name?: string;
+    picture?: string;
+    firebase?: { sign_in_provider?: string };
+  }
+
+  async function verifyFirebaseIdToken(idToken: string): Promise<VerifiedFirebaseClaims | null> {
+    try {
+      const parts = idToken.split('.');
+      if (parts.length !== 3) return null;
+      const [headerB64, payloadB64, sigB64] = parts;
+      const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8'));
+      const claims = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+
+      if (header?.alg !== 'RS256' || typeof header?.kid !== 'string') return null;
+
+      let certs = await fetchFirebasePublicCerts();
+      let certPem = certs[header.kid];
+      if (!certPem) {
+        cachedFirebaseCerts = null;
+        certs = await fetchFirebasePublicCerts();
+        certPem = certs[header.kid];
+      }
+      if (!certPem) return null;
+
+      const verifier = crypto.createVerify('RSA-SHA256');
+      verifier.update(`${headerB64}.${payloadB64}`);
+      verifier.end();
+      const signatureBuf = Buffer.from(sigB64, 'base64url');
+      if (!verifier.verify(certPem, signatureBuf)) return null;
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const expectedIssuer = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
+      if (claims?.aud !== FIREBASE_PROJECT_ID) return null;
+      if (claims?.iss !== expectedIssuer) return null;
+      if (typeof claims?.sub !== 'string' || !claims.sub || claims.sub.length > 128) return null;
+      if (typeof claims?.exp !== 'number' || claims.exp <= nowSec) return null;
+      if (typeof claims?.iat !== 'number' || claims.iat > nowSec + 300) return null;
+      if (typeof claims?.auth_time === 'number' && claims.auth_time > nowSec + 300) return null;
+      if (typeof claims?.email !== 'string' || !claims.email) return null;
+
+      return {
+        sub: claims.sub,
+        email: String(claims.email).trim().toLowerCase(),
+        email_verified: Boolean(claims.email_verified),
+        name: typeof claims.name === 'string' ? claims.name : undefined,
+        picture: typeof claims.picture === 'string' ? claims.picture : undefined,
+        firebase: claims.firebase
+      };
+    } catch {
+      return null;
+    }
+  }
 
   function loadAuthStore(): AuthStoreData {
     try {
@@ -2200,6 +2815,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             errorLogs: Array.isArray(parsed.errorLogs) ? parsed.errorLogs : [],
             gdprRequests: Array.isArray(parsed.gdprRequests) ? parsed.gdprRequests : [],
             impersonationLogs: Array.isArray(parsed.impersonationLogs) ? parsed.impersonationLogs : [],
+            auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
+            notificationPrefsByUser:
+              parsed.notificationPrefsByUser && typeof parsed.notificationPrefsByUser === 'object'
+                ? parsed.notificationPrefsByUser
+                : {},
+            notificationsByUser:
+              parsed.notificationsByUser && typeof parsed.notificationsByUser === 'object'
+                ? parsed.notificationsByUser
+                : {},
             promoSessions: parsed.promoSessions && typeof parsed.promoSessions === 'object' ? parsed.promoSessions : {}
           };
         }
@@ -2217,6 +2841,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       errorLogs: [],
       gdprRequests: [],
       impersonationLogs: [],
+      auditLogs: [],
+      notificationPrefsByUser: {},
+      notificationsByUser: {},
       promoSessions: {}
     };
   }
@@ -2229,6 +2856,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   if (!authStore.errorLogs) authStore.errorLogs = [];
   if (!authStore.gdprRequests) authStore.gdprRequests = [];
   if (!authStore.impersonationLogs) authStore.impersonationLogs = [];
+  if (!authStore.auditLogs) authStore.auditLogs = [];
+  if (!authStore.notificationPrefsByUser) authStore.notificationPrefsByUser = {};
+  if (!authStore.notificationsByUser) authStore.notificationsByUser = {};
   if (!authStore.promoSessions) authStore.promoSessions = {};
 
   function persistAuthStore() {
@@ -2241,6 +2871,115 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       fs.renameSync(tmpPath, AUTH_STORE_FILE);
     } catch (e) {
       console.warn('Aviso ao gravar auth store em disco:', e);
+    }
+  }
+
+  const AUDIT_ALLOWED_ACTIONS = new Set([
+    'subscription_upgraded',
+    'subscription_canceled',
+    'subscription_plan_sync_blocked',
+    'payment_order_created',
+    'payment_order_status_changed',
+    'cv_exported_pdf',
+    'cv_exported_docx',
+    'cv_exported_json',
+    'cv_export_blocked_unauthorized',
+    'profile_updated',
+    'password_changed',
+    'account_login',
+    'account_registered',
+    'gdpr_request_submitted',
+    'unauthorized_access_attempt',
+    'admin_user_modified',
+    'impersonation_event'
+  ]);
+  const AUDIT_ALLOWED_CATEGORIES = new Set(['subscription', 'cv_export', 'profile', 'security', 'admin']);
+  const AUDIT_ALLOWED_SEVERITIES = new Set(['info', 'warning', 'critical']);
+  const AUDIT_ALLOWED_STATUSES = new Set(['success', 'blocked', 'failure']);
+
+  function sanitizeAuditMetadata(raw: any): Record<string, string | number | boolean> | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const out: Record<string, string | number | boolean> = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(raw)) {
+      if (count >= 12) break;
+      if (v === undefined || v === null) continue;
+      const key = String(k).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 40);
+      if (!key) continue;
+      if (typeof v === 'string') {
+        out[key] = sanitizeTelemetryText(v, 140);
+        count += 1;
+      } else if (typeof v === 'number' && Number.isFinite(v)) {
+        out[key] = v;
+        count += 1;
+      } else if (typeof v === 'boolean') {
+        out[key] = v;
+        count += 1;
+      }
+    }
+    return count > 0 ? out : undefined;
+  }
+
+  function appendServerAuditLog(
+    req: express.Request | null,
+    input: {
+      id?: string;
+      timestamp?: string;
+      actorUserId?: string;
+      actorEmail?: string;
+      actorRole?: 'user' | 'admin' | 'anonymous' | 'system';
+      action: string;
+      category: 'subscription' | 'cv_export' | 'profile' | 'security' | 'admin';
+      severity?: 'info' | 'warning' | 'critical';
+      status?: 'success' | 'blocked' | 'failure';
+      targetResource: string;
+      details: string;
+      metadata?: Record<string, string | number | boolean>;
+    }
+  ) {
+    try {
+      const action = AUDIT_ALLOWED_ACTIONS.has(input.action) ? input.action : 'unauthorized_access_attempt';
+      const category = AUDIT_ALLOWED_CATEGORIES.has(input.category) ? input.category : 'security';
+      const severity = AUDIT_ALLOWED_SEVERITIES.has(input.severity || '') ? input.severity! : 'info';
+      const status = AUDIT_ALLOWED_STATUSES.has(input.status || '') ? input.status! : 'success';
+
+      const safeIdRaw = String(input.id || `aud_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`)
+        .replace(/[^a-zA-Z0-9_\-]/g, '_')
+        .slice(0, 128);
+
+      const rawIp = req
+        ? String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || '')
+            .split(',')[0]
+            .trim()
+        : '';
+      const rawUa = req ? String(req.headers['user-agent'] || '').trim() : '';
+      const meta = sanitizeAuditMetadata(input.metadata);
+
+      const entry = {
+        id: safeIdRaw,
+        timestamp: typeof input.timestamp === 'string' ? input.timestamp.slice(0, 50) : new Date().toISOString(),
+        actorUserId: sanitizeTelemetryText(input.actorUserId || 'anonymous', 128) || 'anonymous',
+        actorEmail: sanitizeTelemetryText(input.actorEmail || 'anonymous', 180) || 'anonymous',
+        actorRole:
+          input.actorRole && ['user', 'admin', 'anonymous', 'system'].includes(input.actorRole)
+            ? input.actorRole
+            : 'anonymous',
+        action,
+        category,
+        severity,
+        status,
+        targetResource: sanitizeTelemetryText(input.targetResource || 'server/api', 180) || 'server/api',
+        details: sanitizeTelemetryText(input.details || 'Evento de auditoria registado.', 600),
+        ...(meta ? { metadata: meta } : {}),
+        ...(rawUa ? { userAgent: sanitizeTelemetryText(rawUa, 250) } : {}),
+        ...(rawIp ? { ipAddress: sanitizeTelemetryText(rawIp, 80) } : {})
+      };
+
+      authStore.auditLogs = [entry, ...(authStore.auditLogs || []).filter((a) => a.id !== entry.id)].slice(0, 500);
+      persistAuthStore();
+      return entry;
+    } catch {
+      return null;
     }
   }
 
@@ -2355,11 +3094,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return Object.values(authStore.users).find((u) => u.email.toLowerCase() === clean);
   }
 
-  // Lightweight per-IP rate limiter for auth endpoints
+  // Bounded per-IP rate limiter for auth endpoints
   const authRateLimit = new Map<string, { count: number; resetAt: number }>();
   function checkAuthRateLimit(req: express.Request, maxRequests = 30, windowMs = 60_000): boolean {
-    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'local');
+    const ip = getClientIp(req);
     const now = Date.now();
+    if (authRateLimit.size > 5000) {
+      for (const [k, v] of authRateLimit.entries()) {
+        if (now > v.resetAt) authRateLimit.delete(k);
+      }
+      if (authRateLimit.size > 5000) authRateLimit.clear();
+    }
     const cur = authRateLimit.get(ip);
     if (!cur || now > cur.resetAt) {
       authRateLimit.set(ip, { count: 1, resetAt: now + windowMs });
@@ -2433,6 +3178,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       authStore.users[uid] = newUser;
       persistAuthStore();
 
+      appendServerAuditLog(req, {
+        actorUserId: newUser.id,
+        actorEmail: newUser.email,
+        actorRole: newUser.role,
+        action: 'account_registered',
+        category: 'profile',
+        severity: 'info',
+        status: 'success',
+        targetResource: `users/${newUser.id}`,
+        details: 'Nova conta criada via formulário de registo (e-mail e palavra-passe).'
+      });
+
       const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const token = signSessionToken({
         uid: newUser.id,
@@ -2483,6 +3240,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const userRecord = findBackendUserByEmail(cleanEmail);
       if (!userRecord || !userRecord.passwordHash || !userRecord.passwordSalt) {
+        appendServerAuditLog(req, {
+          actorEmail: cleanEmail,
+          actorRole: 'anonymous',
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/auth/login',
+          details: 'Tentativa de início de sessão com conta inexistente ou sem credenciais de palavra-passe.',
+          metadata: { httpStatus: 401 }
+        });
         return res.status(401).json({
           code: 'auth/invalid-credential',
           error: 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
@@ -2491,6 +3259,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const isValid = verifyPasswordHash(cleanPassword, userRecord.passwordHash, userRecord.passwordSalt);
       if (!isValid) {
+        appendServerAuditLog(req, {
+          actorUserId: userRecord.id,
+          actorEmail: userRecord.email,
+          actorRole: userRecord.role,
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/auth/login',
+          details: 'Palavra-passe incorreta durante tentativa de início de sessão.',
+          metadata: { httpStatus: 401 }
+        });
         return res.status(401).json({
           code: 'auth/invalid-credential',
           error: 'Credenciais inválidas. Verifique o seu e-mail e palavra-passe.'
@@ -2498,6 +3278,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       if (userRecord.status === 'suspended') {
+        appendServerAuditLog(req, {
+          actorUserId: userRecord.id,
+          actorEmail: userRecord.email,
+          actorRole: userRecord.role,
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: '/api/auth/login',
+          details: 'Tentativa de acesso bloqueada: conta suspensa pela administração.',
+          metadata: { httpStatus: 403 }
+        });
         return res.status(403).json({
           code: 'auth/user-disabled',
           error: 'Esta conta foi suspensa pela administração. Contacte o suporte.'
@@ -2511,6 +3303,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       userRecord.lastLoginAt = new Date().toISOString();
       userRecord.updatedAt = userRecord.lastLoginAt;
       persistAuthStore();
+
+      appendServerAuditLog(req, {
+        actorUserId: userRecord.id,
+        actorEmail: userRecord.email,
+        actorRole: userRecord.role,
+        action: 'account_login',
+        category: 'profile',
+        severity: 'info',
+        status: 'success',
+        targetResource: `users/${userRecord.id}`,
+        details: 'Sessão iniciada por e-mail e palavra-passe.'
+      });
 
       const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const token = signSessionToken({
@@ -2533,69 +3337,149 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  app.post('/api/auth/sync-firebase', (req, res) => {
+  app.post('/api/auth/sync-firebase', async (req, res) => {
     try {
+      if (!checkAuthRateLimit(req, 40, 60_000)) {
+        return res.status(429).json({ error: 'Demasiados pedidos de autenticação. Aguarde um minuto.' });
+      }
+
       const {
-        uid,
-        email,
+        idToken: bodyIdToken,
         name,
         avatarUrl,
         provider = 'google',
         targetRole,
-        plan,
-        creditsRemaining,
         rememberMe = true
       } = req.body || {};
 
-      const cleanEmail = String(email || '').trim().toLowerCase();
-      const cleanUid = String(uid || '').trim();
-      if (!cleanUid || !cleanEmail) {
-        return res.status(400).json({ error: 'Dados Firebase obrigatórios ausentes.' });
+      const headerToken = extractTokenFromRequest(req);
+      const rawFirebaseToken =
+        typeof bodyIdToken === 'string' && bodyIdToken.trim()
+          ? bodyIdToken.trim()
+          : headerToken && headerToken.split('.').length === 3
+          ? headerToken
+          : '';
+
+      if (!rawFirebaseToken) {
+        return res.status(401).json({ error: 'Token de identidade Firebase obrigatório.' });
       }
 
-      const isAdmin = ADMIN_EMAILS_BACKEND.has(cleanEmail);
+      const verified = await verifyFirebaseIdToken(rawFirebaseToken);
+      if (!verified) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'critical',
+          status: 'blocked',
+          targetResource: '/api/auth/sync-firebase',
+          details: 'Token de identidade Firebase inválido, expirado ou adulterado rejeitado na verificação RS256.',
+          metadata: { httpStatus: 401 }
+        });
+        return res.status(401).json({ error: 'Token Firebase inválido, adulterado ou expirado.' });
+      }
+
+      const cleanUid = verified.sub;
+      const cleanEmail = verified.email;
+      const isVerifiedAdmin = verified.email_verified && ADMIN_EMAILS_BACKEND.has(cleanEmail);
       const nowIso = new Date().toISOString();
 
-      let record = authStore.users[cleanUid] || findBackendUserByEmail(cleanEmail);
+      // Prevent account takeover via unverified email: only lookup by email if email_verified is true
+      let record =
+        authStore.users[cleanUid] ||
+        (verified.email_verified ? findBackendUserByEmail(cleanEmail) : undefined);
+
       if (!record) {
         record = {
           id: cleanUid,
-          name: String(name || cleanEmail.split('@')[0] || 'Utilizador').trim(),
+          name: String(name || verified.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
           email: cleanEmail,
-          role: isAdmin ? 'admin' : 'user',
+          role: isVerifiedAdmin ? 'admin' : 'user',
           status: 'active',
-          plan: plan || (isAdmin ? 'executive' : 'free'),
-          targetRole: targetRole || 'Profissional Executivo',
-          avatarUrl: avatarUrl || undefined,
-          creditsRemaining: creditsRemaining ?? (isAdmin ? 9999 : 5),
+          plan: isVerifiedAdmin ? 'executive' : 'free',
+          targetRole: typeof targetRole === 'string' && targetRole.trim()
+            ? targetRole.trim().slice(0, 150)
+            : 'Profissional Executivo',
+          avatarUrl: typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')
+            ? avatarUrl.slice(0, 500)
+            : verified.picture || undefined,
+          creditsRemaining: isVerifiedAdmin ? 9999 : 5,
           creditsUsed: 0,
           totalCvGenerated: 0,
-          billingCycle: isAdmin ? 'yearly' : 'monthly',
-          authProviders: [provider === 'password' ? 'password' : 'google'],
+          billingCycle: isVerifiedAdmin ? 'yearly' : 'monthly',
+          authProviders: [
+            verified.firebase?.sign_in_provider === 'password' || provider === 'password' ? 'password' : 'google'
+          ],
           firebaseUid: cleanUid,
           createdAt: nowIso,
           updatedAt: nowIso,
           lastLoginAt: nowIso
         };
         authStore.users[record.id] = record;
+        appendServerAuditLog(req, {
+          actorUserId: record.id,
+          actorEmail: record.email,
+          actorRole: record.role,
+          action: 'account_registered',
+          category: 'profile',
+          severity: 'info',
+          status: 'success',
+          targetResource: `users/${record.id}`,
+          details: `Nova conta registada via autenticação federada (${record.authProviders.join(', ')}).`,
+          metadata: { provider: record.authProviders[0] || 'google' }
+        });
       } else {
         if (record.status === 'suspended') {
+          appendServerAuditLog(req, {
+            actorUserId: record.id,
+            actorEmail: record.email,
+            actorRole: record.role,
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'critical',
+            status: 'blocked',
+            targetResource: '/api/auth/sync-firebase',
+            details: 'Tentativa de início de sessão Google/Firebase bloqueada: conta suspensa pela administração.',
+            metadata: { httpStatus: 403 }
+          });
           return res.status(403).json({
             code: 'auth/user-disabled',
             error: 'Esta conta foi suspensa pela administração. Contacte o suporte.'
           });
         }
         record.firebaseUid = cleanUid;
-        if (name && (!record.name || record.name === 'Utilizador')) record.name = String(name).trim();
-        if (avatarUrl) record.avatarUrl = avatarUrl;
-        if (targetRole && !record.targetRole) record.targetRole = targetRole;
-        if (isAdmin) record.role = 'admin';
-        const provKey = provider === 'password' ? 'password' : 'google';
+        if (name && (!record.name || record.name === 'Utilizador')) {
+          record.name = String(name).trim().slice(0, 120);
+        }
+        if (typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')) {
+          record.avatarUrl = avatarUrl.slice(0, 500);
+        } else if (verified.picture && !record.avatarUrl) {
+          record.avatarUrl = verified.picture;
+        }
+        if (typeof targetRole === 'string' && targetRole.trim() && !record.targetRole) {
+          record.targetRole = targetRole.trim().slice(0, 150);
+        }
+        if (isVerifiedAdmin) {
+          record.role = 'admin';
+        }
+        const provKey =
+          verified.firebase?.sign_in_provider === 'password' || provider === 'password' ? 'password' : 'google';
         if (!record.authProviders.includes(provKey)) {
           record.authProviders.push(provKey);
         }
         record.lastLoginAt = nowIso;
         record.updatedAt = nowIso;
+        appendServerAuditLog(req, {
+          actorUserId: record.id,
+          actorEmail: record.email,
+          actorRole: record.role,
+          action: 'account_login',
+          category: 'profile',
+          severity: 'info',
+          status: 'success',
+          targetResource: `users/${record.id}`,
+          details: `Sessão autenticada com token RS256 (${provKey}).`,
+          metadata: { provider: provKey }
+        });
       }
 
       persistAuthStore();
@@ -2663,13 +3547,40 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const { name, targetRole, phone, company } = req.body || {};
-      if (typeof name === 'string' && name.trim()) userRecord.name = name.trim().slice(0, 120);
-      if (typeof targetRole === 'string') userRecord.targetRole = targetRole.trim().slice(0, 150);
-      if (typeof phone === 'string') userRecord.phone = phone.trim().slice(0, 50);
-      if (typeof company === 'string') userRecord.company = company.trim().slice(0, 120);
+      const changedFields: string[] = [];
+      if (typeof name === 'string' && name.trim() && name.trim() !== userRecord.name) {
+        userRecord.name = name.trim().slice(0, 120);
+        changedFields.push('name');
+      }
+      if (typeof targetRole === 'string' && targetRole.trim() !== (userRecord.targetRole || '')) {
+        userRecord.targetRole = targetRole.trim().slice(0, 150);
+        changedFields.push('targetRole');
+      }
+      if (typeof phone === 'string' && phone.trim() !== (userRecord.phone || '')) {
+        userRecord.phone = phone.trim().slice(0, 50);
+        changedFields.push('phone');
+      }
+      if (typeof company === 'string' && company.trim() !== (userRecord.company || '')) {
+        userRecord.company = company.trim().slice(0, 120);
+        changedFields.push('company');
+      }
       userRecord.updatedAt = new Date().toISOString();
 
       persistAuthStore();
+      if (changedFields.length > 0) {
+        appendServerAuditLog(req, {
+          actorUserId: userRecord.id,
+          actorEmail: userRecord.email,
+          actorRole: userRecord.role,
+          action: 'profile_updated',
+          category: 'profile',
+          severity: 'info',
+          status: 'success',
+          targetResource: `users/${userRecord.id}`,
+          details: `Perfil atualizado via servidor (${changedFields.join(', ')}).`,
+          metadata: { changedFields: changedFields.join(', ') }
+        });
+      }
       return res.json({ success: true, user: sanitizeUser(userRecord) });
     } catch (err: any) {
       console.error('Erro em /api/auth/profile:', err);
@@ -2677,8 +3588,287 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  app.post('/api/auth/sync-plan', (req, res) => {
+  function buildDefaultNotificationPrefs(userId: string) {
+    return {
+      id: 'notifications',
+      userId,
+      systemEnabled: true,
+      emailEnabled: true,
+      events: {
+        translation: { system: true, email: true },
+        export: { system: true, email: true },
+        resumeUpdate: { system: true, email: false }
+      },
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function sanitizeServerNotificationPrefs(userId: string, body: any) {
+    const def = buildDefaultNotificationPrefs(userId);
+    const ev = body?.events || {};
+    return {
+      id: 'notifications',
+      userId,
+      systemEnabled: typeof body?.systemEnabled === 'boolean' ? body.systemEnabled : def.systemEnabled,
+      emailEnabled: typeof body?.emailEnabled === 'boolean' ? body.emailEnabled : def.emailEnabled,
+      events: {
+        translation: {
+          system: typeof ev?.translation?.system === 'boolean' ? ev.translation.system : def.events.translation.system,
+          email: typeof ev?.translation?.email === 'boolean' ? ev.translation.email : def.events.translation.email
+        },
+        export: {
+          system: typeof ev?.export?.system === 'boolean' ? ev.export.system : def.events.export.system,
+          email: typeof ev?.export?.email === 'boolean' ? ev.export.email : def.events.export.email
+        },
+        resumeUpdate: {
+          system:
+            typeof ev?.resumeUpdate?.system === 'boolean'
+              ? ev.resumeUpdate.system
+              : def.events.resumeUpdate.system,
+          email:
+            typeof ev?.resumeUpdate?.email === 'boolean' ? ev.resumeUpdate.email : def.events.resumeUpdate.email
+        }
+      },
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  app.get('/api/auth/notification-preferences', (req, res) => {
     try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const existing = authStore.notificationPrefsByUser?.[payload.uid];
+      const preferences = existing
+        ? sanitizeServerNotificationPrefs(payload.uid, existing)
+        : buildDefaultNotificationPrefs(payload.uid);
+      return res.json({ preferences });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao carregar preferências de notificações.' });
+    }
+  });
+
+  app.put('/api/auth/notification-preferences', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
+      }
+      const preferences = sanitizeServerNotificationPrefs(payload.uid, req.body || {});
+      if (!authStore.notificationPrefsByUser) authStore.notificationPrefsByUser = {};
+      authStore.notificationPrefsByUser[payload.uid] = preferences;
+      persistAuthStore();
+
+      appendServerAuditLog(req, {
+        actorUserId: userRecord.id,
+        actorEmail: userRecord.email,
+        actorRole: userRecord.role,
+        action: 'profile_updated',
+        category: 'profile',
+        severity: 'info',
+        status: 'success',
+        targetResource: `users/${userRecord.id}/preferences/notifications`,
+        details: `Preferências de notificações atualizadas (sistema=${preferences.systemEnabled}, email=${preferences.emailEnabled}).`,
+        metadata: {
+          systemEnabled: preferences.systemEnabled,
+          emailEnabled: preferences.emailEnabled
+        }
+      });
+
+      return res.json({ success: true, preferences });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao guardar preferências de notificações.' });
+    }
+  });
+
+  app.get('/api/notifications', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const items = (authStore.notificationsByUser?.[payload.uid] || []).slice(0, 40);
+      return res.json({ notifications: items });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao carregar notificações.' });
+    }
+  });
+
+  app.post('/api/notifications/dispatch', async (req, res) => {
+    try {
+      if (!checkTelemetryRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas notificações em sequência.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
+      }
+
+      const body = req.body || {};
+      const eventType = ['translation', 'export', 'resume_update'].includes(body.eventType)
+        ? body.eventType
+        : 'resume_update';
+
+      const prefs = authStore.notificationPrefsByUser?.[payload.uid]
+        ? sanitizeServerNotificationPrefs(payload.uid, authStore.notificationPrefsByUser[payload.uid])
+        : buildDefaultNotificationPrefs(payload.uid);
+      const evCfg =
+        eventType === 'translation'
+          ? prefs.events.translation
+          : eventType === 'export'
+          ? prefs.events.export
+          : prefs.events.resumeUpdate;
+
+      const allowSystem = Boolean(prefs.systemEnabled && evCfg.system && body.channelSystem !== false);
+      const allowEmail = Boolean(prefs.emailEnabled && evCfg.email && body.channelEmail !== false);
+
+      if (!allowSystem && !allowEmail) {
+        return res.json({ success: true, skipped: true, emailDeliveryStatus: 'not_requested' });
+      }
+
+      const safeTitle = sanitizeTelemetryText(body.title || 'Notificação', 140) || 'Notificação';
+      const safeMessage =
+        sanitizeTelemetryText(body.message || 'Atualização concluída.', 500) || 'Atualização concluída.';
+      const safeId = String(body.id || `ntf_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`)
+        .replace(/[^a-zA-Z0-9_\-]/g, '_')
+        .slice(0, 128);
+
+      let emailDeliveryStatus: 'not_requested' | 'sent' | 'queued' = allowEmail ? 'queued' : 'not_requested';
+
+      if (allowEmail && userRecord.email && process.env.RESEND_API_KEY) {
+        try {
+          const emailResp = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              from: process.env.NOTIFICATION_FROM_EMAIL || 'Currículo Estratégico <noreply@curriculoestrategico.com>',
+              to: [userRecord.email],
+              subject: safeTitle,
+              text: `${safeTitle}\n\n${safeMessage}\n\nGerido nas suas Preferências de Notificações.`
+            })
+          });
+          if (emailResp.ok) {
+            emailDeliveryStatus = 'sent';
+          }
+        } catch {
+          emailDeliveryStatus = 'queued';
+        }
+      } else if (allowEmail && process.env.NOTIFICATION_WEBHOOK_URL) {
+        try {
+          const parsedUrl = await assertSafeExternalUrl(process.env.NOTIFICATION_WEBHOOK_URL);
+          const webhookResp = await fetch(parsedUrl.toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: userRecord.email,
+              userName: userRecord.name,
+              eventType,
+              title: safeTitle,
+              message: safeMessage,
+              createdAt: new Date().toISOString()
+            })
+          });
+          if (webhookResp.ok) {
+            emailDeliveryStatus = 'sent';
+          }
+        } catch {
+          emailDeliveryStatus = 'queued';
+        }
+      }
+
+      const notification = {
+        id: safeId,
+        userId: payload.uid,
+        eventType,
+        title: safeTitle,
+        message: safeMessage,
+        channelSystem: allowSystem,
+        channelEmail: allowEmail,
+        emailDeliveryStatus,
+        read: !allowSystem,
+        createdAt: typeof body.createdAt === 'string' ? body.createdAt.slice(0, 50) : new Date().toISOString(),
+        ...(typeof body.targetResource === 'string' && body.targetResource
+          ? { targetResource: sanitizeTelemetryText(body.targetResource, 180) }
+          : {})
+      };
+
+      if (!authStore.notificationsByUser) authStore.notificationsByUser = {};
+      const existing = authStore.notificationsByUser[payload.uid] || [];
+      authStore.notificationsByUser[payload.uid] = [
+        notification,
+        ...existing.filter((n) => n.id !== notification.id)
+      ].slice(0, 40);
+      persistAuthStore();
+
+      return res.status(201).json({
+        success: true,
+        notification,
+        emailDeliveryStatus
+      });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao processar notificação.' });
+    }
+  });
+
+  app.patch('/api/notifications/:id/read', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const targetId = String(req.params.id || '');
+      const list = authStore.notificationsByUser?.[payload.uid] || [];
+      if (authStore.notificationsByUser) {
+        authStore.notificationsByUser[payload.uid] = list.map((item) =>
+          targetId === 'all' || item.id === targetId ? { ...item, read: true } : item
+        );
+        persistAuthStore();
+      }
+      return res.json({ success: true });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao atualizar notificação.' });
+    }
+  });
+
+  app.delete('/api/notifications', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      if (authStore.notificationsByUser) {
+        authStore.notificationsByUser[payload.uid] = [];
+        persistAuthStore();
+      }
+      return res.json({ success: true });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao limpar notificações.' });
+    }
+  });
+
+  app.post('/api/auth/sync-plan', async (req, res) => {
+    try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados pedidos. Aguarde um minuto.' });
+      }
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload) {
@@ -2686,35 +3876,124 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
-      if (!userRecord) {
-        return res.status(404).json({ error: 'Utilizador não encontrado.' });
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(404).json({ error: 'Utilizador não encontrado ou suspenso.' });
       }
 
       const {
         plan,
         billingCycle,
-        creditsRemaining,
         subscriptionExpiresAt,
         stripeCustomerId,
         stripeSubscriptionId,
         stripeStatus
       } = req.body || {};
 
-      if (plan && ['free', 'pro', 'executive'].includes(plan)) userRecord.plan = plan;
-      if (billingCycle && ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(billingCycle)) {
-        userRecord.billingCycle = billingCycle;
-      }
-      if (typeof creditsRemaining === 'number') userRecord.creditsRemaining = creditsRemaining;
-      if (typeof subscriptionExpiresAt === 'string') userRecord.subscriptionExpiresAt = subscriptionExpiresAt;
-      if (typeof stripeCustomerId === 'string') userRecord.stripeCustomerId = stripeCustomerId;
-      if (typeof stripeSubscriptionId === 'string') userRecord.stripeSubscriptionId = stripeSubscriptionId;
-      if (typeof stripeStatus === 'string') userRecord.stripeStatus = stripeStatus as any;
-      userRecord.updatedAt = new Date().toISOString();
+      const isAdmin =
+        userRecord.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
 
+      // Self-downgrade or cancellation is always permitted for the account owner
+      if (stripeStatus === 'canceled' && !plan) {
+        userRecord.stripeStatus = 'canceled';
+        userRecord.updatedAt = new Date().toISOString();
+        persistAuthStore();
+        return res.json({ success: true, user: sanitizeUser(userRecord) });
+      }
+
+      if (plan === 'free') {
+        userRecord.plan = 'free';
+        userRecord.creditsRemaining = Math.min(userRecord.creditsRemaining ?? 5, 5);
+        userRecord.stripeStatus = 'canceled';
+        userRecord.updatedAt = new Date().toISOString();
+        persistAuthStore();
+        return res.json({ success: true, user: sanitizeUser(userRecord) });
+      }
+
+      // Paid upgrades MUST be verified server-side (Admin OR verified Promo/Order/Stripe Subscription)
+      if (plan && ['pro', 'executive'].includes(plan)) {
+        let verifiedPaid = isAdmin;
+        const subId = typeof stripeSubscriptionId === 'string' ? stripeSubscriptionId.trim() : '';
+
+        if (!verifiedPaid && subId) {
+          const userOrders = authStore.ordersByUser?.[userRecord.id] || [];
+          const hasPaidOrder = userOrders.some(
+            (o) => o?.stripeSubscriptionId === subId && o?.status === 'paid' && o?.plan === plan
+          );
+          const hasPromo = Object.values(authStore.promoSessions || {}).some(
+            (p: any) =>
+              p?.subscriptionId === subId &&
+              p?.plan === plan &&
+              (p?.userId === userRecord.id || String(p?.userEmail || '').toLowerCase() === userRecord.email.toLowerCase())
+          );
+          if (hasPaidOrder || hasPromo) {
+            verifiedPaid = true;
+          } else if (stripeClient && subId.startsWith('sub_') && !subId.startsWith('sub_promo_')) {
+            const sub = await stripeClient.subscriptions.retrieve(subId, { expand: ['latest_invoice'] }).catch(() => null);
+            const latestInv = sub?.latest_invoice as any;
+            const subCustomerId = typeof sub?.customer === 'string' ? sub.customer : (sub?.customer as any)?.id;
+            const subActive =
+              sub?.status === 'active' || sub?.status === 'trialing' || latestInv?.status === 'paid';
+            const ownsSub =
+              sub?.metadata?.userId === userRecord.id ||
+              String(sub?.metadata?.userEmail || '').toLowerCase() === userRecord.email.toLowerCase() ||
+              (userRecord.stripeCustomerId && userRecord.stripeCustomerId === subCustomerId);
+            if (subActive && ownsSub) {
+              verifiedPaid = true;
+            }
+          }
+        }
+
+        if (!verifiedPaid) {
+          appendServerAuditLog(req, {
+            actorUserId: userRecord.id,
+            actorEmail: userRecord.email,
+            actorRole: 'user',
+            action: 'subscription_plan_sync_blocked',
+            category: 'subscription',
+            severity: 'critical',
+            status: 'blocked',
+            targetResource: `users/${userRecord.id}`,
+            details: `Tentativa bloqueada de alteração para plano pago (${plan}) sem pagamento ou subscrição verificada.`,
+            metadata: { requestedPlan: String(plan), httpStatus: 403 }
+          });
+          return res.status(403).json({
+            error: 'Alteração de plano bloqueada: pagamento ou assinatura ainda não verificado no servidor.'
+          });
+        }
+
+        const normalizedCycle = normalizeServerCycle(billingCycle || userRecord.billingCycle);
+        const days = getServerCycleSpec(normalizedCycle).days;
+        userRecord.plan = plan;
+        userRecord.billingCycle = normalizedCycle;
+        userRecord.creditsRemaining = 9999;
+        userRecord.subscriptionExpiresAt =
+          typeof subscriptionExpiresAt === 'string' && isAdmin
+            ? subscriptionExpiresAt
+            : new Date(Date.now() + days * 86400000).toISOString();
+        if (typeof stripeCustomerId === 'string' && stripeCustomerId.startsWith('cus_')) {
+          userRecord.stripeCustomerId = stripeCustomerId;
+        }
+        if (subId) userRecord.stripeSubscriptionId = subId;
+        userRecord.stripeStatus = 'active';
+        appendServerAuditLog(req, {
+          actorUserId: userRecord.id,
+          actorEmail: userRecord.email,
+          actorRole: isAdmin ? 'admin' : 'user',
+          action: 'subscription_upgraded',
+          category: 'subscription',
+          severity: 'info',
+          status: 'success',
+          targetResource: `users/${userRecord.id}`,
+          details: `Subscrição ativada/atualizada para ${plan} (${normalizedCycle}).`,
+          metadata: { plan, billingCycle: normalizedCycle }
+        });
+      }
+
+      userRecord.updatedAt = new Date().toISOString();
       persistAuthStore();
       return res.json({ success: true, user: sanitizeUser(userRecord) });
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
+    } catch {
+      return res.status(500).json({ error: 'Falha ao sincronizar estado da assinatura.' });
     }
   });
 
@@ -2738,6 +4017,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       if (userRecord.passwordHash && userRecord.passwordSalt) {
         if (!currentPassword || !verifyPasswordHash(String(currentPassword), userRecord.passwordHash, userRecord.passwordSalt)) {
+          appendServerAuditLog(req, {
+            actorUserId: userRecord.id,
+            actorEmail: userRecord.email,
+            actorRole: userRecord.role,
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: '/api/auth/change-password',
+            details: 'Tentativa de alteração de palavra-passe rejeitada: palavra-passe atual incorreta.',
+            metadata: { httpStatus: 401 }
+          });
           return res.status(401).json({ error: 'A palavra-passe atual está incorreta.' });
         }
       }
@@ -2750,6 +4041,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
       userRecord.updatedAt = new Date().toISOString();
       persistAuthStore();
+      appendServerAuditLog(req, {
+        actorUserId: userRecord.id,
+        actorEmail: userRecord.email,
+        actorRole: userRecord.role,
+        action: 'password_changed',
+        category: 'profile',
+        severity: 'warning',
+        status: 'success',
+        targetResource: `users/${userRecord.id}`,
+        details: 'Palavra-passe da conta alterada com autenticação confirmada.'
+      });
 
       return res.json({ success: true, message: 'Palavra-passe atualizada com sucesso.' });
     } catch (err: any) {
@@ -2760,7 +4062,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
   app.post('/api/auth/forgot-password', (req, res) => {
     try {
-      if (!checkAuthRateLimit(req, 10, 60_000)) {
+      if (!checkAuthRateLimit(req, 8, 60_000)) {
         return res.status(429).json({ error: 'Demasiados pedidos de recuperação. Aguarde um minuto.' });
       }
 
@@ -2769,30 +4071,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(400).json({ error: 'Insira um endereço de e-mail válido.' });
       }
 
-      const userRecord = findBackendUserByEmail(cleanEmail);
-      if (!userRecord) {
-        return res.status(404).json({
-          code: 'auth/user-not-found',
-          error: 'Nenhuma conta encontrada com este endereço de e-mail.'
-        });
-      }
-
-      const code = String(crypto.randomInt(100000, 999999));
-      const codeHash = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(`${cleanEmail}:${code}`).digest('hex');
-
-      authStore.resetTokens[cleanEmail] = {
-        email: cleanEmail,
-        codeHash,
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        attempts: 0
-      };
-      persistAuthStore();
-
+      // Security: Never expose reset OTP codes in HTTP responses or enumerate user existence
       return res.json({
         success: true,
-        mode: 'backend_code',
-        verificationCode: code,
-        message: 'Código de verificação de 6 dígitos gerado com validade de 15 minutos.'
+        mode: 'email_recovery',
+        message:
+          'Por segurança, os códigos de redefinição não são exibidos no navegador. Se esta conta usar login Google, utilize o botão Google acima; caso contrário, solicite o envio oficial ou contacte o suporte administrativo.'
       });
     } catch (err: any) {
       console.error('Erro em /api/auth/forgot-password:', err);
@@ -2871,6 +4155,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/resumes',
+          details: 'Tentativa não autenticada de listar currículos guardados.',
+          metadata: { httpStatus: 401 }
+        });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
       const list = authStore.resumesByUser?.[payload.uid] || [];
@@ -2886,6 +4179,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/resumes',
+          details: 'Tentativa não autenticada de gravar currículo no servidor.',
+          metadata: { httpStatus: 401 }
+        });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
       const { id, title, targetJob, updatedAt, data } = req.body || {};
@@ -2920,6 +4222,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) {
+        appendServerAuditLog(req, {
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: `/api/resumes/${String(req.params.id || '').slice(0, 60)}`,
+          details: 'Tentativa não autenticada de eliminar currículo.',
+          metadata: { httpStatus: 401 }
+        });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
       const resumeId = String(req.params.id || '');
@@ -2952,27 +4263,129 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  app.post('/api/orders', (req, res) => {
+  app.post('/api/orders', async (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas requisições de pedido. Aguarde um minuto.' });
+      }
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const order = req.body || {};
-      if (!order.id || !order.orderNumber) {
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const isAdmin =
+        userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+
+      const bodyOrder = req.body || {};
+      if (!bodyOrder.id || !bodyOrder.orderNumber) {
         return res.status(400).json({ error: 'Dados do pedido inválidos.' });
       }
+
+      const plan: 'pro' | 'executive' = bodyOrder.plan === 'executive' ? 'executive' : 'pro';
+      const billingCycle = normalizeServerCycle(bodyOrder.billingCycle);
+      const paymentMethod = bodyOrder.paymentMethod === 'pix' ? 'pix' : 'card';
+      const requestedStatus = bodyOrder.status;
+
+      // Non-admins cannot self-approve Pix payments as 'paid' or forge 'paid' orders without server/Stripe verification
+      let verifiedStatus: 'pending' | 'paid' | 'refunded' | 'failed' = 'pending';
+      if (isAdmin && ['paid', 'pending', 'refunded', 'failed'].includes(requestedStatus)) {
+        verifiedStatus = requestedStatus;
+      } else if (paymentMethod === 'card' && requestedStatus === 'paid') {
+        const subId = typeof bodyOrder.stripeSubscriptionId === 'string' ? bodyOrder.stripeSubscriptionId : '';
+        const existingOrders = authStore.ordersByUser?.[payload.uid] || [];
+        const alreadyVerifiedOnServer =
+          existingOrders.some((o) => o?.stripeSubscriptionId === subId && o?.status === 'paid') ||
+          Object.values(authStore.promoSessions || {}).some(
+            (p: any) => p?.subscriptionId === subId && p?.userId === payload.uid
+          );
+
+        if (alreadyVerifiedOnServer) {
+          verifiedStatus = 'paid';
+        } else if (stripeClient && subId.startsWith('sub_') && !subId.startsWith('sub_promo_')) {
+          const sub = await stripeClient.subscriptions.retrieve(subId, { expand: ['latest_invoice'] }).catch(() => null);
+          const latestInv = sub?.latest_invoice as any;
+          const ownsSub =
+            sub?.metadata?.userId === payload.uid ||
+            String(sub?.metadata?.userEmail || '').toLowerCase() === String(payload.email || '').toLowerCase();
+          if (ownsSub && (sub?.status === 'active' || sub?.status === 'trialing' || latestInv?.status === 'paid')) {
+            verifiedStatus = 'paid';
+          }
+        }
+        if (verifiedStatus !== 'paid') {
+          appendServerAuditLog(req, {
+            actorUserId: payload.uid,
+            actorEmail: payload.email,
+            actorRole: isAdmin ? 'admin' : 'user',
+            action: 'unauthorized_access_attempt',
+            category: 'subscription',
+            severity: 'critical',
+            status: 'blocked',
+            targetResource: '/api/orders',
+            details: `Tentativa bloqueada de criar pedido de cartão marcado como pago sem confirmação (${plan}/${billingCycle}).`,
+            metadata: { httpStatus: 403, plan, paymentMethod }
+          });
+          return res.status(403).json({ error: 'Pagamento com cartão ainda não verificado pelo servidor.' });
+        }
+      }
+
+      const pricing = resolveServerPlanPricing(plan, billingCycle);
+      const currency = String(bodyOrder.currency || (paymentMethod === 'pix' ? 'BRL' : 'USD')).toUpperCase().slice(0, 10);
+      const computedAmount =
+        typeof bodyOrder.amount === 'number' && Number.isFinite(bodyOrder.amount) && bodyOrder.amount >= 0
+          ? isAdmin || verifiedStatus === 'paid'
+            ? bodyOrder.amount
+            : currency === 'BRL'
+            ? Math.round(pricing.baseUSD * 5.4 * 100) / 100
+            : pricing.baseUSD
+          : pricing.baseUSD;
+
+      const sanitizedOrder = {
+        id: String(bodyOrder.id).slice(0, 128),
+        orderNumber: String(bodyOrder.orderNumber).slice(0, 60),
+        userId: payload.uid,
+        userName: String(bodyOrder.userName || userRec?.name || 'Cliente').slice(0, 120),
+        userEmail: String(userRec?.email || payload.email || '').slice(0, 180),
+        plan,
+        billingCycle,
+        amount: computedAmount,
+        currency,
+        paymentMethod,
+        status: verifiedStatus,
+        stripeSubscriptionId:
+          typeof bodyOrder.stripeSubscriptionId === 'string' ? bodyOrder.stripeSubscriptionId.slice(0, 128) : undefined,
+        stripePaymentIntentId:
+          typeof bodyOrder.stripePaymentIntentId === 'string' ? bodyOrder.stripePaymentIntentId.slice(0, 128) : undefined,
+        receiptUrl:
+          typeof bodyOrder.receiptUrl === 'string' && bodyOrder.receiptUrl.startsWith('https://')
+            ? bodyOrder.receiptUrl.slice(0, 500)
+            : undefined,
+        createdAt: typeof bodyOrder.createdAt === 'string' ? bodyOrder.createdAt.slice(0, 50) : new Date().toISOString(),
+        notes: typeof bodyOrder.notes === 'string' ? bodyOrder.notes.slice(0, 500) : ''
+      };
+
       if (!authStore.ordersByUser) {
         authStore.ordersByUser = {};
       }
       const existing = authStore.ordersByUser[payload.uid] || [];
       authStore.ordersByUser[payload.uid] = [
-        order,
-        ...existing.filter((o) => o.id !== order.id)
+        sanitizedOrder,
+        ...existing.filter((o) => o.id !== sanitizedOrder.id)
       ].slice(0, 50);
       persistAuthStore();
-      return res.status(201).json({ success: true, order });
+      appendServerAuditLog(req, {
+        actorUserId: payload.uid,
+        actorEmail: sanitizedOrder.userEmail,
+        actorRole: isAdmin ? 'admin' : 'user',
+        action: 'payment_order_created',
+        category: 'subscription',
+        severity: 'info',
+        status: 'success',
+        targetResource: `orders/${sanitizedOrder.id}`,
+        details: `Pedido ${sanitizedOrder.orderNumber} registado (${plan}/${billingCycle}, ${paymentMethod}, status=${verifiedStatus}).`,
+        metadata: { plan, billingCycle, paymentMethod, status: verifiedStatus, amount: computedAmount, currency }
+      });
+      return res.status(201).json({ success: true, order: sanitizedOrder });
     } catch (err: any) {
       console.error('Erro em POST /api/orders:', err);
       return res.status(500).json({ error: 'Erro ao registar pedido no servidor.' });
@@ -2986,15 +4399,52 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     const token = extractTokenFromRequest(req);
     const payload = token ? verifySessionToken(token) : null;
     if (!payload) {
+      appendServerAuditLog(req, {
+        action: 'unauthorized_access_attempt',
+        category: 'security',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: req.originalUrl || '/api/admin',
+        details: 'Tentativa não autenticada de acesso a rota administrativa protegida.',
+        metadata: { httpStatus: 401, method: req.method }
+      });
       res.status(401).json({ error: 'Sessão administrativa não autenticada.' });
       return null;
     }
     const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+    if (userRec?.status === 'suspended') {
+      appendServerAuditLog(req, {
+        actorUserId: payload.uid,
+        actorEmail: payload.email,
+        actorRole: userRec.role,
+        action: 'unauthorized_access_attempt',
+        category: 'security',
+        severity: 'critical',
+        status: 'blocked',
+        targetResource: req.originalUrl || '/api/admin',
+        details: 'Conta suspensa tentou executar ação administrativa.',
+        metadata: { httpStatus: 403, method: req.method }
+      });
+      res.status(403).json({ error: 'Conta administrativa suspensa.' });
+      return null;
+    }
     const isAdm =
       payload.role === 'admin' ||
       userRec?.role === 'admin' ||
       ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
     if (!isAdm) {
+      appendServerAuditLog(req, {
+        actorUserId: payload.uid,
+        actorEmail: payload.email,
+        actorRole: 'user',
+        action: 'unauthorized_access_attempt',
+        category: 'security',
+        severity: 'critical',
+        status: 'blocked',
+        targetResource: req.originalUrl || '/api/admin',
+        details: 'Utilizador padrão tentou aceder a recurso restrito de administração (escalação de privilégios bloqueada).',
+        metadata: { httpStatus: 403, method: req.method }
+      });
       res.status(403).json({ error: 'Acesso restrito a administradores.' });
       return null;
     }
@@ -3015,18 +4465,38 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     });
   });
 
-  // Public active coupons validation & usage tracking
+  // Public active coupons validation & usage tracking (only exposes active non-expired vouchers)
   app.get('/api/coupons/public', (_req, res) => {
-    return res.json({ coupons: authStore.coupons || [] });
+    const now = Date.now();
+    const activeCoupons = (authStore.coupons || []).filter((c) => {
+      if (!c?.active) return false;
+      if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return false;
+      if (Number(c.maxUses) > 0 && Number(c.usedCount) >= Number(c.maxUses)) return false;
+      return true;
+    });
+    return res.json({ coupons: activeCoupons });
   });
 
   app.post('/api/coupons/:id/use', (req, res) => {
     try {
+      if (!checkPaymentRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados pedidos. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Autenticação necessária para utilizar cupom.' });
+      }
       const couponId = String(req.params.id || '');
       const list = authStore.coupons || [];
-      const idx = list.findIndex((c) => c.id === couponId);
+      const idx = list.findIndex((c) => c.id === couponId && c.active);
       if (idx >= 0) {
-        list[idx].usedCount = (Number(list[idx].usedCount) || 0) + 1;
+        const curUsed = Number(list[idx].usedCount) || 0;
+        const maxUses = Number(list[idx].maxUses) || 0;
+        if (maxUses > 0 && curUsed >= maxUses) {
+          return res.status(409).json({ error: 'Este cupom já atingiu o limite máximo de utilizações.' });
+        }
+        list[idx].usedCount = curUsed + 1;
         list[idx].updatedAt = new Date().toISOString();
         persistAuthStore();
       }
@@ -3036,21 +4506,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  // Error telemetry intake from client
+  // Error telemetry intake from client (rate-limited & scrubbed of credentials)
   app.post('/api/error-logs', (req, res) => {
     try {
+      if (!checkTelemetryRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados registos de erro. Aguarde um minuto.' });
+      }
       const log = req.body || {};
       if (!log.errorMessage) {
         return res.status(400).json({ error: 'errorMessage obrigatório.' });
       }
       const entry = {
-        id: log.id || `err-${Date.now()}`,
-        timestamp: log.timestamp || new Date().toISOString(),
-        userEmail: log.userEmail || '',
-        operationType: log.operationType || 'unknown',
-        errorMessage: String(log.errorMessage).slice(0, 1000),
-        modelUsed: log.modelUsed || 'n/a',
-        resolved: Boolean(log.resolved)
+        id: String(log.id || `err-${Date.now()}`).slice(0, 128),
+        timestamp: typeof log.timestamp === 'string' ? log.timestamp.slice(0, 50) : new Date().toISOString(),
+        userEmail: sanitizeTelemetryText(log.userEmail || '', 180),
+        operationType: sanitizeTelemetryText(log.operationType || 'unknown', 80),
+        errorMessage: sanitizeTelemetryText(log.errorMessage, 1000),
+        modelUsed: sanitizeTelemetryText(log.modelUsed || 'n/a', 80),
+        resolved: false
       };
       authStore.errorLogs = [entry, ...(authStore.errorLogs || [])].slice(0, 100);
       persistAuthStore();
@@ -3089,6 +4562,76 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
+  // Security Audit Logs Intake & Retrieval
+  app.post('/api/audit-logs', (req, res) => {
+    try {
+      if (!checkTelemetryRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados registos de auditoria. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      const body = req.body || {};
+
+      if (!body.action || !body.targetResource || !body.details) {
+        return res.status(400).json({ error: 'action, targetResource e details são obrigatórios.' });
+      }
+
+      const requestedAction = String(body.action);
+      if (!AUDIT_ALLOWED_ACTIONS.has(requestedAction)) {
+        return res.status(400).json({ error: 'Ação de auditoria não reconhecida.' });
+      }
+
+      const isAdminCaller = Boolean(
+        payload &&
+          (payload.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase()))
+      );
+
+      // Unauthenticated requests may only log blocked/unauthorized security attempts
+      if (!payload && requestedAction !== 'unauthorized_access_attempt' && requestedAction !== 'cv_export_blocked_unauthorized') {
+        return res.status(401).json({ error: 'Autenticação necessária para registar esta ação de auditoria.' });
+      }
+
+      const entry = appendServerAuditLog(req, {
+        id: typeof body.id === 'string' ? body.id : undefined,
+        timestamp: typeof body.timestamp === 'string' ? body.timestamp : undefined,
+        actorUserId: payload?.uid || 'anonymous',
+        actorEmail: payload?.email || 'anonymous',
+        actorRole: payload ? (isAdminCaller ? 'admin' : 'user') : 'anonymous',
+        action:
+          !isAdminCaller && ['admin_user_modified', 'impersonation_event', 'payment_order_status_changed'].includes(requestedAction)
+            ? 'unauthorized_access_attempt'
+            : requestedAction,
+        category: AUDIT_ALLOWED_CATEGORIES.has(body.category) ? body.category : 'security',
+        severity: AUDIT_ALLOWED_SEVERITIES.has(body.severity) ? body.severity : 'info',
+        status: AUDIT_ALLOWED_STATUSES.has(body.status) ? body.status : 'success',
+        targetResource: String(body.targetResource),
+        details: String(body.details),
+        metadata: body.metadata
+      });
+
+      return res.status(201).json({ success: true, log: entry });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao gravar log de auditoria.' });
+    }
+  });
+
+  app.get('/api/audit-logs/me', (req, res) => {
+    const token = extractTokenFromRequest(req);
+    const payload = token ? verifySessionToken(token) : null;
+    if (!payload?.uid) {
+      return res.status(401).json({ error: 'Sessão não autenticada.' });
+    }
+    const own = (authStore.auditLogs || [])
+      .filter((item) => item?.actorUserId === payload.uid)
+      .slice(0, 60);
+    return res.json({ auditLogs: own });
+  });
+
+  app.get('/api/admin/audit-logs', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    return res.json({ auditLogs: authStore.auditLogs || [] });
+  });
+
   // Admin Overview Snapshot
   app.get('/api/admin/overview', (req, res) => {
     if (!requireAdminSession(req, res)) return;
@@ -3111,7 +4654,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       config: authStore.adminConfig || {},
       errorLogs: authStore.errorLogs || [],
       gdprRequests: authStore.gdprRequests || [],
-      impersonationLogs: authStore.impersonationLogs || []
+      impersonationLogs: authStore.impersonationLogs || [],
+      auditLogs: authStore.auditLogs || []
     });
   });
 
@@ -3154,7 +4698,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   });
 
   app.patch('/api/admin/users/:id', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     try {
       const userId = String(req.params.id || '');
       let record: BackendUserRecord | undefined = authStore.users[userId];
@@ -3165,6 +4710,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!record) {
         return res.status(404).json({ error: 'Utilizador não encontrado no servidor.' });
       }
+      const prevPlan = record.plan;
+      const prevRole = record.role;
+      const prevStatus = record.status;
       if (typeof updates.name === 'string') record.name = updates.name.trim();
       if (typeof updates.phone === 'string') record.phone = updates.phone.trim();
       if (typeof updates.notes === 'string') record.notes = updates.notes;
@@ -3176,6 +4724,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (typeof updates.subscriptionExpiresAt === 'string') record.subscriptionExpiresAt = updates.subscriptionExpiresAt;
       record.updatedAt = new Date().toISOString();
       persistAuthStore();
+      appendServerAuditLog(req, {
+        actorUserId: adminPayload.uid,
+        actorEmail: adminPayload.email,
+        actorRole: 'admin',
+        action: 'admin_user_modified',
+        category: 'admin',
+        severity: prevRole !== record.role || prevStatus !== record.status ? 'warning' : 'info',
+        status: 'success',
+        targetResource: `users/${record.id}`,
+        details: `Administrador atualizou cliente ${record.email} (plano ${prevPlan}→${record.plan}, papel ${prevRole}→${record.role}, estado ${prevStatus}→${record.status}).`,
+        metadata: { targetEmail: record.email, plan: record.plan, role: record.role, status: record.status }
+      });
       return res.json({ success: true, user: sanitizeUser(record) });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Erro ao atualizar utilizador.' });
@@ -3183,10 +4743,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   });
 
   app.post('/api/admin/users/:id/anonymize', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     const userId = String(req.params.id || '');
     const record = authStore.users[userId];
     if (record) {
+      const targetEmail = record.email;
       record.name = 'Utilizador Anonimizado (RGPD)';
       record.email = `anon-${userId.slice(0, 8)}@eliminado.rgpd`;
       record.phone = '';
@@ -3196,23 +4758,48 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       record.notes = `Conta anonimizada conforme Art. 17 RGPD em ${new Date().toISOString()}`;
       record.updatedAt = new Date().toISOString();
       persistAuthStore();
+      appendServerAuditLog(req, {
+        actorUserId: adminPayload.uid,
+        actorEmail: adminPayload.email,
+        actorRole: 'admin',
+        action: 'admin_user_modified',
+        category: 'admin',
+        severity: 'warning',
+        status: 'success',
+        targetResource: `users/${userId}`,
+        details: `Conta ${targetEmail} anonimizada pelo administrador conforme Art. 17 RGPD.`
+      });
     }
     return res.json({ success: true });
   });
 
   app.delete('/api/admin/users/:id', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     const userId = String(req.params.id || '');
+    const deletedEmail = authStore.users[userId]?.email || userId;
     delete authStore.users[userId];
     if (authStore.resumesByUser) delete authStore.resumesByUser[userId];
     if (authStore.ordersByUser) delete authStore.ordersByUser[userId];
     persistAuthStore();
+    appendServerAuditLog(req, {
+      actorUserId: adminPayload.uid,
+      actorEmail: adminPayload.email,
+      actorRole: 'admin',
+      action: 'admin_user_modified',
+      category: 'admin',
+      severity: 'warning',
+      status: 'success',
+      targetResource: `users/${userId}`,
+      details: `Registo de utilizador ${deletedEmail} eliminado pelo administrador.`
+    });
     return res.json({ success: true });
   });
 
   // Admin Orders Management
   app.post('/api/admin/orders', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     const order = req.body || {};
     if (!order.id || !order.orderNumber) {
       return res.status(400).json({ error: 'Dados do pedido inválidos.' });
@@ -3236,11 +4823,23 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       targetUser.updatedAt = new Date().toISOString();
     }
     persistAuthStore();
+    appendServerAuditLog(req, {
+      actorUserId: adminPayload.uid,
+      actorEmail: adminPayload.email,
+      actorRole: 'admin',
+      action: 'payment_order_created',
+      category: 'subscription',
+      severity: 'info',
+      status: 'success',
+      targetResource: `orders/${String(order.id).slice(0, 64)}`,
+      details: `Fatura manual ${order.orderNumber} criada pelo admin para ${order.userEmail || targetUid} (${order.plan}).`
+    });
     return res.status(201).json({ success: true, order });
   });
 
   app.patch('/api/admin/orders/:id', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     const orderId = String(req.params.id || '');
     const { status, notes } = req.body || {};
     let updated = false;
@@ -3276,7 +4875,21 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
     }
 
-    if (updated) persistAuthStore();
+    if (updated) {
+      persistAuthStore();
+      appendServerAuditLog(req, {
+        actorUserId: adminPayload.uid,
+        actorEmail: adminPayload.email,
+        actorRole: 'admin',
+        action: 'payment_order_status_changed',
+        category: 'subscription',
+        severity: status === 'refunded' ? 'warning' : 'info',
+        status: 'success',
+        targetResource: `orders/${orderId.slice(0, 64)}`,
+        details: `Estado da fatura ${matchedOrder?.orderNumber || orderId} alterado para '${status}' (${matchedOrder?.userEmail || 'cliente'}).`,
+        metadata: { status: String(status || ''), plan: String(matchedOrder?.plan || '') }
+      });
+    }
     return res.json({ success: true, updated });
   });
 
@@ -3367,9 +4980,25 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   });
 
   app.post('/api/admin/impersonation-logs', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     const entry = req.body || {};
     authStore.impersonationLogs = [entry, ...(authStore.impersonationLogs || [])].slice(0, 100);
+    appendServerAuditLog(req, {
+      actorUserId: adminPayload.uid,
+      actorEmail: adminPayload.email,
+      actorRole: 'admin',
+      action: 'impersonation_event',
+      category: 'admin',
+      severity: 'warning',
+      status: 'success',
+      targetResource: `users/${String(entry.targetUserId || entry.targetUserEmail || 'unknown')}`,
+      details: String(entry.details || `Sessão de personificação (${entry.action || 'started'}).`),
+      metadata: {
+        impersonationAction: String(entry.action || 'started'),
+        targetUserEmail: String(entry.targetUserEmail || '')
+      }
+    });
     persistAuthStore();
     return res.status(201).json({ success: true });
   });
@@ -3859,6 +5488,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
   app.post('/api/jobs/match', async (req, res) => {
     try {
+      if (!checkJobsRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas pesquisas em sequência. Aguarde um minuto.' });
+      }
       const {
         cv,
         search = '',
@@ -4434,7 +6066,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
   app.get('/api/jobs/detail', async (req, res) => {
     try {
-      const id = String(req.query.id || '').trim();
+      if (!checkJobsRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiadas consultas em sequência. Aguarde um minuto.' });
+      }
+      const id = String(req.query.id || '').trim().slice(0, 160);
       if (!id) {
         return res.status(400).json({ error: 'Parâmetro id é obrigatório.' });
       }

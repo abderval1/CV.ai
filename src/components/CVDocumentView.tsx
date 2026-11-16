@@ -14,7 +14,6 @@ import {
   Info,
   ShieldCheck,
   Globe,
-  Sparkles,
   ExternalLink,
   ChevronRight,
   UserCheck,
@@ -37,6 +36,8 @@ import { useToast } from '../context/ToastContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
 import { SECTION_TITLES_BY_LANG, getResolvedSectionTitles } from '../utils/cvDocumentLabels';
 import { getStoredPlatformSettingsSync, logGenerationError } from '../services/adminModulesService';
+import { recordAuditLog } from '../services/auditLogService';
+import { dispatchUserNotification } from '../services/notificationService';
 
 interface CVDocumentViewProps {
   cv: CVData;
@@ -75,7 +76,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   isTranslatingContent = false,
   translatingTargetLang = null
 }) => {
-  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
   const { language: appLang, setLanguage, t } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -129,17 +130,50 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const isAcademic = cv.templateStyle === 'academic_lattes';
   const isModern = cv.templateStyle === 'european_modern';
 
+  const resolvedFontClass =
+    cv.fontFamily === 'garamond'
+      ? 'font-serif-cv'
+      : cv.fontFamily === 'jakarta'
+      ? 'font-jakarta'
+      : cv.fontFamily === 'mono'
+      ? 'font-mono-code text-[13px] leading-relaxed'
+      : cv.fontFamily === 'cinzel'
+      ? 'font-cinzel'
+      : isClassic || isHarvard || isAcademic
+      ? 'font-serif-cv'
+      : isAts
+      ? 'font-mono-code text-[13px] leading-relaxed'
+      : 'font-jakarta';
+
   // Prevent non-subscribers and unregistered users from bypassing download via Ctrl+P / Cmd+P
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
         if (exportRequiresPaidPlan && !isAuthenticated) {
           e.preventDefault();
+          void recordAuditLog({
+            action: 'cv_export_blocked_unauthorized',
+            category: 'cv_export',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: `resumes/${cv.templateStyle}/pdf`,
+            details: 'Tentativa de bypass de impressão (Ctrl+P/Cmd+P) bloqueada: utilizador não autenticado.',
+            metadata: { format: 'pdf', trigger: 'keyboard_shortcut' }
+          });
           onOpenAuthModal?.('O registo é obrigatório para imprimir ou descarregar o currículo em PDF.');
           return;
         }
         if (exportRequiresPaidPlan && !hasActivePlan) {
           e.preventDefault();
+          void recordAuditLog({
+            action: 'cv_export_blocked_unauthorized',
+            category: 'cv_export',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: `resumes/${cv.templateStyle}/pdf`,
+            details: 'Tentativa de bypass de impressão (Ctrl+P/Cmd+P) bloqueada: plano pago exigido.',
+            metadata: { format: 'pdf', trigger: 'keyboard_shortcut' }
+          });
           onOpenPricingModal?.(
             'A impressão e download do currículo em PDF de Alta Resolução são exclusivos para assinantes. Ative o seu plano para desbloquear documentos 100% limpos e sem marca de água.'
           );
@@ -149,7 +183,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [exportRequiresPaidPlan, isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal]);
+  }, [exportRequiresPaidPlan, isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal, cv.templateStyle]);
 
   // Comprehensive 5-language section titles & template chrome labels (shared with Word export)
   const currentTitles = SECTION_TITLES_BY_LANG[docLang] || SECTION_TITLES_BY_LANG.pt;
@@ -168,11 +202,29 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   const handlePrint = () => {
     if (exportRequiresPaidPlan && !isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${cv.templateStyle}/pdf`,
+        details: 'Exportação PDF bloqueada: utilizador não autenticado.',
+        metadata: { format: 'pdf', reason: 'unauthenticated' }
+      });
       showWarning('Registo Obrigatório', 'Inicie sessão ou registe-se para imprimir ou guardar em PDF.');
       onOpenAuthModal?.('O registo é obrigatório para descarregar ou imprimir o seu currículo em PDF.');
       return;
     }
     if (!canExportClean) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${cv.templateStyle}/pdf`,
+        details: 'Exportação PDF bloqueada: subscrição ativa exigida.',
+        metadata: { format: 'pdf', reason: 'plan_required' }
+      });
       showWarning('Plano Requerido', 'A impressão e download do PDF de Alta Resolução são exclusivos para subscritores.');
       onOpenPricingModal?.(
         'A impressão e download em PDF de Alta Resolução são exclusivos para subscritores. Ative um plano para descarregar o seu documento oficial sem marca de água.'
@@ -180,6 +232,24 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       return;
     }
     try {
+      void recordAuditLog({
+        action: 'cv_exported_pdf',
+        category: 'cv_export',
+        severity: 'info',
+        status: 'success',
+        targetResource: `resumes/${cv.templateStyle}/pdf`,
+        details: `Currículo exportado/impresso em PDF (${currentTemplate.shortName}, ${docLang.toUpperCase()}).`,
+        metadata: { format: 'pdf', templateStyle: cv.templateStyle, language: docLang }
+      });
+      if (user) {
+        void dispatchUserNotification({
+          user,
+          eventType: 'export',
+          title: 'Exportação PDF Iniciada',
+          message: `Currículo (${currentTemplate.shortName}, ${docLang.toUpperCase()}) preparado para exportação/impressão em PDF.`,
+          targetResource: `resumes/${cv.templateStyle}/pdf`
+        });
+      }
       window.print();
     } catch (err: any) {
       logGenerationError({
@@ -243,11 +313,29 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   const handleExportJSON = () => {
     if (!isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'resumes/json',
+        details: 'Exportação JSON de backup bloqueada: utilizador não autenticado.',
+        metadata: { format: 'json', reason: 'unauthenticated' }
+      });
       showWarning('Registo Obrigatório', 'O registo é obrigatório para descarregar o backup JSON.');
       onOpenAuthModal?.('O registo é obrigatório para descarregar o ficheiro de backup do currículo.');
       return;
     }
     if (!hasActivePlan) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: 'resumes/json',
+        details: 'Exportação JSON de backup bloqueada: plano ativo exigido.',
+        metadata: { format: 'json', reason: 'plan_required' }
+      });
       showWarning('Plano Requerido', 'A exportação de backup requer um plano Pro ou Executive ativo.');
       onOpenPricingModal?.('A exportação do ficheiro de backup em JSON requer um plano Pro ou Executive ativo.');
       return;
@@ -261,6 +349,24 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    void recordAuditLog({
+      action: 'cv_exported_json',
+      category: 'cv_export',
+      severity: 'info',
+      status: 'success',
+      targetResource: 'resumes/json',
+      details: `Backup estruturado JSON do currículo exportado (${sanitizedName}).`,
+      metadata: { format: 'json', templateStyle: cv.templateStyle }
+    });
+    if (user) {
+      void dispatchUserNotification({
+        user,
+        eventType: 'export',
+        title: 'Backup JSON Exportado',
+        message: `Ficheiro CV_${sanitizedName}_backup.json descarregado com sucesso.`,
+        targetResource: 'resumes/json'
+      });
+    }
     showSuccess('Backup JSON Exportado!', `Ficheiro CV_${sanitizedName}_backup.json descarregado com sucesso.`);
   };
 
@@ -298,15 +404,27 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     reader.readAsText(file);
   };
 
+  const getSafeHttpUrl = (raw?: string | null): string | null => {
+    if (!raw || typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return null;
+  };
+
   const renderTextWithLinks = (content: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
     return parts.map((part, i) => {
       if (part.match(urlRegex)) {
+        const safeHref = getSafeHttpUrl(part);
+        if (!safeHref) return part;
         return (
           <a
             key={i}
-            href={part}
+            href={safeHref}
             target="_blank"
             rel="noopener noreferrer"
             className="underline font-semibold hover:opacity-80"
@@ -459,6 +577,29 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           }`}
                         >
                           Padrão
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isAuthenticated) {
+                              onOpenAuthModal?.('Inicie sessão ou crie uma conta para ajustar o espaçamento do currículo.');
+                              return;
+                            }
+                            if (!hasActivePlan) {
+                              onOpenPricingModal?.(
+                                'O ajuste de densidade e espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
+                              );
+                              return;
+                            }
+                            setDensity('relaxed');
+                          }}
+                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                            density === 'relaxed'
+                              ? 'bg-white text-slate-950 font-semibold shadow-2xs'
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          Amplo
                         </button>
                       </div>
                     </div>
@@ -633,6 +774,67 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               </>
             )}
           </div>
+
+          {/* Direct Inline Edit A4 Quick Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!isAuthenticated) {
+                onOpenAuthModal?.('Inicie sessão ou crie uma conta para editar diretamente o seu currículo.');
+                return;
+              }
+              if (!hasActivePlan) {
+                onOpenPricingModal?.(
+                  'A edição direta no documento A4 é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
+                );
+                return;
+              }
+              setIsInlineEditing((prev) => !prev);
+            }}
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+              isInlineEditing
+                ? 'bg-amber-50 border-amber-300 text-amber-950'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+            title={isInlineEditing ? 'Desativar edição direta no A4' : 'Clicar nos textos do A4 para editar'}
+          >
+            {isInlineEditing ? (
+              <Eye className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+            ) : (
+              <Edit3 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+            )}
+            <span className="hidden xl:inline">{isInlineEditing ? 'Editando A4' : 'Editar A4'}</span>
+          </button>
+
+          {/* Quick Zoom Controls */}
+          <div className="hidden xl:flex items-center gap-0.5 border border-slate-200 rounded-lg bg-slate-50 p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => Math.max(60, z - 10))}
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+              title="Diminuir Zoom"
+              aria-label="Diminuir Zoom"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoomLevel(100)}
+              className="text-[11px] font-mono tabular-nums text-slate-700 px-1.5 font-semibold"
+              title="Restaurar Zoom 100%"
+            >
+              {zoomLevel}%
+            </button>
+            <button
+              type="button"
+              onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+              title="Aumentar Zoom"
+              aria-label="Aumentar Zoom"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Hidden JSON file input */}
@@ -684,14 +886,14 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     }`}
                     title={`Traduzir CV e Carta para ${lang.toUpperCase()}`}
                   >
-                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-indigo-600" />}
+                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-700" />}
                     <span>{lang.toUpperCase()}</span>
                   </button>
                 );
               })}
             </div>
             {isTranslatingContent && (
-              <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
+              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span className="hidden sm:inline">{currentTitles.translatingLabel}</span>
               </span>
@@ -778,7 +980,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 whitespace-nowrap"
             title={t('doc.downloadMultilangDesc', 'Traduzir e descarregar o currículo em Inglês, Espanhol, Francês ou Alemão')}
           >
-            <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            <Globe className="w-3.5 h-3.5 text-slate-700 shrink-0" />
             <span className="hidden 2xl:inline">Pacote</span>
           </button>
         </div>
@@ -834,7 +1036,9 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         >
           {/* CASE 1: Creative Split Two-Column Layout */}
           {isCreative ? (
-            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[1120px] flex flex-col md:flex-row relative font-jakarta overflow-hidden ${
+            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[1120px] flex flex-col md:flex-row relative overflow-hidden ${
+              cv.fontFamily ? resolvedFontClass : 'font-jakarta'
+            } ${
               density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
             }`}>
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
@@ -1098,13 +1302,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             <article
               className={`cv-a4-sheet cv-single-column bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
                 density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
-              } ${
-                isClassic || isHarvard || isAcademic
-                  ? 'font-serif-cv'
-                  : isAts
-                  ? 'font-mono-code text-[13px] leading-relaxed'
-                  : 'font-jakarta'
-              }`}
+              } ${resolvedFontClass}`}
             >
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Header Section */}
@@ -1250,15 +1448,21 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       {cv.personalDetails.website && (
                         <>
                           <span aria-hidden="true" className="text-slate-400">|</span>
-                          <a
-                            href={cv.personalDetails.website}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline font-semibold"
-                            style={{ color: currentAccent }}
-                          >
-                            {cv.personalDetails.website}
-                          </a>
+                          {getSafeHttpUrl(cv.personalDetails.website) ? (
+                            <a
+                              href={getSafeHttpUrl(cv.personalDetails.website)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline font-semibold"
+                              style={{ color: currentAccent }}
+                            >
+                              {cv.personalDetails.website}
+                            </a>
+                          ) : (
+                            <span className="font-semibold" style={{ color: currentAccent }}>
+                              {cv.personalDetails.website}
+                            </span>
+                          )}
                         </>
                       )}
                     </div>

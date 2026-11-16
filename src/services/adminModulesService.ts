@@ -44,7 +44,7 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     userPromptTemplate: 'Gere uma carta de apresentação para o cargo de {{jobTitle}} na empresa {{companyName}}, destacando as competências: {{skills}} e conquistas: {{highlights}}.',
     variables: ['jobTitle', 'companyName', 'skills', 'highlights'],
     temperature: 0.35,
-    preferredModel: 'gemini-3.8-flash',
+    preferredModel: 'gemini-4-hydrogen',
     fallbackModel: 'gemini-3.1-flash-lite',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
@@ -58,7 +58,7 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     userPromptTemplate: 'Otimize a seguinte realização profissional aplicando a fórmula Google XYZ: {{rawText}} para o cargo de {{role}}.',
     variables: ['rawText', 'role'],
     temperature: 0.25,
-    preferredModel: 'gemini-3.8-flash',
+    preferredModel: 'gemini-4-hydrogen',
     fallbackModel: 'gemini-3.1-flash-lite',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
@@ -72,7 +72,7 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     userPromptTemplate: 'Escreva um resumo executivo para o perfil com as experiências {{experiences}} e foco na área de {{targetRole}}.',
     variables: ['experiences', 'targetRole'],
     temperature: 0.3,
-    preferredModel: 'gemini-3.8-flash',
+    preferredModel: 'gemini-4-hydrogen',
     fallbackModel: 'gemini-3.1-flash-lite',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
@@ -86,7 +86,7 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     userPromptTemplate: 'Analise o currículo {{cvContent}} contra a descrição da vaga {{jobDescription}} e retorne as palavras-chave críticas faltantes.',
     variables: ['cvContent', 'jobDescription'],
     temperature: 0.15,
-    preferredModel: 'gemini-3.8-flash',
+    preferredModel: 'gemini-4-hydrogen',
     fallbackModel: 'gemini-3.1-flash-lite',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
@@ -100,7 +100,7 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     userPromptTemplate: 'Gere perguntas de entrevista para o cargo de {{targetRole}} no setor de {{industry}}.',
     variables: ['targetRole', 'industry'],
     temperature: 0.4,
-    preferredModel: 'gemini-3.8-flash',
+    preferredModel: 'gemini-4-hydrogen',
     fallbackModel: 'gemini-flash-latest',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
@@ -115,21 +115,21 @@ export const DEFAULT_PROMPT_CONFIGS: PromptTemplateConfig[] = [
     variables: ['content', 'targetLanguage'],
     temperature: 0.1,
     preferredModel: 'gemini-3.1-flash-lite',
-    fallbackModel: 'gemini-3.8-flash',
+    fallbackModel: 'gemini-4-hydrogen',
     updatedAt: new Date().toISOString(),
     updatedBy: 'gugurai923@gmail.com'
   }
 ];
 
 export const DEFAULT_AI_ROUTING: AiModelRoutingConfig = {
-  primaryModel: 'gemini-3.8-flash',
+  primaryModel: 'gemini-4-hydrogen',
   fallbackModel: 'gemini-3.1-flash-lite',
   costSavingModel: 'gemini-3.1-flash-lite',
-  advancedReasoningModel: 'gemini-3.8-flash',
+  advancedReasoningModel: 'gemini-4-hydrogen',
   maxRetries: 3,
   timeoutMs: 8000,
   healthStatus: {
-    'gemini-3.8-flash': { status: 'healthy', latencyMs: 420 },
+    'gemini-4-hydrogen': { status: 'healthy', latencyMs: 420 },
     'gemini-3.1-flash-lite': { status: 'healthy', latencyMs: 260 },
     'gemini-flash-latest': { status: 'healthy', latencyMs: 310 }
   }
@@ -453,7 +453,7 @@ const AUTH_TOKEN_KEY = 'curriculopro_auth_token';
 
 function getAuthToken(): string | null {
   try {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
+    return localStorage.getItem(AUTH_TOKEN_KEY) || sessionStorage.getItem(AUTH_TOKEN_KEY);
   } catch {
     return null;
   }

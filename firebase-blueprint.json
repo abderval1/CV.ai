@@ -38,8 +38,23 @@
         },
         "billingCycle": {
           "type": "string",
-          "enum": ["monthly", "yearly"],
+          "enum": ["monthly", "quarterly", "semiannual", "yearly"],
           "description": "Selected billing cycle"
+        },
+        "targetRole": {
+          "type": "string",
+          "description": "Target professional role",
+          "maxLength": 150
+        },
+        "company": {
+          "type": "string",
+          "description": "Company or organization",
+          "maxLength": 120
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Profile avatar HTTPS URL",
+          "maxLength": 500
         },
         "creditsRemaining": {
           "type": "number",
@@ -63,9 +78,29 @@
           "description": "Optional ISO expiry timestamp for active plan",
           "maxLength": 50
         },
+        "stripeCustomerId": {
+          "type": "string",
+          "description": "Payment processor customer ID",
+          "maxLength": 128
+        },
+        "stripeSubscriptionId": {
+          "type": "string",
+          "description": "Payment processor subscription ID",
+          "maxLength": 128
+        },
+        "stripeStatus": {
+          "type": "string",
+          "enum": ["active", "trialing", "past_due", "canceled", "incomplete"],
+          "description": "Subscription renewal status"
+        },
         "createdAt": {
           "type": "string",
           "description": "Creation timestamp in ISO format",
+          "maxLength": 50
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp in ISO format",
           "maxLength": 50
         },
         "notes": {
@@ -151,7 +186,7 @@
         },
         "billingCycle": {
           "type": "string",
-          "enum": ["monthly", "yearly"],
+          "enum": ["monthly", "quarterly", "semiannual", "yearly"],
           "description": "Billing cadence"
         },
         "amount": {
@@ -173,9 +208,29 @@
           "enum": ["paid", "pending", "refunded", "failed"],
           "description": "Payment execution status"
         },
+        "stripeSubscriptionId": {
+          "type": "string",
+          "description": "Subscription identifier",
+          "maxLength": 128
+        },
+        "stripePaymentIntentId": {
+          "type": "string",
+          "description": "Payment intent identifier",
+          "maxLength": 128
+        },
+        "receiptUrl": {
+          "type": "string",
+          "description": "Payment receipt URL",
+          "maxLength": 500
+        },
         "createdAt": {
           "type": "string",
           "description": "Transaction ISO timestamp",
+          "maxLength": 50
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update ISO timestamp",
           "maxLength": 50
         },
         "notes": {
@@ -392,6 +447,222 @@
         }
       },
       "required": ["id", "title", "message", "active"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and sensitive-action audit log in Firestore",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique audit log entry identifier",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 UTC event timestamp",
+          "maxLength": 50
+        },
+        "actorUserId": {
+          "type": "string",
+          "description": "Authenticated UID or anonymous/system identifier",
+          "maxLength": 128
+        },
+        "actorEmail": {
+          "type": "string",
+          "description": "Email address of the actor or anonymous",
+          "maxLength": 180
+        },
+        "actorRole": {
+          "type": "string",
+          "enum": ["user", "admin", "anonymous", "system"],
+          "description": "Role of the actor at the time of the event"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "subscription_upgraded",
+            "subscription_canceled",
+            "subscription_plan_sync_blocked",
+            "payment_order_created",
+            "payment_order_status_changed",
+            "cv_exported_pdf",
+            "cv_exported_docx",
+            "cv_exported_json",
+            "cv_export_blocked_unauthorized",
+            "profile_updated",
+            "password_changed",
+            "account_login",
+            "account_registered",
+            "gdpr_request_submitted",
+            "unauthorized_access_attempt",
+            "admin_user_modified",
+            "impersonation_event"
+          ],
+          "description": "Specific sensitive action or security event type"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["subscription", "cv_export", "profile", "security", "admin"],
+          "description": "High-level audit domain category"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["info", "warning", "critical"],
+          "description": "Security severity level"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["success", "blocked", "failure"],
+          "description": "Execution outcome of the audited action"
+        },
+        "targetResource": {
+          "type": "string",
+          "description": "Affected document path, API endpoint, or CV resource",
+          "maxLength": 180
+        },
+        "details": {
+          "type": "string",
+          "description": "Sanitized human-readable summary of the event",
+          "maxLength": 600
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Bounded key-value map of non-secret event context"
+        },
+        "userAgent": {
+          "type": "string",
+          "description": "Browser or client user-agent string",
+          "maxLength": 250
+        },
+        "ipAddress": {
+          "type": "string",
+          "description": "Source IP address captured by server",
+          "maxLength": 80
+        }
+      },
+      "required": [
+        "id",
+        "timestamp",
+        "actorUserId",
+        "actorEmail",
+        "actorRole",
+        "action",
+        "category",
+        "severity",
+        "status",
+        "targetResource",
+        "details"
+      ]
+    },
+    "NotificationPreferences": {
+      "title": "NotificationPreferences",
+      "description": "User preferences for in-app system and email notifications across translations, exports, and resume updates",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Preference document identifier (notifications)",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner UID matching auth UID",
+          "maxLength": 128
+        },
+        "systemEnabled": {
+          "type": "boolean",
+          "description": "Master toggle for in-app system notifications"
+        },
+        "emailEnabled": {
+          "type": "boolean",
+          "description": "Master toggle for email notifications"
+        },
+        "events": {
+          "type": "object",
+          "description": "Per-event channel toggles for translation, export, and resumeUpdate"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last modification ISO 8601 timestamp",
+          "maxLength": 50
+        }
+      },
+      "required": ["id", "userId", "systemEnabled", "emailEnabled", "events", "updatedAt"]
+    },
+    "UserNotification": {
+      "title": "UserNotification",
+      "description": "Individual system/email notification event belonging to a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique notification identifier",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner UID matching auth UID",
+          "maxLength": 128
+        },
+        "eventType": {
+          "type": "string",
+          "enum": ["translation", "export", "resume_update"],
+          "description": "Event trigger category"
+        },
+        "title": {
+          "type": "string",
+          "description": "Notification headline",
+          "maxLength": 140
+        },
+        "message": {
+          "type": "string",
+          "description": "Notification descriptive message",
+          "maxLength": 500
+        },
+        "channelSystem": {
+          "type": "boolean",
+          "description": "Whether system notification was enabled for this event"
+        },
+        "channelEmail": {
+          "type": "boolean",
+          "description": "Whether email notification was enabled for this event"
+        },
+        "emailDeliveryStatus": {
+          "type": "string",
+          "enum": ["not_requested", "sent", "queued"],
+          "description": "Email dispatch outcome"
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Read status flag"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation ISO 8601 timestamp",
+          "maxLength": 50
+        },
+        "targetResource": {
+          "type": "string",
+          "description": "Optional related resource path",
+          "maxLength": 180
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "eventType",
+        "title",
+        "message",
+        "channelSystem",
+        "channelEmail",
+        "emailDeliveryStatus",
+        "read",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -402,6 +673,14 @@
     "/users/{userId}/resumes/{resumeId}": {
       "schema": "Resume",
       "description": "Subcollection of saved resumes and tailored versions created by the user"
+    },
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": "NotificationPreferences",
+      "description": "Subcollection storing user notification channel and event preferences"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": "UserNotification",
+      "description": "Subcollection storing user system and email notification records"
     },
     "/orders/{orderId}": {
       "schema": "Order",
@@ -422,6 +701,10 @@
     "/systemBanners/{bannerId}": {
       "schema": "SystemBanner",
       "description": "Stores in-app broadcast alerts, maintenance and promotion banners"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Stores immutable security audit logs for sensitive user actions and unauthorized access attempts"
     }
   }
 }

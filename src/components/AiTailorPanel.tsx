@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
-import { Sparkles, Check, ArrowRight, Loader2, AlertCircle, Copy, Plus, Wand2 } from 'lucide-react';
+import { SlidersHorizontal, Check, ArrowRight, Loader2, AlertCircle, Copy, Plus, Wand2, Briefcase } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
+import { auditCVAgainstJob } from '../utils/atsAnalyzer';
+import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
   getStoredPlatformSettingsSync,
@@ -19,6 +22,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   onChange,
   jobDescription
 }) => {
+  const { showWarning, showSuccess } = useToast();
   const [panelMode, setPanelMode] = useState<'full' | 'xyz'>('full');
   const [targetStandard, setTargetStandard] = useState<string>(
     'Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)'
@@ -52,7 +56,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 
   const handleInsertXyzToLatestExperience = () => {
     if (!cv.experiences || cv.experiences.length === 0) {
-      alert('Nenhum cargo encontrado no currículo para inserir a realização.');
+      showWarning('Sem Experiência Registada', 'Adicione primeiro um cargo na aba Editor antes de inserir a realização.');
       return;
     }
     const firstExp = cv.experiences[0];
@@ -63,6 +67,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
     const updatedList = [updatedExp, ...cv.experiences.slice(1)];
     onChange({ ...cv, experiences: updatedList });
     setXyzInserted(true);
+    showSuccess('Realização Inserida', `Adicionada ao cargo "${firstExp.role || 'mais recente'}".`);
     setTimeout(() => setXyzInserted(false), 3000);
   };
 
@@ -105,9 +110,8 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
     const adminPromptConfig = getStoredPromptSync('experienceOptimizer');
 
     try {
-      const response = await fetch('/api/tailor-cv', {
+      const response = await authorizedFetch('/api/tailor-cv', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cvData: cv,
           jobDescription,
@@ -117,7 +121,13 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
       });
 
       if (!response.ok) {
-        throw new Error(`Servidor retornou status ${response.status}`);
+        const errData = await response.json().catch(() => ({}));
+        if (response.status === 402 && errData?.quotaExceeded) {
+          setErrorMsg(errData.error || 'Os seus créditos gratuitos de IA esgotaram. Faça upgrade para continuar.');
+          setIsLoading(false);
+          return;
+        }
+        throw new Error(errData?.error || `Servidor retornou status ${response.status}`);
       }
 
       const data = await response.json();
@@ -130,7 +140,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
         userEmail: cv.personalDetails.email || 'anonymous',
         operationType: 'gemini_ai_call',
         errorMessage: `[AiTailor] ${err?.message || 'Falha na chamada Gemini'}`,
-        modelUsed: adminPromptConfig?.preferredModel || 'gemini-3.8-flash',
+        modelUsed: adminPromptConfig?.preferredModel || 'gemini-4-hydrogen',
         resolved: false
       });
 
@@ -149,16 +159,18 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
         tailoredSummary = `${cv.summary.trim()} Diferencia-se pelo rigor metodológico, forte compromisso com padrões internacionais de excelência e capacidade comprovada de entrega de resultados estratégicos em ambientes complexos.`;
       }
 
+      const fallbackAudit = auditCVAgainstJob({ ...cv, summary: tailoredSummary }, jobDescription);
+
       setTailoredResult({
         summary: tailoredSummary,
         competencies: cv.competencies,
         experiences: cv.experiences,
         atsInsights: {
-          scoreEstimate: 96,
-          matchingKeywords: cv.competencies.slice(0, 6).map((c) => c.category),
+          scoreEstimate: fallbackAudit.score,
+          matchingKeywords: fallbackAudit.matchedKeywords.slice(0, 6),
           recommendations: [
-            'Currículo harmonizado com sucesso seguindo as melhores práticas internacionais do mercado.',
-            'Verbos de ação e métricas executivas reforçadas para máxima legibilidade ATS.'
+            'Currículo harmonizado localmente com foco em verbos de impacto e legibilidade ATS.',
+            ...(fallbackAudit.recommendations || []).slice(0, 2)
           ]
         }
       });
@@ -214,7 +226,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
           <span>Otimizador Completo da Vaga</span>
         </button>
 
@@ -227,7 +239,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Wand2 className="w-3.5 h-3.5 text-purple-600" />
+          <Wand2 className="w-3.5 h-3.5 text-slate-700" />
           <span>Construtor Google XYZ</span>
         </button>
       </div>
@@ -238,7 +250,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-xs space-y-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-purple-600">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
                   Fórmula Executiva Google
                 </span>
                 <span className="text-[11px] text-slate-400 font-mono">
@@ -337,8 +349,8 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
             </div>
 
             {/* Live Result Preview */}
-            <div className="p-4 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
                 Resultado Formatado para o CV (Bullet Point Executivo)
               </span>
               <p className="text-xs text-slate-900 leading-relaxed font-medium">
@@ -363,10 +375,10 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 className={`w-full sm:w-auto flex-1 py-2.5 px-4 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-xs ${
                   xyzInserted
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-purple-700 hover:bg-purple-600 text-white'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
               >
-                {xyzInserted ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+                {xyzInserted ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 text-amber-400" />}
                 <span>{xyzInserted ? 'Inserido no Cargo!' : 'Inserir no Último Cargo do CV'}</span>
               </button>
             </div>
@@ -411,6 +423,24 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               </select>
             </div>
 
+            {/* Active Target Job Context Preview */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Contexto da Vaga Ativa</span>
+                </span>
+                <span className="text-[10px] font-mono tabular-nums text-slate-500">
+                  {jobDescription.trim().length} caracteres
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
+                {jobDescription.trim()
+                  ? jobDescription.trim()
+                  : 'Nenhuma descrição específica de vaga definida — a IA usará as melhores práticas gerais para o padrão institucional escolhido (pode colar uma vaga na aba Radar ATS).'}
+              </p>
+            </div>
+
             {/* Action Trigger */}
             <button
               type="button"
@@ -425,7 +455,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <Wand2 className="w-4 h-4 text-amber-400" />
                   <span>Executar Otimização Estratégica para a Vaga</span>
                 </>
               )}
@@ -507,11 +537,47 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 </div>
               )}
 
+              {/* Proposed Experiences (Google XYZ Rewrite Preview) */}
+              {tailoredResult.experiences && tailoredResult.experiences.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    Experiências Otimizadas — Fórmula Google XYZ ({tailoredResult.experiences.length})
+                  </span>
+                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                    {tailoredResult.experiences.map((exp: any, i: number) => (
+                      <div
+                        key={exp.id || i}
+                        className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <span className="font-bold text-slate-900">
+                            {exp.role} <span className="font-normal text-slate-600">— {exp.company}</span>
+                          </span>
+                          {exp.period && (
+                            <span className="text-[10px] font-mono text-slate-500">{exp.period}</span>
+                          )}
+                        </div>
+                        {Array.isArray(exp.highlights) && exp.highlights.length > 0 && (
+                          <ul className="space-y-1 text-[11px] text-slate-700 leading-relaxed pl-2">
+                            {exp.highlights.map((bullet: string, bIdx: number) => (
+                              <li key={bIdx} className="flex items-start gap-1.5">
+                                <span className="text-emerald-600 font-bold">•</span>
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* ATS Insights */}
               {tailoredResult.atsInsights && (
                 <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs space-y-1.5">
-                  <div className="font-semibold text-emerald-900">
-                    Taxa de Match Estimada: {tailoredResult.atsInsights.scoreEstimate || 95}%
+                  <div className="font-semibold text-emerald-900 tabular-nums">
+                    Taxa de Match Estimada: {tailoredResult.atsInsights.scoreEstimate ?? 90}%
                   </div>
                   {tailoredResult.atsInsights.recommendations && (
                     <ul className="text-emerald-800 space-y-0.5 pl-2">

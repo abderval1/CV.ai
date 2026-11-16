@@ -5,10 +5,13 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { generateWordDocument } from '../utils/docxExport';
 import { getTemplateById } from '../data/templateCatalog';
+import { recordAuditLog } from '../services/auditLogService';
+import { dispatchUserNotification } from '../services/notificationService';
+import { authorizedFetch } from '../utils/authHeaders';
 import {
   X,
   Globe,
-  Sparkles,
+  Languages,
   Download,
   Printer,
   FileText,
@@ -39,7 +42,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
   density = 'normal'
 }) => {
   const { t, setLanguage } = useLanguage();
-  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
 
   const [selectedLang, setSelectedLang] = useState<LanguageCode>('en');
@@ -64,9 +67,8 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
     setIsTranslating(true);
     try {
-      const response = await fetch('/api/translate-cv', {
+      const response = await authorizedFetch('/api/translate-cv', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           cvData: cv,
           targetLanguage: targetLang
@@ -74,7 +76,8 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       });
 
       if (!response.ok) {
-        throw new Error(`Erro ${response.status} ao comunicar com o servidor.`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.error || `Erro ${response.status} ao comunicar com o servidor.`);
       }
 
       const data = await response.json();
@@ -91,10 +94,21 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         };
         setTranslatedCV(merged);
         setLastTranslatedLang(targetLang);
+        const targetLangName =
+          SUPPORTED_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang.toUpperCase();
         showSuccess(
           t('cvLang.translationReady', 'Tradução Concluída!'),
-          `Currículo adaptado para ${SUPPORTED_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang}.`
+          `Currículo adaptado para ${targetLangName}.`
         );
+        if (user) {
+          void dispatchUserNotification({
+            user,
+            eventType: 'translation',
+            title: 'Tradução Multilíngue Concluída',
+            message: `O seu currículo foi traduzido e adaptado para ${targetLangName}.`,
+            targetResource: `translation/${targetLang}`
+          });
+        }
       } else {
         throw new Error('Resposta de tradução inválida.');
       }
@@ -111,10 +125,28 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
   const handleDownloadWord = async (docToExport: CVData, targetLang: LanguageCode) => {
     if (!isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${docToExport.templateStyle}/docx/${targetLang}`,
+        details: `Exportação multilingue Word (${targetLang.toUpperCase()}) bloqueada: não autenticado.`,
+        metadata: { format: 'docx', language: targetLang }
+      });
       onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para exportar o currículo.'));
       return;
     }
     if (!hasActivePlan) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${docToExport.templateStyle}/docx/${targetLang}`,
+        details: `Exportação multilingue Word (${targetLang.toUpperCase()}) bloqueada: plano pago exigido.`,
+        metadata: { format: 'docx', language: targetLang }
+      });
       onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em Word requer um plano ativo.'));
       return;
     }
@@ -135,6 +167,25 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
+      void recordAuditLog({
+        action: 'cv_exported_docx',
+        category: 'cv_export',
+        severity: 'info',
+        status: 'success',
+        targetResource: `resumes/${docToExport.templateStyle}/docx/${targetLang}`,
+        details: `Currículo multilingue exportado em Word (.docx) — idioma ${langUpper}, modelo ${templateInfo.shortName}.`,
+        metadata: { format: 'docx', language: targetLang, templateStyle: docToExport.templateStyle }
+      });
+      if (user) {
+        void dispatchUserNotification({
+          user,
+          eventType: 'export',
+          title: 'Exportação Multilíngue Concluída',
+          message: `Currículo no idioma ${langUpper} (${templateInfo.shortName}) exportado em Word (.docx).`,
+          targetResource: `resumes/${docToExport.templateStyle}/docx/${targetLang}`
+        });
+      }
+
       showSuccess(
         'Word Descarregado!',
         `Ficheiro no idioma ${langUpper} exportado com formatação nativa OpenXML.`
@@ -149,12 +200,49 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
   const handlePrintPDF = (docToPrint: CVData) => {
     if (!isAuthenticated) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${docToPrint.templateStyle}/pdf/${selectedLang}`,
+        details: `Exportação multilingue PDF (${selectedLang.toUpperCase()}) bloqueada: não autenticado.`,
+        metadata: { format: 'pdf', language: selectedLang }
+      });
       onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para imprimir ou guardar em PDF.'));
       return;
     }
     if (!hasActivePlan) {
+      void recordAuditLog({
+        action: 'cv_export_blocked_unauthorized',
+        category: 'cv_export',
+        severity: 'warning',
+        status: 'blocked',
+        targetResource: `resumes/${docToPrint.templateStyle}/pdf/${selectedLang}`,
+        details: `Exportação multilingue PDF (${selectedLang.toUpperCase()}) bloqueada: plano pago exigido.`,
+        metadata: { format: 'pdf', language: selectedLang }
+      });
       onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em PDF requer um plano ativo.'));
       return;
+    }
+
+    void recordAuditLog({
+      action: 'cv_exported_pdf',
+      category: 'cv_export',
+      severity: 'info',
+      status: 'success',
+      targetResource: `resumes/${docToPrint.templateStyle}/pdf/${selectedLang}`,
+      details: `Currículo multilingue exportado em PDF — idioma ${selectedLang.toUpperCase()}.`,
+      metadata: { format: 'pdf', language: selectedLang, templateStyle: docToPrint.templateStyle }
+    });
+    if (user) {
+      void dispatchUserNotification({
+        user,
+        eventType: 'export',
+        title: 'Exportação Multilíngue PDF',
+        message: `Currículo no idioma ${selectedLang.toUpperCase()} preparado para impressão/PDF.`,
+        targetResource: `resumes/${docToPrint.templateStyle}/pdf/${selectedLang}`
+      });
     }
 
     // Apply the translated CV and language to the main app and trigger window.print()
@@ -169,8 +257,8 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
   const activeDoc = (lastTranslatedLang === selectedLang && translatedCV) ? translatedCV : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden flex flex-col my-8">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-t-3xl sm:rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] sm:my-8">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/70">
           <div className="flex items-center gap-2.5">
@@ -237,7 +325,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
           <div className="p-4 rounded-lg bg-slate-50 border border-slate-200/80 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-slate-700" />
+                <Languages className="w-4 h-4 text-slate-700" />
                 <span className="text-xs font-semibold text-slate-800">
                   {lastTranslatedLang === selectedLang && translatedCV
                     ? `Tradução para ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name} Ativa`

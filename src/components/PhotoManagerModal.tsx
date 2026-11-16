@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { CVData } from '../types/cv';
 import { SAMPLE_AVATARS } from '../data/templateCatalog';
-import { Camera, Trash2, Check, Upload, HelpCircle, X, Sparkles } from 'lucide-react';
+import { Camera, Trash2, Check, Upload, HelpCircle, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 interface PhotoManagerModalProps {
@@ -244,7 +244,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
           <div className="pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <Camera className="w-3.5 h-3.5 text-slate-700" />
                 <span>Ou selecione um avatar executivo ilustrativo:</span>
               </span>
             </div>

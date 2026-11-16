@@ -36,6 +36,11 @@ import {
   Unsubscribe
 } from 'firebase/firestore';
 import { isUserAdmin } from '../services/saasDbService';
+import { recordAuditLog } from '../services/auditLogService';
+import {
+  dispatchUserNotification,
+  loadNotificationPreferences
+} from '../services/notificationService';
 
 const LOCAL_STORAGE_USER_KEY = 'curriculopro_user_session';
 const LOCAL_STORAGE_RESUMES_KEY = 'curriculopro_saved_resumes';
@@ -225,8 +230,7 @@ export function getAuthErrorMessage(err: any): string {
 }
 
 export interface ResetPasswordResult {
-  mode: 'firebase_email' | 'backend_code';
-  verificationCode?: string;
+  mode: 'firebase_email' | 'backend_code' | 'email_recovery';
   message: string;
 }
 
@@ -387,19 +391,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           consumeRedirectPendingMarker();
           sessionEpochRef.current += 1;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
-          const isAdmin = isUserAdmin(cleanEmail);
+          const isVerifiedAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
           const profile: User = {
             id: result.user.uid,
             name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
             email: cleanEmail,
-            role: isAdmin ? 'admin' : 'user',
+            role: isVerifiedAdmin ? 'admin' : 'user',
             status: 'active',
             avatarUrl: result.user.photoURL || undefined,
-            plan: isAdmin ? 'executive' : 'free',
-            creditsRemaining: isAdmin ? 9999 : 5,
+            plan: isVerifiedAdmin ? 'executive' : 'free',
+            creditsRemaining: isVerifiedAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
-          const synced = await syncFirebaseUserToBackend(profile, 'google', true);
+          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
           if (!cancelled) {
             setUser(synced);
             setAuthRedirectError(null);
@@ -461,7 +465,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const uid = currentFbUser.uid;
           const userDocRef = doc(db, 'users', uid);
           const cleanEmail = (currentFbUser.email || '').trim().toLowerCase();
-          const defaultAdmin = isUserAdmin(cleanEmail);
+          const defaultAdmin = isUserAdmin(cleanEmail) && Boolean(currentFbUser.emailVerified);
 
           let hydratedUser: User = {
             id: uid,
@@ -489,12 +493,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(null);
                 return;
               }
-              const isAdmin = isUserAdmin(data.email || cleanEmail, data.role);
+              const isAdmin = isUserAdmin(data.email || cleanEmail, data.role) && Boolean(currentFbUser.emailVerified);
               hydratedUser = {
                 id: uid,
                 name: data.name || currentFbUser.displayName || 'Utilizador',
                 email: data.email || cleanEmail,
-                role: isAdmin ? 'admin' : data.role || 'user',
+                role: isAdmin ? 'admin' : 'user',
                 status: data.status || 'active',
                 targetRole: data.targetRole || undefined,
                 phone: data.phone || undefined,
@@ -538,19 +542,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Firestore Error (Auth sync fallback active): ', JSON.stringify(info));
           }
 
-          // Sync Firebase session with backend so API cookies/tokens are always in sync
+          // Sync verified Firebase ID token with backend so API cookies/tokens are always in sync
           try {
+            const fbIdToken = await currentFbUser.getIdToken();
             const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
               method: 'POST',
+              headers: {
+                Authorization: `Bearer ${fbIdToken}`
+              },
               body: JSON.stringify({
-                uid: hydratedUser.id,
-                email: hydratedUser.email,
+                idToken: fbIdToken,
                 name: hydratedUser.name,
                 avatarUrl: hydratedUser.avatarUrl,
                 provider: currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
-                targetRole: hydratedUser.targetRole,
-                plan: hydratedUser.plan,
-                creditsRemaining: hydratedUser.creditsRemaining
+                targetRole: hydratedUser.targetRole
               })
             });
 
@@ -576,6 +581,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           setUser(hydratedUser);
           setAuthRedirectError(null);
+          void loadNotificationPreferences(hydratedUser.id).catch(() => {});
 
           // Attach listener for user's resumes subcollection
           try {
@@ -652,19 +658,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const syncFirebaseUserToBackend = async (profile: User, provider: 'google' | 'password', rememberMe = true) => {
+  const syncFirebaseUserToBackend = async (
+    fbUser: FirebaseUser,
+    profile: User,
+    provider: 'google' | 'password',
+    rememberMe = true
+  ) => {
     try {
+      const fbIdToken = await fbUser.getIdToken();
       const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
         method: 'POST',
+        headers: {
+          Authorization: `Bearer ${fbIdToken}`
+        },
         body: JSON.stringify({
-          uid: profile.id,
-          email: profile.email,
+          idToken: fbIdToken,
           name: profile.name,
           avatarUrl: profile.avatarUrl,
           provider,
           targetRole: profile.targetRole,
-          plan: profile.plan,
-          creditsRemaining: profile.creditsRemaining,
           rememberMe
         })
       });
@@ -696,7 +708,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           consumeRedirectPendingMarker();
           sessionEpochRef.current += 1;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
-          const isAdmin = isUserAdmin(cleanEmail);
+          const isAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
           const profile: User = {
             id: result.user.uid,
             name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
@@ -708,7 +720,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             creditsRemaining: isAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
-          const synced = await syncFirebaseUserToBackend(profile, 'google', true);
+          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
           setUser(synced);
           setAuthRedirectError(null);
           return true;
@@ -781,7 +793,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ).catch(() => {});
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
         if (cred.user) {
-          const isAdmin = isUserAdmin(cleanEmail);
+          const isAdmin = isUserAdmin(cleanEmail) && Boolean(cred.user.emailVerified);
           const profile: User = {
             id: cred.user.uid,
             name: cred.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
@@ -792,7 +804,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             creditsRemaining: isAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
-          const synced = await syncFirebaseUserToBackend(profile, 'password', rememberMe);
+          const synced = await syncFirebaseUserToBackend(cred.user, profile, 'password', rememberMe);
           setUser((prev) => prev || synced);
           return true;
         }
@@ -890,19 +902,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error('Por favor insira um endereço de e-mail válido.');
     }
 
-    // Check backend user store first so backend-registered users get a working code flow
+    // Try Firebase official email reset when Email/Password provider is enabled
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      return {
+        mode: 'firebase_email',
+        message: 'Enviámos um link oficial de redefinição para o seu e-mail. Verifique a sua caixa de entrada e spam.'
+      };
+    } catch (fbErr: any) {
+      if (!FIREBASE_EMAIL_UNAVAILABLE_CODES.has(fbErr?.code) && fbErr?.code !== 'auth/user-not-found') {
+        throw fbErr;
+      }
+    }
+
     const { response, data } = await apiAuthFetch('/api/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({ email: cleanEmail })
     });
-
-    if (response.ok && data?.success) {
-      return {
-        mode: 'backend_code',
-        verificationCode: data.verificationCode,
-        message: data.message || 'Código de recuperação gerado com sucesso.'
-      };
-    }
 
     if (response.status === 429) {
       const rateErr: any = new Error(data?.error || 'Demasiados pedidos de recuperação.');
@@ -910,23 +926,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw rateErr;
     }
 
-    // Fallback to Firebase password reset only if Firebase Email/Password happens to be enabled
-    try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+    if (response.ok && data?.success) {
       return {
-        mode: 'firebase_email',
-        message: 'Enviámos um link para redefinir a sua palavra-passe. Verifique a sua caixa de entrada e pasta de spam.'
+        mode: 'email_recovery',
+        message:
+          data.message ||
+          'Se esta conta utilizar login Google, aceda diretamente pelo botão Google acima; caso contrário contacte o suporte administrativo.'
       };
-    } catch (fbErr: any) {
-      if (FIREBASE_EMAIL_UNAVAILABLE_CODES.has(fbErr?.code)) {
-        const notFoundErr: any = new Error(
-          data?.error || 'Nenhuma conta com palavra-passe encontrada para este e-mail. Crie uma nova conta ou entre com Google.'
-        );
-        notFoundErr.code = 'auth/user-not-found';
-        throw notFoundErr;
-      }
-      throw fbErr;
     }
+
+    throw new Error(data?.error || 'Não foi possível processar o pedido de recuperação neste momento.');
   };
 
   const completePasswordReset = async (
@@ -979,10 +988,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(data?.error || 'Falha ao atualizar a palavra-passe.');
       }
     }
+
+    if (user) {
+      void recordAuditLog({
+        actorUserId: user.id,
+        actorEmail: user.email,
+        actorRole: user.role === 'admin' ? 'admin' : 'user',
+        action: 'password_changed',
+        category: 'profile',
+        severity: 'warning',
+        status: 'success',
+        targetResource: `users/${user.id}`,
+        details: 'Palavra-passe atualizada pelo titular da conta.'
+      });
+    }
   };
 
   const updateUserProfile = async (partial: Partial<User>): Promise<void> => {
     if (!user) return;
+    const changedKeys = Object.entries(partial)
+      .filter(([k, v]) => v !== undefined && (user as any)[k] !== v)
+      .map(([k]) => k);
     const updated = { ...user, ...partial, updatedAt: new Date().toISOString() };
     setUser(updated);
 
@@ -1019,6 +1045,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         console.warn('Erro ao atualizar perfil no backend:', err);
       }
+    }
+
+    if (changedKeys.length > 0) {
+      void recordAuditLog({
+        actorUserId: user.id,
+        actorEmail: user.email,
+        actorRole: user.role === 'admin' ? 'admin' : 'user',
+        action: 'profile_updated',
+        category: 'profile',
+        severity: 'info',
+        status: 'success',
+        targetResource: `users/${user.id}`,
+        details: `Dados de perfil editados pelo utilizador (${changedKeys.join(', ')}).`,
+        metadata: { changedFields: changedKeys.join(', ') }
+      });
     }
   };
 
@@ -1057,44 +1098,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const durationDays = getCycleDurationDays(cycle);
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
-    if (auth.currentUser) {
+    let verifiedBackendUser: User | null = null;
+    if (getStoredAuthToken()) {
+      const { response, data } = await apiAuthFetch('/api/auth/sync-plan', {
+        method: 'POST',
+        body: JSON.stringify({
+          plan,
+          billingCycle: cycle,
+          subscriptionExpiresAt: expiresAt,
+          stripeSubscriptionId: meta?.stripeSubscriptionId,
+          stripeCustomerId: meta?.stripeCustomerId,
+          stripeStatus: plan === 'free' ? 'canceled' : 'active'
+        })
+      });
+      if (!response.ok) {
+        if (user) {
+          void recordAuditLog({
+            actorUserId: user.id,
+            actorEmail: user.email,
+            actorRole: user.role === 'admin' ? 'admin' : 'user',
+            action: 'subscription_plan_sync_blocked',
+            category: 'subscription',
+            severity: 'critical',
+            status: 'blocked',
+            targetResource: `users/${user.id}`,
+            details: `Tentativa bloqueada de alteração para plano '${plan}' (${cycle}) sem pagamento verificado.`,
+            metadata: { requestedPlan: plan, billingCycle: cycle }
+          });
+        }
+        throw new Error(data?.error || 'Atualização de plano bloqueada pelo servidor de pagamentos.');
+      }
+      if (data?.user) {
+        verifiedBackendUser = data.user as User;
+      }
+    } else if (plan !== 'free') {
+      throw new Error('Sessão de autenticação necessária para ativar assinatura.');
+    }
+
+    if (auth.currentUser && plan === 'free') {
       const uid = auth.currentUser.uid;
       const userRef = doc(db, 'users', uid);
       try {
         await updateDoc(
           userRef,
           sanitizeForFirestore({
-            plan,
-            creditsRemaining: 9999,
-            billingCycle: cycle,
-            subscriptionExpiresAt: expiresAt,
-            stripeSubscriptionId: meta?.stripeSubscriptionId || null,
-            stripeCustomerId: meta?.stripeCustomerId || null,
-            stripeStatus: 'active',
+            stripeStatus: 'canceled',
             updatedAt: new Date().toISOString()
           })
         );
       } catch (err) {
-        console.warn('Aviso Firestore upgradePlan:', err);
-      }
-    }
-
-    if (getStoredAuthToken()) {
-      try {
-        await apiAuthFetch('/api/auth/sync-plan', {
-          method: 'POST',
-          body: JSON.stringify({
-            plan,
-            billingCycle: cycle,
-            creditsRemaining: 9999,
-            subscriptionExpiresAt: expiresAt,
-            stripeSubscriptionId: meta?.stripeSubscriptionId,
-            stripeCustomerId: meta?.stripeCustomerId,
-            stripeStatus: 'active'
-          })
-        });
-      } catch (err) {
-        console.warn('Aviso Backend sync-plan:', err);
+        console.warn('Aviso Firestore cancelamento:', err);
       }
     }
 
@@ -1103,16 +1156,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    setUser({
-      ...user,
-      plan,
-      creditsRemaining: 9999,
-      billingCycle: cycle,
-      stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
-      stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
-      stripeStatus: 'active',
-      subscriptionExpiresAt: expiresAt
+    void recordAuditLog({
+      actorUserId: user.id,
+      actorEmail: user.email,
+      actorRole: user.role === 'admin' ? 'admin' : 'user',
+      action: plan === 'free' ? 'subscription_canceled' : 'subscription_upgraded',
+      category: 'subscription',
+      severity: plan === 'free' ? 'warning' : 'info',
+      status: 'success',
+      targetResource: `users/${user.id}`,
+      details:
+        plan === 'free'
+          ? 'Subscrição alterada para plano gratuito / cancelada.'
+          : `Subscrição alterada com sucesso para '${plan}' (${cycle}).`,
+      metadata: {
+        previousPlan: user.plan,
+        newPlan: plan,
+        billingCycle: cycle
+      }
     });
+
+    setUser(
+      verifiedBackendUser
+        ? { ...user, ...verifiedBackendUser }
+        : {
+            ...user,
+            plan,
+            creditsRemaining: plan === 'free' ? 5 : 9999,
+            billingCycle: cycle,
+            stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
+            stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
+            stripeStatus: plan === 'free' ? 'canceled' : 'active',
+            subscriptionExpiresAt: expiresAt
+          }
+    );
   };
 
   const refreshUser = async (): Promise<User | null> => {
@@ -1236,6 +1313,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setSavedResumes((prev) => [newResume, ...prev.filter((r) => r.id !== newResume.id && r.title !== newResume.title)]);
+    if (user) {
+      void dispatchUserNotification({
+        user,
+        eventType: 'resume_update',
+        title: 'Currículo Atualizado na Biblioteca',
+        message: `A versão "${safeTitle}" foi guardada e sincronizada com sucesso na sua conta.`,
+        targetResource: `users/${user.id}/resumes/${id}`
+      });
+    }
     return id;
   };
 
@@ -1299,6 +1385,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...targetUser,
       notes: `[Sessão de Suporte Ativa] ${targetUser.notes || ''}`
     });
+    void recordAuditLog({
+      actorUserId: user.id,
+      actorEmail: user.email,
+      actorRole: 'admin',
+      action: 'impersonation_event',
+      category: 'admin',
+      severity: 'warning',
+      status: 'success',
+      targetResource: `users/${targetUser.id}`,
+      details: `Administrador iniciou modo de personificação sobre ${targetUser.email}. Motivo: ${reason || 'suporte'}`
+    });
   };
 
   const stopImpersonating = async (): Promise<void> => {
@@ -1315,6 +1412,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           action: 'ended',
           details: 'Sessão de suporte concluída pelo administrador',
           timestamp: new Date().toISOString()
+        });
+        void recordAuditLog({
+          actorUserId: originalAdminUser.id,
+          actorEmail: originalAdminUser.email,
+          actorRole: 'admin',
+          action: 'impersonation_event',
+          category: 'admin',
+          severity: 'info',
+          status: 'success',
+          targetResource: `users/${user.id}`,
+          details: `Administrador encerrou modo de personificação sobre ${user.email}.`
         });
       }
     } catch (e) {

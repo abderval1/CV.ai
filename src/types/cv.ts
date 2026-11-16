@@ -220,3 +220,36 @@ export interface SaaSStats {
   conversionRate: number;
 }
 
+export type NotificationEventType = 'translation' | 'export' | 'resume_update';
+
+export interface NotificationChannelConfig {
+  system: boolean;
+  email: boolean;
+}
+
+export interface NotificationPreferences {
+  id: string;
+  userId: string;
+  systemEnabled: boolean;
+  emailEnabled: boolean;
+  events: {
+    translation: NotificationChannelConfig;
+    export: NotificationChannelConfig;
+    resumeUpdate: NotificationChannelConfig;
+  };
+  updatedAt: string;
+}
+
+export interface UserNotificationItem {
+  id: string;
+  userId: string;
+  eventType: NotificationEventType;
+  title: string;
+  message: string;
+  channelSystem: boolean;
+  channelEmail: boolean;
+  emailDeliveryStatus: 'not_requested' | 'sent' | 'queued';
+  read: boolean;
+  createdAt: string;
+  targetResource?: string;
+}

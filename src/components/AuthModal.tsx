@@ -58,10 +58,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
 
-  // 2-step password reset state for backend recovery code flow
+  // 2-step password reset state when Firebase email reset is active
   const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
   const [resetCode, setResetCode] = useState<string>('');
-  const [issuedResetHint, setIssuedResetHint] = useState<string | null>(null);
   const [newResetPassword, setNewResetPassword] = useState<string>('');
   const [googleDomainWarning, setGoogleDomainWarning] = useState<string | null>(null);
   const errorBannerRef = React.useRef<HTMLDivElement | null>(null);
@@ -94,7 +93,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setConfirmPassword('');
       setResetStep('request');
       setResetCode('');
-      setIssuedResetHint(null);
       setNewResetPassword('');
       setLoading(false);
       setGoogleLoading(false);
@@ -218,17 +216,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setLoading(true);
         try {
           const result = await resetPassword(cleanEmail);
-          if (result.mode === 'backend_code') {
-            setResetStep('verify');
-            setIssuedResetHint(result.verificationCode || null);
-            setSuccessInfo(
-              result.verificationCode
-                ? `Código de verificação gerado: ${result.verificationCode}. Insira-o abaixo com a sua nova palavra-passe.`
-                : result.message
-            );
-          } else {
-            setSuccessInfo(result.message);
-          }
+          setSuccessInfo(result.message);
         } catch (err: any) {
           setError(getAuthErrorMessage(err));
         } finally {
@@ -461,11 +449,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <span>{successInfo}</span>
-                {issuedResetHint && (
-                  <div className="font-mono text-xs font-semibold bg-white/90 px-2.5 py-1 rounded border border-emerald-300 inline-block">
-                    Código: {issuedResetHint}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -785,7 +768,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   ? 'Criar Conta & Entrar'
                   : resetStep === 'verify'
                   ? 'Confirmar Nova Palavra-passe'
-                  : 'Enviar Código / Link de Redefinição'}
+                  : 'Solicitar Recuperação de Acesso'}
               </span>
               {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
