@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { CVData } from '../types/cv';
 import { auditCVAgainstJob } from '../utils/atsAnalyzer';
 import { SAMPLE_JOB_OFFERS } from '../data/initialCV';
+import { useLanguage } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import {
   Target,
   AlertCircle,
@@ -35,11 +37,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   setJobDescription,
   onOpenAiTailor
 }) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).atsRadar;
   const [activeTab, setActiveTab] = useState<'audit' | 'bot_view' | 'checklist'>('audit');
   const [keywordDestination, setKeywordDestination] = useState<KeywordDestination>('competencies');
   const [copiedRawText, setCopiedRawText] = useState<boolean>(false);
 
-  const auditResult = auditCVAgainstJob(cv, jobDescription);
+  const auditResult = auditCVAgainstJob(cv, jobDescription, siteLanguage);
   const hasJobContext = jobDescription.trim().length >= 20;
 
   // Flexible Keyword Injection Engine (with duplicate guard)
@@ -241,16 +245,16 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           </div>
           <div>
             <h2 className="text-sm font-bold text-slate-900">
-              Taxa de Compatibilidade ATS (Applicant Tracking System)
+              {ui.bannerTitle}
             </h2>
             <p className="text-xs text-slate-700 mt-0.5">
               {!hasJobContext
-                ? 'Cole a descrição da vaga alvo abaixo (ou escolha um exemplo) para calcular o match exato de palavras-chave.'
+                ? ui.statusNoJob
                 : auditResult.score >= 85
-                ? 'Excelente! Forte densidade de palavras-chave e alinhamento com a vaga.'
+                ? ui.statusHigh
                 : auditResult.score >= 70
-                ? 'Bom alinhamento, mas faltam termos técnicos decisivos.'
-                : 'Atenção: Risco de filtro automático pelos robôs de triagem.'}
+                ? ui.statusMid
+                : ui.statusLow}
             </p>
           </div>
         </div>
@@ -261,7 +265,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap shrink-0 shadow-xs"
         >
           <Zap className="w-3.5 h-3.5 text-amber-400" />
-          <span>Otimizar c/ IA para 95%+</span>
+          <span>{ui.optimizeAiBtn}</span>
         </button>
       </div>
 
@@ -277,7 +281,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           }`}
         >
           <Target className="w-3.5 h-3.5 text-slate-700" />
-          <span>Auditoria & Palavras-Chave</span>
+          <span>{ui.tabAudit}</span>
         </button>
         <button
           type="button"
@@ -289,7 +293,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           }`}
         >
           <Terminal className="w-3.5 h-3.5 text-amber-600" />
-          <span>Simulador Robô ATS (Parser)</span>
+          <span>{ui.tabBotView}</span>
         </button>
         <button
           type="button"
@@ -301,7 +305,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           }`}
         >
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Checklist de Formatação</span>
+          <span>{ui.tabChecklist}</span>
         </button>
       </div>
 
@@ -314,13 +318,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="flex items-center gap-2">
                 <Target className="w-4 h-4 text-slate-700" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Termos de Referência / Descrição da Vaga
+                  {ui.jobHeader}
                 </h3>
               </div>
 
               {/* Preset Buttons */}
               <div className="flex flex-wrap items-center gap-1 text-xs">
-                <span className="text-slate-400 text-[11px] mr-1">Carregar Exemplo:</span>
+                <span className="text-slate-400 text-[11px] mr-1">{ui.loadSampleLabel}</span>
                 {SAMPLE_JOB_OFFERS.map((job) => (
                   <button
                     key={job.id}
@@ -329,13 +333,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                     className="px-2 py-0.5 text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 rounded transition-colors"
                     title={job.title}
                   >
-                    {job.id === 'job-1'
-                      ? 'COO Operações'
-                      : job.id === 'job-2'
-                      ? 'Cloud & Tech Lead'
-                      : job.id === 'job-3'
-                      ? 'VP Finanças & M&A'
-                      : 'Governança Global'}
+                    {ui.jobChips[job.id as keyof typeof ui.jobChips] || job.title}
                   </button>
                 ))}
               </div>
@@ -345,19 +343,19 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               rows={5}
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
-              placeholder="Cole aqui a descrição completa da vaga que deseja disputar (requisitos, competências, termos de referência)..."
+              placeholder={ui.jobPlaceholder}
               className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans"
             />
             {!hasJobContext ? (
               <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 flex items-center gap-2">
                 <Info className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  Sem descrição de vaga ativa: cole o anúncio acima ou clique num dos exemplos para ativar o rastreio real de palavras-chave ATS.
+                  {ui.noJobWarning}
                 </span>
               </div>
             ) : (
               <p className="text-[11px] text-slate-400">
-                O analisador compara automaticamente cada linha do seu CV contra os requisitos essenciais desta vaga.
+                {ui.activeJobInfo}
               </p>
             )}
           </div>
@@ -368,13 +366,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  Palavras-Chave Faltantes (<span className="tabular-nums">{auditResult.missingKeywords.length}</span>)
+                  {ui.missingTitle} (<span className="tabular-nums">{auditResult.missingKeywords.length}</span>)
                 </h3>
               </div>
 
               {/* Destination Selector */}
               <div className="flex items-center gap-1.5 self-start sm:self-auto text-xs bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">Destino:</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase px-1.5">{ui.destLabel}</span>
                 <button
                   type="button"
                   onClick={() => setKeywordDestination('competencies')}
@@ -383,9 +381,9 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="Inserir nas Competências Chave do CV"
+                  title={ui.destCompTitle}
                 >
-                  Competências
+                  {ui.destComp}
                 </button>
                 <button
                   type="button"
@@ -395,9 +393,9 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="Adicionar ao Resumo Executivo"
+                  title={ui.destSummaryTitle}
                 >
-                  Resumo
+                  {ui.destSummary}
                 </button>
                 <button
                   type="button"
@@ -407,9 +405,9 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                       ? 'bg-white text-slate-900 shadow-2xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
-                  title="Inserir como conquista no último cargo"
+                  title={ui.destExpTitle}
                 >
-                  Último Cargo
+                  {ui.destExp}
                 </button>
               </div>
             </div>
@@ -417,25 +415,25 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             {auditResult.missingKeywords.length > 0 && (
               <div className="flex items-center justify-between bg-amber-50/70 border border-amber-200/80 rounded-lg p-2.5 text-xs text-amber-950">
                 <span className="text-[11px]">
-                  Clique no <strong>+</strong> de cada termo para inserir em <strong>{keywordDestination === 'competencies' ? 'Competências' : keywordDestination === 'summary' ? 'Resumo Executivo' : 'Último Cargo'}</strong>.
+                  {ui.clickPlusPrefix} <strong>+</strong> {ui.clickPlusMiddle} <strong>{keywordDestination === 'competencies' ? ui.destCompFull : keywordDestination === 'summary' ? ui.destSummaryFull : ui.destExpFull}</strong>.
                 </span>
                 <button
                   type="button"
                   onClick={handleAddAllMissingKeywords}
                   className="text-[11px] font-bold text-amber-950 bg-amber-300 hover:bg-amber-400 px-3 py-1 rounded-md transition-colors shadow-2xs shrink-0 whitespace-nowrap ml-2"
                 >
-                  + Adicionar Todas
+                  {ui.addAllBtn}
                 </button>
               </div>
             )}
 
             {!hasJobContext ? (
               <p className="text-xs text-slate-500">
-                Aguardando a descrição da vaga para identificar termos em falta no seu currículo.
+                {ui.waitingJobMsg}
               </p>
             ) : auditResult.missingKeywords.length === 0 ? (
               <p className="text-xs text-emerald-700 font-medium">
-                Parabéns! Todas as palavras-chave críticas da vaga estão mencionadas no seu currículo.
+                {ui.congratsNoMissing}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2 pt-1">
@@ -449,8 +447,8 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                       type="button"
                       onClick={() => handleAddKeyword(kw)}
                       className="p-1 hover:bg-amber-200 rounded text-amber-800 transition-colors"
-                      aria-label={`Inserir "${kw}" no CV em ${keywordDestination}`}
-                      title={`Inserir "${kw}" no CV em ${keywordDestination}`}
+                      aria-label={`${ui.insertAriaPrefix} "${kw}" (${keywordDestination})`}
+                      title={`${ui.insertAriaPrefix} "${kw}" (${keywordDestination})`}
                     >
                       <Plus className="w-3 h-3" />
                     </button>
@@ -465,13 +463,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Palavras-Chave Validadas no seu CV (<span className="tabular-nums">{auditResult.matchedKeywords.length}</span>)
+                {ui.matchedTitle} (<span className="tabular-nums">{auditResult.matchedKeywords.length}</span>)
               </h3>
             </div>
 
             {auditResult.matchedKeywords.length === 0 ? (
               <p className="text-xs text-slate-500">
-                Nenhuma correspondência direta validada ainda para os termos da vaga atual.
+                {ui.noMatchedMsg}
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5 text-xs text-slate-600">
@@ -492,7 +490,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             {/* Metrics Density */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
               <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Métricas Quantificáveis Detectadas
+                {ui.metricsTitle}
               </h4>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
@@ -500,25 +498,25 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
                 </span>
                 <span className="text-xs text-slate-500">
                   {auditResult.quantifiableMetricsCount >= 8
-                    ? 'Excelente densidade numérica'
-                    : 'Poucas métricas encontradas'}
+                    ? ui.metricsHigh
+                    : ui.metricsLow}
                 </span>
               </div>
               <p className="text-[11px] text-slate-600">
-                Recrutadores corporativos globais priorizam bullets com dados quantificados (ex: "mais de 120 colaboradores", "redução de 32% nos custos").
+                {ui.metricsTip}
               </p>
             </div>
 
             {/* Action Verbs */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2">
               <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Verbos de Ação Executiva
+                {ui.verbsTitle}
               </h4>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                   {auditResult.strongActionVerbs.length}
                 </span>
-                <span className="text-xs text-slate-500">verbos de alto impacto</span>
+                <span className="text-xs text-slate-500">{ui.verbsSub}</span>
               </div>
               <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
                 {auditResult.strongActionVerbs.slice(0, 6).map((verb, idx) => (
@@ -533,7 +531,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           {/* Strategic Recommendations */}
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-2.5">
             <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Recomendações Estratégicas para esta Vaga
+              {ui.recsTitle}
             </h4>
             <ul className="space-y-1.5 text-xs text-slate-700">
               {auditResult.recommendations.map((rec, i) => (
@@ -554,7 +552,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-emerald-400" />
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                Visualização do Parser ATS (Workday / Taleo OCR Engine)
+                {ui.botTitle}
               </h3>
             </div>
             <button
@@ -563,13 +561,13 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               className="text-[11px] px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded transition-colors self-start sm:self-auto flex items-center gap-1"
             >
               {copiedRawText ? <Check className="w-3 h-3 text-emerald-400" /> : null}
-              <span>{copiedRawText ? 'Copiado!' : 'Copiar Texto Extraído'}</span>
+              <span>{copiedRawText ? ui.copiedBtn : ui.copyExtractedBtn}</span>
             </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-400">
             <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Legibilidade Linear</span>
+              <span className="block text-slate-500 text-[10px]">{ui.ocrReadability}</span>
               <span
                 className={`font-bold text-sm tabular-nums ${
                   computedOcrScore >= 92 ? 'text-emerald-400' : 'text-amber-400'
@@ -579,30 +577,30 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               </span>
             </div>
             <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Cargos / Bullets</span>
+              <span className="block text-slate-500 text-[10px]">{ui.ocrRolesBullets}</span>
               <span className="text-white font-bold text-sm tabular-nums">
                 {cv.experiences.length} / {totalHighlightsCount}
               </span>
             </div>
             <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Competências</span>
+              <span className="block text-slate-500 text-[10px]">{ui.ocrSkills}</span>
               <span className="text-white font-bold text-sm tabular-nums">{cv.competencies.length}</span>
             </div>
             <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-              <span className="block text-slate-500 text-[10px]">Estrutura / Foto</span>
+              <span className="block text-slate-500 text-[10px]">{ui.ocrStructurePhoto}</span>
               <span
                 className={`font-bold text-sm ${
                   !isTwoColumnTemplate && !hasPhotoEnabled ? 'text-emerald-400' : 'text-amber-400'
                 }`}
               >
-                {isTwoColumnTemplate ? '2 Colunas' : 'Coluna Única'}
-                {hasPhotoEnabled ? ' · Foto' : ''}
+                {isTwoColumnTemplate ? ui.twoCols : ui.oneCol}
+                {hasPhotoEnabled ? ` ${ui.withPhoto}` : ''}
               </span>
             </div>
           </div>
 
           <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-            Abaixo está a representação exata do fluxo textual extraído pelos motores de triagem automáticos. Se um dado não aparecer aqui, ele é invisível para a filtragem inicial.
+            {ui.botDesc}
           </p>
 
           <pre className="bg-black/60 p-3.5 rounded-lg border border-slate-800 text-[11px] text-emerald-300/90 whitespace-pre-wrap leading-relaxed max-h-80 overflow-y-auto">
@@ -617,7 +615,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
           <div className="flex items-center gap-2 pb-2 border-b border-slate-200">
             <ShieldCheck className="w-4 h-4 text-slate-900" />
             <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Checklist de Conformidade Algorítmica Internacional
+              {ui.checklistTitle}
             </h3>
           </div>
 
@@ -632,18 +630,18 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold text-slate-900">
-                    Estrutura de Coluna Única (Zero Tabelas Complexas)
+                    {ui.c1Title}
                   </h4>
                   <span
                     className={`text-[10px] px-2 py-0.2 rounded font-bold ${
                       isHarvardOrAts ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {isHarvardOrAts ? 'Conforme' : 'Aviso: Modelo Dividido'}
+                    {isHarvardOrAts ? ui.c1Ok : ui.c1Warn}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  Modelos de coluna única como Executive Harvard ou ATS Compact garantem 100% de leitura em robôs antigos e modernos.
+                  {ui.c1Desc}
                 </p>
               </div>
             </div>
@@ -658,18 +656,18 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold text-slate-900">
-                    Cabeçalho de Contactos Padronizado
+                    {ui.c2Title}
                   </h4>
                   <span
                     className={`text-[10px] px-2 py-0.2 rounded font-bold ${
                       hasStandardContact ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                     }`}
                   >
-                    {hasStandardContact ? 'Aprovado' : 'Faltam Dados'}
+                    {hasStandardContact ? ui.c2Ok : ui.c2Fail}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  E-mail institucional/profissional, telefone com prefixo e localização territorial devem estar explícitos no topo do documento.
+                  {ui.c2Desc}
                 </p>
               </div>
             </div>
@@ -684,18 +682,18 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold text-slate-900">
-                    Densidade do Resumo Executivo (100+ caracteres)
+                    {ui.c3Title}
                   </h4>
                   <span
                     className={`text-[10px] px-2 py-0.2 rounded font-bold ${
                       hasStrongSummary ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {hasStrongSummary ? 'Adequado' : 'Curto'}
+                    {hasStrongSummary ? ui.c3Ok : ui.c3Warn}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  O resumo deve conter a proposta de valor, senioridade e especialidade em termos precisos.
+                  {ui.c3Desc}
                 </p>
               </div>
             </div>
@@ -710,18 +708,18 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-bold text-slate-900">
-                    Métricas de Impacto Comprovadas (Fórmula Google XYZ)
+                    {ui.c4Title}
                   </h4>
                   <span
                     className={`text-[10px] px-2 py-0.2 rounded font-bold tabular-nums ${
                       hasQuantifiableMetrics ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
                     }`}
                   >
-                    {auditResult.quantifiableMetricsCount} métricas
+                    {auditResult.quantifiableMetricsCount} {ui.c4Unit}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  O algoritmo pontua alto candidatos que demonstram resultados numéricos tangíveis em percentagens (%) ou volumes.
+                  {ui.c4Desc}
                 </p>
               </div>
             </div>

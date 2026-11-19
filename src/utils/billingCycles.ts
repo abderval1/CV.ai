@@ -1,4 +1,6 @@
 import { BillingCycle, SubscriptionPlan } from '../types/cv';
+import { SiteLanguageCode } from '../i18n/siteTranslations';
+import { BILLING_UI_TRANSLATIONS } from '../i18n/billingUiTranslations';
 
 export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'evp';
 
@@ -63,13 +65,26 @@ export function getCycleDurationDays(cycle?: BillingCycle | string | null): numb
   return BILLING_CYCLE_META[normalizeBillingCycle(cycle)].durationDays;
 }
 
-export function formatCycleLabel(cycle?: BillingCycle | string | null): string {
-  return BILLING_CYCLE_META[normalizeBillingCycle(cycle)].label;
+export function formatCycleLabel(
+  cycle?: BillingCycle | string | null,
+  lang: SiteLanguageCode = 'pt'
+): string {
+  const normalized = normalizeBillingCycle(cycle);
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  return dict.cycles[normalized]?.label || BILLING_CYCLE_META[normalized].label;
 }
 
-export function formatCycleWithDiscount(cycle?: BillingCycle | string | null): string {
-  const meta = BILLING_CYCLE_META[normalizeBillingCycle(cycle)];
-  return meta.badgeText ? `${meta.label} (${meta.badgeText})` : meta.label;
+export function formatCycleWithDiscount(
+  cycle?: BillingCycle | string | null,
+  lang: SiteLanguageCode = 'pt'
+): string {
+  const normalized = normalizeBillingCycle(cycle);
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  const localized = dict.cycles[normalized];
+  const meta = BILLING_CYCLE_META[normalized];
+  const label = localized?.label || meta.label;
+  const badgeText = localized?.badgeText ?? meta.badgeText;
+  return badgeText ? `${label} (${badgeText})` : label;
 }
 
 export function getDefaultCyclePriceUSD(monthlyUSD: number, cycle: BillingCycle): number {
@@ -127,20 +142,25 @@ export function detectPixKeyType(key: string): PixKeyType {
   return 'evp';
 }
 
-export function getPixKeyTypeLabel(type?: PixKeyType | string): string {
+export function getPixKeyTypeLabel(
+  type?: PixKeyType | string,
+  lang: SiteLanguageCode = 'pt'
+): string {
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  const labels = dict.pixKeyTypes;
   switch (type) {
     case 'cpf':
-      return 'CPF';
+      return labels.cpf;
     case 'cnpj':
-      return 'CNPJ';
+      return labels.cnpj;
     case 'email':
-      return 'E-mail';
+      return labels.email;
     case 'phone':
-      return 'Telefone';
+      return labels.phone;
     case 'evp':
-      return 'Chave EVP';
+      return labels.evp;
     default:
-      return 'Chave Pix';
+      return labels.default;
   }
 }
 

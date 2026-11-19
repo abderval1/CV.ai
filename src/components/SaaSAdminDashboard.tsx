@@ -130,7 +130,9 @@ import {
   UserCog,
   Globe,
   QrCode,
-  Edit3
+  Edit3,
+  CreditCard,
+  Copy
 } from 'lucide-react';
 import {
   AdminFinancialCharts,
@@ -305,6 +307,18 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [showNewBannerModal, setShowNewBannerModal] = useState<boolean>(false);
   const [showNewSnippetModal, setShowNewSnippetModal] = useState<boolean>(false);
   const [selectedInvoice, setSelectedInvoice] = useState<SaaSOrder | null>(null);
+  const [cardGatewayHealth, setCardGatewayHealth] = useState<{
+    ready: boolean;
+    secretMode?: string;
+    publishableMode?: string;
+    keysMatchMode?: boolean;
+    apiReachable?: boolean;
+    error?: string;
+  } | null>(null);
+  const [invoiceReceiptPreviewUrl, setInvoiceReceiptPreviewUrl] = useState<string | null>(null);
+  const [invoiceReceiptMime, setInvoiceReceiptMime] = useState<string>('');
+  const [invoiceReceiptLoading, setInvoiceReceiptLoading] = useState<boolean>(false);
+  const [invoiceReceiptError, setInvoiceReceiptError] = useState<string | null>(null);
   const [impersonatingTargetUser, setImpersonatingTargetUser] = useState<User | null>(null);
   const [impersonateReason, setImpersonateReason] = useState<string>('Diagnóstico de layout reportado pelo cliente');
   const [pendingConfirm, setPendingConfirm] = useState<{
@@ -431,6 +445,15 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setPlatformSettings(settings);
       setImpersonationLogs(impLogs);
       setTelemetry(getFrontendTelemetry());
+      try {
+        const cardHealthRes = await fetch('/api/payments/card-health', { credentials: 'include' });
+        if (cardHealthRes.ok) {
+          const healthData = await cardHealthRes.json();
+          setCardGatewayHealth(healthData);
+        }
+      } catch {
+        // ignore transient payment health fetch error
+      }
     } catch (err) {
       console.error('Falha ao sincronizar módulos administrativos:', err);
     } finally {
@@ -466,6 +489,76 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       }
     }
   }, [isOpen, isAdminAccess, isImpersonating]);
+
+  // Authenticated loader for uploaded Pix receipts (supports Bearer token + cookie)
+  useEffect(() => {
+    let activeObjectUrl: string | null = null;
+    let cancelled = false;
+
+    const receiptUrl = selectedInvoice?.receiptUrl;
+    if (!receiptUrl) {
+      setInvoiceReceiptPreviewUrl(null);
+      setInvoiceReceiptMime('');
+      setInvoiceReceiptLoading(false);
+      setInvoiceReceiptError(null);
+      return;
+    }
+
+    if (receiptUrl.startsWith('https://')) {
+      setInvoiceReceiptPreviewUrl(receiptUrl);
+      setInvoiceReceiptMime('external');
+      setInvoiceReceiptLoading(false);
+      setInvoiceReceiptError(null);
+      return;
+    }
+
+    if (receiptUrl.startsWith('/api/orders/')) {
+      setInvoiceReceiptLoading(true);
+      setInvoiceReceiptError(null);
+      setInvoiceReceiptPreviewUrl(null);
+      (async () => {
+        try {
+          let token: string | null = null;
+          try {
+            token =
+              localStorage.getItem('curriculopro_auth_token') ||
+              sessionStorage.getItem('curriculopro_auth_token');
+          } catch {
+            token = null;
+          }
+          const resp = await fetch(receiptUrl, {
+            credentials: 'include',
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+          });
+          if (!resp.ok) {
+            throw new Error('Comprovante indisponível ou expirado.');
+          }
+          const contentType = resp.headers.get('content-type') || 'application/octet-stream';
+          const blob = await resp.blob();
+          activeObjectUrl = URL.createObjectURL(blob);
+          if (!cancelled) {
+            setInvoiceReceiptMime(contentType);
+            setInvoiceReceiptPreviewUrl(activeObjectUrl);
+          } else if (activeObjectUrl) {
+            URL.revokeObjectURL(activeObjectUrl);
+          }
+        } catch (err: any) {
+          if (!cancelled) {
+            setInvoiceReceiptError(err?.message || 'Não foi possível carregar o comprovante anexado.');
+          }
+        } finally {
+          if (!cancelled) setInvoiceReceiptLoading(false);
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+      if (activeObjectUrl) {
+        URL.revokeObjectURL(activeObjectUrl);
+      }
+    };
+  }, [selectedInvoice?.id, selectedInvoice?.receiptUrl]);
 
   // Real-time Firestore listener for /auditLogs
   useEffect(() => {
@@ -1056,12 +1149,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   }, [usersList, userSearch, userPlanFilter, userStatusFilter]);
 
   const filteredOrders = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
     return ordersList.filter((o) => {
       const matchSearch =
-        o.orderNumber.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        o.userName.toLowerCase().includes(orderSearch.toLowerCase()) ||
-        o.userEmail.toLowerCase().includes(orderSearch.toLowerCase());
-      const matchStatus = orderStatusFilter === 'all' || o.status === orderStatusFilter;
+        !q ||
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.userName.toLowerCase().includes(q) ||
+        o.userEmail.toLowerCase().includes(q) ||
+        (o.stripePaymentIntentId && o.stripePaymentIntentId.toLowerCase().includes(q)) ||
+        (o.notes && o.notes.toLowerCase().includes(q));
+      const matchStatus =
+        orderStatusFilter === 'all'
+          ? true
+          : orderStatusFilter === 'pending_pix'
+          ? o.status === 'pending' && o.paymentMethod === 'pix'
+          : o.status === orderStatusFilter;
       return matchSearch && matchStatus;
     });
   }, [ordersList, orderSearch, orderStatusFilter]);
@@ -1291,10 +1393,29 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       variant: 'danger',
       onConfirm: async () => {
         try {
-          await deleteUserAccountRecord(target.id);
-          setUsersList((prev) => prev.filter((u) => u.id !== target.id));
-          if (inspectedUser?.id === target.id) setInspectedUser(null);
+          await deleteUserAccountRecord(target.id, target.email);
+          const targetEmailLower = (target.email || '').trim().toLowerCase();
+          setUsersList((prev) =>
+            prev.filter(
+              (u) =>
+                u.id !== target.id &&
+                (!targetEmailLower || (u.email || '').trim().toLowerCase() !== targetEmailLower)
+            )
+          );
+          if (
+            inspectedUser &&
+            (inspectedUser.id === target.id ||
+              (targetEmailLower && (inspectedUser.email || '').trim().toLowerCase() === targetEmailLower))
+          ) {
+            setInspectedUser(null);
+          }
           showNotification(`Conta ${target.email} eliminada.`);
+          try {
+            const refreshedUsers = await fetchAllUsers();
+            setUsersList(refreshedUsers);
+          } catch {
+            // keep optimistic update if follow-up sync is transient
+          }
         } catch (e) {
           console.error(e);
           showNotification('Erro ao eliminar conta.');
@@ -1314,11 +1435,34 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setOrdersList((prev) =>
         prev.map((o) => (o.id === order.id ? { ...o, status: 'paid' } : o))
       );
+      if (selectedInvoice?.id === order.id) {
+        setSelectedInvoice((prev) => (prev ? { ...prev, status: 'paid' } : prev));
+      }
       showNotification(`Fatura ${order.orderNumber} aprovada e acesso de ${order.userName} ativado!`);
       loadAllModules();
     } catch (e) {
       console.error(e);
       showNotification('Erro ao aprovar pagamento.');
+    }
+  };
+
+  const handleRejectOrder = async (order: SaaSOrder) => {
+    try {
+      const rejectNote = 'Comprovante Pix recusado pelo administrador.';
+      await updateOrderStatus(order.id, 'failed', rejectNote, order);
+      setOrdersList((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status: 'failed', notes: rejectNote } : o))
+      );
+      if (selectedInvoice?.id === order.id) {
+        setSelectedInvoice((prev) =>
+          prev ? { ...prev, status: 'failed', notes: rejectNote } : prev
+        );
+      }
+      showNotification(`Pedido ${order.orderNumber} marcado como recusado.`);
+      loadAllModules();
+    } catch (e) {
+      console.error(e);
+      showNotification('Erro ao recusar pagamento.');
     }
   };
 
@@ -1547,8 +1691,15 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
         );
         if (matchingUser) {
-          await deleteUserAccountRecord(matchingUser.id);
-          setUsersList((prev) => prev.filter((u) => u.id !== matchingUser.id));
+          await deleteUserAccountRecord(matchingUser.id, matchingUser.email);
+          const targetEmailLower = (matchingUser.email || '').trim().toLowerCase();
+          setUsersList((prev) =>
+            prev.filter(
+              (u) =>
+                u.id !== matchingUser.id &&
+                (!targetEmailLower || (u.email || '').trim().toLowerCase() !== targetEmailLower)
+            )
+          );
         }
         await updateGdprRequestStatus(req.id, 'completed', 'Conta eliminada definitivamente conforme Art. 17 RGPD.');
         setGdprList((prev) =>
@@ -2193,7 +2344,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           {pendingOrders.length > 0 && (
                             <div className="pt-2.5 border-t border-slate-100 space-y-2">
                               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                Comprovantes Pix Aguardando Conferência &amp; Ativação
+                                Pedidos Pix Aguardando Conferência &amp; Ativação
                               </p>
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                                 {pendingOrders.slice(0, 4).map((o) => (
@@ -2202,26 +2353,44 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                     className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 flex items-center justify-between gap-2 text-xs"
                                   >
                                     <div className="min-w-0">
-                                      <p className="font-bold text-slate-900 truncate">
-                                        {o.userName}{' '}
-                                        <span className="font-mono text-[10px] text-slate-500">
+                                      <p className="font-bold text-slate-900 truncate flex items-center gap-1.5">
+                                        <span className="truncate">{o.userName}</span>
+                                        <span className="font-mono text-[10px] text-slate-500 shrink-0">
                                           ({o.orderNumber})
                                         </span>
+                                        {o.receiptUrl && (
+                                          <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px] font-bold uppercase shrink-0">
+                                            Anexo
+                                          </span>
+                                        )}
                                       </p>
                                       <p className="text-[11px] font-mono text-slate-600 truncate">
                                         {o.plan.toUpperCase()} · {formatCycleLabel(o.billingCycle)} ·{' '}
                                         {o.currency === 'BRL'
                                           ? `R$ ${Number(o.amount).toFixed(2)}`
                                           : `$${o.amount} ${o.currency}`}
+                                        {o.paymentMethod === 'pix' && o.stripePaymentIntentId ? ` · Cód: ${o.stripePaymentIntentId}` : ''}
                                       </p>
+                                      {o.notes && (
+                                        <p className="text-[10px] text-slate-500 truncate mt-0.5" title={o.notes}>
+                                          {o.notes}
+                                        </p>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-1.5 shrink-0">
                                       <button
                                         type="button"
                                         onClick={() => setSelectedInvoice(o)}
-                                        className="px-2 py-1 border border-slate-200 bg-white hover:bg-slate-50 rounded text-[11px] font-semibold"
+                                        className="px-2 py-1 border border-slate-200 bg-white hover:bg-slate-50 rounded text-[11px] font-semibold whitespace-nowrap"
                                       >
-                                        Recibo
+                                        {o.receiptUrl ? 'Ver Anexo' : 'Detalhes'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRejectOrder(o)}
+                                        className="px-2 py-1 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-semibold whitespace-nowrap"
+                                      >
+                                        Recusar
                                       </button>
                                       <button
                                         type="button"
@@ -3718,7 +3887,11 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        CRM de Utilizadores ({usersList.length})
+                        CRM de Utilizadores (
+                        {filteredUsers.length !== usersList.length
+                          ? `${filteredUsers.length} de ${usersList.length}`
+                          : usersList.length}
+                        )
                       </button>
                       <button
                         type="button"
@@ -3900,6 +4073,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                             <Eye className="w-3.5 h-3.5" />
                                             <span>Personificar</span>
                                           </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteUserAccount(u)}
+                                            disabled={
+                                              Boolean(
+                                                (user?.email || firebaseUser?.email) &&
+                                                  u.email.toLowerCase() ===
+                                                    (user?.email || firebaseUser?.email || '').toLowerCase()
+                                              )
+                                            }
+                                            className="p-1.5 border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                            title="Eliminar conta permanentemente"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
                                         </div>
                                       </td>
                                     </tr>
@@ -3920,7 +4108,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                               <input
                                 type="text"
-                                placeholder="Pesquisar fatura, cliente ou email..."
+                                placeholder="Pesquisar fatura, cliente, email ou Cód. Extrato (CV...)..."
                                 value={orderSearch}
                                 onChange={(e) => setOrderSearch(e.target.value)}
                                 className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
@@ -3932,10 +4120,31 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               className="p-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700"
                             >
                               <option value="all">Todos Status</option>
+                              <option value="pending_pix">Pendentes Pix</option>
                               <option value="paid">Pagas</option>
                               <option value="pending">Pendentes</option>
                               <option value="refunded">Reembolsadas</option>
                             </select>
+                            {(() => {
+                              const pendingPixCount = ordersList.filter(
+                                (o) => o.status === 'pending' && o.paymentMethod === 'pix'
+                              ).length;
+                              if (pendingPixCount === 0 && orderStatusFilter !== 'pending_pix') return null;
+                              const isActive = orderStatusFilter === 'pending_pix';
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setOrderStatusFilter(isActive ? 'all' : 'pending_pix')}
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${
+                                    isActive
+                                      ? 'bg-amber-500 text-white'
+                                      : 'bg-amber-100 hover:bg-amber-200 text-amber-950'
+                                  }`}
+                                >
+                                  Pendentes Pix ({pendingPixCount})
+                                </button>
+                              );
+                            })()}
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -3982,7 +4191,24 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                 ) : (
                                   filteredOrders.map((o) => (
                                     <tr key={o.id} className="hover:bg-slate-50/70">
-                                      <td className="p-3 font-mono font-bold text-slate-900">{o.orderNumber}</td>
+                                      <td className="p-3 font-mono font-bold text-slate-900">
+                                        <div className="flex items-center gap-1.5">
+                                          <span>{o.orderNumber}</span>
+                                          {o.paymentMethod === 'pix' && o.stripePaymentIntentId && (
+                                            <span
+                                              className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[9px] font-mono font-bold border border-slate-200"
+                                              title="Código único no extrato bancário Pix (TxID)"
+                                            >
+                                              {o.stripePaymentIntentId}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {o.notes && (
+                                          <div className="text-[10px] font-sans font-normal text-slate-500 truncate max-w-[240px]" title={o.notes}>
+                                            {o.notes}
+                                          </div>
+                                        )}
+                                      </td>
                                       <td className="p-3">
                                         <div className="font-semibold text-slate-900">{o.userName}</div>
                                         <div className="text-[11px] font-mono text-slate-500">{o.userEmail}</div>
@@ -3994,14 +4220,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                         {o.currency === 'BRL' ? `R$ ${Number(o.amount).toFixed(2)}` : `$${o.amount} ${o.currency}`}
                                       </td>
                                       <td className="p-3 uppercase text-[10px] font-mono text-slate-600">
-                                        {o.paymentMethod === 'pix' ? 'PIX' : 'CARTÃO'}
+                                        <div className="flex items-center gap-1">
+                                          <span>{o.paymentMethod === 'pix' ? 'PIX' : 'CARTÃO'}</span>
+                                          {o.receiptUrl && (
+                                            <span className="px-1.5 py-0.5 rounded bg-teal-100 text-teal-800 text-[9px] font-bold">
+                                              Anexo
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                       <td className="p-3">
                                         <span
                                           className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                                             o.status === 'paid'
                                               ? 'bg-emerald-100 text-emerald-800'
-                                              : o.status === 'refunded'
+                                              : o.status === 'refunded' || o.status === 'failed'
                                               ? 'bg-rose-100 text-rose-800'
                                               : 'bg-amber-100 text-amber-800'
                                           }`}
@@ -4016,17 +4249,27 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                           className="px-2 py-1 border border-slate-200 hover:bg-slate-100 rounded text-[11px] font-semibold inline-flex items-center gap-1"
                                         >
                                           <Receipt className="w-3 h-3" />
-                                          <span>Recibo</span>
+                                          <span>{o.receiptUrl ? 'Ver Anexo' : 'Recibo'}</span>
                                         </button>
                                         {o.status === 'pending' && (
-                                          <button
-                                            type="button"
-                                            onClick={() => handleApproveOrder(o)}
-                                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold inline-flex items-center gap-1"
-                                          >
-                                            <Check className="w-3 h-3" />
-                                            <span>Aprovar &amp; Ativar</span>
-                                          </button>
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRejectOrder(o)}
+                                              className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded text-[11px] font-semibold inline-flex items-center gap-1"
+                                            >
+                                              <Ban className="w-3 h-3" />
+                                              <span>Recusar</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleApproveOrder(o)}
+                                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold inline-flex items-center gap-1"
+                                            >
+                                              <Check className="w-3 h-3" />
+                                              <span>Aprovar &amp; Ativar</span>
+                                            </button>
+                                          </>
                                         )}
                                         {o.status === 'paid' && (
                                           <button
@@ -5059,7 +5302,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               <div>
                                 <span className="font-bold text-slate-900 block">Permitir Novos Registos</span>
                                 <span className="text-[11px] text-slate-500">
-                                  Se desativado, bloqueia criação de novas contas no AuthModal.
+                                  Se desativado, bloqueia criação de novas contas no AuthModal e no servidor.
                                 </span>
                               </div>
                               <input
@@ -5069,6 +5312,41 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                   setPlatformSettings({
                                     ...platformSettings,
                                     allowNewRegistrations: e.target.checked
+                                  })
+                                }
+                              />
+                            </label>
+
+                            <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-slate-200 gap-3">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-bold text-slate-900">
+                                    Proteção Anti-Robôs no Registo (CAPTCHA + Honeypot + E-mails Temp)
+                                  </span>
+                                  {(() => {
+                                    const botBlockedCount = auditLogsList.filter(
+                                      (l) =>
+                                        l.targetResource === '/api/auth/register' &&
+                                        l.status === 'blocked'
+                                    ).length;
+                                    return (
+                                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold whitespace-nowrap">
+                                        {botBlockedCount} robô(s) bloqueado(s)
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
+                                <span className="text-[11px] text-slate-500 block mt-0.5">
+                                  Exige desafio visual assinado pelo servidor, tempo mínimo humano, campos armadilha invisíveis, bloqueio de e-mails descartáveis e limite por IP.
+                                </span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={platformSettings.enableBotProtection !== false}
+                                onChange={(e) =>
+                                  setPlatformSettings({
+                                    ...platformSettings,
+                                    enableBotProtection: e.target.checked
                                   })
                                 }
                               />
@@ -5142,18 +5420,47 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           />
                         </div>
 
-                        {/* Personal Pix Key Configuration Card */}
+                        {/* Personal Pix Key + Stripe Card Status */}
                         <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/50 space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-2.5">
                             <div>
                               <h4 className="font-bold text-teal-950 flex items-center gap-1.5 text-xs">
                                 <QrCode className="w-4 h-4 text-teal-700" />
-                                <span>Sua Chave Pix Pessoal (Recebimentos Diretos)</span>
+                                <span>Pix Direto (Conta Pessoal) &amp; Cartão de Crédito (Stripe)</span>
                               </h4>
                               <p className="text-[11px] text-teal-900/80 mt-0.5">
-                                Configure a sua chave Pix fixa (CPF, E-mail, Telefone, CNPJ ou Chave EVP) e o QR Code
-                                oficial exibido no checkout será atualizado imediatamente.
+                                Os pagamentos Pix vão direto para a sua chave pessoal com código único de identificação no extrato (<code className="px-1 py-0.5 bg-white rounded font-mono text-[10px]">CV...</code>) e conferência rápida no painel.
                               </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase whitespace-nowrap bg-teal-100 text-teal-900 border border-teal-200">
+                                Pix Direto Ativo (Conta Pessoal)
+                              </span>
+                              <span
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase whitespace-nowrap inline-flex items-center gap-1 ${
+                                  cardGatewayHealth?.ready
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : 'bg-amber-100 text-amber-900 border border-amber-200'
+                                }`}
+                                title={cardGatewayHealth?.error || 'Status da integração com Cartão de Crédito'}
+                              >
+                                <CreditCard className="w-3 h-3" />
+                                <span>
+                                  {cardGatewayHealth?.ready
+                                    ? `Cartão Stripe (${cardGatewayHealth.secretMode === 'live' ? 'Produção' : 'Teste'}) OK`
+                                    : cardGatewayHealth
+                                    ? 'Cartão Stripe: Verificar Chaves'
+                                    : 'Verificando Cartão...'}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="p-2.5 rounded-lg bg-white border border-teal-200 text-[11px] text-slate-700 flex items-start gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
+                            <div>
+                              <strong className="text-slate-900">Conciliação bancária facilitada:</strong>{' '}
+                              Cada QR Code / Copia e Cola gera um código único (<code className="px-1 py-0.5 bg-slate-100 rounded font-mono text-[10px]">CV...</code>) gravado no extrato do Pix + print do comprovante (com Ctrl+V). Ao aprovar em 1 clique no painel, a conta do cliente ativa automaticamente na hora.
                             </div>
                           </div>
 
@@ -5956,11 +6263,24 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       {/* MODAL: INVOICE PREVIEW */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-80 flex items-center justify-center p-4 bg-slate-950/70">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 text-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[90dvh] overflow-y-auto p-6 space-y-4 text-xs">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
-                <span className="text-[10px] font-bold uppercase text-slate-400">Comprovativo Oficial</span>
-                <h3 className="text-base font-black font-mono text-slate-900">{selectedInvoice.orderNumber}</h3>
+                <span className="text-[10px] font-bold uppercase text-slate-400">Comprovativo &amp; Validação de Fatura</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <h3 className="text-base font-black font-mono text-slate-900">{selectedInvoice.orderNumber}</h3>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      selectedInvoice.status === 'paid'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : selectedInvoice.status === 'refunded' || selectedInvoice.status === 'failed'
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {selectedInvoice.status}
+                  </span>
+                </div>
               </div>
               <button type="button" onClick={() => setSelectedInvoice(null)} className="text-slate-400 hover:text-slate-700">
                 <X className="w-4 h-4" />
@@ -5984,11 +6304,11 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               <div className="flex justify-between">
                 <span className="text-slate-500">Método / Canal:</span>
                 <span className="uppercase font-mono">
-                  {selectedInvoice.paymentMethod === 'pix' ? 'PIX' : 'CARTÃO'}
+                  {selectedInvoice.paymentMethod === 'pix' ? 'PIX (Conta Pessoal)' : 'CARTÃO (Stripe)'}
                 </span>
               </div>
               <div className="flex justify-between pt-2 border-t border-slate-100 text-sm">
-                <span className="font-bold text-slate-700">Total Liquidado:</span>
+                <span className="font-bold text-slate-700">Total:</span>
                 <strong className="font-mono text-slate-950">
                   {selectedInvoice.currency === 'BRL'
                     ? `R$ ${Number(selectedInvoice.amount).toFixed(2)} BRL`
@@ -5996,7 +6316,128 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 </strong>
               </div>
             </div>
-            <div className="pt-2 flex justify-end">
+
+            {selectedInvoice.paymentMethod === 'pix' && (
+              <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                    Conferência Bancária Pix (Compare com seu extrato)
+                  </span>
+                  {selectedInvoice.stripePaymentIntentId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(selectedInvoice.stripePaymentIntentId || '');
+                        showNotification('Código do extrato copiado.');
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-amber-300 text-[10px] font-mono font-bold text-amber-950 hover:bg-amber-100"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copiar {selectedInvoice.stripePaymentIntentId}</span>
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="p-2 rounded-lg bg-white border border-amber-100">
+                    <span className="text-[10px] text-slate-400 block">1. Valor esperado</span>
+                    <strong className="font-mono text-slate-900">
+                      {selectedInvoice.currency === 'BRL'
+                        ? `R$ ${Number(selectedInvoice.amount).toFixed(2)}`
+                        : `$${selectedInvoice.amount} ${selectedInvoice.currency}`}
+                    </strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white border border-amber-100">
+                    <span className="text-[10px] text-slate-400 block">2. Cód. no Extrato (TxID)</span>
+                    <strong className="font-mono text-teal-800">
+                      {selectedInvoice.stripePaymentIntentId || '—'}
+                    </strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white border border-amber-100">
+                    <span className="text-[10px] text-slate-400 block">3. Pagador informado</span>
+                    <strong className="text-slate-900 truncate block">{selectedInvoice.userName}</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-white border border-amber-100">
+                    <span className="text-[10px] text-slate-400 block">4. Conta / E-mail</span>
+                    <strong className="font-mono text-slate-700 truncate block">{selectedInvoice.userEmail}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedInvoice.notes && (
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Dados Informados / Histórico
+                </span>
+                <p className="text-[11px] text-slate-700 leading-relaxed break-words">
+                  {selectedInvoice.notes}
+                </p>
+              </div>
+            )}
+
+            {selectedInvoice.receiptUrl && (
+              <div className="p-3 rounded-xl bg-teal-50/50 border border-teal-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+                    Comprovante Anexado
+                  </span>
+                  {invoiceReceiptPreviewUrl && (
+                    <a
+                      href={invoiceReceiptPreviewUrl}
+                      download={`comprovante-${selectedInvoice.orderNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 hover:text-teal-900 underline"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>Baixar / Abrir</span>
+                    </a>
+                  )}
+                </div>
+                {invoiceReceiptLoading && (
+                  <p className="text-[11px] text-slate-500">A carregar comprovante...</p>
+                )}
+                {invoiceReceiptError && (
+                  <p className="text-[11px] text-rose-600">{invoiceReceiptError}</p>
+                )}
+                {invoiceReceiptPreviewUrl && invoiceReceiptMime.startsWith('image/') && (
+                  <img
+                    src={invoiceReceiptPreviewUrl}
+                    alt={`Comprovante ${selectedInvoice.orderNumber}`}
+                    className="w-full max-h-64 object-contain rounded-lg border border-slate-200 bg-white"
+                  />
+                )}
+                {invoiceReceiptPreviewUrl && invoiceReceiptMime === 'application/pdf' && (
+                  <iframe
+                    src={invoiceReceiptPreviewUrl}
+                    title={`Comprovante PDF ${selectedInvoice.orderNumber}`}
+                    className="w-full h-56 rounded-lg border border-slate-200 bg-white"
+                  />
+                )}
+              </div>
+            )}
+
+            <div className="pt-2 flex flex-wrap items-center justify-end gap-2">
+              {selectedInvoice.status === 'pending' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleRejectOrder(selectedInvoice)}
+                    className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg inline-flex items-center gap-1.5"
+                  >
+                    <Ban className="w-3.5 h-3.5" />
+                    <span>Recusar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApproveOrder(selectedInvoice)}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg inline-flex items-center gap-1.5"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Aprovar &amp; Ativar</span>
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedInvoice(null)}

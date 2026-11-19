@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { CVData } from '../types/cv';
 import { EXECUTIVE_DEMO_CV } from '../data/initialCV';
+import { useLanguage } from '../context/LanguageContext';
 
 interface CVHealthScoreOverviewProps {
   currentCV?: CVData;
@@ -42,6 +43,10 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   onNavigateTab,
   embedded = false
 }) => {
+  const { siteText, studioText } = useLanguage();
+  const h = siteText.health;
+  const c = studioText.healthCriteria;
+
   const [profileMode, setProfileMode] = useState<'current' | 'benchmark'>('current');
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
 
@@ -68,21 +73,20 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'contact',
-      title: 'Identificação & Contactos',
-      category: 'Cabeçalho',
+      title: c.contact.title,
+      category: c.contact.category,
       icon: UserCheck,
       weight: 15,
       earned: contactPts,
       status: contactStatus,
       summary:
         contactStatus === 'passed'
-          ? 'Cabeçalho completo com nome, cargo e contacto profissional.'
+          ? c.contact.passed
           : contactStatus === 'warning'
-          ? 'Falta LinkedIn ou indicativo internacional de telefone.'
-          : 'Campos de identificação essenciais ausentes.',
-      recommendation:
-        'Sistemas ATS exigem nome completo, cargo pretendido, e-mail, telefone com código do país e LinkedIn.',
-      actionLabel: 'Completar Contactos',
+          ? c.contact.warning
+          : c.contact.missing,
+      recommendation: c.contact.rec,
+      actionLabel: c.contact.action,
       targetTab: 'editor'
     });
 
@@ -97,21 +101,20 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'summary',
-      title: 'Resumo Executivo',
-      category: 'Posicionamento',
+      title: c.summary.title,
+      category: c.summary.category,
       icon: FileText,
       weight: 15,
       earned: summaryPts,
       status: summaryStatus,
       summary:
         summaryStatus === 'passed'
-          ? 'Resumo conciso com foco em senioridade e valor entregue.'
+          ? c.summary.passed
           : summaryStatus === 'warning'
-          ? 'Resumo curto (< 140 caracteres); amplie para melhor indexação ATS.'
-          : 'Resumo ausente. Recrutadores analisam o topo em 6 segundos.',
-      recommendation:
-        'Use 3 a 5 linhas com anos de experiência, especialidade e resultados mensuráveis.',
-      actionLabel: 'Otimizar Resumo',
+          ? c.summary.warning
+          : c.summary.missing,
+      recommendation: c.summary.rec,
+      actionLabel: c.summary.action,
       targetTab: 'ai'
     });
 
@@ -122,8 +125,8 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
     else if (experiences.length === 1) expPts += 5;
 
     experiences.forEach((exp) => {
-      (exp.highlights || []).forEach((h) => {
-        if (/\d+%|\$\d+|\b\d+\b/i.test(h)) metricsCount++;
+      (exp.highlights || []).forEach((hl) => {
+        if (/\d+%|\$\d+|\b\d+\b/i.test(hl)) metricsCount++;
       });
     });
 
@@ -134,21 +137,20 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'experience',
-      title: 'Experiência & Métricas (Google XYZ)',
-      category: 'Impacto',
+      title: c.experience.title,
+      category: c.experience.category,
       icon: TrendingUp,
       weight: 25,
       earned: expPts,
       status: expStatus,
       summary:
         expStatus === 'passed'
-          ? `${metricsCount} conquistas quantificadas com métricas ou percentuais.`
+          ? `${metricsCount} ${c.experience.passedSuffix}`
           : expStatus === 'warning'
-          ? 'Experiências descritas sem métricas numéricas suficientes.'
-          : 'Nenhum cargo registado na secção de experiência.',
-      recommendation:
-        'Aplique a fórmula Google XYZ: "Atingiu [X resultado], medido por [Y], através de [Z ação]".',
-      actionLabel: 'Otimizar Realizações',
+          ? c.experience.warning
+          : c.experience.missing,
+      recommendation: c.experience.rec,
+      actionLabel: c.experience.action,
       targetTab: 'ai'
     });
 
@@ -162,21 +164,20 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'competencies',
-      title: 'Competências & Palavras-Chave ATS',
-      category: 'Indexação',
+      title: c.competencies.title,
+      category: c.competencies.category,
       icon: Target,
       weight: 20,
       earned: compPts,
       status: compStatus,
       summary:
         compStatus === 'passed'
-          ? `${competencies.length} grupos de competências estruturados para leitura ATS.`
+          ? `${competencies.length} ${c.competencies.passedSuffix}`
           : compStatus === 'warning'
-          ? 'Poucas competências listadas para corresponder aos filtros da vaga.'
-          : 'Nenhuma competência adicionada.',
-      recommendation:
-        'Mapeie ferramentas, metodologias e competências técnicas exatamente como pedidas na vaga.',
-      actionLabel: 'Auditar no Radar ATS',
+          ? c.competencies.warning
+          : c.competencies.missing,
+      recommendation: c.competencies.rec,
+      actionLabel: c.competencies.action,
       targetTab: 'ats'
     });
 
@@ -192,21 +193,20 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'education',
-      title: 'Formação Académica',
-      category: 'Credenciais',
+      title: c.education.title,
+      category: c.education.category,
       icon: GraduationCap,
       weight: 15,
       earned: eduPts,
       status: eduStatus,
       summary:
         eduStatus === 'passed'
-          ? 'Graus e instituições académicas devidamente estruturados.'
+          ? c.education.passed
           : eduStatus === 'warning'
-          ? 'Formação com nome da instituição ou período incompleto.'
-          : 'Nenhuma formação académica registada.',
-      recommendation:
-        'Informe grau completo, instituição reconhecida e período de conclusão.',
-      actionLabel: 'Preencher Formação',
+          ? c.education.warning
+          : c.education.missing,
+      recommendation: c.education.rec,
+      actionLabel: c.education.action,
       targetTab: 'editor'
     });
 
@@ -223,26 +223,25 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
 
     list.push({
       id: 'global',
-      title: 'Idiomas & Certificações',
-      category: 'Diferencial',
+      title: c.global.title,
+      category: c.global.category,
       icon: Globe,
       weight: 10,
       earned: globalPts,
       status: globalStatus,
       summary:
         globalStatus === 'passed'
-          ? 'Idiomas na escala CEFR e certificações profissionais incluídas.'
+          ? c.global.passed
           : globalStatus === 'warning'
-          ? 'Adicione certificações ou segundo idioma com nível CEFR.'
-          : 'Nenhum idioma ou certificação declarada.',
-      recommendation:
-        'Use níveis CEFR padronizados (C2, C1, B2) e siglas oficiais de certificações.',
-      actionLabel: 'Adicionar Idiomas',
+          ? c.global.warning
+          : c.global.missing,
+      recommendation: c.global.rec,
+      actionLabel: c.global.action,
       targetTab: 'editor'
     });
 
     return list;
-  }, [activeCV]);
+  }, [activeCV, c]);
 
   const totalScore = useMemo(() => {
     const raw = audits.reduce((sum, item) => sum + item.earned, 0);
@@ -252,35 +251,35 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   const tierInfo = useMemo(() => {
     if (totalScore >= 90) {
       return {
-        label: 'Aprovado para ATS & Entrevistas',
+        label: h.tierApprovedLabel,
         ringColor: '#10b981',
-        statusText: 'Estrutura compatível com Workday, Greenhouse, Taleo e triagem executiva.',
+        statusText: h.tierApprovedDesc,
         grade: 'A+'
       };
     }
     if (totalScore >= 70) {
       return {
-        label: 'Competitivo · Ajustes pontuais',
+        label: h.tierCompetitiveLabel,
         ringColor: '#f59e0b',
-        statusText: 'Boa base; reforce palavras-chave e resultados numéricos para chegar a 90%+.',
+        statusText: h.tierCompetitiveDesc,
         grade: 'B'
       };
     }
     if (totalScore >= 50) {
       return {
-        label: 'Atenção · Lacunas estruturais',
+        label: h.tierWarningLabel,
         ringColor: '#f97316',
-        statusText: 'Risco moderado de filtragem automática antes da leitura humana.',
+        statusText: h.tierWarningDesc,
         grade: 'C'
       };
     }
     return {
-      label: 'Crítico · Campos essenciais vazios',
+      label: h.tierCriticalLabel,
       ringColor: '#f43f5e',
-      statusText: 'Complete o perfil, experiências e competências para passar pelos filtros ATS.',
+      statusText: h.tierCriticalDesc,
       grade: 'D'
     };
-  }, [totalScore]);
+  }, [totalScore, h]);
 
   const passedCount = audits.filter((a) => a.status === 'passed').length;
   const warningCount = audits.filter((a) => a.status === 'warning').length;
@@ -293,52 +292,52 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   const strokeDashoffset = circumference - (totalScore / 100) * circumference;
 
   const content = (
-    <div className="space-y-5">
+    <div className="theme-dual-native space-y-5">
       {/* Sub-header with Profile Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">
-          Auditoria instantânea dos 6 critérios exigidos por Workday, Taleo, Greenhouse e Lever.
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          {h.subtitle}
         </p>
 
-        <div className="inline-flex items-center p-1 bg-slate-950 border border-slate-800 rounded-lg self-start sm:self-auto shrink-0 text-xs">
+        <div className="inline-flex items-center p-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg self-start sm:self-auto shrink-0 text-xs">
           <button
             type="button"
             onClick={() => setProfileMode('current')}
             className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
               profileMode === 'current'
-                ? 'bg-slate-800 text-white font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-2xs dark:shadow-none'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            <UserCheck className="w-3.5 h-3.5 text-amber-400" />
-            <span>Meu Currículo</span>
+            <UserCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span>{h.myResumeBtn}</span>
           </button>
           <button
             type="button"
             onClick={() => setProfileMode('benchmark')}
             className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
               profileMode === 'benchmark'
-                ? 'bg-slate-800 text-white font-semibold'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-semibold shadow-2xs dark:shadow-none'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            <Award className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Referência 98%</span>
+            <Award className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{h.benchmarkBtn}</span>
           </button>
         </div>
       </div>
 
       {/* Unified Single-Elevation Split Cockpit */}
-      <div className="bg-[#0B0F17] border border-slate-800 rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+      <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800 shadow-xs dark:shadow-none">
         {/* Left Summary Column */}
         <div className="lg:col-span-5 p-6 flex flex-col justify-between gap-6 relative overflow-hidden">
           <div className="space-y-5 relative z-10">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-mono uppercase tracking-wider text-slate-400">
-                Índice ATS Global
+              <span className="font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                {h.globalAtsIndex}
               </span>
-              <span className="font-mono font-semibold text-slate-200">
-                Grau {tierInfo.grade}
+              <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                {h.gradePrefix} {tierInfo.grade}
               </span>
             </div>
 
@@ -346,7 +345,8 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
               <div className="relative flex items-center justify-center shrink-0">
                 <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
                   <circle
-                    stroke="#1e293b"
+                    stroke="currentColor"
+                    className="text-slate-200 dark:text-slate-800"
                     fill="transparent"
                     strokeWidth={stroke}
                     r={normalizedRadius}
@@ -370,30 +370,30 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                 </svg>
 
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-2xl font-bold font-mono tabular-nums text-white tracking-tight">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900 dark:text-white tracking-tight">
                     {totalScore}%
                   </span>
                 </div>
               </div>
 
               <div className="space-y-1.5 min-w-0">
-                <h3 className="text-sm font-semibold text-white leading-snug">
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-white leading-snug">
                   {tierInfo.label}
                 </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   {tierInfo.statusText}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="space-y-4 pt-4 border-t border-slate-800/80 relative z-10">
-            <div className="flex items-center justify-between text-xs font-mono tabular-nums text-slate-300">
-              <span>{passedCount} otimizadas</span>
-              <span className="text-slate-600">·</span>
-              <span>{warningCount} ajustar</span>
-              <span className="text-slate-600">·</span>
-              <span>{missingCount} ausentes</span>
+          <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800/80 relative z-10">
+            <div className="flex items-center justify-between text-xs font-mono tabular-nums text-slate-700 dark:text-slate-300">
+              <span>{passedCount} {h.optimizedSuffix}</span>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span>{warningCount} {h.adjustSuffix}</span>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span>{missingCount} {h.missingSuffix}</span>
             </div>
 
             <button
@@ -408,12 +408,12 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
               {totalScore >= 90 ? (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Abrir no Editor de Currículo</span>
+                  <span>{h.openInEditor}</span>
                 </>
               ) : (
                 <>
                   <SlidersHorizontal className="w-4 h-4" />
-                  <span>Corrigir Secções no Editor</span>
+                  <span>{h.fixInEditor}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -422,18 +422,18 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
         </div>
 
         {/* Right Hairline Audit Rows */}
-        <div className="lg:col-span-7 divide-y divide-slate-800/80">
+        <div className="lg:col-span-7 divide-y divide-slate-200 dark:divide-slate-800/80">
           {audits.map((audit) => {
             const IconComponent = audit.icon;
             const isSelected = selectedAuditId === audit.id;
 
             const statusIcon =
               audit.status === 'passed' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               ) : audit.status === 'warning' ? (
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               ) : (
-                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <XCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
               );
 
             return (
@@ -441,29 +441,31 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                 key={audit.id}
                 onClick={() => setSelectedAuditId(isSelected ? null : audit.id)}
                 className={`px-5 py-3.5 transition-colors cursor-pointer ${
-                  isSelected ? 'bg-slate-900/90' : 'hover:bg-slate-900/50'
+                  isSelected
+                    ? 'bg-slate-50 dark:bg-slate-900/90'
+                    : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/50'
                 }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <IconComponent className="w-4 h-4 text-slate-400 shrink-0" />
+                    <IconComponent className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-semibold text-white truncate">
+                        <h4 className="text-xs font-semibold text-slate-900 dark:text-white truncate">
                           {audit.title}
                         </h4>
                         <span className="text-[11px] text-slate-500 hidden sm:inline shrink-0">
                           · {audit.category}
                         </span>
                       </div>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate mt-0.5">
                         {audit.summary}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-mono tabular-nums text-xs font-semibold text-slate-300">
+                    <span className="font-mono tabular-nums text-xs font-semibold text-slate-700 dark:text-slate-300">
                       {audit.earned}/{audit.weight}
                     </span>
                     {statusIcon}
@@ -471,8 +473,8 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                 </div>
 
                 {isSelected && (
-                  <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                  <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in duration-150">
+                    <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed">
                       {audit.recommendation}
                     </p>
                     <button
@@ -481,7 +483,7 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
                         e.stopPropagation();
                         onNavigateTab?.(audit.targetTab);
                       }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start sm:self-auto"
+                      className="px-3 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start sm:self-auto"
                     >
                       <span>{audit.actionLabel}</span>
                       <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
@@ -501,7 +503,7 @@ export const CVHealthScoreOverview: React.FC<CVHealthScoreOverviewProps> = ({
   }
 
   return (
-    <section className="py-16 bg-slate-950/80 border-b border-slate-800">
+    <section className="theme-dual-native py-16 bg-slate-50 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">{content}</div>
     </section>
   );

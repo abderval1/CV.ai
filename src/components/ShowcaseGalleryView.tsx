@@ -21,6 +21,7 @@ import {
 import { DocumentMiniPreview } from './DocumentMiniPreview';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useLanguage } from '../context/LanguageContext';
 import { getStoredTemplatesSync, getStoredPlansSync } from '../services/adminModulesService';
 
 export type ShowcaseMode = 'models-cv' | 'examples-cv' | 'models-cover' | 'examples-cover';
@@ -69,6 +70,172 @@ interface ModalPreviewState {
       };
 }
 
+const SHOWCASE_EXTRA_COPY: Record<
+  'pt' | 'en' | 'es' | 'fr' | 'de' | 'it',
+  {
+    subActive: string;
+    plansFrom: string;
+    comparePlans: string;
+    coverCats: Record<string, string>;
+    cvExCats: Record<string, string>;
+    coverExCats: Record<string, string>;
+    zoomCv: string;
+    zoomCover: string;
+    zoomExample: string;
+    readFullCover: string;
+    readBtn: string;
+    aboutFormat: string;
+    keyHighlights: string;
+    freeModalDetail: string;
+    useNowEditor: string;
+    createAndUse: string;
+    activateAndUse: string;
+    exploreOthers: string;
+    closePreview: string;
+    coverExampleDesc: string;
+    coverExampleHighlight: string;
+  }
+> = {
+  pt: {
+    subActive: 'Assinatura Ativa — Edição e Exportação Liberadas',
+    plansFrom: 'Planos a partir de',
+    comparePlans: 'Comparar planos e formas de pagamento',
+    coverCats: { executive: 'Executivo', modern: 'Moderno & Design', ats: 'ATS & Tech', international: 'União Europeia' },
+    cvExCats: { tech: 'Tecnologia', executive: 'Direção & COO', finance: 'Finanças', creative: 'Design & UX', health: 'Europa & Saúde', academic: 'Académico' },
+    coverExCats: { tech: 'Tecnologia', executive: 'Executivo', product: 'Produto', finance: 'Finanças', entry: 'Primeiro Emprego', transition: 'Mudança de Área' },
+    zoomCv: 'Ampliar foto A4',
+    zoomCover: 'Ampliar carta',
+    zoomExample: 'Ver exemplo completo',
+    readFullCover: 'Ler carta completa',
+    readBtn: 'Ler',
+    aboutFormat: 'Sobre este formato',
+    keyHighlights: 'Destaques principais',
+    freeModalDetail: 'Para personalizar este modelo, traduzir em 5 idiomas e descarregar em Word (.docx) ou PDF limpo, ative o plano Pro ou Executivo VIP.',
+    useNowEditor: 'Usar Agora no Editor',
+    createAndUse: 'Criar Conta & Usar Este Modelo',
+    activateAndUse: 'Ativar Plano & Usar Este Modelo',
+    exploreOthers: 'Explorar outros modelos',
+    closePreview: 'Fechar pré-visualização',
+    coverExampleDesc: 'Exemplo estruturado em 3 blocos persuasivos: abertura objetiva, resultados mensuráveis e chamada à entrevista.',
+    coverExampleHighlight: 'Pronta a adaptar e traduzir em 5 idiomas'
+  },
+  en: {
+    subActive: 'Active Subscription — Editing & Export Unlocked',
+    plansFrom: 'Plans starting at',
+    comparePlans: 'Compare plans and payment methods',
+    coverCats: { executive: 'Executive', modern: 'Modern & Design', ats: 'ATS & Tech', international: 'European Union' },
+    cvExCats: { tech: 'Technology', executive: 'Executive & COO', finance: 'Finance', creative: 'Design & UX', health: 'Europe & Healthcare', academic: 'Academic' },
+    coverExCats: { tech: 'Technology', executive: 'Executive', product: 'Product', finance: 'Finance', entry: 'Entry Level', transition: 'Career Pivot' },
+    zoomCv: 'Zoom A4 preview',
+    zoomCover: 'Zoom cover letter',
+    zoomExample: 'View full example',
+    readFullCover: 'Read full letter',
+    readBtn: 'Read',
+    aboutFormat: 'About this format',
+    keyHighlights: 'Key highlights',
+    freeModalDetail: 'To customize this template, translate your resume into 5 languages, and download clean Word (.docx) or PDF files, activate Pro or Executive VIP.',
+    useNowEditor: 'Use in Editor Now',
+    createAndUse: 'Create Account & Use Template',
+    activateAndUse: 'Activate Plan & Use Template',
+    exploreOthers: 'Explore other templates',
+    closePreview: 'Close preview',
+    coverExampleDesc: 'Structured into 3 persuasive blocks: focused opening, measurable outcomes, and clear interview call-to-action.',
+    coverExampleHighlight: 'Ready to tailor and translate into 5 languages'
+  },
+  es: {
+    subActive: 'Suscripción Activa — Edición y Exportación Desbloqueadas',
+    plansFrom: 'Planes desde',
+    comparePlans: 'Comparar planes y métodos de pago',
+    coverCats: { executive: 'Ejecutivo', modern: 'Moderno y Diseño', ats: 'ATS y Tech', international: 'Unión Europea' },
+    cvExCats: { tech: 'Tecnología', executive: 'Dirección y COO', finance: 'Finanzas', creative: 'Diseño y UX', health: 'Europa y Salud', academic: 'Académico' },
+    coverExCats: { tech: 'Tecnología', executive: 'Ejecutivo', product: 'Producto', finance: 'Finanzas', entry: 'Primer Empleo', transition: 'Cambio de Sector' },
+    zoomCv: 'Ampliar vista A4',
+    zoomCover: 'Ampliar carta',
+    zoomExample: 'Ver ejemplo completo',
+    readFullCover: 'Leer carta completa',
+    readBtn: 'Leer',
+    aboutFormat: 'Sobre este formato',
+    keyHighlights: 'Puntos clave',
+    freeModalDetail: 'Para personalizar esta plantilla, traducir en 5 idiomas y descargar Word (.docx) o PDF limpio, activa Pro o Ejecutivo VIP.',
+    useNowEditor: 'Usar en el Editor',
+    createAndUse: 'Crear Cuenta y Usar Modelo',
+    activateAndUse: 'Activar Plan y Usar Modelo',
+    exploreOthers: 'Explorar otras plantillas',
+    closePreview: 'Cerrar vista previa',
+    coverExampleDesc: 'Ejemplo estructurado en 3 bloques persuasivos: apertura directa, métricas medibles e invitación a entrevista.',
+    coverExampleHighlight: 'Lista para adaptar y traducir en 5 idiomas'
+  },
+  fr: {
+    subActive: 'Abonnement Actif — Édition et Export Débloqués',
+    plansFrom: 'Formules à partir de',
+    comparePlans: 'Comparer les offres et moyens de paiement',
+    coverCats: { executive: 'Exécutif', modern: 'Moderne & Design', ats: 'ATS & Tech', international: 'Union Européenne' },
+    cvExCats: { tech: 'Technologie', executive: 'Direction & COO', finance: 'Finance', creative: 'Design & UX', health: 'Europe & Santé', academic: 'Académique' },
+    coverExCats: { tech: 'Technologie', executive: 'Exécutif', product: 'Produit', finance: 'Finance', entry: 'Premier Emploi', transition: 'Reconversion' },
+    zoomCv: 'Agrandir aperçu A4',
+    zoomCover: 'Agrandir la lettre',
+    zoomExample: 'Voir l’exemple complet',
+    readFullCover: 'Lire toute la lettre',
+    readBtn: 'Lire',
+    aboutFormat: 'À propos de ce format',
+    keyHighlights: 'Points forts',
+    freeModalDetail: 'Pour personnaliser ce modèle, traduire en 5 langues et exporter en Word (.docx) ou PDF sans filigrane, activez Pro ou Exécutif VIP.',
+    useNowEditor: 'Utiliser dans l’Éditeur',
+    createAndUse: 'Créer un Compte et Utiliser',
+    activateAndUse: 'Activer l’Offre et Utiliser',
+    exploreOthers: 'Explorer d’autres modèles',
+    closePreview: 'Fermer l’aperçu',
+    coverExampleDesc: 'Structurée en 3 blocs convaincants : accroche ciblée, réalisations chiffrées et proposition d’entretien.',
+    coverExampleHighlight: 'Prête à adapter et traduire en 5 langues'
+  },
+  de: {
+    subActive: 'Aktives Abonnement — Bearbeitung & Export Freigeschaltet',
+    plansFrom: 'Tarife ab',
+    comparePlans: 'Tarife & Zahlungsmethoden vergleichen',
+    coverCats: { executive: 'Executive', modern: 'Modern & Design', ats: 'ATS & Tech', international: 'Europäische Union' },
+    cvExCats: { tech: 'Technologie', executive: 'Geschäftsführung', finance: 'Finanzen', creative: 'Design & UX', health: 'Europa & Gesundheit', academic: 'Akademisch' },
+    coverExCats: { tech: 'Technologie', executive: 'Executive', product: 'Produkt', finance: 'Finanzen', entry: 'Berufseinstieg', transition: 'Quereinstieg' },
+    zoomCv: 'A4-Ansicht vergrößern',
+    zoomCover: 'Anschreiben vergrößern',
+    zoomExample: 'Vollständiges Beispiel',
+    readFullCover: 'Vollständigen Brief lesen',
+    readBtn: 'Lesen',
+    aboutFormat: 'Über dieses Format',
+    keyHighlights: 'Wesentliche Merkmale',
+    freeModalDetail: 'Um diese Vorlage anzupassen, in 5 Sprachen zu übersetzen und als sauberes Word (.docx) oder PDF zu laden, aktivieren Sie Pro oder Executive VIP.',
+    useNowEditor: 'Jetzt im Editor nutzen',
+    createAndUse: 'Konto erstellen & nutzen',
+    activateAndUse: 'Tarif aktivieren & nutzen',
+    exploreOthers: 'Weitere Vorlagen ansehen',
+    closePreview: 'Vorschau schließen',
+    coverExampleDesc: 'In 3 überzeugenden Blöcken aufgebaut: präziser Einstieg, messbare Resultate und Gesprächseinladung.',
+    coverExampleHighlight: 'Bereit für 5 Sprachen und Feinschliff'
+  },
+  it: {
+    subActive: 'Abbonamento Attivo — Modifica ed Esportazione Sbloccate',
+    plansFrom: 'Piani a partire da',
+    comparePlans: 'Confronta piani e metodi di pagamento',
+    coverCats: { executive: 'Executive', modern: 'Moderno & Design', ats: 'ATS & Tech', international: 'Unione Europea' },
+    cvExCats: { tech: 'Tecnologia', executive: 'Direzione & COO', finance: 'Finanza', creative: 'Design & UX', health: 'Europa & Sanità', academic: 'Accademico' },
+    coverExCats: { tech: 'Tecnologia', executive: 'Executive', product: 'Prodotto', finance: 'Finanza', entry: 'Primo Impiego', transition: 'Cambio Carriera' },
+    zoomCv: 'Ingrandisci anteprima A4',
+    zoomCover: 'Ingrandisci lettera',
+    zoomExample: 'Vedi esempio completo',
+    readFullCover: 'Leggi tutta la lettera',
+    readBtn: 'Leggi',
+    aboutFormat: 'Informazioni sul formato',
+    keyHighlights: 'Punti di forza',
+    freeModalDetail: 'Per personalizzare questo modello, tradurre in 5 lingue ed esportare in Word (.docx) o PDF senza filigrana, attiva Pro o Executive VIP.',
+    useNowEditor: 'Usa nell’Editor',
+    createAndUse: 'Crea Account e Usa Modello',
+    activateAndUse: 'Attiva Piano e Usa Modello',
+    exploreOthers: 'Esplora altri modelli',
+    closePreview: 'Chiudi anteprima',
+    coverExampleDesc: 'Strutturata in 3 blocchi efficaci: apertura mirata, risultati misurabili e invito al colloquio.',
+    coverExampleHighlight: 'Pronta da adattare e tradurre in 5 lingue'
+  }
+};
+
 export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   mode,
   onChangeMode,
@@ -76,7 +243,11 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   onOpenPricing
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
-  const { formatPrice, convertFromUSD } = useCurrency();
+  const { formatPrice } = useCurrency();
+  const { siteText, siteLanguage } = useLanguage();
+  const s = siteText.showcase;
+  const l = siteText.landing;
+  const extra = SHOWCASE_EXTRA_COPY[siteLanguage] || SHOWCASE_EXTRA_COPY.pt;
 
   const [cvFilter, setCvFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
@@ -180,35 +351,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
     return true;
   });
 
-  const modeMeta: Record<
-    ShowcaseMode,
-    { kicker: string; title: string; subtitle: string }
-  > = {
-    'models-cv': {
-      kicker: 'Galeria Visual de Modelos de CV',
-      title: 'Modelos de Currículo Profissionais',
-      subtitle:
-        'Visualize todos os layouts em tamanho real antes de criar a sua conta. Escolha um modelo calibrado para ATS ou mercado europeu e comece a editar.'
-    },
-    'examples-cv': {
-      kicker: 'Exemplos Reais por Profissão',
-      title: 'Exemplos de Currículo Preenchidos',
-      subtitle:
-        'Inspire-se em currículos reais estruturados com métricas de impacto. Clique em "Usar exemplo" para carregar a estrutura e adaptar aos seus dados.'
-    },
-    'models-cover': {
-      kicker: 'Galeria Visual de Cartas de Apresentação',
-      title: 'Modelos de Carta de Apresentação',
-      subtitle:
-        'Layouts elegantes em formato A4 alinhados ao seu currículo para conquistar recrutadores logo na primeira leitura.'
-    },
-    'examples-cover': {
-      kicker: 'Cartas Prontas por Área & Situação',
-      title: 'Exemplos de Carta de Apresentação',
-      subtitle:
-        'Veja modelos completos de texto para cargos executivos, tecnologia, finanças, primeiro emprego ou mudança de carreira.'
-    }
-  };
+  const currentModeText = s.modes[mode];
 
   const handleActionClick = (payload: ShowcaseSelectionPayload) => {
     setActivePreview(null);
@@ -216,14 +359,20 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   };
 
   const tabItems: { id: ShowcaseMode; label: string; icon: React.ElementType }[] = [
-    { id: 'models-cv', label: 'Modelos de CV', icon: FileText },
-    { id: 'examples-cv', label: 'Exemplos de CV', icon: Briefcase },
-    { id: 'models-cover', label: 'Modelos de Carta', icon: Mail },
-    { id: 'examples-cover', label: 'Exemplos de Carta', icon: CheckCircle2 }
+    { id: 'models-cv', label: s.modes['models-cv'].tabLabel, icon: FileText },
+    { id: 'examples-cv', label: s.modes['examples-cv'].tabLabel, icon: Briefcase },
+    { id: 'models-cover', label: s.modes['models-cover'].tabLabel, icon: Mail },
+    { id: 'examples-cover', label: s.modes['examples-cover'].tabLabel, icon: CheckCircle2 }
   ];
 
-  const proBrl = convertFromUSD(proUsd, 'BRL').toFixed(2).replace('.', ',');
-  const execBrl = convertFromUSD(execUsd, 'BRL').toFixed(2).replace('.', ',');
+  const currentResultCount =
+    mode === 'models-cv'
+      ? filteredCvTemplates.length
+      : mode === 'models-cover'
+      ? filteredCoverTemplates.length
+      : mode === 'examples-cv'
+      ? filteredCvExamples.length
+      : filteredCoverExamples.length;
 
   return (
     <div className="min-h-full bg-slate-50 text-slate-900">
@@ -233,13 +382,13 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div className="max-w-2xl space-y-2.5">
               <p className="text-xs font-bold uppercase tracking-wider text-amber-400">
-                {modeMeta[mode].kicker}
+                {currentModeText.kicker}
               </p>
               <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
-                {modeMeta[mode].title}
+                {currentModeText.title}
               </h1>
               <p className="text-sm text-slate-300 leading-relaxed">
-                {modeMeta[mode].subtitle}
+                {currentModeText.subtitle}
               </p>
             </div>
 
@@ -252,15 +401,13 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   )}
                   <span>
-                    {hasActivePlan
-                      ? 'Assinatura Ativa — Edição e Exportação Liberadas'
-                      : 'Pré-visualização Gratuita · Exportação para Assinantes'}
+                    {hasActivePlan ? extra.subActive : s.previewFreeBadge}
                   </span>
                 </span>
               </div>
               <p className="text-slate-300 leading-relaxed tabular-nums">
-                Planos a partir de <strong>${proUsd} USD</strong> (R$ {proBrl}) e{' '}
-                <strong>${execUsd} USD</strong> (R$ {execBrl})/mês · Cartão ou Pix sem fidelidade.
+                {extra.plansFrom} <strong>{formatPrice(proUsd)}</strong> &middot;{' '}
+                <strong>{formatPrice(execUsd)}</strong>/{siteText.billingCycles.monthly.shortUnit} · {l.cardAndPix}
               </p>
               {!hasActivePlan && (
                 <button
@@ -268,7 +415,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                   onClick={onOpenPricing}
                   className="text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1 pt-0.5"
                 >
-                  <span>Comparar planos e formas de pagamento</span>
+                  <span>{extra.comparePlans}</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               )}
@@ -308,9 +455,9 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
             {mode === 'models-cv' && (
               <>
                 {[
-                  { id: 'all', label: `Todos (${activeCvTemplates.length})` },
-                  { id: 'without_photo', label: 'Sem Foto · ATS' },
-                  { id: 'with_photo', label: 'Com Foto · Europa' }
+                  { id: 'all', label: `${s.allModels} (${activeCvTemplates.length})` },
+                  { id: 'without_photo', label: s.noPhotoAts },
+                  { id: 'with_photo', label: s.withPhotoEu }
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -331,11 +478,11 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
             {mode === 'models-cover' && (
               <>
                 {[
-                  { id: 'all', label: `Todos (${COVER_LETTER_TEMPLATES.length})` },
-                  { id: 'executive', label: 'Executivo' },
-                  { id: 'modern', label: 'Moderno & Design' },
-                  { id: 'ats', label: 'ATS & Tech' },
-                  { id: 'international', label: 'União Europeia' }
+                  { id: 'all', label: `${s.allModels} (${COVER_LETTER_TEMPLATES.length})` },
+                  { id: 'executive', label: extra.coverCats.executive },
+                  { id: 'modern', label: extra.coverCats.modern },
+                  { id: 'ats', label: extra.coverCats.ats },
+                  { id: 'international', label: extra.coverCats.international }
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -356,13 +503,13 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
             {mode === 'examples-cv' && (
               <>
                 {[
-                  { id: 'all', label: `Todas as Áreas (${CV_EXAMPLES.length})` },
-                  { id: 'tech', label: 'Tecnologia' },
-                  { id: 'executive', label: 'Direção & COO' },
-                  { id: 'finance', label: 'Finanças' },
-                  { id: 'creative', label: 'Design & UX' },
-                  { id: 'health', label: 'Europa & Saúde' },
-                  { id: 'academic', label: 'Académico' }
+                  { id: 'all', label: `${s.allSectors} (${CV_EXAMPLES.length})` },
+                  { id: 'tech', label: extra.cvExCats.tech },
+                  { id: 'executive', label: extra.cvExCats.executive },
+                  { id: 'finance', label: extra.cvExCats.finance },
+                  { id: 'creative', label: extra.cvExCats.creative },
+                  { id: 'health', label: extra.cvExCats.health },
+                  { id: 'academic', label: extra.cvExCats.academic }
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -383,13 +530,13 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
             {mode === 'examples-cover' && (
               <>
                 {[
-                  { id: 'all', label: `Todas as Situações (${COVER_LETTER_EXAMPLES.length})` },
-                  { id: 'tech', label: 'Tecnologia' },
-                  { id: 'executive', label: 'Executivo' },
-                  { id: 'product', label: 'Produto' },
-                  { id: 'finance', label: 'Finanças' },
-                  { id: 'entry', label: 'Primeiro Emprego' },
-                  { id: 'transition', label: 'Mudança de Área' }
+                  { id: 'all', label: `${s.allSectors} (${COVER_LETTER_EXAMPLES.length})` },
+                  { id: 'tech', label: extra.coverExCats.tech },
+                  { id: 'executive', label: extra.coverExCats.executive },
+                  { id: 'product', label: extra.coverExCats.product },
+                  { id: 'finance', label: extra.coverExCats.finance },
+                  { id: 'entry', label: extra.coverExCats.entry },
+                  { id: 'transition', label: extra.coverExCats.transition }
                 ].map((f) => (
                   <button
                     key={f.id}
@@ -415,7 +562,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Pesquisar área ou modelo..."
+              placeholder={s.searchPlaceholder}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
           </div>
@@ -424,12 +571,29 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
 
       {/* Main Visual Gallery Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        {mode === 'models-cv' && (
+        {currentResultCount === 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3">
+            <p className="text-sm font-medium text-slate-600">{s.emptyState}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setCvFilter('all');
+                setSectorFilter('all');
+                setSearchTerm('');
+              }}
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors"
+            >
+              {s.clearFilters}
+            </button>
+          </div>
+        )}
+
+        {mode === 'models-cv' && currentResultCount > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCvTemplates.map((tmpl) => {
               const payload: ShowcaseSelectionPayload = {
                 targetTab: 'editor',
-                label: `Modelo ${tmpl.shortName}`,
+                label: tmpl.shortName,
                 templateStyle: tmpl.id,
                 accentColor: tmpl.accentColor
               };
@@ -445,7 +609,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                       setActivePreview({
                         title: tmpl.name,
                         subtitle: tmpl.tagline,
-                        metaLine: `${tmpl.hasPhoto ? 'Com Foto' : 'Sem Foto · 100% ATS'} · ${tmpl.atsScore}% ATS · ${tmpl.regions.slice(0, 2).join(', ')}`,
+                        metaLine: `${tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts} · ${tmpl.atsScore}% ATS · ${tmpl.regions.slice(0, 2).join(', ')}`,
                         description: tmpl.whenToUse,
                         highlights: tmpl.keyFeatures,
                         selectionPayload: payload,
@@ -470,7 +634,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     </div>
                     <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-900/90 text-white text-[11px] font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       <Eye className="w-3 h-3" />
-                      Ampliar foto A4
+                      {extra.zoomCv}
                     </span>
                   </div>
 
@@ -478,7 +642,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                     <div className="space-y-1.5">
                       <p className="text-[11px] font-medium text-slate-500">
-                        {tmpl.hasPhoto ? 'Com Foto' : 'Sem Foto · ATS'} · {tmpl.atsScore}% ATS · {tmpl.regions[0]}
+                        {tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts} · {tmpl.atsScore}% ATS · {tmpl.regions[0]}
                       </p>
                       <h2 className="text-base font-bold text-slate-900">{tmpl.shortName}</h2>
                       <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{tmpl.tagline}</p>
@@ -491,7 +655,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                           setActivePreview({
                             title: tmpl.name,
                             subtitle: tmpl.tagline,
-                            metaLine: `${tmpl.hasPhoto ? 'Com Foto' : 'Sem Foto · 100% ATS'} · ${tmpl.atsScore}% ATS`,
+                            metaLine: `${tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts} · ${tmpl.atsScore}% ATS`,
                             description: tmpl.whenToUse,
                             highlights: tmpl.keyFeatures,
                             selectionPayload: payload,
@@ -506,7 +670,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Ver</span>
+                        <span>{s.inspectBtn}</span>
                       </button>
 
                       <button
@@ -514,7 +678,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         onClick={() => handleActionClick(payload)}
                         className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <span>Usar modelo</span>
+                        <span>{s.useBtn}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -525,12 +689,12 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
           </div>
         )}
 
-        {mode === 'models-cover' && (
+        {mode === 'models-cover' && currentResultCount > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCoverTemplates.map((tpl) => {
               const payload: ShowcaseSelectionPayload = {
                 targetTab: 'cover',
-                label: `Modelo de Carta ${tpl.shortName}`,
+                label: tpl.shortName,
                 templateStyle: tpl.associatedCvTemplate,
                 accentColor: tpl.accentColor,
                 letterBody: tpl.sampleLetterBody
@@ -581,7 +745,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     </div>
                     <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-900/90 text-white text-[11px] font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       <Eye className="w-3 h-3" />
-                      Ampliar carta
+                      {extra.zoomCover}
                     </span>
                   </div>
 
@@ -621,7 +785,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Ver</span>
+                        <span>{s.inspectBtn}</span>
                       </button>
 
                       <button
@@ -629,7 +793,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         onClick={() => handleActionClick(payload)}
                         className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <span>Usar modelo</span>
+                        <span>{s.useBtn}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -640,12 +804,12 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
           </div>
         )}
 
-        {mode === 'examples-cv' && (
+        {mode === 'examples-cv' && currentResultCount > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCvExamples.map((ex) => {
               const payload: ShowcaseSelectionPayload = {
                 targetTab: 'editor',
-                label: `Exemplo: ${ex.roleTitle}`,
+                label: ex.roleTitle,
                 cvData: ex.cvData,
                 templateStyle: ex.cvData.templateStyle,
                 accentColor: ex.cvData.accentColor
@@ -688,7 +852,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     </div>
                     <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-900/90 text-white text-[11px] font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       <Eye className="w-3 h-3" />
-                      Ver exemplo completo
+                      {extra.zoomExample}
                     </span>
                   </div>
 
@@ -724,7 +888,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Ver</span>
+                        <span>{s.inspectBtn}</span>
                       </button>
 
                       <button
@@ -732,7 +896,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         onClick={() => handleActionClick(payload)}
                         className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <span>Usar exemplo</span>
+                        <span>{s.useBtn}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -743,12 +907,12 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
           </div>
         )}
 
-        {mode === 'examples-cover' && (
+        {mode === 'examples-cover' && currentResultCount > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredCoverExamples.map((ex) => {
               const payload: ShowcaseSelectionPayload = {
                 targetTab: 'cover',
-                label: `Exemplo de Carta: ${ex.title}`,
+                label: ex.title,
                 templateStyle: ex.associatedCvTemplate,
                 accentColor: ex.accentColor,
                 letterBody: ex.letterBody
@@ -765,9 +929,8 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         title: ex.title,
                         subtitle: ex.tagline,
                         metaLine: `${ex.industry} · ${ex.situationTag}`,
-                        description:
-                          'Exemplo estruturado em 3 blocos persuasivos: abertura objetiva, resultados mensuráveis e chamada à entrevista.',
-                        highlights: [ex.industry, ex.situationTag, 'Pronta a adaptar e traduzir em 5 idiomas'],
+                        description: extra.coverExampleDesc,
+                        highlights: [ex.industry, ex.situationTag, extra.coverExampleHighlight],
                         selectionPayload: payload,
                         previewProps: {
                           kind: 'cover',
@@ -800,7 +963,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     </div>
                     <span className="absolute bottom-3 right-3 px-2.5 py-1 bg-slate-900/90 text-white text-[11px] font-semibold rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                       <Eye className="w-3 h-3" />
-                      Ler carta completa
+                      {extra.readFullCover}
                     </span>
                   </div>
 
@@ -821,9 +984,8 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                             title: ex.title,
                             subtitle: ex.tagline,
                             metaLine: `${ex.industry} · ${ex.situationTag}`,
-                            description:
-                              'Exemplo estruturado em 3 blocos persuasivos: abertura objetiva, resultados mensuráveis e chamada à entrevista.',
-                            highlights: [ex.industry, ex.situationTag, 'Pronta a adaptar e traduzir em 5 idiomas'],
+                            description: extra.coverExampleDesc,
+                            highlights: [ex.industry, ex.situationTag, extra.coverExampleHighlight],
                             selectionPayload: payload,
                             previewProps: {
                               kind: 'cover',
@@ -841,7 +1003,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Ler</span>
+                        <span>{extra.readBtn}</span>
                       </button>
 
                       <button
@@ -849,7 +1011,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                         onClick={() => handleActionClick(payload)}
                         className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5"
                       >
-                        <span>Usar exemplo</span>
+                        <span>{s.useBtn}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -874,7 +1036,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                 type="button"
                 onClick={() => setActivePreview(null)}
                 className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0"
-                aria-label="Fechar pré-visualização"
+                aria-label={extra.closePreview}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -893,7 +1055,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      Sobre este formato
+                      {extra.aboutFormat}
                     </h4>
                     <p className="text-sm text-slate-800 font-medium mt-1">{activePreview.subtitle}</p>
                     <p className="text-xs text-slate-600 mt-2 leading-relaxed">{activePreview.description}</p>
@@ -902,7 +1064,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                   {activePreview.highlights.length > 0 && (
                     <div className="space-y-2 pt-3 border-t border-slate-100">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Destaques principais
+                        {extra.keyHighlights}
                       </h4>
                       <ul className="space-y-2 text-xs text-slate-700">
                         {activePreview.highlights.slice(0, 4).map((h, i) => (
@@ -919,12 +1081,10 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-1.5">
                       <p className="font-bold flex items-center gap-1.5">
                         <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                        <span>Visualização gratuita · Edição e download em Word para assinantes</span>
+                        <span>{s.previewFreeBadge}</span>
                       </p>
                       <p className="text-[11px] text-amber-900 leading-relaxed tabular-nums">
-                        {!isAuthenticated
-                          ? `Crie a sua conta gratuita e ative o plano Pro (${formatPrice(proUsd)}/mês) ou Executivo VIP (${formatPrice(execUsd)}/mês) via Cartão ou Pix para editar e exportar sem marcas de água.`
-                          : `Para personalizar este modelo, traduzir em 5 idiomas e descarregar em Word (.docx) ou PDF limpo, ative o plano Pro (${formatPrice(proUsd)}/mês) ou Executivo VIP (${formatPrice(execUsd)}/mês).`}
+                        {extra.freeModalDetail} ({formatPrice(proUsd)} / {formatPrice(execUsd)})
                       </p>
                     </div>
                   )}
@@ -938,10 +1098,10 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                   >
                     <span>
                       {hasActivePlan
-                        ? 'Usar Agora no Editor'
+                        ? extra.useNowEditor
                         : !isAuthenticated
-                        ? 'Criar Conta & Usar Este Modelo'
-                        : 'Ativar Plano & Usar Este Modelo'}
+                        ? extra.createAndUse
+                        : extra.activateAndUse}
                     </span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
@@ -950,7 +1110,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                     onClick={() => setActivePreview(null)}
                     className="w-full py-2 px-4 text-xs font-semibold text-slate-600 hover:text-slate-900"
                   >
-                    Explorar outros modelos
+                    {extra.exploreOthers}
                   </button>
                 </div>
               </div>

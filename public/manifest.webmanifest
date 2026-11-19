@@ -1,0 +1,17 @@
+{
+  "name": "Currículo Estratégico — Estúdio de Currículo Executivo & ATS",
+  "short_name": "Currículo Estratégico",
+  "description": "Estúdio profissional de currículos A4 e cartas de apresentação com Radar ATS, fórmula Google XYZ, tradução em 5 idiomas e exportação nativa Word (.docx) e PDF.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0f17",
+  "theme_color": "#0f172a",
+  "lang": "pt",
+  "icons": [
+    {
+      "src": "/og-preview.jpg",
+      "sizes": "1200x630",
+      "type": "image/jpeg"
+    }
+  ]
+}

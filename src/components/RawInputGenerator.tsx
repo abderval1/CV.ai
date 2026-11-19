@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { CVData } from '../types/cv';
+import { CVData, TemplateStyle } from '../types/cv';
 import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV } from '../data/initialCV';
 import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
+import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
@@ -20,8 +22,245 @@ import {
   Linkedin,
   HelpCircle,
   Trash2,
-  ShieldCheck
+  Sparkles,
+  Palette,
+  Eye,
+  ExternalLink,
+  Camera
 } from 'lucide-react';
+
+interface LinkedInExtractionReport {
+  directFetchStatus: string;
+  groundingUsed: boolean;
+  rawTextUsed: boolean;
+  profilePhotoFound: boolean;
+  groundingSources?: Array<{ title: string; uri: string }>;
+  completenessScore: number;
+  needsSupplementalPdfOrPaste?: boolean;
+  extractionNotes?: string;
+  counts: {
+    experiences: number;
+    competencies: number;
+    educations: number;
+    trainings: number;
+    languages: number;
+    highlightsTotal: number;
+  };
+}
+
+const LINKEDIN_DEEP_COPY: Record<
+  SiteLanguageCode,
+  {
+    subtitle: string;
+    extractAllBtn: string;
+    uploadPdfBtn: string;
+    uploadPdfTitle: string;
+    privateTipTitle: string;
+    privateTipBody: string;
+    privateTipCta: string;
+    completenessLabel: string;
+    photoFoundBadge: string;
+    highlightsLabel: string;
+    certsLabel: string;
+    langsLabel: string;
+    chooseStyleLabel: string;
+    accentColorLabel: string;
+    showPhotoLabel: string;
+    applyAndViewBtn: string;
+    sourcesLabel: string;
+    helperPdfTip: string;
+    styleOptions: Array<{ id: TemplateStyle; label: string }>;
+  }
+> = {
+  pt: {
+    subtitle:
+      'Cole o URL do seu perfil (ou anexe o PDF do LinkedIn) para importar 100% dos cargos, conquistas, competências, formações, certificações, projetos e idiomas num CV bonito.',
+    extractAllBtn: 'Puxar Tudo do LinkedIn',
+    uploadPdfBtn: 'PDF do LinkedIn',
+    uploadPdfTitle: 'No LinkedIn, clique em "Mais → Guardar como PDF" e anexe aqui para importar 100% mesmo se o perfil for privado',
+    privateTipTitle: 'LinkedIn ocultou secções privadas via URL público',
+    privateTipBody:
+      'Extraímos os dados públicos indexados, mas para puxar 100% de todos os seus cargos, competências e certificações, abra o seu LinkedIn → "Mais" → "Guardar como PDF" e anexe o ficheiro aqui ou cole o texto abaixo.',
+    privateTipCta: 'Anexar PDF do LinkedIn Agora',
+    completenessLabel: 'Cobertura do Perfil',
+    photoFoundBadge: 'Foto importada',
+    highlightsLabel: 'Conquistas',
+    certsLabel: 'Certificados & Projetos',
+    langsLabel: 'Idiomas',
+    chooseStyleLabel: 'Escolha o layout bonito do seu CV:',
+    accentColorLabel: 'Cor de destaque:',
+    showPhotoLabel: 'Incluir foto no CV',
+    applyAndViewBtn: 'Aplicar Tudo e Abrir CV Bonito',
+    sourcesLabel: 'Fontes públicas verificadas:',
+    helperPdfTip: 'Dica Pro: Se o seu LinkedIn for privado, vá ao seu perfil → "Mais" → "Guardar como PDF" e clique em "PDF do LinkedIn" acima para puxar literalmente tudo.',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Executivo' },
+      { id: 'tech_modern', label: 'Tech Moderno' },
+      { id: 'creative_split', label: 'Criativo Split' },
+      { id: 'un_classic', label: 'Corporativo' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Puro' }
+    ]
+  },
+  en: {
+    subtitle:
+      'Paste your profile URL (or attach your LinkedIn PDF) to pull 100% of your roles, achievements, skills, education, certifications, projects, and languages into a polished CV.',
+    extractAllBtn: 'Pull Full LinkedIn Profile',
+    uploadPdfBtn: 'LinkedIn PDF',
+    uploadPdfTitle: 'On LinkedIn click "More → Save to PDF" and upload it here to extract 100% of private sections',
+    privateTipTitle: 'LinkedIn hid private sections from public URL',
+    privateTipBody:
+      'We extracted all publicly indexed info, but to pull 100% of every job bullet, skill, and certificate, go to your LinkedIn → "More" → "Save to PDF" and upload it here.',
+    privateTipCta: 'Upload LinkedIn PDF Now',
+    completenessLabel: 'Profile Coverage',
+    photoFoundBadge: 'Photo imported',
+    highlightsLabel: 'Bullet Points',
+    certsLabel: 'Certs & Projects',
+    langsLabel: 'Languages',
+    chooseStyleLabel: 'Choose your polished CV design:',
+    accentColorLabel: 'Accent color:',
+    showPhotoLabel: 'Include photo',
+    applyAndViewBtn: 'Apply Full Profile & Open Beautiful CV',
+    sourcesLabel: 'Verified public sources:',
+    helperPdfTip: 'Pro Tip: If your profile has private sections, open LinkedIn → "More" → "Save to PDF" and click "LinkedIn PDF" above to pull literally everything.',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Executive' },
+      { id: 'tech_modern', label: 'Tech Modern' },
+      { id: 'creative_split', label: 'Creative Split' },
+      { id: 'un_classic', label: 'Corporate Classic' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Pure' }
+    ]
+  },
+  es: {
+    subtitle:
+      'Pega la URL de tu perfil (o adjunta el PDF de LinkedIn) para importar el 100% de cargos, logros, competencias, formación, certificaciones, proyectos e idiomas en un CV profesional.',
+    extractAllBtn: 'Extraer Todo de LinkedIn',
+    uploadPdfBtn: 'PDF de LinkedIn',
+    uploadPdfTitle: 'En LinkedIn haz clic en "Más → Guardar en PDF" y súbelo aquí para importar el 100%',
+    privateTipTitle: 'LinkedIn ocultó secciones privadas en la URL pública',
+    privateTipBody:
+      'Extrajimos los datos públicos indexados. Para importar el 100% de tus puestos, habilidades y certificados, abre tu LinkedIn → "Más" → "Guardar en PDF" y adjúntalo aquí.',
+    privateTipCta: 'Adjuntar PDF de LinkedIn Ahora',
+    completenessLabel: 'Cobertura del Perfil',
+    photoFoundBadge: 'Foto importada',
+    highlightsLabel: 'Logros',
+    certsLabel: 'Certificados y Proyectos',
+    langsLabel: 'Idiomas',
+    chooseStyleLabel: 'Elige el diseño elegante de tu CV:',
+    accentColorLabel: 'Color de acento:',
+    showPhotoLabel: 'Incluir foto',
+    applyAndViewBtn: 'Aplicar Todo y Ver CV Elegante',
+    sourcesLabel: 'Fuentes públicas verificadas:',
+    helperPdfTip: 'Consejo Pro: Si tu perfil es privado, abre LinkedIn → "Más" → "Guardar en PDF" y súbelo con el botón "PDF de LinkedIn".',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Ejecutivo' },
+      { id: 'tech_modern', label: 'Tech Moderno' },
+      { id: 'creative_split', label: 'Creativo Split' },
+      { id: 'un_classic', label: 'Corporativo' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Puro' }
+    ]
+  },
+  fr: {
+    subtitle:
+      'Collez l’URL de votre profil (ou importez votre PDF LinkedIn) pour récupérer 100 % de vos postes, réalisations, compétences, formations, certifications, projets et langues.',
+    extractAllBtn: 'Tout Importer de LinkedIn',
+    uploadPdfBtn: 'PDF LinkedIn',
+    uploadPdfTitle: 'Sur LinkedIn, cliquez sur « Plus → Enregistrer au format PDF » et importez-le ici',
+    privateTipTitle: 'LinkedIn a masqué des sections privées sur l’URL publique',
+    privateTipBody:
+      'Nous avons récupéré les données publiques indexées. Pour importer 100 % de vos expériences et certificats, ouvrez LinkedIn → « Plus » → « Enregistrer au format PDF » et importez-le ici.',
+    privateTipCta: 'Importer le PDF LinkedIn',
+    completenessLabel: 'Couverture du Profil',
+    photoFoundBadge: 'Photo importée',
+    highlightsLabel: 'Réalisations',
+    certsLabel: 'Certificats & Projets',
+    langsLabel: 'Langues',
+    chooseStyleLabel: 'Choisissez le design de votre CV :',
+    accentColorLabel: 'Couleur d’accent :',
+    showPhotoLabel: 'Inclure la photo',
+    applyAndViewBtn: 'Appliquer Tout et Ouvrir le Beau CV',
+    sourcesLabel: 'Sources publiques vérifiées :',
+    helperPdfTip: 'Astuce Pro : Si votre profil est privé, ouvrez LinkedIn → « Plus » → « Enregistrer au format PDF » puis cliquez sur « PDF LinkedIn ».',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Exécutif' },
+      { id: 'tech_modern', label: 'Tech Moderne' },
+      { id: 'creative_split', label: 'Créatif Split' },
+      { id: 'un_classic', label: 'Corporate' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Pur' }
+    ]
+  },
+  de: {
+    subtitle:
+      'Fügen Sie Ihre Profil-URL ein (oder laden Sie Ihr LinkedIn-PDF hoch), um 100 % Ihrer Positionen, Erfolge, Skills, Abschlüsse, Zertifikate, Projekte und Sprachen in einen starken Lebenslauf zu übernehmen.',
+    extractAllBtn: 'Alles von LinkedIn Laden',
+    uploadPdfBtn: 'LinkedIn-PDF',
+    uploadPdfTitle: 'Auf LinkedIn „Mehr → Als PDF speichern“ wählen und hier hochladen für 100 % Import',
+    privateTipTitle: 'LinkedIn hat private Bereiche über die öffentliche URL verborgen',
+    privateTipBody:
+      'Öffentlich indexierte Daten wurden extrahiert. Für 100 % aller Positionen und Zertifikate öffnen Sie LinkedIn → „Mehr“ → „Als PDF speichern“ und laden es hier hoch.',
+    privateTipCta: 'LinkedIn-PDF jetzt hochladen',
+    completenessLabel: 'Profilabdeckung',
+    photoFoundBadge: 'Foto importiert',
+    highlightsLabel: 'Erfolge',
+    certsLabel: 'Zertifikate & Projekte',
+    langsLabel: 'Sprachen',
+    chooseStyleLabel: 'Wählen Sie Ihr CV-Design:',
+    accentColorLabel: 'Akzentfarbe:',
+    showPhotoLabel: 'Foto einfügen',
+    applyAndViewBtn: 'Alles Übernehmen & Schönes CV Öffnen',
+    sourcesLabel: 'Verifizierte öffentliche Quellen:',
+    helperPdfTip: 'Pro-Tipp: Bei privaten Profilen auf LinkedIn „Mehr → Als PDF speichern“ klicken und oben als „LinkedIn-PDF“ hochladen.',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Executive' },
+      { id: 'tech_modern', label: 'Tech Modern' },
+      { id: 'creative_split', label: 'Kreativ Split' },
+      { id: 'un_classic', label: 'Corporate' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Pur' }
+    ]
+  },
+  it: {
+    subtitle:
+      'Incolla l’URL del tuo profilo (o allega il PDF di LinkedIn) per importare il 100% di ruoli, risultati, competenze, formazione, certificazioni, progetti e lingue in un CV curato.',
+    extractAllBtn: 'Importa Tutto da LinkedIn',
+    uploadPdfBtn: 'PDF LinkedIn',
+    uploadPdfTitle: 'Su LinkedIn clicca "Altro → Salva come PDF" e caricalo qui per importare tutto al 100%',
+    privateTipTitle: 'LinkedIn ha nascosto alcune sezioni private dall’URL pubblico',
+    privateTipBody:
+      'Abbiamo estratto i dati pubblici indicizzati. Per importare il 100% di ruoli e certificazioni, apri LinkedIn → "Altro" → "Salva come PDF" e caricalo qui.',
+    privateTipCta: 'Carica PDF LinkedIn Ora',
+    completenessLabel: 'Copertura Profilo',
+    photoFoundBadge: 'Foto importata',
+    highlightsLabel: 'Risultati',
+    certsLabel: 'Certificati & Progetti',
+    langsLabel: 'Lingue',
+    chooseStyleLabel: 'Scegli il layout elegante del tuo CV:',
+    accentColorLabel: 'Colore accento:',
+    showPhotoLabel: 'Includi foto',
+    applyAndViewBtn: 'Applica Tutto e Apri CV Curato',
+    sourcesLabel: 'Fonti pubbliche verificate:',
+    helperPdfTip: 'Consiglio Pro: Se il profilo è privato, apri LinkedIn → "Altro" → "Salva come PDF" e usa il pulsante "PDF LinkedIn" qui sopra.',
+    styleOptions: [
+      { id: 'executive_harvard', label: 'Harvard Esecutivo' },
+      { id: 'tech_modern', label: 'Tech Moderno' },
+      { id: 'creative_split', label: 'Creativo Split' },
+      { id: 'un_classic', label: 'Corporate' },
+      { id: 'european_europass', label: 'Europass' },
+      { id: 'ats_compact', label: 'ATS Puro' }
+    ]
+  }
+};
+
+const LINKEDIN_ACCENT_PALETTE = [
+  { hex: '#0f172a', label: 'Obsidian' },
+  { hex: '#1e3a8a', label: 'Navy' },
+  { hex: '#0f766e', label: 'Emerald' },
+  { hex: '#4338ca', label: 'Indigo' },
+  { hex: '#7c2d12', label: 'Burgundy' }
+];
 
 interface RawInputGeneratorProps {
   onCVGenerated: (generatedCV: CVData) => void;
@@ -36,6 +275,8 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   onUpdateJobDescription,
   onOpenPreview
 }) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).rawGenerator;
   const [generationMode, setGenerationMode] = useState<'standard' | 'tailored'>(() => {
     try {
       const savedJob = localStorage.getItem('curriculo_job_draft_v1');
@@ -53,16 +294,22 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   );
   const [linkedInUrl, setLinkedInUrl] = useState<string>('');
   const [showLinkedInHelper, setShowLinkedInHelper] = useState<boolean>(false);
+  const [showPresets, setShowPresets] = useState<boolean>(false);
   const [isLinkedInConnecting, setIsLinkedInConnecting] = useState<boolean>(false);
   const [isLinkedInExtracting, setIsLinkedInExtracting] = useState<boolean>(false);
+  const lkUi = LINKEDIN_DEEP_COPY[siteLanguage] || LINKEDIN_DEEP_COPY.pt;
   const [linkedInJobState, setLinkedInJobState] = useState<{
     jobId: string;
     step: number;
     stepLabel: string;
     percent: number;
     extractedCV: CVData | null;
+    extractionReport?: LinkedInExtractionReport;
     logs: string[];
   } | null>(null);
+  const [lkSelectedStyle, setLkSelectedStyle] = useState<TemplateStyle>('executive_harvard');
+  const [lkSelectedAccent, setLkSelectedAccent] = useState<string>('#0f172a');
+  const [lkIncludePhoto, setLkIncludePhoto] = useState<boolean>(false);
   const [targetStandard, setTargetStandard] = useState<
     'onu' | 'tech' | 'harvard' | 'ats' | 'europass'
   >('onu');
@@ -78,6 +325,7 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   }, []);
 
   const candidateFileInputRef = useRef<HTMLInputElement>(null);
+  const linkedInPdfInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
   const [isExtractingCandidateFile, setIsExtractingCandidateFile] = useState<boolean>(false);
   const [isExtractingJobFile, setIsExtractingJobFile] = useState<boolean>(false);
@@ -111,7 +359,7 @@ Estratégia Corporativa, M&A, Finanças Globais, Due Diligence, Governança, Pow
     setCandidateRawText(presetText);
     setLinkedInUrl(AGOSTINHO_CV.personalDetails.linkedin || 'https://linkedin.com/in/beatriz-fonseca-exec');
     setTargetStandard('onu');
-    setSuccessMessage('Perfil Liderança Executiva & Estratégia carregado!');
+    setSuccessMessage(ui.msgExecLoaded);
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
@@ -143,7 +391,7 @@ Kubernetes, Docker, AWS (ECS, Lambda), Node.js, TypeScript, React, Python, Postg
     setCandidateRawText(presetText);
     setLinkedInUrl(TECH_LEAD_CV.personalDetails.linkedin || 'https://linkedin.com/in/manuelsilva-tech');
     setTargetStandard('tech');
-    setSuccessMessage('Perfil Tech Lead & Arquiteto Cloud carregado!');
+    setSuccessMessage(ui.msgTechLoaded);
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
@@ -178,7 +426,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     setCandidateRawText(presetText);
     setLinkedInUrl('https://linkedin.com/in/isabelcardoso-cfo');
     setTargetStandard('harvard');
-    setSuccessMessage('Perfil Direção Financeira & Controladoria carregado!');
+    setSuccessMessage(ui.msgFinLoaded);
     setTimeout(() => setSuccessMessage(null), 3000);
   };
 
@@ -222,7 +470,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
 
     const data = await response.json();
     if (!response.ok || !data.text) {
-      throw new Error(data.error || 'Não foi possível extrair texto deste documento.');
+      throw new Error(data.error || ui.msgErrExtract);
     }
 
     return data.text;
@@ -239,13 +487,13 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       const text = await extractTextFromFile(file);
       if (text) {
         setCandidateRawText((prev) =>
-          prev ? `${prev}\n\n--- DOCUMENTO IMPORTADO (${file.name}) ---\n${text}` : text
+          prev ? `${prev}\n\n--- IMPORTED (${file.name}) ---\n${text}` : text
         );
-        setSuccessMessage(`Documento "${file.name}" importado com sucesso!`);
+        setSuccessMessage(`${ui.msgDocImportedPrefix} "${file.name}" ${ui.msgDocImportedSuffix}`);
         setTimeout(() => setSuccessMessage(null), 3500);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || `Erro ao extrair texto de "${file.name}".`);
+      setErrorMessage(err.message || ui.msgErrExtract);
     } finally {
       setIsExtractingCandidateFile(false);
       e.target.value = '';
@@ -264,21 +512,22 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       if (text) {
         setJobDescription(text);
         onUpdateJobDescription(text);
-        setSuccessMessage(`Documento TdR / Vaga "${file.name}" importado com sucesso!`);
+        setSuccessMessage(`${ui.msgJobDocImportedPrefix} "${file.name}" ${ui.msgJobDocImportedSuffix}`);
         setTimeout(() => setSuccessMessage(null), 3500);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || `Erro ao extrair texto de "${file.name}".`);
+      setErrorMessage(err.message || ui.msgErrExtract);
     } finally {
       setIsExtractingJobFile(false);
       e.target.value = '';
     }
   };
 
-  // Public LinkedIn Profile Background Extraction Job
-  const handleExtractLinkedInBackgroundJob = async () => {
-    if (!linkedInUrl.trim()) {
-      setErrorMessage('Insira o URL do seu perfil público LinkedIn (ex: https://linkedin.com/in/seu-nome).');
+  // Public LinkedIn Full Profile Deep Extraction Job (URL + Public HTML/JSON-LD + Web Grounding + Optional PDF/Text)
+  const handleExtractLinkedInBackgroundJob = async (overrideRawText?: string) => {
+    const effectiveRawText = typeof overrideRawText === 'string' ? overrideRawText : candidateRawText;
+    if (!linkedInUrl.trim() && !effectiveRawText.trim()) {
+      setErrorMessage(ui.msgErrLinkedInUrl);
       return;
     }
 
@@ -289,66 +538,132 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     setLinkedInJobState({
       jobId: initialJobId,
       step: 1,
-      stepLabel: 'Validando URL e verificando cabeçalhos públicos do perfil...',
+      stepLabel: ui.step1Label,
       percent: 25,
       extractedCV: null,
-      logs: ['Iniciado worker assíncrono em background.']
+      logs: [ui.logStart]
     });
 
-    try {
-      setTimeout(() => {
-        setLinkedInJobState((prev) =>
-          prev
-            ? {
-                ...prev,
-                step: 2,
-                stepLabel: 'Extraindo histórico de cargos, empresas e formação acadêmica...',
-                percent: 60,
-                logs: [...prev.logs, 'Histórico profissional e competências localizados.']
-              }
-            : null
-        );
-      }, 700);
+    const stepTimer1 = setTimeout(() => {
+      setLinkedInJobState((prev) =>
+        prev && prev.percent < 60
+          ? {
+              ...prev,
+              step: 2,
+              stepLabel: ui.step2Label,
+              percent: 58,
+              logs: [...prev.logs, ui.logStep2]
+            }
+          : prev
+      );
+    }, 650);
 
+    const stepTimer2 = setTimeout(() => {
+      setLinkedInJobState((prev) =>
+        prev && prev.percent < 85
+          ? {
+              ...prev,
+              step: 3,
+              stepLabel: ui.generatingStandard,
+              percent: 82,
+              logs: prev.logs
+            }
+          : prev
+      );
+    }, 2200);
+
+    try {
       const res = await authorizedFetch('/api/extract-linkedin', {
         method: 'POST',
         body: JSON.stringify({
-          url: linkedInUrl,
-          rawText: candidateRawText
+          url: linkedInUrl.trim(),
+          rawText: effectiveRawText,
+          targetStandard,
+          language: siteLanguage
         })
       });
 
       const data = await res.json();
       if (!res.ok && !data.extractedCV) {
-        throw new Error(data.error || 'Falha ao processar job de extração.');
+        throw new Error(data.error || ui.msgErrExtract);
       }
+
+      const extractedCV: CVData = data.extractedCV;
+      setLkSelectedStyle(extractedCV.templateStyle || 'executive_harvard');
+      setLkSelectedAccent(extractedCV.accentColor || '#0f172a');
+      setLkIncludePhoto(Boolean(extractedCV.personalDetails?.photoUrl && extractedCV.personalDetails?.showPhoto));
 
       setLinkedInJobState({
         jobId: data.jobId || initialJobId,
         step: 4,
-        stepLabel: 'Carreira estruturada com sucesso no modelo ATS!',
+        stepLabel: ui.step4Label,
         percent: 100,
-        extractedCV: data.extractedCV,
-        logs: data.logs || [
-          'Conexão com perfil público validada.',
-          'Cargos, datas e conquistas calibrados no padrão Google XYZ.',
-          'Modelo pronto para integração direta.'
-        ]
+        extractedCV,
+        extractionReport: data.extractionReport,
+        logs: data.logs || [ui.logDone1, ui.logDone2, ui.logDone3]
       });
 
-      setSuccessMessage('Histórico profissional do LinkedIn extraído e formatado no modelo de currículo!');
+      setSuccessMessage(ui.msgLinkedInSuccess);
     } catch (err: any) {
       console.error('Erro na extração do LinkedIn:', err);
-      setErrorMessage(err.message || 'Erro ao extrair dados do perfil. Tente novamente.');
+      setErrorMessage(err.message || ui.msgErrExtract);
       setLinkedInJobState(null);
     } finally {
+      clearTimeout(stepTimer1);
+      clearTimeout(stepTimer2);
       setIsLinkedInExtracting(false);
+    }
+  };
+
+  // One-click LinkedIn PDF ("More -> Save to PDF") uploader & immediate full extractor
+  const handleLinkedInPdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsLinkedInExtracting(true);
+    setErrorMessage(null);
+    try {
+      const text = await extractTextFromFile(file);
+      if (text) {
+        setCandidateRawText(text);
+        await handleExtractLinkedInBackgroundJob(text);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || ui.msgErrExtract);
+      setIsLinkedInExtracting(false);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  // Apply styled LinkedIn CV directly and jump to beautiful A4 preview
+  const handleApplyLinkedInCV = (openPreviewImmediately = true) => {
+    if (!linkedInJobState?.extractedCV) return;
+    const base = linkedInJobState.extractedCV;
+    const finalCV: CVData = {
+      ...base,
+      templateStyle: lkSelectedStyle,
+      accentColor: lkSelectedAccent,
+      fontFamily: lkSelectedStyle === 'executive_harvard' || lkSelectedStyle === 'un_classic' ? 'garamond' : 'jakarta',
+      personalDetails: {
+        ...base.personalDetails,
+        photoUrl: base.personalDetails.photoUrl || undefined,
+        showPhoto: Boolean(
+          base.personalDetails.photoUrl &&
+            (lkIncludePhoto || lkSelectedStyle === 'european_europass')
+        )
+      }
+    };
+    onCVGenerated(finalCV);
+    setSuccessMessage(ui.msgLinkedInApplied);
+    if (openPreviewImmediately) {
+      setTimeout(() => onOpenPreview(), 250);
     }
   };
 
   // Quick fallback link sync
   const handleConnectLinkedIn = () => {
-    handleExtractLinkedInBackgroundJob();
+    void handleExtractLinkedInBackgroundJob();
   };
 
   // Heuristic parser fallback in case server API is offline or disabled
@@ -473,12 +788,12 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     }
 
     if (!candidateRawText.trim() && !linkedInUrl.trim()) {
-      setErrorMessage('Por favor importe o seu CV (PDF/Word) ou cole as suas informações profissionais antes de gerar.');
+      setErrorMessage(ui.msgErrNoInput);
       return;
     }
 
     if (activeMode === 'tailored' && !jobDescription.trim()) {
-      setErrorMessage('Para adaptar à vaga, cole a descrição da vaga pretendida ou mude para "Gerar Apenas o CV".');
+      setErrorMessage(ui.msgErrNoJob);
       return;
     }
 
@@ -487,8 +802,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       onCVGenerated(fallbackCV);
       setSuccessMessage(
         activeMode === 'standard'
-          ? 'A IA externa está pausada; o seu currículo foi estruturado localmente com sucesso!'
-          : 'A IA externa está pausada; estruturação local aplicada com sucesso!'
+          ? ui.msgAiPausedStandard
+          : ui.msgAiPausedTailored
       );
       setTimeout(() => onOpenPreview(), 900);
       return;
@@ -584,8 +899,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         onCVGenerated(fullCV);
         setSuccessMessage(
           activeMode === 'standard'
-            ? 'Currículo estruturado e otimizado com sucesso no padrão selecionado!'
-            : 'Currículo gerado com IA e adaptado com sucesso para a vaga!'
+            ? ui.msgSuccessStandard
+            : ui.msgSuccessTailored
         );
         setTimeout(() => {
           onOpenPreview();
@@ -608,8 +923,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       onCVGenerated(fallbackCV);
       setSuccessMessage(
         activeMode === 'standard'
-          ? 'Currículo estruturado com sucesso a partir dos seus dados importados!'
-          : 'Currículo estruturado e adaptado com sucesso para a vaga pretendida!'
+          ? ui.msgFallbackStandard
+          : ui.msgFallbackTailored
       );
       setTimeout(() => {
         onOpenPreview();
@@ -620,223 +935,147 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
   };
 
   return (
-    <div className="space-y-5">
-      {/* Introduction Card - SaaS Presentation */}
-      <div className="bg-slate-900 text-white rounded-xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-amber-400 shrink-0" />
-            <div>
-              <h2 className="text-base font-bold">
-                Importador & Gerador de Currículo ATS
-              </h2>
-              <p className="text-xs text-slate-300">
-                {generationMode === 'standard'
-                  ? 'Importe ou cole o seu currículo para o estruturar e aprimorar num layout profissional — sem precisar de vaga.'
-                  : 'Insira as suas informações e a vaga pretendida para gerar um CV adaptado aos requisitos do recrutador.'}
-              </p>
-            </div>
+    <div className="space-y-3.5">
+      {/* Compact Header & Mode / Standard Controls */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="w-4 h-4 text-slate-800 dark:text-slate-200 shrink-0" />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+              {ui.title}
+            </h2>
           </div>
 
-          {candidateRawText && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Compact Mode Switcher */}
+            <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setGenerationMode('standard');
+                  setErrorMessage(null);
+                }}
+                title={ui.modeStandardDesc}
+                className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                  generationMode === 'standard'
+                    ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {ui.modeStandardTitle}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGenerationMode('tailored');
+                  setErrorMessage(null);
+                }}
+                title={ui.modeTailoredDesc}
+                className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                  generationMode === 'tailored'
+                    ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {ui.modeTailoredTitle}
+              </button>
+            </div>
+
             <button
               type="button"
-              onClick={handleClearAll}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
-              title="Limpar campos e começar em branco"
+              onClick={() => setShowPresets((prev) => !prev)}
+              title={ui.presetsLabel}
+              className={`px-2 py-1 text-[11px] font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+                showPresets
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Limpar Tudo</span>
+              {ui.presetsLabel}
             </button>
-          )}
+
+            {candidateRawText && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="p-1.5 text-slate-400 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
+                title={ui.clearTitle}
+                aria-label={ui.clearBtn}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Multi-Industry Exemplary Career Presets */}
-        <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">
-            Modelos de Preenchimento:
-          </span>
-          <button
-            type="button"
-            onClick={handleLoadExecutiveProfile}
-            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
-            title="Carregar perfil Liderança Executiva & Operações Estratégicas"
-          >
-            <span>🏛️</span>
-            <span>Executivo & Operações</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleLoadTechLeadProfile}
-            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
-            title="Carregar perfil Tech Lead & Engenharia Cloud"
-          >
-            <span>💻</span>
-            <span>Tech Lead & Cloud</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleLoadFinanceProfile}
-            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-slate-200 transition-colors flex items-center gap-1.5"
-            title="Carregar perfil Direção Financeira & Controladoria"
-          >
-            <span>📊</span>
-            <span>Finanças & CFO</span>
-          </button>
-        </div>
-
-        {/* Target Standard Selector Bar */}
-        <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[11px] text-slate-400 font-semibold">Padrão Alvo:</span>
-            <div className="flex flex-wrap items-center gap-1 bg-slate-800/80 p-0.5 rounded-lg border border-slate-700">
-              <button
-                type="button"
-                onClick={() => setTargetStandard('onu')}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === 'onu'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-                title="Padrão Corporativo & Projetos Globais"
-              >
-                Corporativo Global
-              </button>
-              <button
-                type="button"
-                onClick={() => setTargetStandard('tech')}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === 'tech'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-                title="Fórmula XYZ de Impacto Quantificável (Google/Meta)"
-              >
-                Big Tech / Google
-              </button>
-              <button
-                type="button"
-                onClick={() => setTargetStandard('harvard')}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === 'harvard'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-                title="Harvard Business School Executivo"
-              >
-                Harvard Executivo
-              </button>
-              <button
-                type="button"
-                onClick={() => setTargetStandard('europass')}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === 'europass'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-                title="Padrão Oficial União Europeia (Com Foto e CEFR)"
-              >
-                📸 Europeu Europass
-              </button>
-              <button
-                type="button"
-                onClick={() => setTargetStandard('ats')}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === 'ats'
-                    ? 'bg-amber-400 text-slate-950 shadow-2xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-                title="Filtro de compatibilidade zero-rejeição para robôs ATS"
-              >
-                ATS Puro (Sem Foto)
-              </button>
-            </div>
+        {/* Collapsible Career Presets */}
+        {showPresets && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                handleLoadExecutiveProfile();
+                setShowPresets(false);
+              }}
+              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
+              title={ui.presetExecTitle}
+            >
+              {ui.presetExec}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleLoadTechLeadProfile();
+                setShowPresets(false);
+              }}
+              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
+              title={ui.presetTechTitle}
+            >
+              {ui.presetTech}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleLoadFinanceProfile();
+                setShowPresets(false);
+              }}
+              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
+              title={ui.presetFinTitle}
+            >
+              {ui.presetFin}
+            </button>
           </div>
+        )}
 
-          <div className="flex items-center gap-1.5 text-xs text-slate-400">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Workday, Taleo, UN Inspira & Greenhouse</span>
+        {/* Compact Target Standard Selector */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+          <span className="text-[11px] text-slate-500 font-medium">{ui.targetLabel}</span>
+          <div className="flex flex-wrap items-center gap-1">
+            {(
+              [
+                { id: 'onu', label: ui.stdOnu, title: ui.stdOnuTitle },
+                { id: 'tech', label: ui.stdTech, title: ui.stdTechTitle },
+                { id: 'harvard', label: ui.stdHarvard, title: ui.stdHarvardTitle },
+                { id: 'europass', label: ui.stdEuropass, title: ui.stdEuropassTitle },
+                { id: 'ats', label: ui.stdAts, title: ui.stdAtsTitle }
+              ] as const
+            ).map((std) => (
+              <button
+                key={std.id}
+                type="button"
+                onClick={() => setTargetStandard(std.id)}
+                title={std.title}
+                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                  targetStandard === std.id
+                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-950'
+                }`}
+              >
+                {std.label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-
-      {/* Generation Mode Selector: CV Only vs Tailored to a Job */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setGenerationMode('standard');
-            setErrorMessage(null);
-          }}
-          className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
-            generationMode === 'standard'
-              ? 'bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/10'
-              : 'bg-white/70 border-slate-200 hover:border-slate-300 text-slate-600'
-          }`}
-        >
-          <div
-            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-              generationMode === 'standard'
-                ? 'bg-slate-900 text-amber-400'
-                : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-slate-900">
-                Gerar Apenas o CV
-              </span>
-              {generationMode === 'standard' && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                  Ativo
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              Ideal se já importou o seu CV e ainda não tem uma vaga específica. Mantém e aprimora a sua profissão real.
-            </p>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setGenerationMode('tailored');
-            setErrorMessage(null);
-          }}
-          className={`text-left p-4 rounded-xl border-2 transition-all flex items-start gap-3 ${
-            generationMode === 'tailored'
-              ? 'bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/10'
-              : 'bg-white/70 border-slate-200 hover:border-slate-300 text-slate-600'
-          }`}
-        >
-          <div
-            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-              generationMode === 'tailored'
-                ? 'bg-slate-900 text-amber-400'
-                : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            <Target className="w-4 h-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-slate-900">
-                Adaptar CV para uma Vaga
-              </span>
-              {generationMode === 'tailored' && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900">
-                  Ativo
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              Cruza os seus dados com um anúncio ou Edital/TdR para otimizar palavras-chave e pontuação ATS.
-            </p>
-          </div>
-        </button>
       </div>
 
       {/* Dynamic Layout: Full Width in Standard Mode, 2-Column Split in Tailored Mode */}
@@ -848,7 +1087,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-slate-800" />
                 <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  1. As Suas Informações & Textos
+                  {ui.sec1Title}
                 </h3>
               </div>
 
@@ -866,24 +1105,24 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                   disabled={isExtractingCandidateFile}
                   onClick={() => candidateFileInputRef.current?.click()}
                   className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
-                  title="Carregar ficheiro PDF, Word (.docx) ou texto com o seu currículo ou notas"
+                  title={ui.importFileTitle}
                 >
                   {isExtractingCandidateFile ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
                     <Upload className="w-3 h-3" />
                   )}
-                  <span>{isExtractingCandidateFile ? 'A extrair...' : 'Importar Ficheiro'}</span>
+                  <span>{isExtractingCandidateFile ? ui.importingFileBtn : ui.importFileBtn}</span>
                 </button>
               </div>
             </div>
 
-            {/* LinkedIn Connect Bar */}
-            <div className="p-3 bg-blue-50/70 border border-blue-200/90 rounded-lg space-y-2">
-              <div className="flex items-center justify-between">
+            {/* LinkedIn Full Profile Deep Extractor & Beautiful CV Builder */}
+            <div className="p-3.5 bg-blue-50/70 border border-blue-200/90 rounded-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-blue-900">
-                  <Linkedin className="w-4 h-4 text-blue-700" />
-                  <span>Conectar & Importar do LinkedIn</span>
+                  <Linkedin className="w-4 h-4 text-blue-700 shrink-0" />
+                  <span>{ui.linkedinTitle}</span>
                 </div>
                 <button
                   type="button"
@@ -891,42 +1130,71 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                   className="text-[11px] text-blue-700 hover:underline flex items-center gap-1"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
-                  <span>Como sincronizar?</span>
+                  <span>{ui.linkedinHowBtn}</span>
                 </button>
               </div>
+
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                {lkUi.subtitle}
+              </p>
+
+              <input
+                type="file"
+                ref={linkedInPdfInputRef}
+                onChange={handleLinkedInPdfUpload}
+                accept=".pdf,.txt,.docx,.doc,.rtf"
+                className="hidden"
+              />
 
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="url"
                   value={linkedInUrl}
                   onChange={(e) => setLinkedInUrl(e.target.value)}
-                  placeholder="https://www.linkedin.com/in/seu-perfil-executivo"
-                  className="flex-1 text-xs px-2.5 py-1.5 bg-white border border-blue-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-800 text-slate-800 placeholder:text-slate-400"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleExtractLinkedInBackgroundJob();
+                    }
+                  }}
+                  placeholder={ui.linkedinPlaceholder}
+                  className="flex-1 text-xs px-3 py-2 bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 text-slate-800 placeholder:text-slate-400"
                 />
-                <button
-                  type="button"
-                  onClick={handleExtractLinkedInBackgroundJob}
-                  disabled={isLinkedInExtracting}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-md transition-colors whitespace-nowrap shrink-0 shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  {isLinkedInExtracting ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Job em Execução...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Linkedin className="w-3.5 h-3.5" />
-                      <span>Extrair Perfil (Job)</span>
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => linkedInPdfInputRef.current?.click()}
+                    disabled={isLinkedInExtracting}
+                    title={lkUi.uploadPdfTitle}
+                    className="px-3 py-2 text-xs font-semibold text-blue-800 bg-white hover:bg-blue-100/60 border border-blue-300 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{lkUi.uploadPdfBtn}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleExtractLinkedInBackgroundJob()}
+                    disabled={isLinkedInExtracting}
+                    className="px-3.5 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 shadow-xs flex items-center justify-center gap-1.5"
+                  >
+                    {isLinkedInExtracting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>{ui.linkedinExtracting}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                        <span>{lkUi.extractAllBtn}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
-
-              {/* Background Extraction Job Tracker */}
+              {/* Background Extraction Job Tracker & Instant Beautiful CV Styler */}
               {linkedInJobState && (
-                <div className="p-3 bg-white rounded-lg border border-blue-300 shadow-xs space-y-2.5 animate-in fade-in duration-200">
+                <div className="p-3.5 bg-white rounded-xl border border-blue-300 shadow-xs space-y-3 animate-in fade-in duration-200">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       {linkedInJobState.percent < 100 ? (
@@ -935,11 +1203,13 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                         <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
                       )}
                       <span className="font-bold text-slate-900 font-mono text-[11px]">
-                        ID: {linkedInJobState.jobId}
+                        {linkedInJobState.extractedCV?.personalDetails?.name || `ID: ${linkedInJobState.jobId}`}
                       </span>
                     </div>
                     <span className="text-[10px] font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                      {linkedInJobState.percent}% Concluído
+                      {linkedInJobState.extractionReport
+                        ? `${lkUi.completenessLabel}: ${linkedInJobState.extractionReport.completenessScore}%`
+                        : `${linkedInJobState.percent}% ${ui.completedSuffix}`}
                     </span>
                   </div>
 
@@ -955,36 +1225,170 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                     {linkedInJobState.stepLabel}
                   </p>
 
-                  {/* Extracted Data Action Bar */}
+                  {/* Extracted Data Breakdown + Beauty Layout Picker */}
                   {linkedInJobState.extractedCV && (
-                    <div className="pt-2 border-t border-slate-100 space-y-2">
-                      <div className="p-2 bg-slate-50 rounded border border-slate-200 text-[11px] space-y-1 text-slate-700">
-                        <p className="font-bold text-slate-900 truncate">
-                          {linkedInJobState.extractedCV.personalDetails.name} —{' '}
-                          <span className="font-normal text-slate-600">
-                            {linkedInJobState.extractedCV.personalDetails.title}
-                          </span>
-                        </p>
-                        <p className="text-slate-500 text-[10px]">
-                          {linkedInJobState.extractedCV.experiences.length} Cargos Extraídos ·{' '}
-                          {linkedInJobState.extractedCV.competencies.length} Competências ATS ·{' '}
-                          {linkedInJobState.extractedCV.educations.length} Formações
-                        </p>
+                    <div className="pt-2.5 border-t border-slate-100 space-y-3">
+                      <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] space-y-2 text-slate-700">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-900 truncate">
+                              {linkedInJobState.extractedCV.personalDetails.name}
+                            </p>
+                            <p className="text-slate-600 truncate">
+                              {linkedInJobState.extractedCV.personalDetails.title}
+                            </p>
+                          </div>
+                          {linkedInJobState.extractionReport?.profilePhotoFound && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold shrink-0">
+                              <Camera className="w-3 h-3" />
+                              <span>{lkUi.photoFoundBadge}</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Complete Section Counts Grid */}
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 text-center pt-1">
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractedCV.experiences.length}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{ui.rolesExtractedLabel}</p>
+                          </div>
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractionReport?.counts?.highlightsTotal ??
+                                linkedInJobState.extractedCV.experiences.reduce((s, e) => s + e.highlights.length, 0)}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{lkUi.highlightsLabel}</p>
+                          </div>
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractedCV.competencies.length}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{ui.atsSkillsLabel}</p>
+                          </div>
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractedCV.educations.length}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{ui.educationsLabel}</p>
+                          </div>
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractedCV.trainings.length}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{lkUi.certsLabel}</p>
+                          </div>
+                          <div className="px-1.5 py-1 bg-white rounded border border-slate-200">
+                            <p className="font-bold text-slate-900 tabular-nums">
+                              {linkedInJobState.extractedCV.languages.length}
+                            </p>
+                            <p className="text-[9px] text-slate-500 truncate">{lkUi.langsLabel}</p>
+                          </div>
+                        </div>
                       </div>
 
+                      {/* Honest Authwall Notice with 1-Click PDF Fallback if LinkedIn blocked private fields */}
+                      {linkedInJobState.extractionReport?.needsSupplementalPdfOrPaste && (
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-2">
+                          <p className="font-bold flex items-center gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                            <span>{lkUi.privateTipTitle}</span>
+                          </p>
+                          <p className="leading-relaxed text-amber-800">{lkUi.privateTipBody}</p>
+                          <button
+                            type="button"
+                            onClick={() => linkedInPdfInputRef.current?.click()}
+                            className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-md text-[11px] inline-flex items-center gap-1.5"
+                          >
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>{lkUi.privateTipCta}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Verified Public Sources (when Google Search grounding returned sources) */}
+                      {linkedInJobState.extractionReport?.groundingSources &&
+                        linkedInJobState.extractionReport.groundingSources.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+                            <span className="font-semibold">{lkUi.sourcesLabel}</span>
+                            {linkedInJobState.extractionReport.groundingSources.slice(0, 4).map((src) => (
+                              <a
+                                key={src.uri}
+                                href={src.uri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 truncate max-w-[180px]"
+                              >
+                                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                                <span className="truncate">{src.title}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+
+                      {/* Beautiful Visual Layout & Color Styler */}
+                      <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                          <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <Palette className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{lkUi.chooseStyleLabel}</span>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-slate-500">{lkUi.accentColorLabel}</span>
+                            {LINKEDIN_ACCENT_PALETTE.map((c) => (
+                              <button
+                                key={c.hex}
+                                type="button"
+                                onClick={() => setLkSelectedAccent(c.hex)}
+                                title={c.label}
+                                className={`w-4 h-4 rounded-full border transition-transform ${
+                                  lkSelectedAccent === c.hex
+                                    ? 'scale-125 border-slate-900 ring-2 ring-amber-400'
+                                    : 'border-white/70 opacity-80 hover:opacity-100'
+                                }`}
+                                style={{ backgroundColor: c.hex }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {lkUi.styleOptions.map((opt) => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setLkSelectedStyle(opt.id)}
+                              className={`px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors ${
+                                lkSelectedStyle === opt.id
+                                  ? 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                          <label className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium bg-white border border-slate-200 text-slate-700 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={lkIncludePhoto}
+                              onChange={(e) => setLkIncludePhoto(e.target.checked)}
+                              className="rounded border-slate-300"
+                            />
+                            <span>{lkUi.showPhotoLabel}</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Primary Action Buttons */}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (linkedInJobState.extractedCV) {
-                              onCVGenerated(linkedInJobState.extractedCV);
-                              setSuccessMessage('Currículo atualizado diretamente a partir do perfil LinkedIn!');
-                            }
-                          }}
-                          className="flex-1 py-1.5 px-3 bg-blue-700 hover:bg-blue-800 text-white rounded-md text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                          onClick={() => handleApplyLinkedInCV(true)}
+                          className="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs"
                         >
-                          <Check className="w-3.5 h-3.5 text-amber-300" />
-                          <span>Aplicar Diretamente ao Currículo</span>
+                          <Eye className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{lkUi.applyAndViewBtn}</span>
                         </button>
 
                         <button
@@ -992,14 +1396,37 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                           onClick={() => {
                             if (linkedInJobState.extractedCV) {
                               const cv = linkedInJobState.extractedCV;
-                              const text = `${cv.personalDetails.name}\n${cv.personalDetails.title}\n${cv.personalDetails.location} | ${cv.personalDetails.phone} | ${cv.personalDetails.email}\n\nRESUMO:\n${cv.summary}\n\nEXPERIÊNCIAS:\n${cv.experiences.map((e) => `${e.role} na ${e.company} (${e.period})\n${e.highlights.map((h) => `- ${h}`).join('\n')}`).join('\n\n')}\n\nCOMPETÊNCIAS:\n${cv.competencies.map((c) => `${c.category}: ${c.description}`).join('\n')}`;
+                              const text = `${cv.personalDetails.name}\n${cv.personalDetails.title}\n${[
+                                cv.personalDetails.location,
+                                cv.personalDetails.phone,
+                                cv.personalDetails.email,
+                                cv.personalDetails.linkedin,
+                                cv.personalDetails.website
+                              ]
+                                .filter(Boolean)
+                                .join(' | ')}\n\nRESUMO:\n${cv.summary}\n\nEXPERIÊNCIAS:\n${cv.experiences
+                                .map(
+                                  (e) =>
+                                    `${e.role} @ ${e.company} (${e.period}${e.location ? ` · ${e.location}` : ''})\n${e.highlights
+                                      .map((h) => `- ${h}`)
+                                      .join('\n')}`
+                                )
+                                .join('\n\n')}\n\nCOMPETÊNCIAS:\n${cv.competencies
+                                .map((c) => `- ${c.category}: ${c.description}`)
+                                .join('\n')}\n\nFORMAÇÃO ACADÉMICA:\n${cv.educations
+                                .map((ed) => `- ${ed.degree}, ${ed.institution} (${ed.period})`)
+                                .join('\n')}\n\nCERTIFICAÇÕES, PROJETOS & CURSOS:\n${cv.trainings
+                                .map((t) => `- ${t}`)
+                                .join('\n')}\n\nIDIOMAS:\n${cv.languages
+                                .map((l) => `- ${l.language}: ${l.level}`)
+                                .join('\n')}`;
                               setCandidateRawText(text);
-                              setSuccessMessage('Dados copiados para o bloco de texto bruto!');
+                              setSuccessMessage(ui.msgLinkedInPasted);
                             }
                           }}
-                          className="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-xs font-semibold transition-colors"
+                          className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap"
                         >
-                          Colar no Texto
+                          {ui.pasteRawBtn}
                         </button>
                       </div>
                     </div>
@@ -1008,11 +1435,12 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               )}
 
               {showLinkedInHelper && (
-                <div className="text-[11px] text-blue-900/90 bg-white p-3 rounded-md border border-blue-200 space-y-1.5">
-                  <p className="font-semibold text-blue-950">💡 Como funciona o worker em background:</p>
-                  <p>1. O worker faz requisição assíncrona ao URL público informado.</p>
-                  <p>2. Os cargos, datas e competências são extraídos e convertidos automaticamente para a estrutura de dados <code>CVData</code>.</p>
-                  <p>3. Clique em <strong>"Aplicar Diretamente ao Currículo"</strong> para abrir o perfil imediatamente no editor.</p>
+                <div className="text-[11px] text-blue-900/90 bg-white p-3 rounded-lg border border-blue-200 space-y-1.5">
+                  <p className="font-semibold text-blue-950">{ui.linkedinHelperTitle}</p>
+                  <p>{ui.linkedinHelper1}</p>
+                  <p>{ui.linkedinHelper2}</p>
+                  <p>{ui.linkedinHelper3}</p>
+                  <p className="pt-1 font-medium text-blue-800">{lkUi.helperPdfTip}</p>
                 </div>
               )}
             </div>
@@ -1020,41 +1448,27 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
             {/* Candidate Raw Text Area */}
             <div>
               <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Cole aqui as suas notas, currículo anterior, cargos, projetos ou competências:
+                {ui.rawTextareaLabel}
               </label>
               <textarea
-                rows={12}
+                rows={7}
                 value={candidateRawText}
                 onChange={(e) => setCandidateRawText(e.target.value)}
-                placeholder={`Insira aqui as suas informações profissionais. Exemplo:
-
-NOME COMPLETO
-Título Profissional ou Especialidade
-Cidade, País | Telefone | E-mail | LinkedIn
-
-EXPERIÊNCIA PROFISSIONAL:
-- Empresa 1: Cargo, Período, Principais responsabilidades e resultados alcançados
-- Empresa 2: Cargo, Período, Ferramentas utilizadas e conquistas
-
-FORMAÇÃO ACADÉMICA:
-- Grau Académico, Universidade, Ano
-
-COMPETÊNCIAS:
-- Softwares, Idiomas, Metodologias e Certificações...`}
+                placeholder={ui.rawPlaceholder}
                 className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans placeholder:text-slate-400"
               />
             </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-            <span>{candidateRawText.length} caracteres inseridos</span>
+            <span>{candidateRawText.length} {ui.charsInsertedSuffix}</span>
             {generationMode === 'standard' && (
               <button
                 type="button"
                 onClick={() => setGenerationMode('tailored')}
                 className="text-slate-600 hover:text-slate-900 font-semibold underline underline-offset-2"
               >
-                Tem uma vaga específica? Clique para adicionar descrição da vaga →
+                {ui.switchToTailoredBtn}
               </button>
             )}
           </div>
@@ -1068,7 +1482,7 @@ COMPETÊNCIAS:
                 <div className="flex items-center gap-2">
                   <Target className="w-4 h-4 text-slate-800" />
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    2. A Vaga Pretendida (Edital / TdR)
+                    {ui.sec2Title}
                   </h3>
                 </div>
 
@@ -1085,21 +1499,21 @@ COMPETÊNCIAS:
                     disabled={isExtractingJobFile}
                     onClick={() => jobFileInputRef.current?.click()}
                     className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 rounded-md transition-colors"
-                    title="Carregar ficheiro PDF ou Word (.docx) com os Termos de Referência (TdR / ToR)"
+                    title={ui.importTdrTitle}
                   >
                     {isExtractingJobFile ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
                       <Upload className="w-3 h-3" />
                     )}
-                    <span>{isExtractingJobFile ? 'A extrair TdR...' : 'Importar TdR'}</span>
+                    <span>{isExtractingJobFile ? ui.importingTdrBtn : ui.importTdrBtn}</span>
                   </button>
                 </div>
               </div>
 
               {/* Presets Row */}
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-[11px] text-slate-400">Vagas de Exemplo:</span>
+                <span className="text-[11px] text-slate-400">{ui.sampleJobsLabel}</span>
                 {SAMPLE_JOB_OFFERS.map((job) => (
                   <button
                     key={job.id}
@@ -1114,13 +1528,7 @@ COMPETÊNCIAS:
                         : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                     }`}
                   >
-                    {job.id === 'job-1'
-                      ? 'COO Operações'
-                      : job.id === 'job-2'
-                      ? 'Cloud & Tech Lead'
-                      : job.id === 'job-3'
-                      ? 'VP Finanças & M&A'
-                      : 'Governança Global'}
+                    {ui.jobChipLabels[job.id as keyof typeof ui.jobChipLabels] || job.title}
                   </button>
                 ))}
               </div>
@@ -1128,29 +1536,29 @@ COMPETÊNCIAS:
               {/* Job Text Area */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Cole a descrição completa da vaga (requisitos, competências e responsabilidades):
+                  {ui.jobTextareaLabel}
                 </label>
                 <textarea
-                  rows={13}
+                  rows={8}
                   value={jobDescription}
                   onChange={(e) => {
                     setJobDescription(e.target.value);
                     onUpdateJobDescription(e.target.value);
                   }}
-                  placeholder="Cole aqui o anúncio de emprego, termos de referência, competências exigidas, perfil desejado..."
+                  placeholder={ui.jobTextareaPlaceholder}
                   className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 leading-relaxed font-sans placeholder:text-slate-400"
                 />
               </div>
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-              <span>{jobDescription.length} caracteres na descrição da vaga</span>
+              <span>{jobDescription.length} {ui.charsInJobSuffix}</span>
               <button
                 type="button"
                 onClick={() => setGenerationMode('standard')}
                 className="text-slate-600 hover:text-slate-900 font-semibold underline underline-offset-2"
               >
-                Ainda não tenho vaga (gerar apenas CV)
+                {ui.switchToStandardBtn}
               </button>
             </div>
           </div>
@@ -1176,8 +1584,8 @@ COMPETÊNCIAS:
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="text-xs text-slate-600">
             {generationMode === 'standard'
-              ? 'A IA irá extrair, organizar e polir as suas experiências, competências e formação fielmente no padrão escolhido — pronto para qualquer candidatura.'
-              : 'A IA analisará a correspondência semântica e reescreverá o seu currículo enfatizando as métricas, palavras-chave e verbos de ação exatos para esta vaga.'}
+              ? ui.bannerDescStandard
+              : ui.bannerDescTailored}
           </div>
 
           <div className="w-full sm:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
@@ -1189,7 +1597,7 @@ COMPETÊNCIAS:
                 className="px-4 py-3 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Gerar Apenas CV</span>
+                <span>{ui.generateOnlyBtn}</span>
               </button>
             )}
 
@@ -1204,8 +1612,8 @@ COMPETÊNCIAS:
                   <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
                   <span>
                     {generationMode === 'standard'
-                      ? 'A Estruturar o seu Currículo...'
-                      : 'A Cruzar Dados e a Gerar o Currículo Adaptado...'}
+                      ? ui.generatingStandard
+                      : ui.generatingTailored}
                   </span>
                 </>
               ) : (
@@ -1213,8 +1621,8 @@ COMPETÊNCIAS:
                   <Wand2 className="w-4 h-4 text-amber-400" />
                   <span>
                     {generationMode === 'standard'
-                      ? 'Gerar Apenas o CV Estruturado'
-                      : 'Gerar CV Adaptado para esta Vaga'}
+                      ? ui.generateStandardCta
+                      : ui.generateTailoredCta}
                   </span>
                 </>
               )}

@@ -1,4 +1,6 @@
 import { CVData, AtsAuditResult } from '../types/cv';
+import { SiteLanguageCode } from '../i18n/siteTranslations';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 
 // Essential domain dictionaries for international development, MEAL, data & software roles
 const DOMAIN_KEYWORD_POOL = [
@@ -104,7 +106,13 @@ const WEAK_PASSIVE_PHRASES = [
   'duties included'
 ];
 
-export function auditCVAgainstJob(cv: CVData, jobText: string): AtsAuditResult {
+export function auditCVAgainstJob(
+  cv: CVData,
+  jobText: string,
+  lang: SiteLanguageCode = 'pt'
+): AtsAuditResult {
+  const recText = (TOOLS_UI_TRANSLATIONS[lang] || TOOLS_UI_TRANSLATIONS.pt).atsRadar;
+
   // Aggregate CV text
   const cvCorpus = [
     cv.personalDetails.title,
@@ -210,32 +218,26 @@ export function auditCVAgainstJob(cv: CVData, jobText: string): AtsAuditResult {
 
   if (missingKeywords.length > 0) {
     recommendations.push(
-      `Inclua as palavras-chave críticas faltantes: "${missingKeywords.slice(0, 4).join(', ')}" nas competências ou bullets de experiência.`
+      `${recText.recMissingPrefix}${missingKeywords.slice(0, 4).join(', ')}${recText.recMissingSuffix}`
     );
   }
 
   if (quantifiableMetricsCount < 8) {
-    recommendations.push(
-      'Adicione mais métricas quantificáveis (ex: percentagens de erro reduzidas, número de agentes treinados, valor orçamental ou parceiros envolvidos).'
-    );
+    recommendations.push(recText.recMetrics);
   }
 
   if (weakPhrasesFound.length > 0) {
     recommendations.push(
-      `Substitua termos passivos como "${weakPhrasesFound.join(', ')}" por verbos de ação executiva ("Liderou", "Estruturou", "Automatizou").`
+      `${recText.recPassivePrefix}${weakPhrasesFound.join(', ')}${recText.recPassiveSuffix}`
     );
   }
 
   if (cv.summary.length < 200) {
-    recommendations.push(
-      'O seu Resumo Profissional é muito curto para o padrão internacional. Expanda para 4-5 linhas destacando autoridade técnica e anos de experiência.'
-    );
+    recommendations.push(recText.recSummary);
   }
 
   if (recommendations.length === 0) {
-    recommendations.push(
-      'Excelente alinhamento! O seu currículo atende aos critérios estruturais e de palavras-chave da vaga.'
-    );
+    recommendations.push(recText.recExcellent);
   }
 
   return {

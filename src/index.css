@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   html,
@@ -14,6 +15,12 @@
     text-rendering: optimizeLegibility;
     color: #0f172a;
     background-color: #f8fafc;
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  html.dark body {
+    color: #f8fafc;
+    background-color: #0b0f17;
   }
 
   #root {
@@ -22,6 +29,231 @@
     width: 100% !important;
     min-height: 100vh;
     min-height: 100dvh;
+  }
+}
+
+/* Global Dark Mode surface/typography mapping for Studio, Modals, Showcase & Profile
+   while strictly preserving dual-native Landing Hero and white A4 paper documents */
+@media screen {
+  html.dark :is(
+    .bg-white,
+    .bg-white\/95,
+    .bg-white\/90,
+    .bg-white\/80
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: #111724;
+  }
+
+  html.dark :is(
+    .bg-slate-50,
+    .bg-slate-50\/90,
+    .bg-slate-50\/80,
+    .bg-slate-50\/70,
+    .bg-slate-50\/60,
+    .bg-slate-50\/50
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: #0e131d;
+  }
+
+  html.dark :is(
+    .bg-slate-100,
+    .bg-slate-100\/90,
+    .bg-slate-100\/80,
+    .bg-slate-200,
+    .bg-slate-200\/80,
+    .bg-slate-200\/70,
+    .bg-slate-200\/60
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: #161e2e;
+  }
+
+  html.dark :is(
+    .border-slate-100,
+    .border-slate-200,
+    .border-slate-200\/80,
+    .border-slate-300,
+    .border-slate-300\/70,
+    .divide-slate-100 > :not(:first-child),
+    .divide-slate-200 > :not(:first-child)
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    border-color: #1f293d;
+  }
+
+  html.dark :is(
+    .text-slate-950,
+    .text-slate-900,
+    .text-slate-800
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *):not(.bg-amber-400):not(.bg-amber-300):not(.bg-amber-500):not(.bg-emerald-400):not(.bg-emerald-500) {
+    color: #f1f5f9;
+  }
+
+  html.dark :is(
+    .text-slate-700,
+    .text-slate-600
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *):not(.bg-amber-400):not(.bg-amber-300) {
+    color: #cbd5e1;
+  }
+
+  html.dark :is(
+    .text-slate-500
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #94a3b8;
+  }
+
+  html.dark :is(
+    .hover\:bg-slate-50:hover,
+    .hover\:bg-slate-100:hover,
+    .hover\:bg-slate-200:hover,
+    .hover\:bg-slate-200\/60:hover
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: #1e293b;
+  }
+
+  html.dark :is(
+    .hover\:text-slate-950:hover,
+    .hover\:text-slate-900:hover
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #ffffff;
+  }
+
+  html.dark :is(
+    button.bg-slate-900.text-white,
+    a.bg-slate-900.text-white,
+    span.bg-slate-900.text-white
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: #1e293b;
+    border-color: #334155;
+  }
+
+  html.dark :is(
+    .bg-amber-50,
+    .bg-amber-50\/70,
+    .bg-amber-50\/45,
+    .bg-amber-100,
+    .bg-amber-200\/80,
+    .bg-amber-200\/70
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(245, 158, 11, 0.16);
+  }
+
+  html.dark :is(
+    .hover\:bg-amber-100\/70:hover,
+    .hover\:bg-amber-100\/80:hover
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(245, 158, 11, 0.24);
+  }
+
+  html.dark :is(
+    .border-amber-200,
+    .border-amber-300
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    border-color: rgba(245, 158, 11, 0.35);
+  }
+
+  html.dark :is(
+    .text-amber-950,
+    .text-amber-900,
+    .text-amber-800,
+    .text-amber-700
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #fcd34d;
+  }
+
+  html.dark :is(
+    .bg-emerald-50,
+    .bg-emerald-50\/70,
+    .bg-emerald-100
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(16, 185, 129, 0.14);
+  }
+
+  html.dark :is(
+    .text-emerald-900,
+    .text-emerald-800,
+    .text-emerald-700
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #34d399;
+  }
+
+  html.dark :is(
+    .bg-blue-50,
+    .bg-blue-50\/70,
+    .bg-indigo-50
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(59, 130, 246, 0.14);
+  }
+
+  html.dark :is(
+    .hover\:bg-blue-100\/60:hover
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(59, 130, 246, 0.24);
+  }
+
+  html.dark :is(
+    .border-blue-200,
+    .border-blue-200\/90,
+    .border-blue-300
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    border-color: rgba(59, 130, 246, 0.35);
+  }
+
+  html.dark :is(
+    .text-blue-950,
+    .text-blue-900,
+    .text-blue-800,
+    .text-blue-700,
+    .text-indigo-700
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #93c5fd;
+  }
+
+  html.dark :is(
+    .bg-rose-50,
+    .bg-red-50,
+    .hover\:bg-rose-50:hover
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    background-color: rgba(244, 63, 94, 0.14);
+  }
+
+  html.dark :is(
+    .text-rose-700,
+    .text-rose-600,
+    .text-red-700,
+    .text-red-600
+  ):not(.theme-dual-native):not(.theme-dual-native *):not(.a4-paper-preserve):not(.a4-paper-preserve *):not(.cv-a4-sheet):not(.cv-a4-sheet *):not(.cover-a4-sheet):not(.cover-a4-sheet *) {
+    color: #fda4af;
+  }
+
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    textarea,
+    select
+  ):not(.theme-dual-native *):not(.a4-paper-preserve *):not(.cv-a4-sheet *):not(.cover-a4-sheet *) {
+    background-color: #0b0f17;
+    color: #f1f5f9;
+    border-color: #334155;
+  }
+
+  html.dark :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+    textarea,
+    select
+  ):not(.theme-dual-native *):not(.a4-paper-preserve *):not(.cv-a4-sheet *):not(.cover-a4-sheet *)::placeholder {
+    color: #64748b;
+  }
+
+  /* Dark studio desk backdrop behind physical white A4 sheets */
+  html.dark .cv-preview-container,
+  html.dark .cover-preview-container {
+    background-color: #090d14;
+  }
+
+  /* Guarantee A4 physical sheets stay crisp white paper in Dark Mode */
+  html.dark .cv-a4-sheet,
+  html.dark .cover-a4-sheet,
+  html.dark .a4-paper-preserve {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
   }
 }
 
@@ -119,6 +351,14 @@
   border: 1px solid #e2e8f0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+html.dark .page-break-line::before {
+  border-top-color: #334155;
+}
+html.dark .page-break-line span {
+  background-color: #111724;
+  color: #94a3b8;
+  border-color: #334155;
 }
 
 /* Print styling for pristine 1:1 PDF generation matching preview */

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { SlidersHorizontal, Check, ArrowRight, Loader2, AlertCircle, Copy, Plus, Wand2, Briefcase } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { auditCVAgainstJob } from '../utils/atsAnalyzer';
 import { authorizedFetch } from '../utils/authHeaders';
 import {
@@ -23,6 +25,8 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   jobDescription
 }) => {
   const { showWarning, showSuccess } = useToast();
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).aiTailor;
   const [panelMode, setPanelMode] = useState<'full' | 'xyz'>('full');
   const [targetStandard, setTargetStandard] = useState<string>(
     'Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)'
@@ -56,7 +60,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 
   const handleInsertXyzToLatestExperience = () => {
     if (!cv.experiences || cv.experiences.length === 0) {
-      showWarning('Sem Experiência Registada', 'Adicione primeiro um cargo na aba Editor antes de inserir a realização.');
+      showWarning(ui.noExpWarnTitle, ui.noExpWarnMsg);
       return;
     }
     const firstExp = cv.experiences[0];
@@ -67,7 +71,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
     const updatedList = [updatedExp, ...cv.experiences.slice(1)];
     onChange({ ...cv, experiences: updatedList });
     setXyzInserted(true);
-    showSuccess('Realização Inserida', `Adicionada ao cargo "${firstExp.role || 'mais recente'}".`);
+    showSuccess(ui.insertedToastTitle, `${ui.insertedToastMsgPrefix} "${firstExp.role || ui.latestRoleFallback}".`);
     setTimeout(() => setXyzInserted(false), 3000);
   };
 
@@ -99,7 +103,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 
   const handleRunAiOptimization = async () => {
     if (platformSettings.enableAiFeaturesGlobally === false) {
-      setErrorMsg('Os recursos de Inteligência Artificial estão temporariamente pausados pela administração da plataforma.');
+      setErrorMsg(ui.aiPausedErr);
       return;
     }
 
@@ -123,11 +127,11 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         if (response.status === 402 && errData?.quotaExceeded) {
-          setErrorMsg(errData.error || 'Os seus créditos gratuitos de IA esgotaram. Faça upgrade para continuar.');
+          setErrorMsg(errData.error || ui.quotaErr);
           setIsLoading(false);
           return;
         }
-        throw new Error(errData?.error || `Servidor retornou status ${response.status}`);
+        throw new Error(errData?.error || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -159,7 +163,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
         tailoredSummary = `${cv.summary.trim()} Diferencia-se pelo rigor metodológico, forte compromisso com padrões internacionais de excelência e capacidade comprovada de entrega de resultados estratégicos em ambientes complexos.`;
       }
 
-      const fallbackAudit = auditCVAgainstJob({ ...cv, summary: tailoredSummary }, jobDescription);
+      const fallbackAudit = auditCVAgainstJob({ ...cv, summary: tailoredSummary }, jobDescription, siteLanguage);
 
       setTailoredResult({
         summary: tailoredSummary,
@@ -169,7 +173,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           scoreEstimate: fallbackAudit.score,
           matchingKeywords: fallbackAudit.matchedKeywords.slice(0, 6),
           recommendations: [
-            'Currículo harmonizado localmente com foco em verbos de impacto e legibilidade ATS.',
+            ui.localFallbackRec,
             ...(fallbackAudit.recommendations || []).slice(0, 2)
           ]
         }
@@ -227,7 +231,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           }`}
         >
           <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
-          <span>Otimizador Completo da Vaga</span>
+          <span>{ui.tabFull}</span>
         </button>
 
         <button
@@ -240,7 +244,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           }`}
         >
           <Wand2 className="w-3.5 h-3.5 text-slate-700" />
-          <span>Construtor Google XYZ</span>
+          <span>{ui.tabXyz}</span>
         </button>
       </div>
 
@@ -251,24 +255,24 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-                  Fórmula Executiva Google
+                  {ui.xyzBadge}
                 </span>
                 <span className="text-[11px] text-slate-400 font-mono">
                   [X] + [Y] + [Z]
                 </span>
               </div>
               <h2 className="text-sm font-bold text-slate-900">
-                Construtor de Realizações Quantificadas
+                {ui.xyzTitle}
               </h2>
               <p className="text-xs text-slate-600 mt-1">
-                Recrutadores de elite analisam o método <strong>"Alcançou [X], medido por [Y], fazendo [Z]"</strong> para comprovar impacto real.
+                {ui.xyzSubtitlePrefix} <strong>{ui.xyzSubtitleStrong}</strong> {ui.xyzSubtitleSuffix}
               </p>
             </div>
 
             {/* Quick Industry Presets */}
             <div className="space-y-1.5">
               <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                Exemplos Prontos por Setor:
+                {ui.presetsLabel}
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
                 <button
@@ -276,32 +280,32 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                   onClick={() => handleLoadXyzPreset('ops')}
                   className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors text-left"
                 >
-                  <p className="font-bold text-[11px]">Operações</p>
-                  <p className="text-[10px] text-slate-500 truncate">Lead-time -28%</p>
+                  <p className="font-bold text-[11px]">{ui.presetOps}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{ui.presetOpsSub}</p>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleLoadXyzPreset('tech')}
                   className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors text-left"
                 >
-                  <p className="font-bold text-[11px]">Tecnologia</p>
-                  <p className="text-[10px] text-slate-500 truncate">SLA 99.99% Cloud</p>
+                  <p className="font-bold text-[11px]">{ui.presetTech}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{ui.presetTechSub}</p>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleLoadXyzPreset('fin')}
                   className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors text-left"
                 >
-                  <p className="font-bold text-[11px]">Finanças</p>
-                  <p className="text-[10px] text-slate-500 truncate">Fechamento -75%</p>
+                  <p className="font-bold text-[11px]">{ui.presetFin}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{ui.presetFinSub}</p>
                 </button>
                 <button
                   type="button"
                   onClick={() => handleLoadXyzPreset('lead')}
                   className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-lg border border-slate-200 transition-colors text-left"
                 >
-                  <p className="font-bold text-[11px]">Liderança</p>
-                  <p className="text-[10px] text-slate-500 truncate">Retenção +40%</p>
+                  <p className="font-bold text-[11px]">{ui.presetLead}</p>
+                  <p className="text-[10px] text-slate-500 truncate">{ui.presetLeadSub}</p>
                 </button>
               </div>
             </div>
@@ -310,39 +314,39 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
             <div className="space-y-3 pt-2 border-t border-slate-100">
               <div>
                 <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  1. O que alcançou? (Ação / Conquista - Verbo Forte)
+                  {ui.xLabel}
                 </label>
                 <input
                   type="text"
                   value={xyzAccomplished}
                   onChange={(e) => setXyzAccomplished(e.target.value)}
-                  placeholder="Ex: Reduziu custos de infraestrutura e OPEX operacional"
+                  placeholder={ui.xPlaceholder}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 font-sans"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  2. Medido por quanto? (Métrica Numérica, %, €, $)
+                  {ui.yLabel}
                 </label>
                 <input
                   type="text"
                   value={xyzMeasured}
                   onChange={(e) => setXyzMeasured(e.target.value)}
-                  placeholder="Ex: em 32% (economia anual de €240K)"
+                  placeholder={ui.yPlaceholder}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 font-sans"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-800 mb-1">
-                  3. Fazendo o quê? (Metodologia, Ferramenta, Estratégia)
+                  {ui.zLabel}
                 </label>
                 <input
                   type="text"
                   value={xyzDoing}
                   onChange={(e) => setXyzDoing(e.target.value)}
-                  placeholder="Ex: renegociando contratos de fornecedores e consolidando instâncias cloud"
+                  placeholder={ui.zPlaceholder}
                   className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800 font-sans"
                 />
               </div>
@@ -351,7 +355,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
             {/* Live Result Preview */}
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
-                Resultado Formatado para o CV (Bullet Point Executivo)
+                {ui.resultLabel}
               </span>
               <p className="text-xs text-slate-900 leading-relaxed font-medium">
                 • {generatedXyzBullet}
@@ -366,7 +370,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 className="w-full sm:w-auto flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-colors border border-slate-200"
               >
                 {xyzCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{xyzCopied ? 'Copiado para Área de Transferência!' : 'Copiar Realização'}</span>
+                <span>{xyzCopied ? ui.copiedBtn : ui.copyBtn}</span>
               </button>
 
               <button
@@ -379,7 +383,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 }`}
               >
                 {xyzInserted ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5 text-amber-400" />}
-                <span>{xyzInserted ? 'Inserido no Cargo!' : 'Inserir no Último Cargo do CV'}</span>
+                <span>{xyzInserted ? ui.insertedBtn : ui.insertBtn}</span>
               </button>
             </div>
           </div>
@@ -391,17 +395,17 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-4">
             <div>
               <h2 className="text-sm font-bold text-slate-900">
-                Motor de Otimização Estratégica (Gemini IA)
+                {ui.fullTitle}
               </h2>
               <p className="text-xs text-slate-600 mt-1">
-                Adapta o seu perfil às exigências explícitas da vaga, reescrevendo o resumo, refinando competências e elevando os verbos de ação para maximizar a aprovação na triagem.
+                {ui.fullDesc}
               </p>
             </div>
 
             {/* Standard Selector */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Padrão Institucional Alvo
+                {ui.targetStdLabel}
               </label>
               <select
                 value={targetStandard}
@@ -409,16 +413,16 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                 className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-800"
               >
                 <option value="Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)">
-                  Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)
+                  {ui.standards.exec}
                 </option>
                 <option value="Big Tech & Engenharia de Software (Métricas de Sistema, Cloud & IA)">
-                  Big Tech & Engenharia de Software (Métricas de Sistema, Cloud & IA)
+                  {ui.standards.tech}
                 </option>
                 <option value="Harvard Business School & Finanças Corporativas (EBITDA, M&A & Valuation)">
-                  Harvard Business School & Finanças Corporativas (EBITDA, M&A & Valuation)
+                  {ui.standards.harvard}
                 </option>
                 <option value="Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)">
-                  Padrão Corporativo & Projetos Globais (Governança e Resultados Estratégicos)
+                  {ui.standards.corp}
                 </option>
               </select>
             </div>
@@ -428,16 +432,16 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
                   <Briefcase className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Contexto da Vaga Ativa</span>
+                  <span>{ui.activeJobLabel}</span>
                 </span>
                 <span className="text-[10px] font-mono tabular-nums text-slate-500">
-                  {jobDescription.trim().length} caracteres
+                  {jobDescription.trim().length} {ui.charsSuffix}
                 </span>
               </div>
               <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">
                 {jobDescription.trim()
                   ? jobDescription.trim()
-                  : 'Nenhuma descrição específica de vaga definida — a IA usará as melhores práticas gerais para o padrão institucional escolhido (pode colar uma vaga na aba Radar ATS).'}
+                  : ui.noJobDescFallback}
               </p>
             </div>
 
@@ -451,12 +455,12 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>A Analisar Vaga e Otimizar Currículo...</span>
+                  <span>{ui.runningBtn}</span>
                 </>
               ) : (
                 <>
                   <Wand2 className="w-4 h-4 text-amber-400" />
-                  <span>Executar Otimização Estratégica para a Vaga</span>
+                  <span>{ui.runBtn}</span>
                 </>
               )}
             </button>
@@ -475,10 +479,10 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    Proposta de Otimização Gerada
+                    {ui.proposalTitle}
                   </h3>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Revise os ajustes sugeridos antes de incorporá-los ao documento.
+                    {ui.proposalDesc}
                   </p>
                 </div>
 
@@ -494,12 +498,12 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
                   {appliedSuccess ? (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>Aplicado com Sucesso!</span>
+                      <span>{ui.appliedBtn}</span>
                     </>
                   ) : (
                     <>
                       <ArrowRight className="w-3.5 h-3.5" />
-                      <span>Aplicar Alterações ao CV</span>
+                      <span>{ui.applyBtn}</span>
                     </>
                   )}
                 </button>
@@ -509,7 +513,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               {tailoredResult.summary && (
                 <div className="space-y-1.5">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    Novo Resumo Executivo Otimizado
+                    {ui.newSummaryLabel}
                   </span>
                   <p className="text-xs leading-relaxed text-slate-800 bg-slate-50 p-3 rounded-lg border border-slate-200">
                     {tailoredResult.summary}
@@ -521,7 +525,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               {tailoredResult.competencies && tailoredResult.competencies.length > 0 && (
                 <div className="space-y-1.5">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    Competências Alinhadas à Vaga
+                    {ui.alignedCompLabel}
                   </span>
                   <div className="space-y-2">
                     {tailoredResult.competencies.map((comp: any, i: number) => (
@@ -541,7 +545,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               {tailoredResult.experiences && tailoredResult.experiences.length > 0 && (
                 <div className="space-y-1.5">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    Experiências Otimizadas — Fórmula Google XYZ ({tailoredResult.experiences.length})
+                    {ui.optExpLabel} ({tailoredResult.experiences.length})
                   </span>
                   <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
                     {tailoredResult.experiences.map((exp: any, i: number) => (
@@ -577,7 +581,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
               {tailoredResult.atsInsights && (
                 <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-lg text-xs space-y-1.5">
                   <div className="font-semibold text-emerald-900 tabular-nums">
-                    Taxa de Match Estimada: {tailoredResult.atsInsights.scoreEstimate ?? 90}%
+                    {ui.matchEstimateLabel} {tailoredResult.atsInsights.scoreEstimate ?? 90}%
                   </div>
                   {tailoredResult.atsInsights.recommendations && (
                     <ul className="text-emerald-800 space-y-0.5 pl-2">

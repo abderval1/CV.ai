@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { fetchSystemBanners } from '../services/adminModulesService';
 import { SystemAnnouncementBanner } from '../types/adminModules';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+import { BILLING_UI_TRANSLATIONS } from '../i18n/billingUiTranslations';
 import { Info, AlertTriangle, Tag, Wrench, X, ArrowRight } from 'lucide-react';
 
 interface SystemNotificationBannerProps {
@@ -14,6 +16,8 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
   onNavigateTab
 }) => {
   const { user, isPro, isExecutive } = useAuth();
+  const { siteLanguage } = useLanguage();
+  const closeTitle = (BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.pt).pricingModal.closeAria;
   const [banners, setBanners] = useState<SystemAnnouncementBanner[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {
@@ -116,7 +120,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
           type="button"
           onClick={() => handleDismiss(current.id)}
           className="p-1 hover:bg-black/5 rounded-md text-slate-500 hover:text-slate-800 transition-colors shrink-0"
-          title="Fechar aviso"
+          title={closeTitle}
         >
           <X className="w-3.5 h-3.5" />
         </button>

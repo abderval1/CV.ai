@@ -1300,6 +1300,7 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsConfig = {
   maintenanceMode: false,
   maintenanceMessage: 'Estamos a realizar melhorias programadas nos servidores de IA. Voltamos em instantes.',
   allowNewRegistrations: true,
+  enableBotProtection: true,
   requirePaidPlanForExport: true,
   enableAiFeaturesGlobally: true,
   maxDailyFreeAiCalls: 5,
@@ -1315,6 +1316,7 @@ function mergePlatformSettings(raw: Partial<PlatformSettingsConfig> | null | und
   return {
     ...DEFAULT_PLATFORM_SETTINGS,
     ...(raw || {}),
+    enableBotProtection: raw?.enableBotProtection !== false,
     pixKey: raw?.pixKey !== undefined ? raw.pixKey : DEFAULT_PLATFORM_SETTINGS.pixKey,
     pixKeyType: raw?.pixKeyType || DEFAULT_PLATFORM_SETTINGS.pixKeyType,
     pixBeneficiaryName: raw?.pixBeneficiaryName || DEFAULT_PLATFORM_SETTINGS.pixBeneficiaryName,

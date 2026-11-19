@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { SAAS_PLANS } from '../data/initialCV';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
+import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/ToastContext';
 import { SubscriptionPlan, PaymentMethod, BillingCycle } from '../types/cv';
 import { createSaaSOrder, fetchAllCoupons, incrementCouponUsage } from '../services/saasDbService';
@@ -24,6 +25,8 @@ import {
   generatePixBRCode,
   PixKeyType
 } from '../utils/billingCycles';
+import { BILLING_UI_TRANSLATIONS, BillingUiDictionary } from '../i18n/billingUiTranslations';
+import { getIntlLocale } from '../i18n/toolsUiTranslations';
 import {
   X,
   Check,
@@ -42,7 +45,10 @@ import {
   Calendar,
   Copy,
   Info,
-  Clock
+  Clock,
+  Upload,
+  KeyRound,
+  FileCheck2
 } from 'lucide-react';
 
 interface PricingModalProps {
@@ -51,6 +57,11 @@ interface PricingModalProps {
   promptMessage?: string;
   initialPlan?: SubscriptionPlan;
   initialCycle?: BillingCycle;
+  onRequireAuth?: (
+    promptMessage: string,
+    mode: 'login' | 'register',
+    pendingCheckout: { plan: SubscriptionPlan; cycle: BillingCycle }
+  ) => void;
 }
 
 // Chave Pix padrão de fallback (pode ser substituída no Painel Administrativo)
@@ -67,28 +78,80 @@ interface GatewayConfigResponse {
   };
 }
 
-function translateCardGatewayError(message?: string): string {
-  if (!message) return 'Não foi possível autorizar o pagamento no cartão. Verifique os dados ou tente outro cartão.';
+function generatePixRefCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = 'CV';
+  for (let i = 0; i < 6; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
+async function compressImageForPixReceipt(file: File): Promise<{ mimeType: string; base64Data: string }> {
+  const rawUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => (typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Falha ao ler arquivo')));
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+
+  if (file.type === 'application/pdf' || file.size <= 700_000) {
+    return { mimeType: file.type.toLowerCase(), base64Data: rawUrl };
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const maxDim = 1500;
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve({ mimeType: file.type.toLowerCase(), base64Data: rawUrl });
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.84);
+        resolve({ mimeType: 'image/jpeg', base64Data: compressed });
+      } catch {
+        resolve({ mimeType: file.type.toLowerCase(), base64Data: rawUrl });
+      }
+    };
+    img.onerror = () => resolve({ mimeType: file.type.toLowerCase(), base64Data: rawUrl });
+    img.src = rawUrl;
+  });
+}
+
+function translateCardGatewayError(
+  message: string | undefined,
+  ui: BillingUiDictionary['pricingModal']
+): string {
+  if (!message) return ui.cardErrDefault;
   const lower = message.toLowerCase();
   if (lower.includes('insufficient_funds') || lower.includes('saldo')) {
-    return 'Saldo ou limite insuficiente no cartão informado.';
+    return ui.cardErrInsufficient;
   }
   if (lower.includes('incorrect_cvc') || lower.includes('security code')) {
-    return 'Código de segurança (CVC) incorreto. Verifique o verso do cartão.';
+    return ui.cardErrCvc;
   }
   if (lower.includes('expired_card') || lower.includes('expired')) {
-    return 'Este cartão encontra-se expirado.';
+    return ui.cardErrExpired;
   }
   if (lower.includes('incorrect_number') || lower.includes('invalid number')) {
-    return 'O número do cartão parece inválido. Confira os dígitos.';
+    return ui.cardErrNumber;
   }
   if (lower.includes('declined') || lower.includes('recusado')) {
-    return 'Pagamento não autorizado pelo banco emissor. Tente outro cartão ou utilize o Pix.';
+    return ui.cardErrDeclined;
   }
   if (lower.includes('authentication')) {
-    return 'A verificação 3D Secure não foi concluída pelo banco.';
+    return ui.cardErrAuth;
   }
-  return message.replace(/stripe/gi, 'processador de pagamentos');
+  return message.replace(/stripe/gi, ui.cardErrProcessorWord);
 }
 
 function getPaymentAuthHeaders(): Record<string, string> {
@@ -118,11 +181,18 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   onClose,
   promptMessage,
   initialPlan,
-  initialCycle
+  initialCycle,
+  onRequireAuth
 }) => {
   const { user, upgradePlan, refreshUser } = useAuth();
   const { currency, setCurrency, config: currencyConfig, formatPrice } = useCurrency();
+  const { siteLanguage } = useLanguage();
   const { showSuccess, showError, showInfo } = useToast();
+
+  const billingDict = BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.pt;
+  const ui = billingDict.pricingModal;
+  const shortPlanNames = billingDict.plans.shortNames;
+  const intlLocale = getIntlLocale(siteLanguage);
 
   const [billingCycle, setBillingCycle] = useState<BillingCycle>(initialCycle || 'monthly');
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>(
@@ -134,6 +204,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   // Card Gateway State (PCI-DSS tokenized element)
   const [gatewayConfig, setGatewayConfig] = useState<GatewayConfigResponse | null>(null);
   const [stripeInstance, setStripeInstance] = useState<Stripe | null>(null);
+  const [cardLoadFailed, setCardLoadFailed] = useState<boolean>(false);
   const [isCardElementReady, setIsCardElementReady] = useState<boolean>(false);
   const [isCardComplete, setIsCardComplete] = useState<boolean>(false);
   const [cardholderName, setCardholderName] = useState<string>(user?.name || '');
@@ -141,11 +212,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   const cardMountRef = useRef<HTMLDivElement | null>(null);
   const cardElementRef = useRef<StripeCardElement | null>(null);
 
-  // Pix Specific States
+  // Personal Pix Specific States
   const [copiedPixKey, setCopiedPixKey] = useState<boolean>(false);
   const [copiedPixPayload, setCopiedPixPayload] = useState<boolean>(false);
+  const [copiedPixRef, setCopiedPixRef] = useState<boolean>(false);
+  const [pixPayTab, setPixPayTab] = useState<'copiacola' | 'qrcode' | 'chave'>('copiacola');
+  const [showRawPixCode, setShowRawPixCode] = useState<boolean>(false);
+  const [pixRefCode, setPixRefCode] = useState<string>(() => generatePixRefCode());
   const [pixSenderName, setPixSenderName] = useState<string>(user?.name || '');
   const [pixTxId, setPixTxId] = useState<string>('');
+  const [pixReceiptFile, setPixReceiptFile] = useState<{
+    name: string;
+    mimeType: string;
+    base64Data: string;
+  } | null>(null);
   const [pixError, setPixError] = useState<string | null>(null);
   const [pixQrDataUrl, setPixQrDataUrl] = useState<string>('');
   const [isCheckingPixApproval, setIsCheckingPixApproval] = useState<boolean>(false);
@@ -156,6 +236,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   const [couponSuccess, setCouponSuccess] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [isCheckingCoupon, setIsCheckingCoupon] = useState<boolean>(false);
+  const [publicCoupons, setPublicCoupons] = useState<Array<{ id: string; code: string; discountPercent: number }>>([]);
 
   // Processing & Completion States
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -172,6 +253,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   } | null>(null);
 
   const [pixPendingDetails, setPixPendingDetails] = useState<{
+    orderId?: string;
     orderNumber: string;
     amountBRL: number;
     billingCycle: BillingCycle;
@@ -179,6 +261,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     pixKeyUsed: string;
     pixKeyTypeLabel: string;
     txId: string;
+    receiptUploaded?: boolean;
   } | null>(null);
   const [billingPortalUrl, setBillingPortalUrl] = useState<string | null>(null);
 
@@ -216,14 +299,41 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         if (!active || !cfg) return;
         setGatewayConfig(cfg);
         if (cfg.cardEnabled && cfg.publishableKey && !stripeInstance) {
-          const loaded = await loadStripe(cfg.publishableKey);
-          if (active && loaded) {
-            setStripeInstance(loaded);
+          try {
+            const loaded = await loadStripe(cfg.publishableKey);
+            if (!active) return;
+            if (loaded) {
+              setStripeInstance(loaded);
+              setCardLoadFailed(false);
+            } else {
+              setCardLoadFailed(true);
+            }
+          } catch {
+            if (active) setCardLoadFailed(true);
           }
         }
       })
       .catch(() => {
         // Fallback smoothly to platformSettings / Pix
+      });
+
+    fetchAllCoupons()
+      .then((list) => {
+        if (!active) return;
+        const now = Date.now();
+        const available = list
+          .filter((c) => {
+            if (!c?.active) return false;
+            if (c.expiresAt && new Date(c.expiresAt).getTime() < now) return false;
+            if (c.maxUses > 0 && c.usedCount >= c.maxUses) return false;
+            return c.discountPercent > 0;
+          })
+          .slice(0, 4)
+          .map((c) => ({ id: c.id, code: c.code, discountPercent: c.discountPercent }));
+        setPublicCoupons(available);
+      })
+      .catch(() => {
+        // ignore non-critical promo fetch error
       });
 
     return () => {
@@ -258,7 +368,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       return;
     }
 
-    const elements = stripeInstance.elements({ locale: 'pt' });
+    const elements = stripeInstance.elements({ locale: siteLanguage });
     const cardEl = elements.create('card', {
       hidePostalCode: true,
       style: {
@@ -281,7 +391,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     cardEl.on('ready', () => setIsCardElementReady(true));
     cardEl.on('change', (ev) => {
       setIsCardComplete(ev.complete);
-      setCardError(ev.error ? translateCardGatewayError(ev.error.message) : null);
+      setCardError(ev.error ? translateCardGatewayError(ev.error.message, ui) : null);
     });
     cardElementRef.current = cardEl;
 
@@ -304,27 +414,39 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     paymentMethod,
     cardFlowMode,
     appliedDiscount,
-    stripeInstance
+    stripeInstance,
+    siteLanguage,
+    ui
   ]);
 
   const mergedPlans = useMemo(() => {
     const adminMap = new Map(adminPlans.map((p) => [p.id, p]));
     return SAAS_PLANS.map((basePlan) => {
       const cfg = adminMap.get(basePlan.id as 'pro' | 'executive');
-      if (!cfg) return basePlan;
+      const localizedPlan =
+        basePlan.id === 'executive'
+          ? billingDict.plans.executive
+          : basePlan.id === 'pro'
+          ? billingDict.plans.pro
+          : billingDict.plans.free;
+
       return {
         ...basePlan,
-        name: cfg.name || basePlan.name,
-        tagline: cfg.tagline || basePlan.tagline,
-        priceMonthlyValue: cfg.priceMonthlyValue,
-        priceQuarterlyValue: cfg.priceQuarterlyValue,
-        priceSemiannualValue: cfg.priceSemiannualValue,
-        priceYearlyValue: cfg.priceYearlyValue,
-        isPopular: cfg.isPopular,
-        features: cfg.features && cfg.features.length > 0 ? cfg.features : basePlan.features
+        name: siteLanguage === 'pt' && cfg?.name ? cfg.name : localizedPlan.name,
+        tagline: siteLanguage === 'pt' && cfg?.tagline ? cfg.tagline : localizedPlan.tagline,
+        ctaText: localizedPlan.ctaText || basePlan.ctaText,
+        priceMonthlyValue: cfg?.priceMonthlyValue ?? basePlan.priceMonthlyValue,
+        priceQuarterlyValue: cfg?.priceQuarterlyValue ?? basePlan.priceQuarterlyValue,
+        priceSemiannualValue: cfg?.priceSemiannualValue ?? basePlan.priceSemiannualValue,
+        priceYearlyValue: cfg?.priceYearlyValue ?? basePlan.priceYearlyValue,
+        isPopular: cfg?.isPopular ?? basePlan.isPopular,
+        features:
+          siteLanguage === 'pt' && cfg?.features && cfg.features.length > 0
+            ? cfg.features
+            : localizedPlan.features
       };
     });
-  }, [adminPlans]);
+  }, [adminPlans, billingDict.plans, siteLanguage]);
 
   // Sync pre-selected plan & cycle from Landing/Showcase triggers (skip when returning from Stripe Checkout)
   useEffect(() => {
@@ -374,7 +496,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       });
       const data = await res.json();
       if (!res.ok || !data?.verified) {
-        throw new Error(data?.error || 'Não foi possível confirmar o pagamento desta sessão.');
+        throw new Error(data?.error || ui.errHostedVerify);
       }
 
       const subId = data.subscriptionId || `sub_${sessionId.slice(0, 12)}`;
@@ -396,7 +518,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
       const order = await createSaaSOrder({
         userId: user?.id || data.customerId || 'client-user',
-        userName: user?.name || 'Assinante',
+        userName: user?.name || ui.subscriberFallback,
         userEmail: user?.email || data.customerEmail || '',
         plan: verifiedPlan,
         billingCycle: verifiedCycle,
@@ -406,7 +528,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         status: 'paid',
         stripeSubscriptionId: subId,
         receiptUrl: data.receiptUrl,
-        notes: `Assinatura ${formatCycleLabel(verifiedCycle).toLowerCase()} confirmada via Cartão.`
+        notes: `${ui.orderNoteHostedPrefix}${formatCycleLabel(verifiedCycle, siteLanguage).toLowerCase()}.`
       });
 
       setSelectedPlan(verifiedPlan);
@@ -419,15 +541,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         currencyLabel: verifiedCurrency,
         billingCycle: verifiedCycle,
         receiptUrl: order.receiptUrl,
-        paymentMethodUsed: 'Cartão (Renovação Automática)'
+        paymentMethodUsed: ui.methodCardAuto
       });
       setUpgradeSuccess(true);
       showSuccess(
-        'Assinatura Ativada!',
-        `O seu plano ${verifiedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} foi ativado com sucesso.`
+        ui.toastSubActiveTitle,
+        `${ui.toastSubActiveSubPrefix}${verifiedPlan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro}${ui.toastSubActiveSubSuffix}`
       );
     } catch (e: any) {
-      showError('Validação Pendente', e?.message || 'Não foi possível confirmar o pagamento.');
+      showError(ui.errPendingValTitle, e?.message || ui.errHostedVerify);
     } finally {
       setIsProcessing(false);
     }
@@ -460,7 +582,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     'CURRICULO ESTRATEGICO';
   const effectivePixCity =
     platformSettings?.pixCity || gatewayConfig?.pixConfig?.pixCity || 'SAO PAULO';
-  const pixKeyTypeLabel = getPixKeyTypeLabel(effectivePixKeyType);
+  const pixKeyTypeLabel = getPixKeyTypeLabel(effectivePixKeyType, siteLanguage);
 
   const pixBRCode = useMemo(() => {
     return generatePixBRCode(
@@ -468,9 +590,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       priceBRL,
       effectivePixBeneficiary,
       effectivePixCity,
-      effectivePixKeyType
+      effectivePixKeyType,
+      pixRefCode
     );
-  }, [effectivePixKey, priceBRL, effectivePixBeneficiary, effectivePixCity, effectivePixKeyType]);
+  }, [effectivePixKey, priceBRL, effectivePixBeneficiary, effectivePixCity, effectivePixKeyType, pixRefCode]);
 
   // Render QR Code locally using qrcode library (no external HTTP dependency)
   useEffect(() => {
@@ -496,6 +619,61 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     };
   }, [pixBRCode]);
 
+  // Silent Auto-Polling for Pending Admin Approval of Personal Pix
+  useEffect(() => {
+    if (!isOpen || upgradeSuccess) return;
+    const pollOrderId = pixPendingDetails?.orderId;
+    if (!pollOrderId) return;
+
+    let stopped = false;
+    const interval = setInterval(async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch(`/api/payments/pix/status/${encodeURIComponent(pollOrderId)}`, {
+          credentials: 'include',
+          headers: getPaymentAuthHeaders()
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.status === 'paid') {
+          stopped = true;
+          clearInterval(interval);
+          await refreshUser();
+          const paidOrder = data.order;
+          const usedPlan = (paidOrder?.plan || pixPendingDetails?.plan || selectedPlan) as SubscriptionPlan;
+          const usedCycle = (paidOrder?.billingCycle || pixPendingDetails?.billingCycle || billingCycle) as BillingCycle;
+          setSelectedPlan(usedPlan);
+          setPixPendingDetails(null);
+          setPixRefCode(generatePixRefCode());
+          setSuccessDetails({
+            orderNumber: paidOrder?.orderNumber || pixPendingDetails?.orderNumber || 'PIX-OK',
+            amount: Number(paidOrder?.amount ?? pixPendingDetails?.amountBRL ?? priceBRL),
+            currencyLabel: 'BRL',
+            billingCycle: usedCycle,
+            receiptUrl: paidOrder?.receiptUrl,
+            paymentMethodUsed: ui.methodPixConfirmed
+          });
+          setUpgradeSuccess(true);
+          showSuccess(ui.toastPixApprovedTitle, ui.toastPixApprovedDesc);
+        } else if (data?.status === 'failed') {
+          stopped = true;
+          clearInterval(interval);
+          setPixPendingDetails(null);
+          const rejectMsg = 'Pagamento Pix recusado ou não confirmado. Verifique o comprovante e tente novamente.';
+          setPixError(rejectMsg);
+          showError('Pix Não Aprovado', rejectMsg);
+        }
+      } catch {
+        // ignore transient polling errors
+      }
+    }, 5000);
+
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  }, [isOpen, upgradeSuccess, pixPendingDetails]);
+
   if (!isOpen) return null;
 
   const handleSelectPlan = (planId: SubscriptionPlan) => {
@@ -520,6 +698,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   };
 
   const handleCopyPixPayload = async () => {
+    if (!pixBRCode) return;
     try {
       await navigator.clipboard.writeText(pixBRCode);
       setCopiedPixPayload(true);
@@ -536,46 +715,145 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     }
   };
 
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) return;
+  const handleCopyPixRef = async () => {
+    try {
+      await navigator.clipboard.writeText(pixRefCode);
+      setCopiedPixRef(true);
+      setTimeout(() => setCopiedPixRef(false), 2000);
+    } catch {
+      // ignore clipboard error
+    }
+  };
+
+  const handleProcessPixReceiptFile = async (file: File) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'application/pdf'];
+    const mime = (file.type || '').toLowerCase();
+    if (!allowed.includes(mime)) {
+      setPixError('Envie uma imagem (PNG, JPG, WebP) ou PDF do comprovante.');
+      return;
+    }
+    if (mime === 'application/pdf' && file.size > 1_500_000) {
+      setPixError('O comprovante PDF deve ter no máximo 1,5 MB.');
+      return;
+    }
+    try {
+      const prepared = await compressImageForPixReceipt(file);
+      if (prepared.base64Data.length > 2_100_000) {
+        setPixError('O arquivo ficou acima de 1,5 MB mesmo comprimido. Envie um print mais leve.');
+        return;
+      }
+      setPixReceiptFile({
+        name: file.name || `comprovante-pix-${pixRefCode}.${mime === 'application/pdf' ? 'pdf' : 'jpg'}`,
+        mimeType: prepared.mimeType,
+        base64Data: prepared.base64Data
+      });
+      setPixError(null);
+    } catch {
+      setPixError('Não foi possível ler o arquivo do comprovante.');
+    }
+  };
+
+  const handleSelectPixReceiptFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void handleProcessPixReceiptFile(file);
+  };
+
+  const handlePastePixReceipt = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          e.preventDefault();
+          void handleProcessPixReceiptFile(
+            new File([blob], `print-pix-${pixRefCode}.png`, { type: blob.type || 'image/png' })
+          );
+          break;
+        }
+      }
+    }
+  };
+
+  const applyCouponByCode = async (rawCode: string) => {
+    const codeClean = rawCode.trim().toUpperCase();
+    if (!codeClean) return;
+    setCouponCode(codeClean);
     setIsCheckingCoupon(true);
     setCouponError(null);
     setCouponSuccess(null);
 
     try {
       const coupons = await fetchAllCoupons();
-      const codeClean = couponCode.trim().toUpperCase();
       const matched = coupons.find((c) => c.code.toUpperCase() === codeClean && c.active);
 
       if (matched) {
         const isExpired = matched.expiresAt && new Date(matched.expiresAt).getTime() < Date.now();
         const isLimitReached = matched.maxUses > 0 && matched.usedCount >= matched.maxUses;
         if (isExpired) {
-          setCouponError('Este código promocional já expirou.');
+          setCouponError(ui.couponExpired);
           setAppliedDiscount(0);
         } else if (isLimitReached) {
-          setCouponError('Este cupom atingiu o limite máximo de utilizações.');
+          setCouponError(ui.couponLimit);
           setAppliedDiscount(0);
         } else {
           setAppliedDiscount(matched.discountPercent);
-          setCouponSuccess(`Cupom "${matched.code}" aplicado! Desconto de ${matched.discountPercent}%.`);
+          setCouponSuccess(`${ui.couponAppliedPrefix}${matched.code}${ui.couponAppliedMiddle}${matched.discountPercent}%.`);
           incrementCouponUsage(matched.id, matched.usedCount);
         }
       } else {
-        setCouponError('Código promocional inválido, inativo ou expirado.');
+        setCouponError(ui.couponInvalid);
         setAppliedDiscount(0);
       }
     } catch {
-      setCouponError('Não foi possível validar o cupom neste momento.');
+      setCouponError(ui.couponError);
       setAppliedDiscount(0);
     } finally {
       setIsCheckingCoupon(false);
     }
   };
 
+  const handleApplyCoupon = async () => {
+    await applyCouponByCode(couponCode);
+  };
+
+  const handleClearCoupon = () => {
+    setCouponCode('');
+    setAppliedDiscount(0);
+    setCouponSuccess(null);
+    setCouponError(null);
+  };
+
   const handleCheckPixActivationNow = async () => {
     setIsCheckingPixApproval(true);
     try {
+      const checkOrderId = pixPendingDetails?.orderId;
+      if (checkOrderId) {
+        const res = await fetch(`/api/payments/pix/status/${encodeURIComponent(checkOrderId)}`, {
+          credentials: 'include',
+          headers: getPaymentAuthHeaders()
+        }).catch(() => null);
+        if (res && res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.status === 'paid') {
+            await refreshUser();
+            setPixPendingDetails(null);
+            setSuccessDetails({
+              orderNumber: data.order?.orderNumber || pixPendingDetails?.orderNumber || 'APROVADO',
+              amount: Number(data.order?.amount ?? pixPendingDetails?.amountBRL ?? priceBRL),
+              currencyLabel: 'BRL',
+              billingCycle: data.order?.billingCycle || pixPendingDetails?.billingCycle || billingCycle,
+              receiptUrl: data.order?.receiptUrl,
+              paymentMethodUsed: ui.methodPixConfirmed
+            });
+            setUpgradeSuccess(true);
+            showSuccess(ui.toastPixApprovedTitle, ui.toastPixApprovedDesc);
+            return;
+          }
+        }
+      }
+
       const updated = await refreshUser();
       if (updated && (updated.plan === 'pro' || updated.plan === 'executive')) {
         setPixPendingDetails(null);
@@ -584,15 +862,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           amount: pixPendingDetails?.amountBRL || priceBRL,
           currencyLabel: 'BRL',
           billingCycle: pixPendingDetails?.billingCycle || billingCycle,
-          paymentMethodUsed: 'Pix Confirmado'
+          paymentMethodUsed: ui.methodPixConfirmed
         });
         setUpgradeSuccess(true);
-        showSuccess('Pagamento Confirmado!', 'O seu plano foi aprovado e já está ativo na sua conta.');
+        showSuccess(ui.toastPixApprovedTitle, ui.toastPixApprovedDesc);
       } else {
-        showInfo(
-          'Ainda em Validação',
-          'O pagamento Pix ainda aguarda confirmação na conta recebedora. Assim que for aprovado, todo o acesso será liberado.'
-        );
+        showInfo(ui.toastPixPendingTitle, ui.toastPixPendingDesc);
       }
     } finally {
       setIsCheckingPixApproval(false);
@@ -608,10 +883,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     }
 
     if (!user?.id || !user?.email) {
-      const msg = 'Inicie sessão ou crie uma conta antes de concluir a sua assinatura.';
+      if (onRequireAuth) {
+        const planLabel = selectedPlan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro;
+        onRequireAuth(
+          `${ui.reqAuthPlanPrefix}${planLabel} (${formatCycleLabel(billingCycle, siteLanguage)}).`,
+          'register',
+          { plan: selectedPlan, cycle: billingCycle }
+        );
+        return;
+      }
+      const msg = ui.errAuthInline;
       setCardError(msg);
       setPixError(msg);
-      showError('Autenticação Necessária', 'Por favor inicie sessão ou registe a sua conta para ativar um plano.');
+      showError(ui.errAuthTitle, ui.errAuthDesc);
       return;
     }
 
@@ -638,7 +922,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         });
         const data = await res.json();
         if (!res.ok || !data?.verified) {
-          throw new Error(data?.error || 'Não foi possível validar o cupom promocional.');
+          throw new Error(data?.error || ui.couponInvalid);
         }
 
         await upgradePlan(selectedPlan, {
@@ -657,7 +941,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           paymentMethod: paymentMethod === 'pix' ? 'pix' : 'card',
           status: 'paid',
           stripeSubscriptionId: data.subscriptionId,
-          notes: `Assinatura ${formatCycleLabel(billingCycle).toLowerCase()} ativada com cupom 100% (${couponCode.toUpperCase()}).`
+          notes: `${ui.orderNoteCouponPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()} (${couponCode.toUpperCase()}).`
         });
 
         setSuccessDetails({
@@ -667,12 +951,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           amount: 0,
           currencyLabel: currency === 'BRL' ? 'BRL' : 'USD',
           billingCycle,
-          paymentMethodUsed: 'Cupom Promocional 100%'
+          paymentMethodUsed: ui.methodCoupon100
         });
         setUpgradeSuccess(true);
-        showSuccess('Assinatura Ativada!', 'Cupom aplicado com sucesso. O acesso completo já está disponível.');
+        showSuccess(ui.toastCouponTitle, ui.toastCouponDesc);
       } catch (err: any) {
-        showError('Erro no Cupom', err?.message || 'Falha ao ativar subscrição promocional.');
+        showError(ui.errCouponTitle, err?.message || ui.errCouponActivate);
       } finally {
         setIsProcessing(false);
       }
@@ -705,10 +989,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             window.location.href = safeCheckoutUrl;
             return;
           }
-          throw new Error(data.error || 'Não foi possível abrir a página segura de pagamento.');
+          throw new Error(data.error || ui.errCheckoutUrl);
         } catch (err: any) {
-          setCardError(err?.message || 'Erro ao iniciar pagamento por cartão.');
-          showError('Falha no Pagamento', err?.message || 'Não foi possível iniciar o pagamento.');
+          setCardError(err?.message || ui.errCheckoutInit);
+          showError(ui.errCheckoutTitle, err?.message || ui.errCheckoutInit);
         } finally {
           setIsProcessing(false);
         }
@@ -717,15 +1001,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
       // Embedded Tokenized Card Element
       if (!gatewayConfig?.cardEnabled || !stripeInstance || !cardElementRef.current) {
-        setCardError('O formulário de cartão ainda está a carregar ou não está disponível. Tente via Pix ou Página Segura.');
+        setCardError(ui.errCardUnavailable);
         return;
       }
       if (cardholderName.trim().length < 2) {
-        setCardError('Indique o nome completo conforme impresso no cartão.');
+        setCardError(ui.errCardName);
         return;
       }
       if (!isCardComplete) {
-        setCardError('Preencha todos os dados do cartão (número, validade e CVC) para continuar.');
+        setCardError(ui.errCardIncomplete);
         return;
       }
 
@@ -747,25 +1031,45 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         });
         const intentData = await intentRes.json();
         if (!intentRes.ok || !intentData?.clientSecret) {
-          throw new Error(intentData?.error || 'Não foi possível iniciar a cobrança segura no cartão.');
+          throw new Error(intentData?.error || ui.errCreateIntent);
         }
 
-        const confirmation = await stripeInstance.confirmCardPayment(intentData.clientSecret, {
-          payment_method: {
-            card: cardElementRef.current,
-            billing_details: {
-              name: cardholderName.trim(),
-              email: user.email
+        const clientSecretStr = String(intentData.clientSecret || '');
+        let confirmedPaymentIntentId: string | undefined;
+
+        if (clientSecretStr.startsWith('seti_')) {
+          const setupConfirmation = await stripeInstance.confirmCardSetup(clientSecretStr, {
+            payment_method: {
+              card: cardElementRef.current,
+              billing_details: {
+                name: cardholderName.trim(),
+                email: user.email
+              }
             }
+          });
+          if (setupConfirmation.error) {
+            throw new Error(translateCardGatewayError(setupConfirmation.error.message, ui));
           }
-        });
-
-        if (confirmation.error) {
-          throw new Error(translateCardGatewayError(confirmation.error.message));
-        }
-
-        if (confirmation.paymentIntent?.status !== 'succeeded') {
-          throw new Error('O pagamento não foi concluído. Confirme a autorização junto ao seu banco.');
+          if (setupConfirmation.setupIntent?.status !== 'succeeded') {
+            throw new Error(ui.errNotCompleted);
+          }
+        } else {
+          const confirmation = await stripeInstance.confirmCardPayment(clientSecretStr, {
+            payment_method: {
+              card: cardElementRef.current,
+              billing_details: {
+                name: cardholderName.trim(),
+                email: user.email
+              }
+            }
+          });
+          if (confirmation.error) {
+            throw new Error(translateCardGatewayError(confirmation.error.message, ui));
+          }
+          if (confirmation.paymentIntent?.status !== 'succeeded') {
+            throw new Error(ui.errNotCompleted);
+          }
+          confirmedPaymentIntentId = confirmation.paymentIntent.id;
         }
 
         const confirmRes = await fetch('/api/payments/confirm-subscription', {
@@ -774,14 +1078,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           headers: getPaymentAuthHeaders(),
           body: JSON.stringify({
             subscriptionId: intentData.subscriptionId,
-            paymentIntentId: confirmation.paymentIntent.id,
+            paymentIntentId: confirmedPaymentIntentId,
             plan: selectedPlan,
             billingCycle
           })
         });
         const confirmData = await confirmRes.json();
         if (!confirmRes.ok || !confirmData?.verified) {
-          throw new Error(confirmData?.error || 'Pagamento aprovado, mas não foi possível validar a subscrição.');
+          throw new Error(confirmData?.error || ui.errVerifySub);
         }
 
         await upgradePlan(selectedPlan, {
@@ -791,6 +1095,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         });
 
         const order = await createSaaSOrder({
+          id: confirmData.order?.id,
+          orderNumber: confirmData.order?.orderNumber,
           userId: user.id,
           userName: cardholderName.trim(),
           userEmail: user.email,
@@ -801,9 +1107,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           paymentMethod: 'card',
           status: 'paid',
           stripeSubscriptionId: confirmData.subscriptionId,
-          stripePaymentIntentId: confirmation.paymentIntent.id,
+          stripePaymentIntentId: confirmedPaymentIntentId,
           receiptUrl: confirmData.receiptUrl,
-          notes: `Assinatura ${formatCycleLabel(billingCycle).toLowerCase()} paga via Cartão.`
+          createdAt: confirmData.order?.createdAt,
+          notes: `${ui.orderNoteCardPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()}.`
         });
 
         setSuccessDetails({
@@ -814,38 +1121,38 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           currencyLabel: order.currency,
           billingCycle,
           receiptUrl: confirmData.receiptUrl || order.receiptUrl,
-          paymentMethodUsed: 'Cartão (Renovação Automática)'
+          paymentMethodUsed: ui.methodCardAuto
         });
         setUpgradeSuccess(true);
         showSuccess(
-          'Pagamento Confirmado!',
-          `Plano ${selectedPlan === 'executive' ? 'Executivo VIP' : 'Profissional'} ativado com sucesso!`
+          ui.toastCardConfirmTitle,
+          `${ui.toastSubActiveSubPrefix}${selectedPlan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro}${ui.toastSubActiveSubSuffix}`
         );
       } catch (err: any) {
-        const cleanMsg = translateCardGatewayError(err?.message);
+        const cleanMsg = translateCardGatewayError(err?.message, ui);
         setCardError(cleanMsg);
-        showError('Falha no Pagamento', cleanMsg);
+        showError(ui.errCheckoutTitle, cleanMsg);
       } finally {
         setIsProcessing(false);
       }
       return;
     }
 
-    // 2. PERSONAL PIX PAYMENT (Requires Payer Name + TxID, Saved as Pending until Confirmation)
-    if (pixSenderName.trim().length < 3) {
-      setPixError('Informe o nome completo do titular da conta que realizou a transferência Pix.');
+    // 2. PERSONAL PIX PAYMENT (Direct Transfer -> Unique Ref Code + Proof -> Admin Approval)
+    const payerClean = pixSenderName.trim() || user?.name?.trim() || user?.email?.split('@')[0] || '';
+    if (payerClean.length < 2) {
+      setPixError(ui.errPixName);
       return;
     }
-    if (pixTxId.trim().length < 6) {
-      setPixError('Insira o ID da Transação / Código E2E do comprovante Pix (mínimo 6 caracteres).');
-      return;
-    }
+    const cleanTxRef = pixTxId.trim();
 
     setIsProcessing(true);
     try {
+      const generatedOrderId = `ord-${Date.now()}`;
       const order = await createSaaSOrder({
+        id: generatedOrderId,
         userId: user.id,
-        userName: pixSenderName.trim(),
+        userName: payerClean,
         userEmail: user.email,
         plan: selectedPlan,
         billingCycle,
@@ -853,26 +1160,46 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         currency: 'BRL',
         paymentMethod: 'pix',
         status: 'pending',
-        notes: `Pix pessoal aguardando conferência (${formatCycleLabel(billingCycle)}). Chave (${pixKeyTypeLabel}): ${effectivePixKey} | Titular Pagador: ${pixSenderName.trim()} | TxID: ${pixTxId.trim()}`
+        stripePaymentIntentId: pixRefCode,
+        notes: `Cód.Extrato: ${pixRefCode} | Pagador: ${payerClean} | ${formatCycleLabel(billingCycle, siteLanguage)}${
+          cleanTxRef ? ` | Ref/Hora: ${cleanTxRef}` : ''
+        }${pixReceiptFile ? ' | Comprovante anexado' : ''}`
       });
 
+      let uploadedReceipt = false;
+      if (pixReceiptFile) {
+        try {
+          const uploadRes = await fetch(`/api/orders/${encodeURIComponent(order.id)}/receipt`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: getPaymentAuthHeaders(),
+            body: JSON.stringify({
+              mimeType: pixReceiptFile.mimeType,
+              base64Data: pixReceiptFile.base64Data
+            })
+          });
+          uploadedReceipt = uploadRes.ok;
+        } catch {
+          // non-fatal; order still created with payer name & pixRefCode
+        }
+      }
+
       setPixPendingDetails({
+        orderId: order.id,
         orderNumber: order.orderNumber,
         amountBRL: priceBRL,
         billingCycle,
         plan: selectedPlan,
         pixKeyUsed: effectivePixKey,
         pixKeyTypeLabel,
-        txId: pixTxId.trim()
+        txId: cleanTxRef ? `${pixRefCode} · ${cleanTxRef}` : pixRefCode,
+        receiptUploaded: uploadedReceipt
       });
-      showInfo(
-        'Comprovante Pix Registado!',
-        'O pedido foi enviado para conferência bancária. Assim que confirmado, o seu acesso será liberado.'
-      );
+      showInfo(ui.toastPixRegTitle, ui.toastPixRegDesc);
     } catch (err: any) {
-      const msg = err?.message || 'Não foi possível registar o comprovante Pix.';
+      const msg = err?.message || ui.errPixSave;
       setPixError(msg);
-      showError('Erro ao Registar Pix', msg);
+      showError(ui.errPixSaveTitle, msg);
     } finally {
       setIsProcessing(false);
     }
@@ -880,7 +1207,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
   const handleOpenBillingPortal = async () => {
     if (!user?.stripeCustomerId) {
-      showError('Portal Indisponível', 'Esta conta ainda não possui um método de cartão recorrente associado.');
+      showError(ui.errPortalTitle, ui.errPortalNoCustomer);
       return;
     }
     try {
@@ -905,14 +1232,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         anchor.click();
         document.body.removeChild(anchor);
       } else {
-        showError('Portal Indisponível', data?.error || 'Não foi possível abrir o portal de faturação.');
+        showError(ui.errPortalTitle, data?.error || ui.errPortalOpen);
       }
     } catch {
-      showError('Portal Indisponível', 'Não foi possível abrir o portal de faturação neste momento.');
+      showError(ui.errPortalTitle, ui.errPortalOpen);
     }
   };
 
   const cycleMeta = BILLING_CYCLE_META[billingCycle];
+  const localizedCycle = billingDict.cycles[billingCycle] || cycleMeta;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-x-hidden overflow-y-auto">
@@ -925,10 +1253,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight">
-                Planos &amp; Ativação de Assinatura
+                {ui.headerTitle}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Exportação Word (.docx), Radar ATS e tradução em 5 idiomas via Cartão ou Pix sem fidelidade.
+                {ui.headerSubtitle}
               </p>
             </div>
           </div>
@@ -937,7 +1265,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             type="button"
             onClick={onClose}
             className="p-2 min-h-[40px] min-w-[40px] flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-            aria-label="Fechar"
+            aria-label={ui.closeAria}
           >
             <X className="w-5 h-5" />
           </button>
@@ -952,38 +1280,38 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
             <div className="space-y-2">
               <h3 className="text-2xl sm:text-3xl font-black text-slate-900">
-                Assinatura Ativada com Sucesso!
+                {ui.successTitle}
               </h3>
               <p className="text-xs font-mono font-bold text-slate-500">
-                Fatura Nº: <span className="text-slate-900 font-bold">{successDetails.orderNumber}</span>
+                {ui.successInvoicePrefix}<span className="text-slate-900 font-bold">{successDetails.orderNumber}</span>
               </p>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 max-w-lg mx-auto text-left space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="text-xs font-semibold text-slate-600">Plano Selecionado:</span>
+                <span className="text-xs font-semibold text-slate-600">{ui.successPlanLabel}</span>
                 <span className="text-xs font-bold text-slate-900">
-                  {selectedPlan === 'executive' ? 'Executivo VIP (C-Level & Global)' : 'Profissional Pro'}
+                  {selectedPlan === 'executive' ? shortPlanNames.executiveFull : shortPlanNames.pro}
                 </span>
               </div>
 
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="text-xs font-semibold text-slate-600">Forma de Pagamento:</span>
+                <span className="text-xs font-semibold text-slate-600">{ui.successMethodLabel}</span>
                 <span className="text-xs font-bold text-teal-700">
-                  {successDetails.paymentMethodUsed || 'Confirmado'}
+                  {successDetails.paymentMethodUsed || ui.methodCardAuto}
                 </span>
               </div>
 
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="text-xs font-semibold text-slate-600">Ciclo de Faturação:</span>
+                <span className="text-xs font-semibold text-slate-600">{ui.successCycleLabel}</span>
                 <span className="text-xs font-bold text-slate-900 uppercase">
-                  {formatCycleLabel(successDetails.billingCycle)} ({getCycleDurationDays(successDetails.billingCycle)} dias)
+                  {formatCycleLabel(successDetails.billingCycle, siteLanguage)} ({getCycleDurationDays(successDetails.billingCycle)} {ui.daysWord})
                 </span>
               </div>
 
               {successDetails.subscriptionId && (
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <span className="text-xs font-semibold text-slate-600">ID da Assinatura:</span>
+                  <span className="text-xs font-semibold text-slate-600">{ui.successSubIdLabel}</span>
                   <span className="text-xs font-mono font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                     {successDetails.subscriptionId}
                   </span>
@@ -992,16 +1320,16 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
               {successDetails.nextBillingDate && (
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                  <span className="text-xs font-semibold text-slate-600">Próxima Renovação:</span>
+                  <span className="text-xs font-semibold text-slate-600">{ui.successNextBillingLabel}</span>
                   <span className="text-xs font-medium text-slate-700 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    {new Date(successDetails.nextBillingDate).toLocaleDateString('pt-PT')}
+                    {new Date(successDetails.nextBillingDate).toLocaleDateString(intlLocale)}
                   </span>
                 </div>
               )}
 
               <div className="flex items-center justify-between pt-1">
-                <span className="text-xs font-bold text-slate-900">Valor Cobrado:</span>
+                <span className="text-xs font-bold text-slate-900">{ui.successAmountLabel}</span>
                 <span className="text-sm font-black font-mono text-emerald-700">
                   {successDetails.currencyLabel === 'BRL'
                     ? `R$ ${Number(successDetails.amount).toFixed(2)} BRL`
@@ -1011,7 +1339,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             </div>
 
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Acesso total liberado! O seu plano foi ativado com sucesso e está sincronizado com a sua conta.
+              {ui.successBody}
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -1021,7 +1349,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 className="w-full sm:w-auto min-h-[44px] px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
               >
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>Começar a Usar Agora</span>
+                <span>{ui.successStartBtn}</span>
               </button>
 
               {user?.stripeCustomerId && (
@@ -1031,20 +1359,20 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   className="w-full sm:w-auto min-h-[44px] px-5 py-3 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Gerir Cartão &amp; Faturas</span>
+                  <span>{ui.successManageBtn}</span>
                 </button>
               )}
             </div>
             {billingPortalUrl && getSafeExternalUrl(billingPortalUrl) && (
               <p className="text-xs text-slate-600">
-                Se o separador não abriu automaticamente,{' '}
+                {ui.successPortalFallbackPrefix}
                 <a
                   href={getSafeExternalUrl(billingPortalUrl)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-semibold text-slate-900 underline"
                 >
-                  clique aqui para abrir o portal de faturação
+                  {ui.successPortalFallbackLink}
                 </a>
                 .
               </p>
@@ -1059,42 +1387,44 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
             <div className="space-y-2">
               <h3 className="text-2xl font-black text-slate-900">
-                Pagamento Pix Registado · Aguardando Confirmação
+                {ui.pixPendingTitle}
               </h3>
               <p className="text-xs font-mono font-bold text-slate-500">
-                Pedido Nº: <span className="text-slate-900">{pixPendingDetails.orderNumber}</span>
+                {ui.pixPendingOrderPrefix}<span className="text-slate-900">{pixPendingDetails.orderNumber}</span>
               </p>
             </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 max-w-lg mx-auto text-left space-y-3 text-xs">
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="font-semibold text-slate-600">Plano &amp; Ciclo:</span>
+                <span className="font-semibold text-slate-600">{ui.pixPendingPlanLabel}</span>
                 <span className="font-bold text-slate-900">
-                  {pixPendingDetails.plan === 'executive' ? 'Executivo VIP' : 'Profissional Pro'} ·{' '}
-                  {formatCycleLabel(pixPendingDetails.billingCycle)}
+                  {pixPendingDetails.plan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro} ·{' '}
+                  {formatCycleLabel(pixPendingDetails.billingCycle, siteLanguage)}
                 </span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="font-semibold text-slate-600">Valor Informado:</span>
+                <span className="font-semibold text-slate-600">{ui.pixPendingAmountLabel}</span>
                 <span className="font-black font-mono text-teal-700">
                   R$ {pixPendingDetails.amountBRL.toFixed(2)} BRL
                 </span>
               </div>
               <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <span className="font-semibold text-slate-600">Chave ({pixPendingDetails.pixKeyTypeLabel}):</span>
+                <span className="font-semibold text-slate-600">{ui.pixPendingKeyPrefix}{pixPendingDetails.pixKeyTypeLabel}):</span>
                 <span className="font-mono font-semibold text-slate-800 truncate max-w-[230px]">
                   {pixPendingDetails.pixKeyUsed}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-600">Comprovante / TxID:</span>
+                <span className="font-semibold text-slate-600">{ui.pixPendingTxLabel}</span>
                 <span className="font-mono font-bold text-slate-900">{pixPendingDetails.txId}</span>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed">
-              O seu comprovante foi enviado para validação. Assim que a transferência for confirmada na conta
-              recebedora, o seu acesso completo será ativado automaticamente.
+              {ui.pixPendingBody}{' '}
+              <span className="font-semibold text-teal-700">
+                Esta tela atualiza automaticamente em segundos assim que for aprovado.
+              </span>
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -1105,7 +1435,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 className="w-full sm:w-auto px-7 py-3 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${isCheckingPixApproval ? 'animate-spin' : ''}`} />
-                <span>{isCheckingPixApproval ? 'A verificar...' : 'Verificar Ativação Agora'}</span>
+                <span>{isCheckingPixApproval ? ui.pixCheckingBtn : ui.pixCheckNowBtn}</span>
               </button>
 
               <button
@@ -1116,7 +1446,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 }}
                 className="w-full sm:w-auto px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl transition-colors"
               >
-                Fechar e Continuar Depois
+                {ui.pixCloseLaterBtn}
               </button>
             </div>
           </div>
@@ -1131,10 +1461,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">
-                      Recurso Exclusivo para Assinantes
+                      {ui.promptBadgeTitle}
                     </h4>
                     <span className="text-[10px] bg-amber-400 text-slate-950 font-bold px-2 py-0.5 rounded-md border border-amber-500/40 uppercase tracking-wide">
-                      Requer Plano Ativo
+                      {ui.promptBadgeTag}
                     </span>
                   </div>
                   <p className="text-xs text-amber-900 leading-relaxed font-medium">{promptMessage}</p>
@@ -1146,7 +1476,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             <div className="flex flex-col lg:flex-row items-center justify-between gap-3 border-b border-slate-100 pb-5">
               {/* Currency Selector */}
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-semibold text-slate-500 mr-1">Moeda:</span>
+                <span className="text-xs font-semibold text-slate-500 mr-1">{ui.currencyLabel}</span>
                 <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
                   {Object.values(CURRENCIES).map((c) => (
                     <button
@@ -1166,10 +1496,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 </div>
               </div>
 
-              {/* 4 Recurring Billing Cycles: Mensal | Trimestral | Semestral | Anual */}
+              {/* 4 Recurring Billing Cycles */}
               <div className="p-1 bg-slate-100 rounded-xl flex flex-wrap items-center justify-center gap-1 text-xs font-semibold">
                 {BILLING_CYCLES.map((cycleKey) => {
                   const meta = BILLING_CYCLE_META[cycleKey];
+                  const locCycle = billingDict.cycles[cycleKey] || meta;
+                  const badgeText = locCycle.badgeText ?? meta.badgeText;
                   const active = billingCycle === cycleKey;
                   return (
                     <button
@@ -1182,10 +1514,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      <span>{meta.label}</span>
-                      {meta.badgeText && (
+                      <span>{locCycle.label}</span>
+                      {badgeText && (
                         <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md font-bold tabular-nums">
-                          {meta.badgeText}
+                          {badgeText}
                         </span>
                       )}
                     </button>
@@ -1202,7 +1534,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
                 const cycleUsd = getCyclePriceUSD(plan, billingCycle);
                 const displayPrice = formatPrice(cycleUsd);
-                const periodSuffix = ` / ${cycleMeta.shortUnit}`;
+                const periodSuffix = `${ui.periodSlash}${localizedCycle.shortUnit}`;
                 const monthlyEquivalent = getMonthlyEquivalentUSD(plan, billingCycle);
 
                 return (
@@ -1217,7 +1549,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   >
                     {plan.isPopular && (
                       <div className="absolute -top-3 left-4 bg-slate-900 text-amber-400 text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider shadow-sm border border-slate-800">
-                        Mais Escolhido
+                        {ui.popularBadge}
                       </div>
                     )}
 
@@ -1234,16 +1566,16 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         </div>
                         <span className="text-[11px] text-slate-500 font-mono tabular-nums block">
                           {currency === 'BRL'
-                            ? `Equivalente a $${cycleUsd} USD`
-                            : `Equivalente a R$ ${(cycleUsd * 5.4).toFixed(2)} BRL`}
+                            ? `${ui.equivUsdPrefix}${cycleUsd} USD`
+                            : `${ui.equivBrlPrefix}${(cycleUsd * 5.4).toFixed(2)} BRL`}
                         </span>
                         {monthlyEquivalent && (
                           <span className="text-[11px] text-emerald-700 font-medium block">
-                            Equivalente a {formatPrice(monthlyEquivalent)}/mês ({cycleMeta.badgeText})
+                            {ui.monthlyEquivPrefix}{formatPrice(monthlyEquivalent)}{ui.monthlyEquivUnit} ({localizedCycle.badgeText ?? cycleMeta.badgeText})
                           </span>
                         )}
                         <span className="text-[10px] text-slate-400">
-                          Acesso garantido durante {cycleMeta.durationDays} dias (cancele quando quiser)
+                          {ui.accessDaysPrefix}{cycleMeta.durationDays}{ui.accessDaysSuffix}
                         </span>
                       </div>
 
@@ -1272,7 +1604,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                             : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                         }`}
                       >
-                        {isCurrent ? 'Plano Atual' : isSelected ? 'Plano Selecionado' : plan.ctaText}
+                        {isCurrent ? ui.currentPlanBtn : isSelected ? ui.selectedPlanBtn : plan.ctaText}
                       </button>
                     </div>
                   </div>
@@ -1288,10 +1620,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   <div>
                     <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
                       <CreditCard className="w-4 h-4 text-slate-800" />
-                      <span>Resumo &amp; Pagamento</span>
+                      <span>{ui.summaryTitle}</span>
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      Ativação imediata no Cartão (Stripe PCI-DSS) ou via Pix em Reais com QR Code. Cancele quando quiser.
+                      {ui.summarySub}
                     </p>
                   </div>
 
@@ -1306,22 +1638,61 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     </span>
                     <span className="text-[11px] text-slate-500 block font-medium">
                       {paymentMethod === 'pix'
-                        ? `Equivalente a $${finalPriceUSD} USD (Plano ${cycleMeta.label})`
-                        : `Equivalente a R$ ${priceBRL.toFixed(2)} BRL · Ciclo ${cycleMeta.label} (${cycleMeta.durationDays} dias)`}
+                        ? `${ui.pixEquivPrefix}${finalPriceUSD}${ui.pixEquivPlanPrefix}${localizedCycle.label})`
+                        : `${ui.cardEquivPrefix}${priceBRL.toFixed(2)}${ui.cardEquivCyclePrefix}${localizedCycle.label} (${cycleMeta.durationDays} ${ui.daysWord})`}
                     </span>
                   </div>
                 </div>
 
-                {/* Coupon Code Input */}
-                <div className="space-y-1.5">
+                {!user?.id && onRequireAuth && (
+                  <div className="p-3.5 bg-slate-900 text-white rounded-2xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-0.5 text-xs">
+                      <p className="font-bold text-amber-400">{ui.guestTitle}</p>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        {ui.guestDesc}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onRequireAuth(
+                            `${ui.reqAuthGuestCreatePrefix}${selectedPlan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro}.`,
+                            'register',
+                            { plan: selectedPlan, cycle: billingCycle }
+                          )
+                        }
+                        className="px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-colors whitespace-nowrap"
+                      >
+                        {ui.guestCreateBtn}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onRequireAuth(
+                            ui.reqAuthGuestLogin,
+                            'login',
+                            { plan: selectedPlan, cycle: billingCycle }
+                          )
+                        }
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs rounded-xl transition-colors whitespace-nowrap"
+                      >
+                        {ui.guestLoginBtn}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Coupon Code Input + Active Public Promo Vouchers */}
+                <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Tem um Cupom de Desconto?</span>
+                    <span>{ui.couponLabel}</span>
                   </label>
                   <div className="flex gap-2 max-w-md">
                     <input
                       type="text"
-                      placeholder="Insira o código do cupom"
+                      placeholder={ui.couponPlaceholder}
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                       className="flex-1 min-h-[40px] px-3 py-1.5 text-xs font-mono font-bold bg-white border border-slate-200 rounded-xl uppercase focus:outline-hidden focus:ring-2 focus:ring-slate-900"
@@ -1332,9 +1703,34 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       disabled={isCheckingCoupon || !couponCode.trim()}
                       className="min-h-[40px] px-4 py-1.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors whitespace-nowrap"
                     >
-                      {isCheckingCoupon ? 'A validar...' : 'Aplicar Cupom'}
+                      {isCheckingCoupon ? ui.couponChecking : ui.couponApplyBtn}
                     </button>
+                    {appliedDiscount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearCoupon}
+                        className="min-h-[40px] px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-xs font-semibold rounded-xl transition-colors whitespace-nowrap"
+                      >
+                        {ui.couponRemoveBtn}
+                      </button>
+                    )}
                   </div>
+                  {publicCoupons.length > 0 && appliedDiscount === 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[11px]">
+                      <span className="text-slate-500 font-medium">{ui.couponActivePromos}</span>
+                      {publicCoupons.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          disabled={isCheckingCoupon}
+                          onClick={() => void applyCouponByCode(c.code)}
+                          className="px-2 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-mono font-bold transition-colors"
+                        >
+                          {c.code} (-{c.discountPercent}%)
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {couponSuccess && <p className="text-[11px] font-semibold text-emerald-600">{couponSuccess}</p>}
                   {couponError && <p className="text-[11px] font-semibold text-rose-600">{couponError}</p>}
                 </div>
@@ -1342,7 +1738,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 {/* Payment Method Selector */}
                 <div className="space-y-3">
                   <label className="text-xs font-semibold text-slate-700 block">
-                    Selecione o Método de Pagamento:
+                    {ui.paymentMethodLabel}
                   </label>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1359,11 +1755,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       <div className="flex items-center justify-between mb-1">
                         <CreditCard className="w-4 h-4 text-slate-800" />
                         <span className="text-[9px] font-bold uppercase bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono">
-                          Seguro
+                          {ui.cardOptionBadge}
                         </span>
                       </div>
-                      <div className="font-bold text-xs text-slate-900">Cartão de Crédito / Débito</div>
-                      <div className="text-[10px] text-slate-500">Visa, Mastercard, Apple Pay &amp; Google Pay</div>
+                      <div className="font-bold text-xs text-slate-900">{ui.cardOptionTitle}</div>
+                      <div className="text-[10px] text-slate-500">{ui.cardOptionSub}</div>
                     </button>
 
                     {/* Pix */}
@@ -1379,12 +1775,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       <div className="flex items-center justify-between mb-1">
                         <QrCode className="w-4 h-4 text-teal-600" />
                         <span className="text-[9px] font-bold uppercase bg-teal-50 text-teal-700 px-1.5 py-0.2 rounded font-mono">
-                          QR Code
+                          {ui.pixOptionBadge}
                         </span>
                       </div>
-                      <div className="font-bold text-xs text-slate-900">Pix (BRL)</div>
+                      <div className="font-bold text-xs text-slate-900">{ui.pixOptionTitle}</div>
                       <div className="text-[10px] text-teal-600 font-semibold">
-                        Chave ({pixKeyTypeLabel}) &amp; Copia e Cola
+                        {ui.pixOptionSubPrefix}{pixKeyTypeLabel}{ui.pixOptionSubSuffix}
                       </div>
                     </button>
                   </div>
@@ -1396,7 +1792,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         <div className="flex items-center gap-2">
                           <Lock className="w-4 h-4 text-emerald-600" />
                           <span className="text-xs font-bold text-slate-900">
-                            Pagamento Encriptado com Cartão (PCI-DSS Nível 1)
+                            {ui.cardSecurityTitle}
                           </span>
                         </div>
 
@@ -1410,7 +1806,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                                 : 'text-slate-500 hover:text-slate-800'
                             }`}
                           >
-                            Direto Aqui
+                            {ui.cardModeEmbedded}
                           </button>
                           <button
                             type="button"
@@ -1421,7 +1817,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                                 : 'text-slate-500 hover:text-slate-800'
                             }`}
                           >
-                            Página Segura Externa
+                            {ui.cardModeCheckout}
                           </button>
                         </div>
                       </div>
@@ -1430,14 +1826,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-2.5">
                           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                           <span>
-                            Cupom de 100% aplicado! Nenhuma cobrança será efetuada no cartão — clique abaixo para
-                            ativar imediatamente.
+                            {ui.coupon100Notice}
                           </span>
                         </div>
                       ) : cardFlowMode === 'embedded' ? (
                         <div className="space-y-3">
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-700">Nome do Titular do Cartão</label>
+                            <label className="text-[11px] font-bold text-slate-700">{ui.cardholderLabel}</label>
                             <input
                               type="text"
                               value={cardholderName}
@@ -1445,26 +1840,39 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                                 setCardholderName(e.target.value);
                                 setCardError(null);
                               }}
-                              placeholder="Nome completo conforme impresso no cartão"
+                              placeholder={ui.cardholderPlaceholder}
                               className="w-full min-h-[40px] px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900 focus:bg-white"
                             />
                           </div>
 
                           <div className="space-y-1">
                             <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
-                              <span>Dados do Cartão (Número, Validade e CVC)</span>
+                              <span>{ui.cardDetailsLabel}</span>
                               <span className="text-[10px] text-emerald-700 font-semibold flex items-center gap-1">
-                                <Lock className="w-3 h-3" /> Tokenização Segura
+                                <Lock className="w-3 h-3" /> {ui.cardTokenBadge}
                               </span>
                             </label>
                             <div className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus-within:ring-2 focus-within:ring-slate-900 focus-within:bg-white transition-colors min-h-[42px]">
                               <div ref={cardMountRef} />
                               {!isCardElementReady && (
-                                <p className="text-[11px] text-slate-400">
-                                  {gatewayConfig && !gatewayConfig.cardEnabled
-                                    ? 'Processamento por cartão indisponível no momento — utilize o Pix.'
-                                    : 'A carregar campo seguro de cartão...'}
-                                </p>
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                                  <span>
+                                    {gatewayConfig && !gatewayConfig.cardEnabled
+                                      ? ui.cardUnavailable
+                                      : cardLoadFailed
+                                      ? 'Não foi possível carregar o formulário embutido aqui.'
+                                      : ui.cardLoading}
+                                  </span>
+                                  {(cardLoadFailed || (gatewayConfig && !gatewayConfig.cardEnabled)) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setCardFlowMode('checkout')}
+                                      className="font-bold text-slate-900 underline hover:text-slate-700"
+                                    >
+                                      Abrir Página Segura Stripe
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </div>
                           </div>
@@ -1479,15 +1887,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-800 space-y-1">
                             <div className="flex items-center gap-1.5 font-bold text-slate-900">
                               <RefreshCw className="w-3.5 h-3.5 text-slate-700" />
-                              <span>Renovação Automática ({cycleMeta.label})</span>
+                              <span>{ui.autoRenewPrefix}{localizedCycle.label})</span>
                             </div>
                             <p className="text-slate-600 leading-relaxed">
-                              O valor de{' '}
+                              {ui.autoRenewBodyPrefix}
                               <strong className="text-slate-900">
                                 {currency === 'BRL' ? `R$ ${priceBRL.toFixed(2)} BRL` : `$${finalPriceUSD} USD`}
-                              </strong>{' '}
-                              será cobrado a cada {cycleMeta.durationDays} dias. Pode gerir o cartão ou cancelar a
-                              qualquer momento no seu perfil.
+                              </strong>
+                              {ui.autoRenewBodyMiddle}{cycleMeta.durationDays}{ui.autoRenewBodySuffix}
                             </p>
                           </div>
                         </div>
@@ -1496,11 +1903,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           <CreditCard className="w-8 h-8 text-slate-700 mx-auto" />
                           <div>
                             <h4 className="text-xs font-bold text-slate-900">
-                              Redirecionamento para Ambiente Seguro de Pagamento
+                              {ui.hostedRedirectTitle}
                             </h4>
                             <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-0.5">
-                              Será levado a uma página protegida com suporte a Cartão Internacional, Apple Pay e
-                              Google Pay, retornando automaticamente após a aprovação.
+                              {ui.hostedRedirectDesc}
                             </p>
                           </div>
                         </div>
@@ -1508,147 +1914,241 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     </div>
                   )}
 
-                  {/* 2. PIX PAYMENT CONTAINER */}
+                  {/* 2. PIX PAYMENT CONTAINER (Personal Account Pix with Automatic Statement ID) */}
                   {paymentMethod === 'pix' && (
-                    <div className="mt-3 p-4 sm:p-5 bg-white border border-teal-200 rounded-2xl shadow-xs space-y-4 animate-in fade-in duration-200">
+                    <div
+                      onPaste={handlePastePixReceipt}
+                      className="mt-3 p-4 sm:p-5 bg-white border border-teal-200 rounded-2xl shadow-xs space-y-4 animate-in fade-in duration-200"
+                    >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-teal-100 pb-3">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600 shadow-2xs">
+                          <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-600 shadow-2xs shrink-0">
                             <QrCode className="w-5 h-5 text-teal-600" />
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-bold text-slate-900">Pagamento via Pix (Brasil)</span>
-                              <span className="text-[9px] font-bold bg-teal-100 text-teal-800 px-1.5 py-0.2 rounded font-mono uppercase">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs font-bold text-slate-900">{ui.pixHeaderTitle}</span>
+                              <span className="text-[9px] font-bold bg-teal-100 text-teal-800 px-1.5 py-0.5 rounded font-mono uppercase">
                                 {pixKeyTypeLabel}
+                              </span>
+                              <span
+                                className="text-[10px] font-mono font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200"
+                                title="Código incluído automaticamente para identificar o seu pagamento no extrato"
+                              >
+                                ID: {pixRefCode}
                               </span>
                             </div>
                             <span className="text-[11px] text-slate-500 block">
-                              Escaneie o QR Code ou copie a chave Pix oficial para transferir pelo aplicativo do seu banco.
+                              Escolha Copia e Cola, QR Code ou Chave Pix. Simples e rápido em qualquer banco.
                             </span>
                           </div>
                         </div>
 
-                        <div className="bg-teal-50/80 px-3 py-1.5 rounded-xl border border-teal-200 text-left sm:text-right self-start sm:self-auto">
+                        <div className="bg-teal-50/80 px-3 py-1.5 rounded-xl border border-teal-200 text-left sm:text-right self-start sm:self-auto shrink-0">
                           <span className="text-[10px] text-teal-700 font-bold block uppercase tracking-wider">
-                            Valor Total no Pix
+                            {ui.pixTotalLabel}
                           </span>
-                          <span className="text-sm font-black text-teal-950 font-mono">
+                          <span className="text-sm font-black text-teal-950 font-mono tabular-nums">
                             R$ {priceBRL.toFixed(2)} BRL{' '}
                             <span className="text-[10px] text-slate-500 font-normal">(${finalPriceUSD} USD)</span>
                           </span>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
-                        {/* Column 1: Local QR Code */}
-                        <div className="md:col-span-5 flex flex-col items-center justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                          <div className="relative p-2 bg-white rounded-xl shadow-xs border border-slate-200">
-                            {pixQrDataUrl ? (
-                              <img
-                                src={pixQrDataUrl}
-                                alt="QR Code Pix"
-                                className="w-44 h-44 sm:w-48 sm:h-48 object-contain rounded-lg"
-                              />
-                            ) : (
-                              <div className="w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center text-xs text-slate-400">
-                                A gerar QR Code...
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="mt-2.5 text-center">
-                            <span className="text-[11px] font-bold text-slate-800 flex items-center justify-center gap-1.5">
-                              <Smartphone className="w-3.5 h-3.5 text-teal-600" />
-                              Aponte a câmera do aplicativo do banco
-                            </span>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
-                              Beneficiário: {effectivePixBeneficiary}
-                            </span>
-                          </div>
+                      <div className="space-y-4">
+                        {/* Payment Format Switcher */}
+                        <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => setPixPayTab('copiacola')}
+                            className={`flex-1 min-w-[120px] py-2 px-3 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                              pixPayTab === 'copiacola'
+                                ? 'bg-white text-teal-900 shadow-2xs ring-1 ring-teal-200'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <Copy className="w-3.5 h-3.5 text-teal-600" />
+                            <span>Copia e Cola</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPixPayTab('qrcode')}
+                            className={`flex-1 min-w-[100px] py-2 px-3 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                              pixPayTab === 'qrcode'
+                                ? 'bg-white text-teal-900 shadow-2xs ring-1 ring-teal-200'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-teal-600" />
+                            <span>QR Code</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPixPayTab('chave')}
+                            className={`flex-1 min-w-[110px] py-2 px-3 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                              pixPayTab === 'chave'
+                                ? 'bg-white text-teal-900 shadow-2xs ring-1 ring-teal-200'
+                                : 'text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            <KeyRound className="w-3.5 h-3.5 text-teal-600" />
+                            <span>Chave Pix</span>
+                          </button>
                         </div>
 
-                        {/* Column 2: Instructions, Key, Copia e Cola & Required Proof */}
-                        <div className="md:col-span-7 space-y-3.5">
-                          <div className="bg-teal-50/50 p-3 rounded-xl border border-teal-100 text-[11.5px] text-slate-700 space-y-1">
-                            <p className="font-bold text-teal-950 flex items-center gap-1.5">
-                              <Info className="w-3.5 h-3.5 text-teal-700" />
-                              Como pagar com Pix em 3 passos:
-                            </p>
-                            <ol className="list-decimal list-inside space-y-0.5 text-slate-600 text-[11px] pl-1">
-                              <li>Abra o aplicativo do seu banco no celular.</li>
-                              <li>
-                                Escolha <strong>Pix &gt; Pagar com QR Code</strong> ou copie a chave abaixo.
-                              </li>
-                              <li>
-                                Transfira <strong>R$ {priceBRL.toFixed(2)}</strong> e preencha o comprovante abaixo
-                                para validação e liberação do acesso.
-                              </li>
-                            </ol>
-                          </div>
+                        {/* TAB 1: PIX COPIA E COLA (Clean 1-click button — giant code hidden by default!) */}
+                        {pixPayTab === 'copiacola' && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                            <div className="space-y-0.5">
+                              <p className="text-xs font-bold text-slate-900">
+                                Ideal para celular ou apps sem leitor de QR Code
+                              </p>
+                              <p className="text-[11px] text-slate-600">
+                                No app do banco, vá em <strong>Pix &gt; Pix Copia e Cola</strong> e cole. O valor (<strong>R$ {priceBRL.toFixed(2)}</strong>) e o código identificador (<strong>{pixRefCode}</strong>) já vão preenchidos.
+                              </p>
+                            </div>
 
-                          {/* Chave Pix */}
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-800 flex items-center justify-between">
-                              <span>Chave Pix ({pixKeyTypeLabel}):</span>
-                              <span className="text-[10px] text-teal-700 font-bold uppercase tracking-wider">
-                                Conta Oficial
+                            <button
+                              type="button"
+                              onClick={handleCopyPixPayload}
+                              className={`w-full py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs ${
+                                copiedPixPayload
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-teal-600 hover:bg-teal-700 text-white'
+                              }`}
+                            >
+                              {copiedPixPayload ? (
+                                <>
+                                  <Check className="w-4 h-4" />
+                                  <span>Código Copiado! Agora cole no app do seu banco</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-4 h-4" />
+                                  <span>Copiar Pix Copia e Cola (R$ {priceBRL.toFixed(2)})</span>
+                                </>
+                              )}
+                            </button>
+
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                              <span>
+                                Beneficiário: <strong className="text-slate-700">{effectivePixBeneficiary}</strong>
                               </span>
-                            </label>
+                              <button
+                                type="button"
+                                onClick={() => setShowRawPixCode((prev) => !prev)}
+                                className="text-teal-700 hover:text-teal-900 font-semibold underline"
+                              >
+                                {showRawPixCode ? 'Ocultar código' : 'Ver código completo'}
+                              </button>
+                            </div>
+
+                            {showRawPixCode && (
+                              <input
+                                type="text"
+                                readOnly
+                                value={pixBRCode}
+                                onClick={handleCopyPixPayload}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[10.5px] font-mono text-slate-600 truncate cursor-pointer"
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {/* TAB 2: QR CODE */}
+                        {pixPayTab === 'qrcode' && (
+                          <div className="flex flex-col items-center justify-center bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <div className="relative p-2 bg-white rounded-xl shadow-xs border border-slate-200">
+                              {pixQrDataUrl ? (
+                                <img
+                                  src={pixQrDataUrl}
+                                  alt="QR Code Pix"
+                                  className="w-44 h-44 sm:w-48 sm:h-48 object-contain rounded-lg"
+                                />
+                              ) : (
+                                <div className="w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center text-xs text-slate-400">
+                                  {ui.pixQrLoading}
+                                </div>
+                              )}
+                            </div>
+                            <div className="mt-2.5 text-center">
+                              <span className="text-[11px] font-bold text-slate-800 flex items-center justify-center gap-1.5">
+                                <Smartphone className="w-3.5 h-3.5 text-teal-600" />
+                                {ui.pixScanHint}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block mt-0.5">
+                                {ui.pixBeneficiaryPrefix}{effectivePixBeneficiary} · R$ {priceBRL.toFixed(2)} · ID {pixRefCode}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* TAB 3: DIRECT SHORT PIX KEY (for older apps / manual transfer) */}
+                        {pixPayTab === 'chave' && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-slate-800">
+                                {ui.pixKeyFieldPrefix}{pixKeyTypeLabel}):
+                              </span>
+                              <span className="text-[10px] text-teal-700 font-bold uppercase tracking-wider">
+                                {ui.pixOfficialAccount}
+                              </span>
+                            </div>
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 truncate select-all">
+                              <div className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 truncate select-all">
                                 {effectivePixKey}
                               </div>
                               <button
                                 type="button"
                                 onClick={handleCopyPixKey}
-                                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
                                   copiedPixKey
-                                    ? 'bg-emerald-600 text-white shadow-xs'
-                                    : 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs'
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-teal-600 hover:bg-teal-700 text-white'
                                 }`}
                               >
                                 {copiedPixKey ? (
                                   <>
                                     <Check className="w-3.5 h-3.5" />
-                                    <span>Copiada!</span>
+                                    <span>{ui.pixKeyCopied}</span>
                                   </>
                                 ) : (
                                   <>
                                     <Copy className="w-3.5 h-3.5" />
-                                    <span>Copiar Chave</span>
+                                    <span>{ui.pixCopyKey}</span>
                                   </>
                                 )}
                               </button>
                             </div>
-                          </div>
-
-                          {/* Pix Copia e Cola */}
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-800 flex items-center justify-between">
-                              <span>Pix Copia e Cola (Código Completo):</span>
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-slate-600">
+                              <span>
+                                Transfira <strong>R$ {priceBRL.toFixed(2)}</strong> e, se quiser agilizar, coloque{' '}
+                                <strong className="font-mono text-slate-900">{pixRefCode}</strong> na descrição:
+                              </span>
                               <button
                                 type="button"
-                                onClick={handleCopyPixPayload}
-                                className="text-[10.5px] font-bold text-teal-700 hover:text-teal-900 underline"
+                                onClick={handleCopyPixRef}
+                                className="px-2 py-0.5 rounded bg-white border border-slate-200 hover:bg-slate-100 text-[10.5px] font-mono font-bold text-teal-800"
                               >
-                                {copiedPixPayload ? 'Código Copiado!' : 'Copiar Código'}
+                                {copiedPixRef ? 'ID Copiado!' : `Copiar ID: ${pixRefCode}`}
                               </button>
-                            </label>
-                            <input
-                              type="text"
-                              readOnly
-                              value={pixBRCode}
-                              onClick={handleCopyPixPayload}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-[10.5px] font-mono text-slate-600 truncate cursor-pointer hover:bg-slate-100"
-                            />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Easy Proof Box: Pre-filled Payer + Optional Ref + Click or Ctrl+V Screenshot Upload */}
+                        <div className="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                              <Info className="w-3.5 h-3.5 text-teal-600" />
+                              Após pagar no banco, confirme abaixo para liberarmos na hora:
+                            </span>
                           </div>
 
-                          {/* Mandatory Proof Fields for Personal Pix */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <div className="space-y-0.5">
                               <label className="text-[10.5px] font-bold text-slate-700">
-                                Titular Pagador Pix *
+                                {ui.pixSenderLabel}
                               </label>
                               <input
                                 type="text"
@@ -1657,13 +2157,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                                   setPixSenderName(e.target.value);
                                   setPixError(null);
                                 }}
-                                placeholder="Nome de quem enviou o Pix"
-                                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
+                                placeholder={ui.pixSenderPlaceholder}
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800"
                               />
                             </div>
+
                             <div className="space-y-0.5">
                               <label className="text-[10.5px] font-bold text-slate-700">
-                                ID / Código Comprovante *
+                                Hora ou Cód. do comprovante <span className="font-normal text-slate-400">(opcional)</span>
                               </label>
                               <input
                                 type="text"
@@ -1672,19 +2173,66 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                                   setPixTxId(e.target.value);
                                   setPixError(null);
                                 }}
-                                placeholder="Ex: E12345678..."
-                                className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-800"
+                                placeholder="Ex: 14:32 ou E12345..."
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono text-slate-800"
                               />
                             </div>
                           </div>
 
-                          {pixError && (
-                            <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
-                              <AlertCircle className="w-4 h-4 shrink-0" />
-                              <span>{pixError}</span>
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                            <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dashed border-teal-300 bg-white hover:bg-teal-50/40 text-[11px] font-semibold text-slate-700 cursor-pointer transition-colors">
+                              {pixReceiptFile ? (
+                                <>
+                                  <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span className="truncate max-w-[210px] text-emerald-800">
+                                    {pixReceiptFile.name}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                                  <span>Anexar print/PDF (ou cole com Ctrl+V)</span>
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp,application/pdf"
+                                onChange={handleSelectPixReceiptFile}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {pixReceiptFile && (
+                              <button
+                                type="button"
+                                onClick={() => setPixReceiptFile(null)}
+                                className="text-[11px] text-rose-600 hover:text-rose-800 font-semibold"
+                              >
+                                Remover anexo
+                              </button>
+                            )}
+                          </div>
+
+                          {pixReceiptFile && pixReceiptFile.mimeType.startsWith('image/') && (
+                            <div className="flex items-center gap-2.5 pt-1">
+                              <img
+                                src={pixReceiptFile.base64Data}
+                                alt="Pré-visualização do comprovante"
+                                className="w-12 h-12 rounded-lg object-cover border border-slate-200 bg-white"
+                              />
+                              <span className="text-[10.5px] text-emerald-700 font-semibold">
+                                Comprovante pronto! Clique no botão abaixo para enviar para conferência.
+                              </span>
                             </div>
                           )}
                         </div>
+
+                        {pixError && (
+                          <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            <span>{pixError}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1695,9 +2243,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   <div className="flex items-center gap-2 text-[11px] text-slate-500">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>
-                      {paymentMethod === 'pix'
-                        ? 'Fatura emitida e liberação após conferência do comprovante Pix.'
-                        : 'Cobrança protegida com ativação automática imediata após aprovação.'}
+                      {paymentMethod === 'pix' ? ui.footerPixNote : ui.footerCardNote}
                     </span>
                   </div>
 
@@ -1714,29 +2260,29 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     {isProcessing ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                        <span>A processar pagamento...</span>
+                        <span>{ui.processingBtn}</span>
                       </>
                     ) : paymentMethod === 'pix' ? (
                       <>
                         <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
                         <span>
                           {appliedDiscount >= 100
-                            ? 'Ativar Plano Gratuitamente (Cupom 100%)'
-                            : `Enviar Comprovante Pix (R$ ${priceBRL.toFixed(2)})`}
+                            ? ui.freeActivateCouponBtn
+                            : `Já Paguei via Pix (R$ ${priceBRL.toFixed(2)})`}
                         </span>
                         <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                       </>
                     ) : cardFlowMode === 'checkout' ? (
                       <>
                         <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
-                        <span>Continuar para Pagamento ({formatPrice(finalPriceUSD)})</span>
+                        <span>{ui.continueCheckoutPrefix}{formatPrice(finalPriceUSD)})</span>
                         <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                       </>
                     ) : (
                       <>
                         <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
                         <span>
-                          Pagar com Cartão ({formatPrice(finalPriceUSD)} / {cycleMeta.shortUnit})
+                          {ui.payCardPrefix}{formatPrice(finalPriceUSD)} / {localizedCycle.shortUnit})
                         </span>
                         <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                       </>

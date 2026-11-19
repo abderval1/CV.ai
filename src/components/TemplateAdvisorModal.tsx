@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
+import { EDITOR_UI_TRANSLATIONS, TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
 
 interface TemplateAdvisorModalProps {
   isOpen: boolean;
@@ -41,6 +43,13 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   onOpenPricingModal
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
+  const { siteLanguage } = useLanguage();
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).advisor;
+  const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
+  const getTplMeta = (tpl: CVTemplateInfo) => {
+    const loc = tplMetaMap?.[tpl.id];
+    return loc ? { ...tpl, ...loc } : tpl;
+  };
   const [filter, setFilter] = useState<'all' | 'with_photo' | 'without_photo' | 'executive'>('all');
   const [selectedTemplateForDetail, setSelectedTemplateForDetail] = useState<CVTemplateInfo>(
     CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]
@@ -64,14 +73,12 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
 
   const handleApply = (id: TemplateStyle) => {
     if (!isAuthenticated) {
-      onOpenAuthModal?.('Inicie sessão ou crie uma conta para usar este modelo no editor.');
+      onOpenAuthModal?.(ui.authPrompt);
       onClose();
       return;
     }
     if (!hasActivePlan) {
-      onOpenPricingModal?.(
-        'A aplicação de modelos executivos internacionais (Harvard, ATS Estrito, Tech Modern) é exclusiva para assinantes Pro ($8/mês) e Executivo VIP ($12/mês).'
-      );
+      onOpenPricingModal?.(ui.pricingPrompt);
       onClose();
       return;
     }
@@ -91,14 +98,14 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold tracking-tight">
-                  Guia Estratégico & Catálogo de Modelos de CV
+                  {ui.modalTitle}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Internacional & ATS 2026
+                  {ui.badge}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                Descubra quando, onde e por que usar cada padrão: com fotos, sem fotos e regras geográficas.
+                {ui.subtitle}
               </p>
             </div>
           </div>
@@ -116,7 +123,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
           <div className="flex items-center gap-2">
             <Info className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
-              <strong>Regra de Ouro da Foto:</strong> Use foto na Europa Continental e LATAM. Oculte a foto nos EUA, Reino Unido e portais ATS automatizados (Workday, Greenhouse) para evitar desclassificação.
+              <strong>{ui.goldRuleTitle}</strong> {ui.goldRuleText}
             </span>
           </div>
           <button
@@ -125,7 +132,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             className="text-[11px] font-semibold text-amber-800 hover:text-amber-950 underline underline-offset-2 flex items-center gap-1"
           >
             <HelpCircle className="w-3.5 h-3.5" />
-            {showPhotoRuleGuide ? 'Ocultar Explicação Completa' : 'Por que a Foto é Proibida nos EUA?'}
+            {showPhotoRuleGuide ? ui.hideRule : ui.showRule}
           </button>
         </div>
 
@@ -133,25 +140,25 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
         {showPhotoRuleGuide && (
           <div className="p-4 sm:p-5 bg-amber-50 border-b border-amber-200 text-xs text-amber-950 space-y-3 shrink-0 animate-in fade-in duration-200">
             <h4 className="font-bold text-amber-900 text-sm flex items-center gap-1.5">
-              <span>⚖️</span> Legislação Trabalhista Internacional & Vieses de Contratação
+              <span>⚖️</span> {ui.lawTitle}
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-3 bg-white/80 rounded-lg border border-amber-200">
                 <p className="font-bold text-slate-900 flex items-center gap-1.5 mb-1">
                   <Ban className="w-4 h-4 text-rose-600" />
-                  EUA, Reino Unido, Canadá & Austrália (Sem Foto)
+                  {ui.noPhotoTitle}
                 </p>
                 <p className="text-slate-700 leading-relaxed text-[11px]">
-                  A Comissão de Oportunidades Iguais de Emprego (EEOC) dos EUA e a legislação britânica impõem rígidas diretrizes anti-discriminação racial, etária e de gênero. Os departamentos de RH e softwares ATS descartam imediatamente currículos com fotografia para blindar a empresa contra processos judiciais de viés inconsciente.
+                  {ui.noPhotoDesc}
                 </p>
               </div>
               <div className="p-3 bg-white/80 rounded-lg border border-amber-200">
                 <p className="font-bold text-slate-900 flex items-center gap-1.5 mb-1">
                   <Camera className="w-4 h-4 text-blue-600" />
-                  Europa Continental, Brasil & África Lusófona (Com Foto)
+                  {ui.withPhotoTitle}
                 </p>
                 <p className="text-slate-700 leading-relaxed text-[11px]">
-                  Em países como Alemanha, França, Portugal, Espanha e Suíça, o padrão Europass consagra a foto corporativa de estúdio como elemento de identificação, transparência e profissionalismo. Ajuda a humanizar a candidatura perante comissões de seleção presenciais.
+                  {ui.withPhotoDesc}
                 </p>
               </div>
             </div>
@@ -170,7 +177,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Todos ({CV_TEMPLATES.length})
+              {ui.filterAll} ({CV_TEMPLATES.length})
             </button>
             <button
               type="button"
@@ -182,7 +189,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
               }`}
             >
               <Camera className="w-3.5 h-3.5 text-blue-600" />
-              <span>Com Foto ({CV_TEMPLATES.filter((t) => t.hasPhoto).length})</span>
+              <span>{ui.filterWithPhoto} ({CV_TEMPLATES.filter((t) => t.hasPhoto).length})</span>
             </button>
             <button
               type="button"
@@ -194,7 +201,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Sem Foto / ATS ({CV_TEMPLATES.filter((t) => !t.hasPhoto).length})</span>
+              <span>{ui.filterNoPhoto} ({CV_TEMPLATES.filter((t) => !t.hasPhoto).length})</span>
             </button>
             <button
               type="button"
@@ -206,14 +213,14 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
               }`}
             >
               <Briefcase className="w-3.5 h-3.5 text-slate-700" />
-              <span>Executivos & Setoriais</span>
+              <span>{ui.filterExec}</span>
             </button>
           </div>
 
           <div className="text-[11px] text-slate-500 font-medium">
-            Modelo em uso:{' '}
+            {ui.activeTemplateLabel}{' '}
             <strong className="text-slate-800">
-              {CV_TEMPLATES.find((t) => t.id === currentTemplateId)?.name}
+              {getTplMeta(CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]).name}
             </strong>
           </div>
         </div>
@@ -221,13 +228,14 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
         {/* Main Content Area: Grid of Templates */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredTemplates.map((template) => {
+            {filteredTemplates.map((rawTemplate) => {
+              const template = getTplMeta(rawTemplate);
               const isSelected = currentTemplateId === template.id;
 
               return (
                 <div
                   key={template.id}
-                  onClick={() => setSelectedTemplateForDetail(template)}
+                  onClick={() => setSelectedTemplateForDetail(rawTemplate)}
                   className={`relative rounded-xl border p-4 transition-all flex flex-col justify-between cursor-pointer ${
                     isSelected
                       ? 'border-blue-600 ring-2 ring-blue-500/20 bg-blue-50/20 shadow-md'
@@ -273,7 +281,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
                     <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 text-xs">
                       <div>
                         <span className="text-[11px] font-semibold text-slate-700 block">
-                          🎯 Quando Usar:
+                          {ui.whenToUseLabel}
                         </span>
                         <p className="text-slate-600 text-[11px] leading-relaxed line-clamp-2">
                           {template.whenToUse}
@@ -282,7 +290,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
 
                       <div>
                         <span className="text-[11px] font-semibold text-slate-700 block">
-                          🌍 Onde Usar / Regiões:
+                          {ui.whereToUseLabel}
                         </span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {template.regions.slice(0, 3).map((r, i) => (
@@ -298,7 +306,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
 
                       <div className="bg-slate-50 rounded-lg p-2 border border-slate-150">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                          Regra de Fotografia
+                          {ui.photoRuleLabel}
                         </span>
                         <span className="text-[11px] text-slate-800 font-medium">
                           {template.photoRuleLabel}
@@ -324,10 +332,10 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
                       {isSelected ? (
                         <>
                           <Check className="w-3.5 h-3.5" />
-                          <span>Modelo Atual</span>
+                          <span>{ui.currentModelBtn}</span>
                         </>
                       ) : (
-                        <span>Aplicar Modelo</span>
+                        <span>{ui.applyModelBtn}</span>
                       )}
                     </button>
                   </div>
@@ -337,111 +345,114 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
           </div>
 
           {/* Detailed Selected Template Deep Dive */}
-          {selectedTemplateForDetail && (
-            <div className="mt-6 bg-slate-900 text-white rounded-xl p-5 border border-slate-800">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-3 h-8 rounded-full"
-                    style={{ backgroundColor: selectedTemplateForDetail.accentColor }}
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-base font-bold">
-                        {selectedTemplateForDetail.name}
-                      </h4>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                        {selectedTemplateForDetail.atsRatingText}
-                      </span>
+          {selectedTemplateForDetail && (() => {
+            const detailTpl = getTplMeta(selectedTemplateForDetail);
+            return (
+              <div className="mt-6 bg-slate-900 text-white rounded-xl p-5 border border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-3 h-8 rounded-full"
+                      style={{ backgroundColor: detailTpl.accentColor }}
+                    />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-base font-bold">
+                          {detailTpl.name}
+                        </h4>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          {detailTpl.atsRatingText}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {detailTpl.tagline}
+                      </p>
                     </div>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {selectedTemplateForDetail.tagline}
-                    </p>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApply(detailTpl.id)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm shrink-0"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{ui.activateModelBtn}</span>
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleApply(selectedTemplateForDetail.id)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-sm shrink-0"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Ativar Este Modelo no Meu CV</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-xs">
-                <div>
-                  <h5 className="font-semibold text-blue-400 mb-1 flex items-center gap-1.5">
-                    <span>🎯</span> Quando e Para Quem Usar:
-                  </h5>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
-                    {selectedTemplateForDetail.whenToUse}
-                  </p>
-
-                  <h5 className="font-semibold text-blue-400 mt-3 mb-1 flex items-center gap-1.5">
-                    <span>🌍</span> Onde Usar & Aceitação Regional:
-                  </h5>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
-                    {selectedTemplateForDetail.whereToUse}
-                  </p>
-                </div>
-
-                <div>
-                  <h5 className="font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
-                    <span>📸</span> Justificativa da Foto (Ou Ausência):
-                  </h5>
-                  <p className="text-slate-300 leading-relaxed text-[11px]">
-                    {selectedTemplateForDetail.whyPhotoOrNot}
-                  </p>
-
-                  <h5 className="font-semibold text-emerald-400 mt-3 mb-1 flex items-center gap-1.5">
-                    <span>🏭</span> Setores Ideais:
-                  </h5>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedTemplateForDetail.bestForIndustries.map((ind, i) => (
-                      <span
-                        key={i}
-                        className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px]"
-                      >
-                        {ind}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-slate-800/80 rounded-lg p-3.5 border border-slate-700/80 flex flex-col justify-between">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-xs">
                   <div>
-                    <h5 className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
-                      <Award className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Dica de Ouro do Recrutador:</span>
+                    <h5 className="font-semibold text-blue-400 mb-1 flex items-center gap-1.5">
+                      <span>🎯</span> {ui.deepWhenTitle}
                     </h5>
-                    <p className="text-slate-200 text-[11px] leading-relaxed italic">
-                      "{selectedTemplateForDetail.proTip}"
+                    <p className="text-slate-300 leading-relaxed text-[11px]">
+                      {detailTpl.whenToUse}
+                    </p>
+
+                    <h5 className="font-semibold text-blue-400 mt-3 mb-1 flex items-center gap-1.5">
+                      <span>🌍</span> {ui.deepWhereTitle}
+                    </h5>
+                    <p className="text-slate-300 leading-relaxed text-[11px]">
+                      {detailTpl.whereToUse}
                     </p>
                   </div>
 
-                  <div className="mt-3 pt-2 border-t border-slate-700 text-[10px] text-slate-400">
-                    Compatível com exportação Word (.docx) e Impressão PDF sem cortes.
+                  <div>
+                    <h5 className="font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
+                      <span>📸</span> {ui.deepPhotoTitle}
+                    </h5>
+                    <p className="text-slate-300 leading-relaxed text-[11px]">
+                      {detailTpl.whyPhotoOrNot}
+                    </p>
+
+                    <h5 className="font-semibold text-emerald-400 mt-3 mb-1 flex items-center gap-1.5">
+                      <span>🏭</span> {ui.deepIndustriesTitle}
+                    </h5>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {detailTpl.bestForIndustries.map((ind, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px]"
+                        >
+                          {ind}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800/80 rounded-lg p-3.5 border border-slate-700/80 flex flex-col justify-between">
+                    <div>
+                      <h5 className="font-semibold text-amber-300 mb-1 flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                        <span>{ui.recruiterTipTitle}</span>
+                      </h5>
+                      <p className="text-slate-200 text-[11px] leading-relaxed italic">
+                        "{detailTpl.proTip}"
+                      </p>
+                    </div>
+
+                    <div className="mt-3 pt-2 border-t border-slate-700 text-[10px] text-slate-400">
+                      {ui.exportCompatNote}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Modal Footer */}
         <div className="px-6 py-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 shrink-0">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Formatos validados segundo normas internacionais de RH e sistemas ATS.</span>
+            <span>{ui.footerValidationNote}</span>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-1.5 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50 transition-colors"
           >
-            Fechar
+            {ui.closeBtn}
           </button>
         </div>
       </div>

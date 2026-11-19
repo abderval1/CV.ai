@@ -277,6 +277,7 @@ export interface PlatformSettingsConfig {
   maintenanceMode: boolean;
   maintenanceMessage: string;
   allowNewRegistrations: boolean;
+  enableBotProtection?: boolean;
   requirePaidPlanForExport: boolean;
   enableAiFeaturesGlobally: boolean;
   maxDailyFreeAiCalls: number;

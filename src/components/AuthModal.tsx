@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, getAuthErrorMessage } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
 import {
   X,
@@ -14,7 +15,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  KeyRound
+  KeyRound,
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -43,6 +46,317 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     clearAuthRedirectError
   } = useAuth();
   const { showSuccess } = useToast();
+  const { siteText, siteLanguage } = useLanguage();
+  const a = siteText.auth;
+
+  const authFeedback = React.useMemo(() => {
+    const map: Record<
+      'pt' | 'en' | 'es' | 'fr' | 'de' | 'it',
+      {
+        weak: string;
+        medium: string;
+        strong: string;
+        strengthLabel: string;
+        invalidEmail: string;
+        invalidReset: string;
+        resetDoneTitle: string;
+        resetDoneDesc: string;
+        shortPass: string;
+        regPaused: string;
+        regPausedTitle: string;
+        regPausedDesc: string;
+        enterName: string;
+        passMismatch: string;
+        acceptTerms: string;
+        loginSuccessTitle: string;
+        loginSuccessDesc: string;
+        regSuccessTitle: string;
+        regSuccessDesc: string;
+        googleSuccessTitle: string;
+        googleSuccessDesc: string;
+        googleRedirecting: string;
+        googleUnauthDomain: string;
+        googleDomainTip1: string;
+        googleDomainTip2: string;
+        inAppWarning1: string;
+        inAppWarning2: string;
+        inAppWarning3: string;
+        mobileReturnMsg: string;
+        resetCodeLabel: string;
+        resetCodePlaceholder: string;
+        newPassLabel: string;
+        newPassPlaceholder: string;
+        togglePassAria: string;
+        closeAria: string;
+        humanCheckTitle: string;
+        humanCheckHint: string;
+        humanCheckPlaceholder: string;
+        humanCheckRequired: string;
+        humanCheckRefresh: string;
+        humanCheckLoadErr: string;
+      }
+    > = {
+      pt: {
+        weak: 'Fraca',
+        medium: 'Média',
+        strong: 'Forte & Segura',
+        strengthLabel: 'Segurança da senha:',
+        invalidEmail: 'Por favor insira um endereço de e-mail válido.',
+        invalidReset: 'Insira o código de 6 dígitos e uma nova palavra-passe com pelo menos 6 caracteres.',
+        resetDoneTitle: 'Palavra-passe Redefinida',
+        resetDoneDesc: 'A sua sessão foi iniciada automaticamente.',
+        shortPass: 'A palavra-passe deve ter pelo menos 6 caracteres.',
+        regPaused: 'Novos registos encontram-se temporariamente pausados. Contas existentes podem entrar normalmente.',
+        regPausedTitle: 'Novos cadastros temporariamente pausados',
+        regPausedDesc: 'A criação de novas contas foi desativada temporariamente pelo administrador. Se já possui conta, alterne para iniciar sessão.',
+        enterName: 'Por favor insira o seu nome completo.',
+        passMismatch: 'As palavras-passe não coincidem. Verifique os dois campos.',
+        acceptTerms: 'Por favor aceite os Termos de Uso e Política de Privacidade para prosseguir.',
+        loginSuccessTitle: 'Sessão Iniciada',
+        loginSuccessDesc: 'Bem-vindo de volta.',
+        regSuccessTitle: 'Conta Criada com Sucesso',
+        regSuccessDesc: 'Bem-vindo! Ative o seu plano para criar, editar e descarregar.',
+        googleSuccessTitle: 'Autenticação Google Concluída',
+        googleSuccessDesc: 'Sessão sincronizada com sucesso.',
+        googleRedirecting: 'A abrir seleção de conta Google...',
+        googleUnauthDomain: 'O acesso Google ainda não está autorizado neste domínio. Utilize o acesso imediato por E-mail e Palavra-passe logo abaixo.',
+        googleDomainTip1: 'Para ativar o botão Google neste URL, adicione',
+        googleDomainTip2: 'nas definições de domínios autorizados ou entre já abaixo com o seu e-mail.',
+        inAppWarning1: 'Navegador interno detetado:',
+        inAppWarning2: 'aplicações como WhatsApp ou Instagram costumam bloquear o acesso Google. Toque em',
+        inAppWarning3: 'Abrir no Chrome / Safari',
+        mobileReturnMsg: 'O navegador do telemóvel regressou antes de concluir a confirmação com a Google. Permita pop-ups ou entre abaixo com E-mail e Palavra-passe.',
+        resetCodeLabel: 'Código de Verificação (6 dígitos)',
+        resetCodePlaceholder: 'Ex: 482910',
+        newPassLabel: 'Nova Palavra-passe',
+        newPassPlaceholder: 'Mínimo de 6 caracteres',
+        togglePassAria: 'Mostrar ou ocultar palavra-passe',
+        closeAria: 'Fechar janela de autenticação',
+        humanCheckTitle: 'Verificação Humana (Anti-Robôs)',
+        humanCheckHint: 'Resolva o cálculo da imagem para confirmar que não é um robô.',
+        humanCheckPlaceholder: 'Resposta',
+        humanCheckRequired: 'Por favor resolva a verificação humana (cálculo da imagem) antes de criar a conta.',
+        humanCheckRefresh: 'Trocar desafio',
+        humanCheckLoadErr: 'Não foi possível carregar o desafio. Clique em Trocar.'
+      },
+      en: {
+        weak: 'Weak',
+        medium: 'Medium',
+        strong: 'Strong & Secure',
+        strengthLabel: 'Password strength:',
+        invalidEmail: 'Please enter a valid email address.',
+        invalidReset: 'Enter the 6-digit code and a new password with at least 6 characters.',
+        resetDoneTitle: 'Password Reset',
+        resetDoneDesc: 'You have been signed in automatically.',
+        shortPass: 'Password must be at least 6 characters long.',
+        regPaused: 'New registrations are temporarily paused. Existing accounts can sign in normally.',
+        regPausedTitle: 'New signups temporarily paused',
+        regPausedDesc: 'New account creation has been temporarily disabled by an administrator. If you already have an account, switch to Sign In.',
+        enterName: 'Please enter your full name.',
+        passMismatch: 'Passwords do not match. Please check both fields.',
+        acceptTerms: 'Please accept the Terms of Service and Privacy Policy to continue.',
+        loginSuccessTitle: 'Signed In',
+        loginSuccessDesc: 'Welcome back.',
+        regSuccessTitle: 'Account Created',
+        regSuccessDesc: 'Welcome! Activate your plan to create, edit, and export.',
+        googleSuccessTitle: 'Google Sign-In Complete',
+        googleSuccessDesc: 'Session synced successfully.',
+        googleRedirecting: 'Opening Google account selection...',
+        googleUnauthDomain: 'Google sign-in is not yet authorized on this domain. Use Email and Password below.',
+        googleDomainTip1: 'To enable Google Sign-In on this URL, add',
+        googleDomainTip2: 'to authorized domains or sign in with email below.',
+        inAppWarning1: 'In-app browser detected:',
+        inAppWarning2: 'apps like WhatsApp or Instagram may block Google sign-in. Tap',
+        inAppWarning3: 'Open in Chrome / Safari',
+        mobileReturnMsg: 'Mobile browser returned before completing Google sign-in. Allow pop-ups or sign in with Email and Password below.',
+        resetCodeLabel: 'Verification Code (6 digits)',
+        resetCodePlaceholder: 'e.g. 482910',
+        newPassLabel: 'New Password',
+        newPassPlaceholder: 'At least 6 characters',
+        togglePassAria: 'Show or hide password',
+        closeAria: 'Close authentication modal',
+        humanCheckTitle: 'Human Verification (Anti-Bot)',
+        humanCheckHint: 'Solve the calculation in the image to prove you are human.',
+        humanCheckPlaceholder: 'Answer',
+        humanCheckRequired: 'Please solve the human verification challenge before registering.',
+        humanCheckRefresh: 'New challenge',
+        humanCheckLoadErr: 'Could not load challenge. Click refresh.'
+      },
+      es: {
+        weak: 'Débil',
+        medium: 'Media',
+        strong: 'Fuerte y Segura',
+        strengthLabel: 'Seguridad de la contraseña:',
+        invalidEmail: 'Por favor ingresa un correo electrónico válido.',
+        invalidReset: 'Ingresa el código de 6 dígitos y una nueva contraseña de al menos 6 caracteres.',
+        resetDoneTitle: 'Contraseña Restablecida',
+        resetDoneDesc: 'Tu sesión se ha iniciado automáticamente.',
+        shortPass: 'La contraseña debe tener al menos 6 caracteres.',
+        regPaused: 'Los nuevos registros están temporalmente pausados. Las cuentas existentes pueden iniciar sesión normalmente.',
+        regPausedTitle: 'Registros temporalmente pausados',
+        regPausedDesc: 'El registro de nuevas cuentas ha sido pausado temporalmente. Si ya tienes cuenta, cambia a Iniciar Sesión.',
+        enterName: 'Por favor ingresa tu nombre completo.',
+        passMismatch: 'Las contraseñas no coinciden. Verifica ambos campos.',
+        acceptTerms: 'Por favor acepta los Términos de Servicio y la Política de Privacidad para continuar.',
+        loginSuccessTitle: 'Sesión Iniciada',
+        loginSuccessDesc: 'Bienvenido de nuevo.',
+        regSuccessTitle: 'Cuenta Creada con Éxito',
+        regSuccessDesc: '¡Bienvenido! Activa tu plan para crear, editar y descargar.',
+        googleSuccessTitle: 'Autenticación Google Completada',
+        googleSuccessDesc: 'Sesión sincronizada correctamente.',
+        googleRedirecting: 'Abriendo selección de cuenta Google...',
+        googleUnauthDomain: 'El acceso con Google no está autorizado en este dominio. Usa Correo y Contraseña abajo.',
+        googleDomainTip1: 'Para activar Google en esta URL, añade',
+        googleDomainTip2: 'a dominios autorizados o entra con tu correo abajo.',
+        inAppWarning1: 'Navegador integrado detectado:',
+        inAppWarning2: 'apps como WhatsApp o Instagram suelen bloquear Google. Toca',
+        inAppWarning3: 'Abrir en Chrome / Safari',
+        mobileReturnMsg: 'El navegador móvil regresó antes de confirmar con Google. Permite ventanas emergentes o entra con correo y contraseña abajo.',
+        resetCodeLabel: 'Código de Verificación (6 dígitos)',
+        resetCodePlaceholder: 'Ej: 482910',
+        newPassLabel: 'Nueva Contraseña',
+        newPassPlaceholder: 'Mínimo 6 caracteres',
+        togglePassAria: 'Mostrar u ocultar contraseña',
+        closeAria: 'Cerrar ventana de acceso',
+        humanCheckTitle: 'Verificación Humana (Anti-Bots)',
+        humanCheckHint: 'Resuelve la operación de la imagen para continuar.',
+        humanCheckPlaceholder: 'Resultado',
+        humanCheckRequired: 'Por favor resuelve la verificación humana antes de crear tu cuenta.',
+        humanCheckRefresh: 'Cambiar',
+        humanCheckLoadErr: 'No se pudo cargar el reto. Pulsa actualizar.'
+      },
+      fr: {
+        weak: 'Faible',
+        medium: 'Moyenne',
+        strong: 'Forte & Sécurisée',
+        strengthLabel: 'Sécurité du mot de passe :',
+        invalidEmail: 'Veuillez saisir une adresse e-mail valide.',
+        invalidReset: 'Saisissez le code à 6 chiffres et un nouveau mot de passe d’au moins 6 caractères.',
+        resetDoneTitle: 'Mot de passe réinitialisé',
+        resetDoneDesc: 'Vous avez été connecté automatiquement.',
+        shortPass: 'Le mot de passe doit contenir au moins 6 caractères.',
+        regPaused: 'Les nouvelles inscriptions sont temporairement suspendues.',
+        regPausedTitle: 'Inscriptions temporairement suspendues',
+        regPausedDesc: 'La création de nouveaux comptes est momentanément désactivée. Passez à Connexion si vous avez déjà un compte.',
+        enterName: 'Veuillez saisir votre nom complet.',
+        passMismatch: 'Les mots de passe ne correspondent pas.',
+        acceptTerms: 'Veuillez accepter les Conditions d’utilisation et la Politique de confidentialité.',
+        loginSuccessTitle: 'Connecté',
+        loginSuccessDesc: 'Bon retour.',
+        regSuccessTitle: 'Compte Créé',
+        regSuccessDesc: 'Bienvenue ! Activez votre offre pour créer, éditer et exporter.',
+        googleSuccessTitle: 'Connexion Google Réussie',
+        googleSuccessDesc: 'Session synchronisée avec succès.',
+        googleRedirecting: 'Ouverture du sélecteur de compte Google...',
+        googleUnauthDomain: 'Google Sign-In n’est pas encore autorisé sur ce domaine. Utilisez l’e-mail ci-dessous.',
+        googleDomainTip1: 'Pour activer Google sur cette URL, ajoutez',
+        googleDomainTip2: 'aux domaines autorisés ou connectez-vous par e-mail ci-dessous.',
+        inAppWarning1: 'Navigateur intégré détecté :',
+        inAppWarning2: 'des apps comme WhatsApp ou Instagram bloquent souvent Google. Touchez',
+        inAppWarning3: 'Ouvrir dans Chrome / Safari',
+        mobileReturnMsg: 'Le navigateur mobile est revenu avant la confirmation Google. Autorisez les fenêtres contextuelles ou utilisez l’e-mail ci-dessous.',
+        resetCodeLabel: 'Code de vérification (6 chiffres)',
+        resetCodePlaceholder: 'Ex : 482910',
+        newPassLabel: 'Nouveau mot de passe',
+        newPassPlaceholder: '6 caractères minimum',
+        togglePassAria: 'Afficher ou masquer le mot de passe',
+        closeAria: 'Fermer la fenêtre de connexion',
+        humanCheckTitle: 'Vérification Humaine (Anti-Robots)',
+        humanCheckHint: 'Résolvez le calcul dans l’image pour confirmer.',
+        humanCheckPlaceholder: 'Réponse',
+        humanCheckRequired: 'Veuillez résoudre la vérification humaine avant de créer un compte.',
+        humanCheckRefresh: 'Actualiser',
+        humanCheckLoadErr: 'Échec du chargement. Cliquez sur actualiser.'
+      },
+      de: {
+        weak: 'Schwach',
+        medium: 'Mittel',
+        strong: 'Stark & Sicher',
+        strengthLabel: 'Passwortsicherheit:',
+        invalidEmail: 'Bitte geben Sie eine gültige E-Mail-Adresse ein.',
+        invalidReset: 'Geben Sie den 6-stelligen Code und ein neues Passwort mit mindestens 6 Zeichen ein.',
+        resetDoneTitle: 'Passwort zurückgesetzt',
+        resetDoneDesc: 'Sie wurden automatisch angemeldet.',
+        shortPass: 'Das Passwort muss mindestens 6 Zeichen lang sein.',
+        regPaused: 'Neuregistrierungen sind vorübergehend pausiert.',
+        regPausedTitle: 'Registrierungen pausiert',
+        regPausedDesc: 'Die Erstellung neuer Konten wurde vorübergehend deaktiviert. Wechseln Sie zur Anmeldung, falls Sie schon ein Konto besitzen.',
+        enterName: 'Bitte geben Sie Ihren vollständigen Namen ein.',
+        passMismatch: 'Die Passwörter stimmen nicht überein.',
+        acceptTerms: 'Bitte akzeptieren Sie die Nutzungsbedingungen und Datenschutzrichtlinie.',
+        loginSuccessTitle: 'Angemeldet',
+        loginSuccessDesc: 'Willkommen zurück.',
+        regSuccessTitle: 'Konto erstellt',
+        regSuccessDesc: 'Willkommen! Aktivieren Sie einen Tarif für Bearbeitung und Export.',
+        googleSuccessTitle: 'Google-Anmeldung erfolgreich',
+        googleSuccessDesc: 'Sitzung erfolgreich synchronisiert.',
+        googleRedirecting: 'Google-Kontoauswahl wird geöffnet...',
+        googleUnauthDomain: 'Google Sign-In ist für diese Domain noch nicht freigeschaltet. Nutzen Sie E-Mail & Passwort unten.',
+        googleDomainTip1: 'Um Google hier zu aktivieren, fügen Sie',
+        googleDomainTip2: 'zu den autorisierten Domains hinzu oder melden Sie sich per E-Mail an.',
+        inAppWarning1: 'In-App-Browser erkannt:',
+        inAppWarning2: 'Apps wie WhatsApp oder Instagram blockieren oft Google. Tippen Sie auf',
+        inAppWarning3: 'In Chrome / Safari öffnen',
+        mobileReturnMsg: 'Der mobile Browser ist zurückgekehrt, bevor Google bestätigt wurde. Nutzen Sie E-Mail & Passwort unten.',
+        resetCodeLabel: 'Bestätigungscode (6 Ziffern)',
+        resetCodePlaceholder: 'z. B. 482910',
+        newPassLabel: 'Neues Passwort',
+        newPassPlaceholder: 'Mindestens 6 Zeichen',
+        togglePassAria: 'Passwort anzeigen oder verbergen',
+        closeAria: 'Anmeldefenster schließen',
+        humanCheckTitle: 'Menschliche Prüfung (Bot-Schutz)',
+        humanCheckHint: 'Lösen Sie die Rechenaufgabe im Bild.',
+        humanCheckPlaceholder: 'Antwort',
+        humanCheckRequired: 'Bitte lösen Sie die menschliche Prüfung vor der Registrierung.',
+        humanCheckRefresh: 'Neu laden',
+        humanCheckLoadErr: 'Konnte nicht geladen werden. Bitte neu laden.'
+      },
+      it: {
+        weak: 'Debole',
+        medium: 'Media',
+        strong: 'Forte e Sicura',
+        strengthLabel: 'Sicurezza password:',
+        invalidEmail: 'Inserisci un indirizzo email valido.',
+        invalidReset: 'Inserisci il codice a 6 cifre e una nuova password di almeno 6 caratteri.',
+        resetDoneTitle: 'Password reimpostata',
+        resetDoneDesc: 'Accesso effettuato automaticamente.',
+        shortPass: 'La password deve contenere almeno 6 caratteri.',
+        regPaused: 'Le nuove registrazioni sono temporaneamente sospese.',
+        regPausedTitle: 'Registrazioni temporaneamente sospese',
+        regPausedDesc: 'La creazione di nuovi account è momentaneamente disabilitata. Passa ad Accedi se hai già un account.',
+        enterName: 'Inserisci il tuo nome completo.',
+        passMismatch: 'Le password non corrispondono.',
+        acceptTerms: 'Accetta i Termini di Servizio e l’Informativa sulla Privacy per continuare.',
+        loginSuccessTitle: 'Accesso effettuato',
+        loginSuccessDesc: 'Bentornato.',
+        regSuccessTitle: 'Account creato',
+        regSuccessDesc: 'Benvenuto! Attiva un piano per modificare ed esportare.',
+        googleSuccessTitle: 'Accesso Google completato',
+        googleSuccessDesc: 'Sessione sincronizzata con successo.',
+        googleRedirecting: 'Apertura selezione account Google...',
+        googleUnauthDomain: 'L’accesso Google non è ancora autorizzato su questo dominio. Usa Email e Password qui sotto.',
+        googleDomainTip1: 'Per abilitare Google su questo URL, aggiungi',
+        googleDomainTip2: 'ai domini autorizzati oppure accedi con email qui sotto.',
+        inAppWarning1: 'Browser in-app rilevato:',
+        inAppWarning2: 'app come WhatsApp o Instagram bloccano spesso Google. Tocca',
+        inAppWarning3: 'Apri in Chrome / Safari',
+        mobileReturnMsg: 'Il browser mobile è tornato prima di completare l’accesso Google. Consenti i pop-up o accedi con Email e Password qui sotto.',
+        resetCodeLabel: 'Codice di verifica (6 cifre)',
+        resetCodePlaceholder: 'Es: 482910',
+        newPassLabel: 'Nuova Password',
+        newPassPlaceholder: 'Minimo 6 caratteri',
+        togglePassAria: 'Mostra o nascondi password',
+        closeAria: 'Chiudi finestra di accesso',
+        humanCheckTitle: 'Verifica Umana (Anti-Bot)',
+        humanCheckHint: 'Risolvi il calcolo nell’immagine per continuare.',
+        humanCheckPlaceholder: 'Risposta',
+        humanCheckRequired: 'Risolvi la verifica umana prima di registrarti.',
+        humanCheckRefresh: 'Aggiorna',
+        humanCheckLoadErr: 'Impossibile caricare la sfida. Riprova.'
+      }
+    };
+    return map[siteLanguage] || map.pt;
+  }, [siteLanguage]);
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(defaultMode);
   const [name, setName] = useState<string>('');
@@ -63,9 +377,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [resetCode, setResetCode] = useState<string>('');
   const [newResetPassword, setNewResetPassword] = useState<string>('');
   const [googleDomainWarning, setGoogleDomainWarning] = useState<string | null>(null);
+  const [captchaChallenge, setCaptchaChallenge] = useState<{
+    challengeId: string;
+    challengeToken: string;
+    imageUrl: string;
+    botProtectionEnabled: boolean;
+  } | null>(null);
+  const [captchaLoading, setCaptchaLoading] = useState<boolean>(false);
+  const [captchaError, setCaptchaError] = useState<boolean>(false);
+  const [captchaAnswer, setCaptchaAnswer] = useState<string>('');
+  const [honeypotWebsite, setHoneypotWebsite] = useState<string>('');
+  const [honeypotPhone, setHoneypotPhone] = useState<string>('');
+
   const errorBannerRef = React.useRef<HTMLDivElement | null>(null);
   const bodyScrollRef = React.useRef<HTMLDivElement | null>(null);
   const googleInFlightRef = React.useRef<boolean>(false);
+
+  const loadSignupChallenge = React.useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaError(false);
+    setCaptchaAnswer('');
+    try {
+      const res = await fetch('/api/auth/signup-challenge', { cache: 'no-store', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      if (data?.challengeId && data?.challengeToken && data?.imageUrl) {
+        setCaptchaChallenge({
+          challengeId: data.challengeId,
+          challengeToken: data.challengeToken,
+          imageUrl: data.imageUrl,
+          botProtectionEnabled: data.botProtectionEnabled !== false
+        });
+      } else {
+        setCaptchaError(true);
+      }
+    } catch {
+      setCaptchaError(true);
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
 
   const isInAppBrowser = React.useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -91,6 +442,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setGoogleDomainWarning(null);
       setPassword('');
       setConfirmPassword('');
+      setCaptchaAnswer('');
+      setHoneypotWebsite('');
+      setHoneypotPhone('');
       setResetStep('request');
       setResetCode('');
       setNewResetPassword('');
@@ -99,6 +453,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       googleInFlightRef.current = false;
     }
   }, [isOpen, defaultMode, authRedirectError]);
+
+  // Fetch a fresh anti-bot challenge whenever registration tab is active
+  useEffect(() => {
+    if (
+      isOpen &&
+      mode === 'register' &&
+      platformSettings.allowNewRegistrations !== false &&
+      platformSettings.enableBotProtection !== false
+    ) {
+      void loadSignupChallenge();
+    }
+  }, [
+    isOpen,
+    mode,
+    platformSettings.allowNewRegistrations,
+    platformSettings.enableBotProtection,
+    loadSignupChallenge
+  ]);
 
   // Auto-close modal seamlessly if Firebase auth completes via listener or redirect
   useEffect(() => {
@@ -138,9 +510,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           googleInFlightRef.current = false;
           setGoogleLoading(false);
           setLoading(false);
-          setError(
-            'O navegador do telemóvel regressou antes de concluir a confirmação com a Google. Permita janelas pop-up para este site, abra diretamente no Chrome ou Safari, ou entre abaixo com E-mail e Palavra-passe.'
-          );
+          setError(authFeedback.mobileReturnMsg);
         }
       }, 4500);
     };
@@ -184,6 +554,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   const allowNewRegistrations = platformSettings.allowNewRegistrations !== false;
+  const botProtectionEnabled =
+    platformSettings.enableBotProtection !== false &&
+    (captchaChallenge ? captchaChallenge.botProtectionEnabled : true);
 
   const getPasswordStrength = (pass: string) => {
     if (!pass) return { score: 0, text: '', color: '' };
@@ -193,9 +566,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score++;
     if (/[0-9]/.test(pass) || /[^A-Za-z0-9]/.test(pass)) score++;
 
-    if (score <= 1) return { score: 1, text: 'Fraca', color: 'bg-rose-500 text-rose-600' };
-    if (score <= 3) return { score: 2, text: 'Média', color: 'bg-amber-500 text-amber-600' };
-    return { score: 3, text: 'Forte & Segura', color: 'bg-emerald-500 text-emerald-600' };
+    if (score <= 1) return { score: 1, text: authFeedback.weak, color: 'bg-rose-500 text-rose-600' };
+    if (score <= 3) return { score: 2, text: authFeedback.medium, color: 'bg-amber-500 text-amber-600' };
+    return { score: 3, text: authFeedback.strong, color: 'bg-emerald-500 text-emerald-600' };
   };
 
   const strength = getPasswordStrength(password);
@@ -207,7 +580,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     const cleanEmail = email.trim();
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
-      setError('Por favor insira um endereço de e-mail válido.');
+      setError(authFeedback.invalidEmail);
       return;
     }
 
@@ -226,14 +599,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       if (!resetCode.trim() || newResetPassword.length < 6) {
-        setError('Insira o código de 6 dígitos e uma nova palavra-passe com pelo menos 6 caracteres.');
+        setError(authFeedback.invalidReset);
         return;
       }
 
       setLoading(true);
       try {
         await completePasswordReset(cleanEmail, resetCode, newResetPassword);
-        showSuccess('Palavra-passe Redefinida', 'A sua sessão foi iniciada automaticamente.');
+        showSuccess(authFeedback.resetDoneTitle, authFeedback.resetDoneDesc);
         onClose();
       } catch (err: any) {
         setError(getAuthErrorMessage(err));
@@ -244,25 +617,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     if (!password || password.length < 6) {
-      setError('A palavra-passe deve ter pelo menos 6 caracteres.');
+      setError(authFeedback.shortPass);
       return;
     }
 
     if (mode === 'register') {
       if (!allowNewRegistrations) {
-        setError('Novos registos encontram-se temporariamente pausados pela administração da plataforma. Contas existentes podem entrar normalmente.');
+        setError(authFeedback.regPaused);
         return;
       }
       if (!name.trim()) {
-        setError('Por favor insira o seu nome completo.');
+        setError(authFeedback.enterName);
         return;
       }
       if (confirmPassword !== password) {
-        setError('As palavras-passe não coincidem. Verifique os dois campos.');
+        setError(authFeedback.passMismatch);
+        return;
+      }
+      if (botProtectionEnabled && !captchaAnswer.trim()) {
+        setError(authFeedback.humanCheckRequired);
         return;
       }
       if (!agreeTerms) {
-        setError('Por favor aceite os Termos de Uso e Política de Privacidade para prosseguir.');
+        setError(authFeedback.acceptTerms);
         return;
       }
     }
@@ -271,15 +648,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       if (mode === 'login') {
         await login(cleanEmail, password, rememberMe);
-        showSuccess('Sessão Iniciada', 'Bem-vindo de volta ao Currículo Estratégico.');
+        showSuccess(authFeedback.loginSuccessTitle, authFeedback.loginSuccessDesc);
       } else {
-        await register(name.trim(), cleanEmail, password, targetRole.trim(), rememberMe);
-        showSuccess('Conta Criada com Sucesso', 'Bem-vindo! Ative o seu plano para criar, editar e descarregar.');
+        await register(name.trim(), cleanEmail, password, targetRole.trim(), rememberMe, {
+          challengeId: captchaChallenge?.challengeId,
+          challengeToken: captchaChallenge?.challengeToken,
+          challengeAnswer: captchaAnswer.trim(),
+          website: honeypotWebsite,
+          companyPhone: honeypotPhone
+        });
+        showSuccess(authFeedback.regSuccessTitle, authFeedback.regSuccessDesc);
         onRegistrationSuccess?.();
       }
       onClose();
     } catch (err: any) {
       setError(getAuthErrorMessage(err));
+      if (
+        mode === 'register' &&
+        (err?.code === 'auth/captcha-expired' ||
+          err?.code === 'auth/captcha-invalid' ||
+          err?.code === 'auth/bot-detected')
+      ) {
+        void loadSignupChallenge();
+      }
     } finally {
       setLoading(false);
     }
@@ -297,20 +688,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const ok = await loginWithProvider(provider);
       googleInFlightRef.current = false;
       if (ok) {
-        showSuccess('Autenticação Google Concluída', 'Sessão sincronizada com sucesso.');
+        showSuccess(authFeedback.googleSuccessTitle, authFeedback.googleSuccessDesc);
         onClose();
       } else {
         // Redirecting away via signInWithRedirect
-        setSuccessInfo('A abrir seleção de conta Google...');
+        setSuccessInfo(authFeedback.googleRedirecting);
       }
     } catch (err: any) {
       googleInFlightRef.current = false;
       if (err?.code === 'auth/unauthorized-domain') {
         const host = typeof window !== 'undefined' ? window.location.hostname : '';
-        setGoogleDomainWarning(host || 'domínio atual');
-        setError(
-          'O acesso Google ainda não está autorizado neste domínio. Utilize o acesso imediato por E-mail e Palavra-passe logo abaixo.'
-        );
+        setGoogleDomainWarning(host || 'domain');
+        setError(authFeedback.googleUnauthDomain);
       } else {
         setError(getAuthErrorMessage(err));
       }
@@ -338,25 +727,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               onClose();
             }}
             className="absolute top-3 right-3 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-white rounded-lg hover:bg-slate-800/80 transition-colors touch-manipulation"
-            aria-label="Fechar janela de autenticação"
+            aria-label={authFeedback.closeAria}
           >
             <X className="w-5 h-5" />
           </button>
 
           <p className="text-[11px] font-medium tracking-wide uppercase text-amber-400 mb-1 pr-10">
-            Acesso à Conta
+            {a.kicker}
           </p>
 
           <h2 id="auth-modal-title" className="text-lg sm:text-xl font-bold tracking-tight pr-10">
-            {mode === 'login' && 'Entrar na Plataforma'}
-            {mode === 'register' && 'Criar Conta de Assinante'}
-            {mode === 'forgot' && 'Recuperar Palavra-passe'}
+            {mode === 'login' && a.loginTitle}
+            {mode === 'register' && a.registerTitle}
+            {mode === 'forgot' && a.forgotTitle}
           </h2>
 
           <p className="text-xs text-slate-400 mt-1">
-            {mode === 'login' && 'Aceda aos seus currículos, simulação de entrevistas e relatórios ATS.'}
-            {mode === 'register' && 'Registe-se para guardar currículos na nuvem e desbloquear recursos executivos.'}
-            {mode === 'forgot' && 'Recupere o acesso à sua conta de forma rápida e segura.'}
+            {mode === 'login' && a.loginSubtitle}
+            {mode === 'register' && a.registerSubtitle}
+            {mode === 'forgot' && a.forgotSubtitle}
           </p>
 
           {promptMessage && (
@@ -384,7 +773,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                Iniciar Sessão
+                {a.tabLogin}
               </button>
               <button
                 type="button"
@@ -401,7 +790,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                Criar Nova Conta
+                {a.tabRegister}
               </button>
             </div>
           )}
@@ -416,10 +805,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="p-3.5 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-lg flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">Novos cadastros temporariamente pausados</p>
-                <p className="text-[11px] mt-0.5">
-                  A criação de novas contas foi desativada temporariamente pelo administrador. Se já possui conta, alterne para "Iniciar Sessão".
-                </p>
+                <p className="font-semibold">{authFeedback.regPausedTitle}</p>
+                <p className="text-[11px] mt-0.5">{authFeedback.regPausedDesc}</p>
               </div>
             </div>
           )}
@@ -435,9 +822,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <span className="font-medium leading-relaxed block">{error}</span>
                 {googleDomainWarning && (
                   <p className="text-[11px] text-rose-700 bg-white/80 border border-rose-200 rounded-md px-2.5 py-1.5 leading-relaxed">
-                    Para ativar o botão Google neste URL, adicione{' '}
+                    {authFeedback.googleDomainTip1}{' '}
                     <code className="font-mono font-semibold text-slate-900 select-all">{googleDomainWarning}</code>{' '}
-                    nas definições de domínios autorizados ou entre já abaixo com o seu e-mail.
+                    {authFeedback.googleDomainTip2}
                   </p>
                 )}
               </div>
@@ -484,19 +871,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     />
                   </svg>
                 )}
-                <span>{googleLoading ? 'A ligar à Conta Google...' : 'Continuar com a Conta Google'}</span>
+                <span>{googleLoading ? a.googleLoading : a.googleBtn}</span>
               </button>
 
               {isInAppBrowser && (
                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 leading-relaxed">
-                  <strong>Navegador interno detetado:</strong> aplicações como WhatsApp ou Instagram costumam bloquear o acesso Google. Toque em <strong>Abrir no Chrome / Safari</strong> ou utilize o acesso por e-mail abaixo.
+                  <strong>{authFeedback.inAppWarning1}</strong> {authFeedback.inAppWarning2}{' '}
+                  <strong>{authFeedback.inAppWarning3}</strong>.
                 </div>
               )}
 
               <div className="relative flex items-center justify-center my-2">
                 <div className="border-t border-slate-200 w-full" />
                 <span className="bg-white px-3 text-[11px] font-medium text-slate-400 relative z-10 whitespace-nowrap">
-                  ou com e-mail e palavra-passe
+                  {a.dividerOr}
                 </span>
                 <div className="border-t border-slate-200 w-full" />
               </div>
@@ -509,7 +897,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <>
                 <div>
                   <label htmlFor="auth-name" className="block text-xs font-semibold text-slate-800 mb-1">
-                    Nome Completo
+                    {a.fullNameLabel}
                   </label>
                   <div className="relative">
                     <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -521,7 +909,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       enterKeyHint="next"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="Ex: João da Silva Santos"
+                      placeholder={a.fullNamePlaceholder}
                       className="w-full min-h-[44px] text-base sm:text-sm pl-10 pr-3.5 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors bg-white text-slate-900"
                     />
                   </div>
@@ -529,7 +917,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label htmlFor="auth-role" className="block text-xs font-semibold text-slate-800 mb-1">
-                    Cargo Desejado / Área de Atuação
+                    {a.targetRoleLabel}
                   </label>
                   <div className="relative">
                     <Briefcase className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -539,7 +927,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       enterKeyHint="next"
                       value={targetRole}
                       onChange={(e) => setTargetRole(e.target.value)}
-                      placeholder="Ex: Diretor de Operações, Tech Lead"
+                      placeholder={a.targetRolePlaceholder}
                       className="w-full min-h-[44px] text-base sm:text-sm pl-10 pr-3.5 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors bg-white text-slate-900"
                     />
                   </div>
@@ -549,7 +937,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <div>
               <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-800 mb-1">
-                Endereço de E-mail
+                {a.emailLabel}
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -565,7 +953,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={mode === 'forgot' && resetStep === 'verify'}
-                  placeholder="nome@empresa.com"
+                  placeholder={a.emailPlaceholder}
                   className="w-full min-h-[44px] text-base sm:text-sm pl-10 pr-3.5 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 disabled:bg-slate-50 transition-colors bg-white text-slate-900"
                 />
               </div>
@@ -575,7 +963,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <>
                 <div>
                   <label htmlFor="auth-reset-code" className="block text-xs font-semibold text-slate-800 mb-1">
-                    Código de Verificação (6 dígitos)
+                    {authFeedback.resetCodeLabel}
                   </label>
                   <div className="relative">
                     <KeyRound className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -586,7 +974,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       maxLength={6}
                       value={resetCode}
                       onChange={(e) => setResetCode(e.target.value)}
-                      placeholder="Ex: 482910"
+                      placeholder={authFeedback.resetCodePlaceholder}
                       className="w-full min-h-[44px] text-base sm:text-sm font-mono pl-10 pr-3.5 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 bg-white text-slate-900"
                     />
                   </div>
@@ -594,7 +982,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 <div>
                   <label htmlFor="auth-reset-pass" className="block text-xs font-semibold text-slate-800 mb-1">
-                    Nova Palavra-passe
+                    {authFeedback.newPassLabel}
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -604,14 +992,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       autoComplete="new-password"
                       value={newResetPassword}
                       onChange={(e) => setNewResetPassword(e.target.value)}
-                      placeholder="Mínimo de 6 caracteres"
+                      placeholder={authFeedback.newPassPlaceholder}
                       className="w-full min-h-[44px] text-base sm:text-sm pl-10 pr-12 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 bg-white text-slate-900"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-0 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-700 touch-manipulation"
-                      aria-label="Mostrar ou ocultar palavra-passe"
+                      aria-label={authFeedback.togglePassAria}
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -623,7 +1011,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {mode !== 'forgot' && (
               <div>
                 <label htmlFor="auth-password" className="block text-xs font-semibold text-slate-800 mb-1">
-                  Palavra-passe
+                  {a.passwordLabel}
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -634,14 +1022,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     enterKeyHint={mode === 'login' ? 'done' : 'next'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo de 6 caracteres"
+                    placeholder={a.passwordPlaceholder}
                     className="w-full min-h-[44px] text-base sm:text-sm pl-10 pr-12 py-2.5 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 transition-colors bg-white text-slate-900"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-0 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-400 hover:text-slate-700 touch-manipulation"
-                    aria-label="Mostrar ou ocultar palavra-passe"
+                    aria-label={authFeedback.togglePassAria}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -668,7 +1056,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       />
                     </div>
                     <span className="text-[11px] font-medium text-slate-500">
-                      Segurança da senha: <strong className={strength.color.split(' ')[1]}>{strength.text}</strong>
+                      {authFeedback.strengthLabel}{' '}
+                      <strong className={strength.color.split(' ')[1]}>{strength.text}</strong>
                     </span>
                   </div>
                 )}
@@ -678,7 +1067,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {mode === 'register' && (
               <div>
                 <label htmlFor="auth-confirm-password" className="block text-xs font-semibold text-slate-800 mb-1">
-                  Confirmar Palavra-passe
+                  {a.confirmPasswordLabel}
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -689,7 +1078,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     enterKeyHint="done"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repita a palavra-passe"
+                    placeholder={a.confirmPasswordPlaceholder}
                     className={`w-full min-h-[44px] text-base sm:text-sm pl-10 pr-3.5 py-2.5 border rounded-lg focus:outline-none focus:ring-2 transition-colors bg-white text-slate-900 ${
                       confirmPassword && confirmPassword !== password
                         ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-500/15'
@@ -699,7 +1088,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
                 {confirmPassword && confirmPassword !== password && (
                   <p className="text-[11px] text-rose-600 font-medium mt-1">
-                    As palavras-passe não coincidem.
+                    {authFeedback.passMismatch}
                   </p>
                 )}
               </div>
@@ -715,7 +1104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 rounded text-slate-900 focus:ring-slate-900"
                   />
-                  <span>Manter sessão iniciada</span>
+                  <span>{a.rememberMe}</span>
                 </label>
 
                 <button
@@ -728,9 +1117,95 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   }}
                   className="min-h-[44px] px-1 text-slate-600 hover:text-slate-950 font-semibold underline touch-manipulation"
                 >
-                  Esqueceu a senha?
+                  {a.forgotPasswordLink}
                 </button>
               </div>
+            )}
+
+            {mode === 'register' && allowNewRegistrations && botProtectionEnabled && (
+              <>
+                {/* Invisible anti-bot honeypot traps (never visible or focusable for humans) */}
+                <div
+                  aria-hidden="true"
+                  className="absolute -left-[9999px] top-auto w-px h-px overflow-hidden opacity-0 pointer-events-none"
+                >
+                  <label htmlFor="hp-website">Website</label>
+                  <input
+                    id="hp-website"
+                    name="website"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={honeypotWebsite}
+                    onChange={(e) => setHoneypotWebsite(e.target.value)}
+                  />
+                  <label htmlFor="hp-company-phone">Company Phone</label>
+                  <input
+                    id="hp-company-phone"
+                    name="companyPhone"
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={honeypotPhone}
+                    onChange={(e) => setHoneypotPhone(e.target.value)}
+                  />
+                </div>
+
+                {/* Human Verification CAPTCHA Box */}
+                <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/90 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{authFeedback.humanCheckTitle}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void loadSignupChallenge()}
+                      disabled={captchaLoading}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-950 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${captchaLoading ? 'animate-spin' : ''}`} />
+                      <span>{authFeedback.humanCheckRefresh}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    <div className="shrink-0 h-[48px] w-[176px] rounded-lg border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
+                      {captchaLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                      ) : captchaChallenge?.imageUrl ? (
+                        <img
+                          src={captchaChallenge.imageUrl}
+                          alt={authFeedback.humanCheckTitle}
+                          className="w-full h-full object-contain select-none pointer-events-none"
+                          draggable={false}
+                        />
+                      ) : (
+                        <span className="text-[10px] text-rose-600 px-2 text-center leading-tight">
+                          {captchaError ? authFeedback.humanCheckLoadErr : '...'}
+                        </span>
+                      )}
+                    </div>
+
+                    <input
+                      id="auth-captcha-answer"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={4}
+                      value={captchaAnswer}
+                      onChange={(e) => setCaptchaAnswer(e.target.value.replace(/[^\d-]/g, ''))}
+                      placeholder={authFeedback.humanCheckPlaceholder}
+                      aria-label={authFeedback.humanCheckTitle}
+                      className="flex-1 min-w-[90px] min-h-[48px] text-center font-mono text-base font-bold border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 bg-white text-slate-900"
+                    />
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    {authFeedback.humanCheckHint}
+                  </p>
+                </div>
+              </>
             )}
 
             {mode === 'register' && (
@@ -743,7 +1218,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     className="mt-0.5 w-4 h-4 rounded text-slate-900 focus:ring-slate-900 shrink-0"
                   />
                   <span className="text-[11px] leading-relaxed">
-                    Concordo com os <strong>Termos de Serviço</strong> e <strong>Política de Privacidade</strong> em conformidade com a LGPD e GDPR.
+                    {a.termsPrefix} <strong>{a.termsService}</strong> {a.termsAnd}{' '}
+                    <strong>{a.termsPrivacy}</strong> {a.termsSuffix}
                   </span>
                 </label>
               </div>
@@ -761,17 +1237,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               <span>
                 {loading
-                  ? 'A processar...'
+                  ? a.processing
                   : mode === 'login'
-                  ? 'Entrar na Plataforma'
+                  ? a.submitLogin
                   : mode === 'register'
-                  ? 'Criar Conta & Entrar'
+                  ? a.submitRegister
                   : resetStep === 'verify'
-                  ? 'Confirmar Nova Palavra-passe'
-                  : 'Solicitar Recuperação de Acesso'}
+                  ? a.submitResetConfirm
+                  : a.submitForgot}
               </span>
               {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
+            {mode !== 'forgot' && (
+              <p className="text-[11px] text-center text-slate-500 pt-1 leading-relaxed">
+                {mode === 'register' ? a.registerReassurance : a.loginReassurance}
+              </p>
+            )}
           </form>
 
           {/* Return link when on forgot view */}
@@ -787,7 +1268,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 }}
                 className="min-h-[44px] px-3 text-xs font-semibold text-slate-600 hover:text-slate-950 underline touch-manipulation"
               >
-                Voltar ao Início de Sessão
+                {a.backToLogin}
               </button>
             </div>
           )}

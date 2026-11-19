@@ -1,4 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  SiteLanguageCode,
+  SiteLanguageInfo,
+  SITE_LANGUAGES,
+  SiteDictionary,
+  SITE_DICTIONARIES
+} from '../i18n/siteTranslations';
+import { StudioTexts, STUDIO_TRANSLATIONS } from '../i18n/studioTranslations';
+
+export type { SiteLanguageCode, SiteLanguageInfo, SiteDictionary, StudioTexts };
+export { SITE_LANGUAGES };
 
 export type LanguageCode = 'pt' | 'en' | 'es' | 'fr' | 'de';
 
@@ -592,6 +603,15 @@ export const TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {
 };
 
 interface LanguageContextType {
+  // Independent Website UI Language (6 languages: PT, EN, ES, FR, DE, IT)
+  siteLanguage: SiteLanguageCode;
+  setSiteLanguage: (lang: SiteLanguageCode) => void;
+  currentSiteLanguage: SiteLanguageInfo;
+  siteLanguages: SiteLanguageInfo[];
+  siteText: SiteDictionary;
+  studioText: StudioTexts;
+
+  // Legacy CV/Letter content language helpers kept compatible for export/modals
   language: LanguageCode;
   setLanguage: (lang: LanguageCode) => void;
   currentLanguage: LanguageInfo;
@@ -602,6 +622,45 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [siteLanguage, setSiteLanguageState] = useState<SiteLanguageCode>(() => {
+    try {
+      const urlLang = new URLSearchParams(window.location.search).get('lang') as SiteLanguageCode;
+      if (urlLang && SITE_LANGUAGES.some((l) => l.code === urlLang)) {
+        return urlLang;
+      }
+      const saved = localStorage.getItem('site_ui_language') as SiteLanguageCode;
+      if (saved && SITE_LANGUAGES.some((l) => l.code === saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return 'pt';
+  });
+
+  useEffect(() => {
+    try {
+      document.documentElement.lang = siteLanguage;
+    } catch {
+      // ignore SSR/dom errors
+    }
+  }, [siteLanguage]);
+
+  const setSiteLanguage = (lang: SiteLanguageCode) => {
+    setSiteLanguageState(lang);
+    try {
+      localStorage.setItem('site_ui_language', lang);
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const currentSiteLanguage =
+    SITE_LANGUAGES.find((l) => l.code === siteLanguage) || SITE_LANGUAGES[0];
+
+  const siteText = SITE_DICTIONARIES[siteLanguage] || SITE_DICTIONARIES.pt;
+  const studioText = STUDIO_TRANSLATIONS[siteLanguage] || STUDIO_TRANSLATIONS.pt;
+
   const [language, setLanguageState] = useState<LanguageCode>(() => {
     try {
       const saved = localStorage.getItem('app_language') as LanguageCode;
@@ -616,18 +675,22 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const setLanguage = (lang: LanguageCode) => {
     setLanguageState(lang);
-    localStorage.setItem('app_language', lang);
+    try {
+      localStorage.setItem('app_language', lang);
+    } catch {
+      // ignore
+    }
   };
 
   const currentLanguage =
     SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
 
   const t = (key: string, defaultText?: string): string => {
-    const dict = TRANSLATIONS[language];
+    const uiBaseLang: LanguageCode = siteLanguage === 'it' ? 'en' : siteLanguage;
+    const dict = TRANSLATIONS[uiBaseLang];
     if (dict && dict[key]) {
       return dict[key];
     }
-    // Fallback to English, then Portuguese, then defaultText, then key
     const enDict = TRANSLATIONS.en;
     if (enDict && enDict[key]) {
       return enDict[key];
@@ -642,6 +705,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <LanguageContext.Provider
       value={{
+        siteLanguage,
+        setSiteLanguage,
+        currentSiteLanguage,
+        siteLanguages: SITE_LANGUAGES,
+        siteText,
+        studioText,
         language,
         setLanguage,
         currentLanguage,

@@ -30,6 +30,7 @@ interface CoverLetterDocumentViewProps {
   onSelectLanguage?: (lang: LanguageCode) => void;
   isTranslatingContent?: boolean;
   translatingTargetLang?: LanguageCode | null;
+  contentLanguage?: LanguageCode;
 }
 
 export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = ({
@@ -41,11 +42,12 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   onOpenAuthModal,
   onSelectLanguage,
   isTranslatingContent = false,
-  translatingTargetLang = null
+  translatingTargetLang = null,
+  contentLanguage = 'pt'
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError, showWarning } = useToast();
-  const { language: appLang, setLanguage } = useLanguage();
+  const { studioText } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isExportingLocal, setIsExportingLocal] = useState<boolean>(false);
@@ -60,7 +62,8 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   const exportRequiresPaidPlan = platformSettings.requirePaidPlanForExport !== false;
   const canExportClean = exportRequiresPaidPlan ? isAuthenticated && hasActivePlan : true;
 
-  const chrome = COVER_CHROME_LABELS[appLang] || COVER_CHROME_LABELS.pt;
+  const effectiveContentLang: LanguageCode = contentLanguage || 'pt';
+  const chrome = COVER_CHROME_LABELS[effectiveContentLang] || COVER_CHROME_LABELS.pt;
 
   const handleCopy = () => {
     if (exportRequiresPaidPlan && !isAuthenticated) {
@@ -118,15 +121,15 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
       severity: 'info',
       status: 'success',
       targetResource: 'cover-letter/pdf',
-      details: `Carta de apresentação exportada/impressa em PDF (${appLang.toUpperCase()}).`,
-      metadata: { format: 'pdf', documentType: 'cover_letter', language: appLang }
+      details: `Carta de apresentação exportada/impressa em PDF (${effectiveContentLang.toUpperCase()}).`,
+      metadata: { format: 'pdf', documentType: 'cover_letter', language: effectiveContentLang }
     });
     if (user) {
       void dispatchUserNotification({
         user,
         eventType: 'export',
         title: 'Exportação PDF da Carta',
-        message: `Carta de apresentação (${appLang.toUpperCase()}) preparada para exportação/impressão em PDF.`,
+        message: `Carta de apresentação (${effectiveContentLang.toUpperCase()}) preparada para exportação/impressão em PDF.`,
         targetResource: 'cover-letter/pdf'
       });
     }
@@ -170,7 +173,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
 
     try {
       setIsExportingLocal(true);
-      const blob = await generateCoverLetterDocx(cv, letterBody, true, appLang);
+      const blob = await generateCoverLetterDocx(cv, letterBody, true, effectiveContentLang);
       const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta_Apresentacao';
       triggerDownload(blob, `Carta_${nameClean}.docx`);
       void recordAuditLog({
@@ -179,15 +182,15 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
         severity: 'info',
         status: 'success',
         targetResource: 'cover-letter/docx',
-        details: `Carta de apresentação exportada em Word (.docx) (${appLang.toUpperCase()}).`,
-        metadata: { format: 'docx', documentType: 'cover_letter', language: appLang }
+        details: `Carta de apresentação exportada em Word (.docx) (${effectiveContentLang.toUpperCase()}).`,
+        metadata: { format: 'docx', documentType: 'cover_letter', language: effectiveContentLang }
       });
       if (user) {
         void dispatchUserNotification({
           user,
           eventType: 'export',
           title: 'Carta Exportada em Word',
-          message: `A carta Carta_${nameClean}.docx foi exportada com sucesso (${appLang.toUpperCase()}).`,
+          message: `A carta Carta_${nameClean}.docx foi exportada com sucesso (${effectiveContentLang.toUpperCase()}).`,
           targetResource: 'cover-letter/docx'
         });
       }
@@ -231,7 +234,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* Document Language Toggle (PT / EN / ES / FR / DE) */}
           <div className="flex items-center gap-1">
-            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0" title="Traduzir conteúdo da carta e currículo">
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0" title={studioText.docToolbar.coverContentLangTooltip}>
               {(['pt', 'en', 'es', 'fr', 'de'] as const).map((lang) => {
                 const isTargetLoading = isTranslatingContent && translatingTargetLang === lang;
                 return (
@@ -250,14 +253,14 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
                         );
                         return;
                       }
-                      onSelectLanguage ? onSelectLanguage(lang) : setLanguage(lang);
+                      onSelectLanguage?.(lang);
                     }}
                     className={`px-1.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-md transition-colors flex items-center gap-1 disabled:opacity-60 ${
-                      appLang === lang
+                      effectiveContentLang === lang
                         ? 'bg-white text-slate-950 shadow-2xs'
                         : 'text-slate-500 hover:text-slate-900'
                     }`}
-                    title={`Traduzir carta para ${lang.toUpperCase()}`}
+                    title={`${studioText.docToolbar.coverContentLangTooltip} (${lang.toUpperCase()})`}
                   >
                     {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-700" />}
                     <span>{lang.toUpperCase()}</span>
@@ -279,7 +282,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
               type="button"
               onClick={() => setZoomLevel((z) => Math.max(60, z - 10))}
               className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-              title="Diminuir Zoom"
+              title={studioText.docToolbar.zoomOut}
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
@@ -287,7 +290,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
               type="button"
               onClick={() => setZoomLevel(100)}
               className="text-[11px] font-mono tabular-nums text-slate-700 px-1 font-semibold"
-              title="Restaurar 100%"
+              title="100%"
             >
               {zoomLevel}%
             </button>
@@ -295,7 +298,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
               type="button"
               onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
               className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
-              title="Aumentar Zoom"
+              title={studioText.docToolbar.zoomIn}
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
@@ -306,10 +309,10 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
             type="button"
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors shadow-2xs"
-            title="Copiar texto da carta"
+            title={studioText.docToolbar.copy}
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-            <span className="hidden sm:inline">{copied ? 'Copiado!' : 'Copiar'}</span>
+            <span className="hidden sm:inline">{copied ? studioText.docToolbar.copied : studioText.docToolbar.copy}</span>
           </button>
 
           {/* Print / Save PDF */}
@@ -321,14 +324,14 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
                 ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
                 : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
             }`}
-            title="Imprimir ou Guardar em PDF A4"
+            title={studioText.docToolbar.pdfBtn}
           >
             {!isAuthenticated || !hasActivePlan ? (
               <Lock className="w-3.5 h-3.5 text-amber-700" />
             ) : (
               <Printer className="w-3.5 h-3.5 text-slate-700" />
             )}
-            <span>PDF</span>
+            <span>{studioText.docToolbar.pdfBtn}</span>
           </button>
 
           {/* Download Word (.docx) */}
@@ -349,8 +352,8 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
             )}
             <span>
               {isExportingWord || isExportingLocal
-                ? 'A Gerar...'
-                : 'Word (.docx)'}
+                ? studioText.docToolbar.generating
+                : studioText.docToolbar.wordBtn}
             </span>
           </button>
         </div>

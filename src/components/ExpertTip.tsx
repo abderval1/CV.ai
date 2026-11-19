@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Lightbulb, X } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { EDITOR_UI_TRANSLATIONS } from '../i18n/editorUiTranslations';
 
 interface ExpertTipProps {
   title: string;
@@ -16,6 +18,8 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
   align = 'left',
   compact = false
 }) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).expertTip;
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; placeAbove: boolean }>({
     top: 0,
@@ -26,6 +30,28 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+
+  const openOnHover = () => {
+    clearHoverTimer();
+    setIsOpen(true);
+  };
+
+  const scheduleCloseOnLeave = () => {
+    clearHoverTimer();
+    hoverTimerRef.current = window.setTimeout(() => {
+      setIsOpen(false);
+    }, 180);
+  };
+
+  useEffect(() => () => clearHoverTimer(), []);
 
   const updatePosition = useCallback(() => {
     if (!buttonRef.current) return;
@@ -80,40 +106,48 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
   }, [isOpen, updatePosition]);
 
   return (
-    <div ref={containerRef} className="relative inline-flex items-center">
+    <div
+      ref={containerRef}
+      className="relative inline-flex items-center"
+      onMouseEnter={openOnHover}
+      onMouseLeave={scheduleCloseOnLeave}
+    >
       <button
         ref={buttonRef}
         type="button"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          clearHoverTimer();
           setIsOpen((prev) => !prev);
         }}
         aria-expanded={isOpen}
-        aria-label={`Dica de Especialista: ${title}`}
-        title={`Dica ATS: ${title}`}
+        aria-label={`${ui.ariaPrefix} ${title}`}
+        title={`${title} — ${tip}`}
         className={
           compact
-            ? `inline-flex items-center justify-center w-5 h-5 rounded-md transition-colors cursor-pointer select-none ${
+            ? `inline-flex items-center justify-center w-5 h-5 rounded-md transition-colors cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
                 isOpen
                   ? 'bg-slate-900 text-amber-300'
-                  : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                  : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800'
               }`
-            : `inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer select-none whitespace-nowrap ${
+            : `inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer select-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
                 isOpen
                   ? 'bg-slate-900 text-amber-300'
-                  : 'text-slate-500 hover:text-amber-700 hover:bg-amber-50'
+                  : 'text-slate-500 hover:text-amber-700 hover:bg-amber-50 dark:text-slate-400 dark:hover:bg-slate-800'
               }`
         }
       >
         <Lightbulb className={`w-3.5 h-3.5 shrink-0 ${isOpen ? 'text-amber-300' : 'text-amber-500'}`} />
-        {!compact && <span>Dica ATS</span>}
+        {!compact && <span>{ui.badge}</span>}
       </button>
 
       {isOpen && (
         <div
           ref={popoverRef}
           role="tooltip"
+          onMouseEnter={openOnHover}
+          onMouseLeave={scheduleCloseOnLeave}
           style={{
             position: 'fixed',
             top: coords.top,
@@ -137,7 +171,7 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
                 setIsOpen(false);
               }}
               className="text-slate-400 hover:text-white p-0.5 rounded transition-colors"
-              aria-label="Fechar dica"
+              aria-label={ui.closeAria}
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -150,7 +184,7 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
           {example && (
             <div className="mt-2.5 p-2 rounded-lg bg-slate-950/90 border border-slate-800 text-[10px] text-emerald-300 font-mono leading-relaxed break-words">
               <span className="text-slate-400 font-sans font-semibold block mb-0.5">
-                Exemplo recomendado:
+                {ui.exampleLabel}
               </span>
               {example}
             </div>

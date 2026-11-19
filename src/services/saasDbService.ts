@@ -53,6 +53,7 @@ async function apiRequest<T = any>(url: string, options: RequestInit = {}): Prom
     headers['Authorization'] = `Bearer ${token}`;
   }
   const res = await fetch(url, {
+    cache: 'no-store',
     ...options,
     credentials: 'include',
     headers
@@ -123,6 +124,9 @@ export async function fetchAllUsers(): Promise<User[]> {
               notes: normalized.notes || existing.notes
             }
           : normalized;
+        if (existing && existing.id !== merged.id) {
+          usersById.delete(existing.id);
+        }
         usersById.set(merged.id, merged);
         if (emailKey) usersByEmail.set(emailKey, merged);
       });
@@ -249,23 +253,29 @@ export async function fetchAllOrders(): Promise<SaaSOrder[]> {
 
       snapshot.docs.forEach((d) => {
         const data = d.data();
+        const existing = ordersMap.get(d.id);
+        const firestoreStatus = (data.status as OrderStatus) || 'paid';
+        const resolvedStatus =
+          existing?.status === 'paid' || existing?.status === 'refunded'
+            ? existing.status
+            : firestoreStatus;
         const order: SaaSOrder = {
           id: d.id,
-          orderNumber: data.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
-          userId: data.userId || 'anon',
-          userName: data.userName || 'Cliente',
-          userEmail: data.userEmail || '',
-          plan: data.plan || 'pro',
-          billingCycle: data.billingCycle || 'monthly',
-          amount: Number(data.amount) || 0,
-          currency: data.currency || 'USD',
-          paymentMethod: data.paymentMethod || 'stripe',
-          status: (data.status as OrderStatus) || 'paid',
-          stripeSubscriptionId: data.stripeSubscriptionId,
-          stripePaymentIntentId: data.stripePaymentIntentId,
-          receiptUrl: data.receiptUrl,
-          createdAt: data.createdAt || new Date().toISOString(),
-          notes: data.notes || ''
+          orderNumber: data.orderNumber || existing?.orderNumber || `FAT-${d.id.slice(0, 6).toUpperCase()}`,
+          userId: data.userId || existing?.userId || 'anon',
+          userName: data.userName || existing?.userName || 'Cliente',
+          userEmail: data.userEmail || existing?.userEmail || '',
+          plan: data.plan || existing?.plan || 'pro',
+          billingCycle: data.billingCycle || existing?.billingCycle || 'monthly',
+          amount: Number(data.amount) || existing?.amount || 0,
+          currency: data.currency || existing?.currency || 'USD',
+          paymentMethod: data.paymentMethod || existing?.paymentMethod || 'stripe',
+          status: resolvedStatus,
+          stripeSubscriptionId: data.stripeSubscriptionId || existing?.stripeSubscriptionId,
+          stripePaymentIntentId: data.stripePaymentIntentId || existing?.stripePaymentIntentId,
+          receiptUrl: existing?.receiptUrl || data.receiptUrl,
+          createdAt: data.createdAt || existing?.createdAt || new Date().toISOString(),
+          notes: existing?.notes || data.notes || ''
         };
         ordersMap.set(order.id, order);
       });
@@ -835,28 +845,44 @@ export async function anonymizeUserRecord(userId: string): Promise<void> {
   }
 }
 
-export async function deleteUserAccountRecord(userId: string): Promise<void> {
-  const { ok, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
+export async function deleteUserAccountRecord(userId: string, userEmail?: string): Promise<void> {
+  const cleanEmail = String(userEmail || '').trim();
+  const deleteUrl = `/api/admin/users/${encodeURIComponent(userId)}${
+    cleanEmail ? `?email=${encodeURIComponent(cleanEmail)}` : ''
+  }`;
+  const { ok, status, data } = await apiRequest<{ error?: string }>(deleteUrl, {
     method: 'DELETE'
   });
 
   if (auth.currentUser) {
     try {
-      const userDocRef = doc(db, 'users', userId);
-      await deleteDoc(userDocRef);
-      return;
+      const idsToDelete = new Set<string>([userId]);
+      if (cleanEmail) {
+        const emailCandidates = Array.from(new Set([cleanEmail, cleanEmail.toLowerCase()]));
+        for (const candidateEmail of emailCandidates) {
+          try {
+            const snap = await getDocs(query(collection(db, 'users'), where('email', '==', candidateEmail), limit(10)));
+            snap.docs.forEach((d) => idsToDelete.add(d.id));
+          } catch {
+            // fallback to direct id deletion
+          }
+        }
+      }
+      for (const docId of idsToDelete) {
+        if (!docId) continue;
+        await deleteDoc(doc(db, 'users', docId));
+      }
     } catch (error: any) {
       const code = String(error?.code || '');
-      if (code === 'not-found' && ok) return;
       if (code.includes('permission-denied')) {
         handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
-      } else if (!ok) {
+      } else if (code !== 'not-found' && !ok) {
         throw error;
       }
     }
   }
 
-  if (!ok) {
+  if (!ok && status !== 404) {
     throw new Error(data?.error || 'Não foi possível eliminar o utilizador.');
   }
 }

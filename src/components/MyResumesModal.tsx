@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
 import { CVData } from '../types/cv';
 import { X, FileText, Trash2, ArrowUpRight, Plus, Check } from 'lucide-react';
 import { GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
@@ -20,8 +21,19 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   onLoadResume,
   onOpenPricingModal
 }) => {
-  const { savedResumes, saveCurrentResume, deleteResume, firebaseUser, user, hasActivePlan } = useAuth();
+  const { savedResumes, saveCurrentResume, deleteResume, user, hasActivePlan } = useAuth();
   const { showSuccess, showInfo, showError } = useToast();
+  const { studioText, siteLanguage } = useLanguage();
+  const m = studioText.myResumes;
+  const openLabels: Record<'pt' | 'en' | 'es' | 'fr' | 'de' | 'it', { emptyTitle: string; emptyDesc: string; open: string; del: string; updated: string }> = {
+    pt: { emptyTitle: 'Nenhum currículo guardado na nuvem ainda', emptyDesc: 'Dê um nome à versão atual no campo acima e clique em Guardar Versão.', open: 'Abrir', del: 'Eliminar versão', updated: 'Modificado em' },
+    en: { emptyTitle: 'No saved resumes in the cloud yet', emptyDesc: 'Name your current version above and click Save Version.', open: 'Open', del: 'Delete version', updated: 'Updated' },
+    es: { emptyTitle: 'Aún no hay currículums guardados en la nube', emptyDesc: 'Asigna un nombre arriba y haz clic en Guardar Versión.', open: 'Abrir', del: 'Eliminar versión', updated: 'Modificado el' },
+    fr: { emptyTitle: 'Aucun CV enregistré dans le cloud', emptyDesc: 'Nommez la version actuelle ci-dessus et cliquez sur Enregistrer.', open: 'Ouvrir', del: 'Supprimer cette version', updated: 'Modifié le' },
+    de: { emptyTitle: 'Noch keine Lebensläufe gespeichert', emptyDesc: 'Benennen Sie die Version oben und klicken Sie auf Speichern.', open: 'Öffnen', del: 'Version löschen', updated: 'Geändert am' },
+    it: { emptyTitle: 'Nessun curriculum salvato nel cloud', emptyDesc: 'Dai un nome sopra e clicca su Salva Versione.', open: 'Apri', del: 'Elimina versione', updated: 'Aggiornato il' }
+  };
+  const extra = openLabels[siteLanguage] || openLabels.pt;
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -97,28 +109,26 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">Os Meus Currículos Salvos</h2>
+              <h2 className="text-base font-bold text-slate-900">{m.title}</h2>
               {user ? (
                 <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                  Nuvem Ativa
+                  {m.cloudActive}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-                  Armazenamento Local
+                  {m.localOnly}
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              {user
-                ? 'Os seus currículos estão armazenados com segurança na nuvem associados ao seu e-mail.'
-                : 'Inicie sessão ou crie uma conta para sincronizar os seus currículos permanentemente na nuvem.'}
+              {user ? m.subtitleAuth : m.subtitleVisitor}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fechar janela de currículos guardados"
+            aria-label="Close"
             className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />
@@ -132,7 +142,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
               type="text"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Dar um nome à versão atual (ex: CV Executivo COO 2026, CV Tech Lead, CV M&A)..."
+              placeholder={m.placeholder}
               className="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
             <button
@@ -145,7 +155,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
               ) : (
                 <Plus className="w-3.5 h-3.5" />
               )}
-              <span>{isSaving ? 'A guardar...' : saveSuccess ? 'Guardado na Nuvem!' : 'Guardar Versão'}</span>
+              <span>{isSaving ? m.savingBtn : saveSuccess ? m.savedBtn : m.saveBtn}</span>
             </button>
           </form>
         </div>
@@ -154,7 +164,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         <div className="p-5 flex-1 overflow-y-auto space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500 pb-1">
             <span className="font-semibold uppercase tracking-wider text-[11px] tabular-nums">
-              Currículos Guardados ({savedResumes.length})
+              {m.savedCountLabel} ({savedResumes.length})
             </span>
 
             <div className="flex items-center gap-2">
@@ -163,7 +173,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                 onClick={handleCreateNewBlank}
                 className="text-[11px] text-slate-700 hover:text-slate-950 font-semibold hover:underline"
               >
-                + Começar em Branco
+                {m.newBlankBtn}
               </button>
               <span className="text-slate-300">|</span>
               <button
@@ -171,7 +181,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                 onClick={handleLoadGenericTemplate}
                 className="text-[11px] text-slate-700 hover:text-slate-950 font-semibold hover:underline"
               >
-                Carregar Modelo Padrão
+                {m.loadDefaultBtn}
               </button>
             </div>
           </div>
@@ -179,10 +189,8 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
           {savedResumes.length === 0 ? (
             <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-2">
               <FileText className="w-7 h-7 text-slate-400 mx-auto" />
-              <p className="text-xs font-bold text-slate-800">Nenhum currículo guardado na nuvem ainda</p>
-              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
-                Dê um nome à versão atual no campo acima e clique em Guardar Versão para criar cópias personalizadas por vaga.
-              </p>
+              <p className="text-xs font-bold text-slate-800">{extra.emptyTitle}</p>
+              <p className="text-[11px] text-slate-500 max-w-sm mx-auto">{extra.emptyDesc}</p>
             </div>
           ) : (
             savedResumes.map((resume) => (
@@ -197,7 +205,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                   <div className="truncate">
                     <h4 className="text-xs font-bold text-slate-900 truncate">{resume.title}</h4>
                     <p className="text-[11px] text-slate-500 truncate tabular-nums">
-                      {resume.targetJob} · Modificado em {resume.updatedAt}
+                      {resume.targetJob} · {extra.updated} {resume.updatedAt}
                     </p>
                   </div>
                 </div>
@@ -208,23 +216,21 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                     onClick={() => handleSelectResume(resume.data, resume.title)}
                     className="px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1"
                   >
-                    <span>Abrir</span>
+                    <span>{extra.open}</span>
                     <ArrowUpRight className="w-3 h-3" />
                   </button>
-                  {savedResumes.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        deleteResume(resume.id);
-                        showInfo('Currículo Removido', `"${resume.title}" foi removido da sua lista.`);
-                      }}
-                      aria-label={`Eliminar "${resume.title}"`}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                      title="Eliminar versão"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      deleteResume(resume.id);
+                      showInfo(extra.del, resume.title);
+                    }}
+                    aria-label={extra.del}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                    title={extra.del}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ))

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useLanguage } from '../context/LanguageContext';
 import { getStoredPlansSync } from '../services/adminModulesService';
 
 interface PlanGateGuardProps {
@@ -18,7 +19,7 @@ interface PlanGateGuardProps {
   featureSubtitle: string;
   featureBenefits: string[];
   onOpenAuthModal: () => void;
-  onOpenPricingModal: () => void;
+  onOpenPricingModal: (targetPlan?: 'pro' | 'executive') => void;
 }
 
 export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
@@ -31,6 +32,9 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
 }) => {
   const { user, isAuthenticated } = useAuth();
   const { formatPrice } = useCurrency();
+  const { siteText, siteLanguage } = useLanguage();
+  const g = siteText.gate;
+  const l = siteText.landing;
   const [livePlans, setLivePlans] = useState(() => getStoredPlansSync());
 
   useEffect(() => {
@@ -45,11 +49,34 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
   const proPriceMonthly = proPlanConfig?.priceMonthlyValue ?? 8;
   const execPriceMonthly = execPlanConfig?.priceMonthlyValue ?? 12;
 
+  const proDisplayName =
+    siteLanguage === 'pt' ? proPlanConfig?.name || l.proDefaultName : l.proDefaultName;
+  const execDisplayName =
+    siteLanguage === 'pt' ? execPlanConfig?.name || l.execDefaultName : l.execDefaultName;
+
   const isExecutiveRequired = requiredTier === 'executive';
   const isProRequired = requiredTier === 'pro';
   const isAuthRequired = requiredTier === 'authenticated' && !isAuthenticated;
 
   const currentPlan = user?.plan || 'public';
+
+  const exclusivePrefix: Record<'pt' | 'en' | 'es' | 'fr' | 'de' | 'it', string> = {
+    pt: 'Exclusivo',
+    en: 'Exclusive:',
+    es: 'Exclusivo',
+    fr: 'Exclusif',
+    de: 'Exklusiv',
+    it: 'Esclusivo'
+  };
+
+  const subscriberBadgeLabel: Record<'pt' | 'en' | 'es' | 'fr' | 'de' | 'it', string> = {
+    pt: 'Acesso Exclusivo para Assinantes',
+    en: 'Exclusive Subscriber Access',
+    es: 'Acceso Exclusivo para Suscriptores',
+    fr: 'Accès Réservé aux Abonnés',
+    de: 'Exklusiver Abonnenten-Zugang',
+    it: 'Accesso Riservato agli Abbonati'
+  };
 
   const badgeConfig: {
     label: string;
@@ -59,7 +86,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
     targetPlan: 'pro' | 'executive';
   } = isExecutiveRequired
     ? {
-        label: `Exclusivo ${execPlanConfig?.name || 'Executivo VIP'}`,
+        label: `${exclusivePrefix[siteLanguage]} ${execDisplayName}`,
         border: 'border-slate-700',
         iconBg: 'bg-slate-800 border border-slate-700 text-amber-400',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
@@ -67,14 +94,14 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
       }
     : isProRequired
     ? {
-        label: `Exclusivo ${proPlanConfig?.name || 'Plano Profissional Pro'}`,
+        label: `${exclusivePrefix[siteLanguage]} ${proDisplayName}`,
         border: 'border-slate-800',
         iconBg: 'bg-amber-400 text-slate-950',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
         targetPlan: 'pro'
       }
     : {
-        label: 'Acesso Exclusivo para Assinantes',
+        label: subscriberBadgeLabel[siteLanguage],
         border: 'border-slate-800',
         iconBg: 'bg-slate-800 border border-slate-700 text-amber-400',
         btnBg: 'bg-amber-400 hover:bg-amber-300 text-slate-950',
@@ -111,15 +138,15 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
           </div>
 
           <div className="text-left sm:text-right shrink-0">
-            <span className="text-[10px] text-slate-400 block">Seu Plano</span>
+            <span className="text-[10px] text-slate-400 block">{g.yourPlan}</span>
             <span className="text-xs font-semibold text-slate-200 capitalize">
               {currentPlan === 'public'
-                ? 'Visitante'
+                ? g.visitor
                 : currentPlan === 'free'
-                ? 'Gratuito'
+                ? g.free
                 : currentPlan === 'pro'
-                ? proPlanConfig?.name || 'Plano Pro'
-                : execPlanConfig?.name || 'Executivo VIP'}
+                ? proDisplayName
+                : execDisplayName}
             </span>
           </div>
         </div>
@@ -131,7 +158,7 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
           <div className="bg-slate-900/70 rounded-lg p-4 border border-slate-800 space-y-2.5">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              O que este recurso inclui:
+              {g.whatsIncluded}
             </span>
             <ul className="space-y-2">
               {featureBenefits.map((benefit, i) => (
@@ -154,30 +181,33 @@ export const PlanGateGuard: React.FC<PlanGateGuardProps> = ({
                 className="w-full min-h-[44px] py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 touch-manipulation"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>Entrar / Criar Conta</span>
+                <span>{g.signInOrCreate}</span>
               </button>
               <button
                 type="button"
-                onClick={onOpenPricingModal}
+                onClick={() => onOpenPricingModal(badgeConfig.targetPlan)}
                 className="w-full min-h-[44px] py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-lg transition-colors border border-slate-700 flex items-center justify-center gap-2 touch-manipulation"
               >
-                <span>Ver Planos ({formatPrice(proPriceMonthly)}+)</span>
+                <span>{g.seePlans} ({formatPrice(proPriceMonthly)}+)</span>
               </button>
             </div>
           ) : (
             <button
               type="button"
-              onClick={onOpenPricingModal}
+              onClick={() => onOpenPricingModal(badgeConfig.targetPlan)}
               className={`w-full min-h-[46px] py-3 px-5 ${badgeConfig.btnBg} font-semibold text-xs sm:text-sm rounded-lg transition-colors flex items-center justify-center gap-2 group touch-manipulation`}
             >
               <span>
                 {isExecutiveRequired
-                  ? `Fazer Upgrade para ${execPlanConfig?.name || 'Executivo VIP'} — ${formatPrice(execPriceMonthly)}/mês`
-                  : `Fazer Upgrade para ${proPlanConfig?.name || 'Plano Pro'} — ${formatPrice(proPriceMonthly)}/mês`}
+                  ? `${g.activatePrefix} ${execDisplayName} — ${formatPrice(execPriceMonthly)}/${siteText.billingCycles.monthly.shortUnit}`
+                  : `${g.activatePrefix} ${proDisplayName} — ${formatPrice(proPriceMonthly)}/${siteText.billingCycles.monthly.shortUnit}`}
               </span>
               <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             </button>
           )}
+          <p className="text-[11px] text-center text-slate-400">
+            {g.trustFooter}
+          </p>
         </div>
       </div>
     </div>

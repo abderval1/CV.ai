@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import {
   FileText,
   PenLine,
@@ -31,10 +32,110 @@ interface CoverLetterPanelProps {
   onOpenPricingModal?: (promptMessage?: string) => void;
   onSelectLanguage?: (lang: LanguageCode) => void;
   isTranslatingContent?: boolean;
+  contentLanguage?: LanguageCode;
 }
 
 type SupportedLanguage = 'pt' | 'en' | 'fr' | 'es' | 'de';
 type LetterTone = 'executive' | 'un_diplomatic' | 'tech' | 'corporate';
+
+const COVER_PANEL_UI = {
+  pt: {
+    title: 'Carta de Apresentação & Motivação',
+    subtitle: 'Personalize o destinatário, empresa e idioma para redigir uma carta formal alinhada ao currículo.',
+    recipientLabel: 'Destinatário (Pessoa / Comité)',
+    orgLabel: 'Empresa / Organização Alvo',
+    roleLabel: 'Cargo Pretendido na Vaga',
+    generatingBtn: 'A Redigir Carta com IA...',
+    generateBtn: 'Gerar Carta Adaptada ao Perfil',
+    copyBtn: 'Copiar Texto',
+    copiedBtn: 'Copiado!',
+    wordBtn: 'Descarregar Carta Word (.docx)',
+    bodyLabel: 'Conteúdo da Carta de Apresentação (Editável)',
+    wordsLabel: 'palavras',
+    editHint: 'Pode editar qualquer parágrafo diretamente antes de exportar para Word (.docx).',
+    printBtn: 'Imprimir A4'
+  },
+  en: {
+    title: 'Cover Letter & Statement of Motivation',
+    subtitle: 'Customize recipient, company, and document language to draft a formal letter aligned with your resume.',
+    recipientLabel: 'Recipient (Name / Committee)',
+    orgLabel: 'Target Company / Organization',
+    roleLabel: 'Target Role',
+    generatingBtn: 'Drafting Letter with AI...',
+    generateBtn: 'Generate Profile-Tailored Letter',
+    copyBtn: 'Copy Text',
+    copiedBtn: 'Copied!',
+    wordBtn: 'Download Word Letter (.docx)',
+    bodyLabel: 'Cover Letter Body (Editable)',
+    wordsLabel: 'words',
+    editHint: 'You can edit any paragraph directly before exporting to Microsoft Word (.docx).',
+    printBtn: 'Print A4'
+  },
+  es: {
+    title: 'Carta de Presentación & Motivación',
+    subtitle: 'Personaliza el destinatario, la empresa y el idioma del documento.',
+    recipientLabel: 'Destinatario (Persona / Comité)',
+    orgLabel: 'Empresa / Organización Destino',
+    roleLabel: 'Puesto Solicitado',
+    generatingBtn: 'Redactando Carta con IA...',
+    generateBtn: 'Generar Carta Adaptada al Perfil',
+    copyBtn: 'Copiar Texto',
+    copiedBtn: '¡Copiado!',
+    wordBtn: 'Descargar Carta Word (.docx)',
+    bodyLabel: 'Contenido de la Carta (Editable)',
+    wordsLabel: 'palabras',
+    editHint: 'Puedes editar cualquier párrafo directamente antes de exportar a Word (.docx).',
+    printBtn: 'Imprimir A4'
+  },
+  fr: {
+    title: 'Lettre de Motivation Exécutive',
+    subtitle: 'Personnalisez le destinataire, l’entreprise et la langue du document.',
+    recipientLabel: 'Destinataire (Personne / Comité)',
+    orgLabel: 'Entreprise / Organisation Cible',
+    roleLabel: 'Poste Visé',
+    generatingBtn: 'Rédaction par l’IA...',
+    generateBtn: 'Générer une Lettre Sur Mesure',
+    copyBtn: 'Copier le Texte',
+    copiedBtn: 'Copié !',
+    wordBtn: 'Télécharger en Word (.docx)',
+    bodyLabel: 'Contenu de la Lettre (Modifiable)',
+    wordsLabel: 'mots',
+    editHint: 'Modifiez tout paragraphe avant l’exportation officielle en Word (.docx).',
+    printBtn: 'Imprimer A4'
+  },
+  de: {
+    title: 'Exekutives Anschreiben & Motivation',
+    subtitle: 'Passen Sie Empfänger, Unternehmen und Dokumentensprache individuell an.',
+    recipientLabel: 'Empfänger (Person / Gremium)',
+    orgLabel: 'Zielunternehmen / Organisation',
+    roleLabel: 'Angestrebte Position',
+    generatingBtn: 'Schreibe Anschreiben mit KI...',
+    generateBtn: 'Profilbasiertes Anschreiben erstellen',
+    copyBtn: 'Text kopieren',
+    copiedBtn: 'Kopiert!',
+    wordBtn: 'Word-Anschreiben (.docx) laden',
+    bodyLabel: 'Inhalt des Anschreibens (Bearbeitbar)',
+    wordsLabel: 'Wörter',
+    editHint: 'Sie können jeden Absatz vor dem Export in Microsoft Word (.docx) direkt bearbeiten.',
+    printBtn: 'A4 Drucken'
+  },
+  it: {
+    title: 'Lettera di Presentazione Esecutiva',
+    subtitle: 'Personalizza destinatario, azienda e lingua del documento.',
+    recipientLabel: 'Destinatario (Persona / Comitato)',
+    orgLabel: 'Azienda / Organizzazione Target',
+    roleLabel: 'Ruolo Richiesto',
+    generatingBtn: 'Scrittura con IA...',
+    generateBtn: 'Genera Lettera Su Misura',
+    copyBtn: 'Copia Testo',
+    copiedBtn: 'Copiato!',
+    wordBtn: 'Scarica Lettera Word (.docx)',
+    bodyLabel: 'Contenuto della Lettera (Modificabile)',
+    wordsLabel: 'parole',
+    editHint: 'Puoi modificare qualsiasi paragrafo prima dell’esportazione in Word (.docx).',
+    printBtn: 'Stampa A4'
+  }
+} as const;
 
 export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   cv,
@@ -45,16 +146,19 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   isExportingWord = false,
   onOpenPricingModal,
   onSelectLanguage,
-  isTranslatingContent = false
+  isTranslatingContent = false,
+  contentLanguage = 'pt'
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
-  const { language: appLanguage } = useLanguage();
-  const [recipient, setRecipient] = useState<string>('Comité de Seleção e Recrutamento');
-  const [targetOrg, setTargetOrg] = useState<string>('Diretoria de Recursos Humanos / Empresa Alvo');
+  const { siteLanguage } = useLanguage();
+  const ui = COVER_PANEL_UI[siteLanguage] || COVER_PANEL_UI.pt;
+  const coverUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).coverPanel;
+  const [recipient, setRecipient] = useState<string>(coverUi.defaultRecipient);
+  const [targetOrg, setTargetOrg] = useState<string>(coverUi.defaultOrg);
   const [targetRole, setTargetRole] = useState<string>(
-    cv.personalDetails.title || 'Cargo Pretendido'
+    cv.personalDetails.title || coverUi.defaultRole
   );
-  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>(appLanguage || 'pt');
+  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>(contentLanguage || 'pt');
   const [letterTone] = useState<LetterTone>('executive');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
@@ -68,10 +172,10 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   }, []);
 
   useEffect(() => {
-    if (appLanguage) {
-      setLetterLanguage(appLanguage);
+    if (contentLanguage) {
+      setLetterLanguage(contentLanguage);
     }
-  }, [appLanguage]);
+  }, [contentLanguage]);
 
   const handleLanguageClick = (lang: SupportedLanguage) => {
     setLetterLanguage(lang);
@@ -215,7 +319,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
   // Generate Letter with AI
   const handleGenerateWithAI = async () => {
     if (platformSettings.enableAiFeaturesGlobally === false) {
-      setStatusMessage('Os recursos de IA estão temporariamente pausados pela administração da plataforma.');
+      setStatusMessage(coverUi.aiPaused);
       return;
     }
 
@@ -258,16 +362,16 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData?.error || 'Servidor retornou erro na geração.');
+        throw new Error(errData?.error || coverUi.serverErr);
       }
 
       const data = await response.json();
       if (data && data.letterBody) {
         setLetterBody(data.letterBody);
-        setStatusMessage('Carta de apresentação gerada com inteligência artificial!');
+        setStatusMessage(coverUi.generatedAi);
         trackFrontendTelemetry({ type: 'ai_called', feature: 'coverLetter', tokens: 1200 });
       } else {
-        throw new Error('Formato inválido retornado.');
+        throw new Error(coverUi.invalidFormat);
       }
     } catch (err: any) {
       logGenerationError({
@@ -293,7 +397,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         topExpName
       );
       setLetterBody(generated);
-      setStatusMessage('Carta gerada com sucesso e adaptada ao seu perfil!');
+      setStatusMessage(coverUi.generatedFallback);
     } finally {
       setIsGenerating(false);
       setTimeout(() => setStatusMessage(null), 3500);
@@ -308,9 +412,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
 
   const handleDownloadWordLocal = async () => {
     if (!isAuthenticated || !hasActivePlan) {
-      onOpenPricingModal?.(
-        'O download oficial da Carta de Apresentação em formato Word (.docx) requer um plano Pro ou Executive ativo.'
-      );
+      onOpenPricingModal?.(coverUi.planRequiredWord);
       return;
     }
     if (onExportWord) {
@@ -334,10 +436,10 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
           <div>
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <FileText className="w-4 h-4 text-slate-700" />
-              <span>Carta de Apresentação &amp; Motivação</span>
+              <span>{ui.title}</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Personalize o destinatário, empresa e idioma para redigir uma carta formal alinhada ao currículo.
+              {ui.subtitle}
             </p>
           </div>
 
@@ -373,39 +475,39 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-              Destinatário (Pessoa / Comité)
+              {ui.recipientLabel}
             </label>
             <input
               type="text"
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
-              placeholder="Ex: Comité de Seleção"
+              placeholder={coverUi.recipientPlaceholder}
               className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-              Empresa / Organização Alvo
+              {ui.orgLabel}
             </label>
             <input
               type="text"
               value={targetOrg}
               onChange={(e) => setTargetOrg(e.target.value)}
-              placeholder="Ex: United Nations / Empresa Alvo"
+              placeholder={coverUi.orgPlaceholder}
               className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
-              Cargo Pretendido na Vaga
+              {ui.roleLabel}
             </label>
             <input
               type="text"
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
-              placeholder="Ex: Coordenador de Projetos"
+              placeholder={coverUi.rolePlaceholder}
               className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-slate-900 font-medium text-slate-900"
             />
           </div>
@@ -423,12 +525,12 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               {isGenerating ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>A Redigir Carta com IA...</span>
+                  <span>{ui.generatingBtn}</span>
                 </>
               ) : (
                 <>
                   <PenLine className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Gerar Carta Adaptada ao Perfil</span>
+                  <span>{ui.generateBtn}</span>
                 </>
               )}
             </button>
@@ -441,7 +543,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
+              <span>{copied ? ui.copiedBtn : ui.copyBtn}</span>
             </button>
 
             <button
@@ -459,13 +561,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
-              <span>
-                {!isAuthenticated
-                  ? 'Carta Word (Requer Registo)'
-                  : !hasActivePlan
-                  ? 'Carta Word (Requer Plano)'
-                  : 'Descarregar Carta Word (.docx)'}
-              </span>
+              <span>{ui.wordBtn}</span>
             </button>
           </div>
         </div>
@@ -482,10 +578,10 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-            <span>Conteúdo da Carta de Apresentação (Editável)</span>
+            <span>{ui.bodyLabel}</span>
           </label>
           <span className="text-[11px] text-slate-400 font-mono">
-            {letterBody.split(/\s+/).filter(Boolean).length} palavras
+            {letterBody.split(/\s+/).filter(Boolean).length} {ui.wordsLabel}
           </span>
         </div>
 
@@ -494,18 +590,16 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
           value={letterBody}
           onChange={(e) => setLetterBody(e.target.value)}
           className="w-full p-4 bg-slate-50/70 border border-slate-200 rounded-xl font-serif text-[14px] leading-relaxed text-slate-800 focus:outline-hidden focus:ring-1 focus:ring-slate-900 focus:bg-white transition-all shadow-inner resize-y"
-          placeholder="O texto da carta será inserido aqui..."
+          placeholder="..."
         />
 
         <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-          <span>Pode editar qualquer parágrafo diretamente antes de exportar para Word (.docx).</span>
+          <span>{ui.editHint}</span>
           <button
             type="button"
             onClick={() => {
               if (!isAuthenticated || !hasActivePlan) {
-                onOpenPricingModal?.(
-                  'A impressão e exportação oficial em PDF da Carta de Apresentação requerem um plano Pro ou Executive ativo.'
-                );
+                onOpenPricingModal?.(coverUi.planRequiredPdf);
                 return;
               }
               window.print();
@@ -513,7 +607,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
             className="text-slate-700 hover:text-slate-950 font-semibold underline flex items-center gap-1"
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>Imprimir A4</span>
+            <span>{ui.printBtn}</span>
           </button>
         </div>
       </div>

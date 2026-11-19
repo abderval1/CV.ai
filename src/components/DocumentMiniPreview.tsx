@@ -3,6 +3,8 @@ import { CVData, TemplateStyle } from '../types/cv';
 import { CoverLetterLayoutStyle } from '../data/showcaseCatalog';
 import { GENERIC_DEFAULT_CV } from '../data/initialCV';
 import portraitWomanImg from '../assets/images/portrait_executive_woman_1794571428995.jpg';
+import { useLanguage } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 
 interface CVPreviewCardProps {
   kind: 'cv';
@@ -29,6 +31,8 @@ interface CoverPreviewCardProps {
 export type DocumentMiniPreviewProps = CVPreviewCardProps | CoverPreviewCardProps;
 
 export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).miniPreview;
   const isLarge = props.size === 'lg';
 
   if (props.kind === 'cover') {
@@ -53,7 +57,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
     if (layoutStyle === 'split_accent') {
       return (
         <div
-          className={`w-full h-full bg-white text-slate-900 flex overflow-hidden select-none ${fontClass}`}
+          className={`a4-paper-preserve w-full h-full bg-white text-slate-900 flex overflow-hidden select-none ${fontClass}`}
         >
           <div
             className={`${
@@ -75,13 +79,13 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
               </div>
             </div>
             <div className={`${isLarge ? 'text-[9px]' : 'text-[4.5px]'} text-white/60 uppercase tracking-wider`}>
-              Carta de Apresentação
+              {ui.coverSidebarLabel}
             </div>
           </div>
 
           <div className={`flex-1 ${isLarge ? 'p-8 sm:p-10 space-y-4' : 'p-3.5 space-y-1.5'} overflow-hidden`}>
             <div className={`${isLarge ? 'text-[10px]' : 'text-[4.8px]'} text-slate-400 font-mono uppercase tracking-wider border-b border-slate-200 pb-1.5`}>
-              Carta de Motivação Profissional
+              {ui.coverHeaderLabel}
             </div>
             <div className={`${isLarge ? 'text-[13px] leading-relaxed space-y-3.5' : 'text-[5.2px] leading-[1.45] space-y-1.5'} text-slate-700`}>
               {paragraphs.map((p, idx) => (
@@ -97,7 +101,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
 
     if (layoutStyle === 'modern_header' || layoutStyle === 'europass_blue') {
       return (
-        <div className={`w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none ${fontClass}`}>
+        <div className={`a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none ${fontClass}`}>
           <div
             className={`${isLarge ? 'px-9 py-7' : 'px-3.5 py-2.5'} text-white`}
             style={{ backgroundColor: accentColor }}
@@ -139,7 +143,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
     const isTech = layoutStyle === 'tech_clean';
     return (
       <div
-        className={`w-full h-full bg-white text-slate-900 flex flex-col justify-between overflow-hidden select-none ${fontClass} ${
+        className={`a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col justify-between overflow-hidden select-none ${fontClass} ${
           isLarge ? 'p-9 sm:p-11' : 'p-3.5'
         }`}
       >
@@ -175,7 +179,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
 
         <div className={`${isLarge ? 'pt-4 mt-6 text-[10px]' : 'pt-1.5 mt-2 text-[4.5px]'} border-t border-slate-200 flex items-center justify-between text-slate-400 font-mono`}>
           <span>{candidateName}</span>
-          <span>A4 · Formatação Oficial</span>
+          <span>{ui.a4Official}</span>
         </div>
       </div>
     );
@@ -197,7 +201,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
 
   if (style === 'creative_split') {
     return (
-      <div className="w-full h-full bg-white text-slate-900 flex overflow-hidden select-none font-sans">
+      <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex overflow-hidden select-none font-sans">
         <div
           className={`${isLarge ? 'w-[33%] p-6 space-y-4' : 'w-[34%] p-2.5 space-y-2'} text-white shrink-0`}
           style={{ backgroundColor: accent || '#7c3aed' }}
@@ -217,14 +221,14 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           </div>
 
           <div className={`border-t border-white/20 ${isLarge ? 'pt-3 space-y-1.5 text-[10px]' : 'pt-1.5 space-y-0.5 text-[4.5px]'} text-white/90`}>
-            <p className="font-bold uppercase tracking-wider text-white/70">Contactos</p>
+            <p className="font-bold uppercase tracking-wider text-white/70">{ui.contacts}</p>
             <p className="truncate">{cv.personalDetails.location}</p>
             <p className="truncate">{cv.personalDetails.phone}</p>
             <p className="truncate">{cv.personalDetails.email}</p>
           </div>
 
           <div className={`border-t border-white/20 ${isLarge ? 'pt-3 space-y-1.5 text-[10px]' : 'pt-1.5 space-y-1 text-[4.5px]'}`}>
-            <p className="font-bold uppercase tracking-wider text-white/70">Competências</p>
+            <p className="font-bold uppercase tracking-wider text-white/70">{ui.competencies}</p>
             {(cv.competencies || []).slice(0, 3).map((c) => (
               <div key={c.id} className="space-y-0.5">
                 <p className="truncate font-semibold">{c.category}</p>
@@ -239,7 +243,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div className={`flex-1 ${isLarge ? 'p-7 space-y-4' : 'p-2.5 space-y-1.5'} overflow-hidden`}>
           <div>
             <p className={`${isLarge ? 'text-[11px]' : 'text-[5.2px]'} font-bold uppercase tracking-wider mb-1`} style={{ color: accent }}>
-              Perfil Profissional
+              {ui.profile}
             </p>
             <p className={`${isLarge ? 'text-xs leading-relaxed' : 'text-[4.8px] leading-[1.35] line-clamp-3'} text-slate-700`}>
               {cv.summary}
@@ -249,7 +253,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           {exp1 && (
             <div className="border-t border-slate-100 pt-1.5">
               <p className={`${isLarge ? 'text-[11px]' : 'text-[5.2px]'} font-bold uppercase tracking-wider mb-1`} style={{ color: accent }}>
-                Experiência Profissional
+                {ui.experience}
               </p>
               <div className={isLarge ? 'space-y-2.5' : 'space-y-1'}>
                 {[exp1, exp2].filter(Boolean).map((exp) => (
@@ -271,7 +275,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           {edu1 && (
             <div className="border-t border-slate-100 pt-1.5">
               <p className={`${isLarge ? 'text-[11px]' : 'text-[5.2px]'} font-bold uppercase tracking-wider mb-0.5`} style={{ color: accent }}>
-                Formação Académica
+                {ui.education}
               </p>
               <p className={`${isLarge ? 'text-xs' : 'text-[5px]'} font-bold text-slate-900 truncate`}>{edu1.degree}</p>
               <p className={`${isLarge ? 'text-[11px]' : 'text-[4.6px]'} text-slate-600 truncate`}>
@@ -286,7 +290,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
 
   if (style === 'european_europass') {
     return (
-      <div className="w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none font-sans">
+      <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none font-sans">
         <div
           className={`${isLarge ? 'px-7 py-5 gap-5' : 'px-3 py-2 gap-2'} flex items-center text-white`}
           style={{ backgroundColor: accent || '#1d4ed8' }}
@@ -302,7 +306,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
                 {cv.personalDetails.name}
               </p>
               <span className={`${isLarge ? 'text-[9px] px-2 py-0.5' : 'text-[4px] px-1 py-0.2'} bg-white/15 rounded font-bold uppercase shrink-0`}>
-                Europass UE
+                {ui.europassBadge}
               </span>
             </div>
             <p className={`${isLarge ? 'text-xs mt-0.5' : 'text-[5px]'} text-white/90 truncate`}>{cv.personalDetails.title}</p>
@@ -315,7 +319,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div className={`flex-1 ${isLarge ? 'p-7 space-y-4' : 'p-3 space-y-1.5'} overflow-hidden`}>
           <div>
             <p className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b pb-0.5 mb-1`} style={{ color: accent, borderColor: accent }}>
-              Sobre Mim / Perfil
+              {ui.aboutMe}
             </p>
             <p className={`${isLarge ? 'text-xs leading-relaxed' : 'text-[4.7px] leading-[1.35] line-clamp-3'} text-slate-700`}>
               {cv.summary}
@@ -325,7 +329,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           {exp1 && (
             <div>
               <p className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b pb-0.5 mb-1`} style={{ color: accent, borderColor: accent }}>
-                Experiência Profissional
+                {ui.experience}
               </p>
               <div className={isLarge ? 'space-y-2.5' : 'space-y-1'}>
                 {[exp1, exp2].filter(Boolean).map((exp) => (
@@ -348,7 +352,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             {edu1 && (
               <div>
                 <p className={`${isLarge ? 'text-[10px]' : 'text-[4.8px]'} font-bold uppercase tracking-wider`} style={{ color: accent }}>
-                  Educação &amp; Formação
+                  {ui.educationTraining}
                 </p>
                 <p className={`${isLarge ? 'text-[11px] mt-1' : 'text-[4.6px] mt-0.5'} font-semibold text-slate-900 truncate`}>{edu1.degree}</p>
                 <p className={`${isLarge ? 'text-[10px]' : 'text-[4.3px]'} text-slate-500 truncate`}>{edu1.institution}</p>
@@ -356,7 +360,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             )}
             <div>
               <p className={`${isLarge ? 'text-[10px]' : 'text-[4.8px]'} font-bold uppercase tracking-wider`} style={{ color: accent }}>
-                Competências Linguísticas
+                {ui.langSkills}
               </p>
               {(cv.languages || []).slice(0, 2).map((l, idx) => (
                 <p key={idx} className={`${isLarge ? 'text-[10px] mt-0.5' : 'text-[4.4px]'} text-slate-700 truncate`}>
@@ -378,7 +382,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
 
   return (
     <div
-      className={`w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none ${
+      className={`a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none ${
         isSerif ? 'font-serif' : 'font-sans'
       } ${isLarge ? 'p-8 sm:p-10 space-y-4' : 'p-3 space-y-1.5'}`}
     >
@@ -421,7 +425,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider mb-0.5`}
           style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
         >
-          {isTech ? '> Resumo Técnico' : isMinimalist ? '01 / Resumo Executivo' : 'Resumo Profissional'}
+          {isTech ? ui.techSummary : isMinimalist ? ui.minSummary : ui.stdSummary}
         </p>
         <p className={`${isLarge ? 'text-xs leading-relaxed' : 'text-[4.6px] leading-[1.35] line-clamp-3'} text-slate-700`}>
           {cv.summary}
@@ -435,7 +439,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
             style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
           >
-            {isTech ? '> Stack & Competências' : isMinimalist ? '02 / Competências' : 'Competências Nucleares'}
+            {isTech ? ui.techComp : isMinimalist ? ui.minComp : ui.stdComp}
           </p>
           <div className={isLarge ? 'space-y-1 text-xs' : 'space-y-0.5 text-[4.5px]'}>
             {[comp1, comp2].filter(Boolean).map((c) => (
@@ -454,7 +458,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
             style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
           >
-            {isTech ? '> Experiência & Impacto' : isMinimalist ? '03 / Experiência Profissional' : 'Experiência Profissional'}
+            {isTech ? ui.techExp : isMinimalist ? ui.minExp : ui.stdExp}
           </p>
           <div className={isLarge ? 'space-y-2.5' : 'space-y-1'}>
             {[exp1, exp2].filter(Boolean).map((exp) => (
@@ -487,7 +491,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
             style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
           >
-            {isTech ? '> Formação Académica' : isMinimalist ? '04 / Educação' : 'Formação Académica'}
+            {isTech ? ui.techEdu : isMinimalist ? ui.minEdu : ui.stdEdu}
           </p>
           <div className="flex items-baseline justify-between gap-2">
             <p className={`${isLarge ? 'text-xs' : 'text-[4.8px]'} font-bold text-slate-900 truncate`}>{edu1.degree}</p>

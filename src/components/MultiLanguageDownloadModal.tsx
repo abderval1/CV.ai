@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CVData } from '../types/cv';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { generateWordDocument } from '../utils/docxExport';
@@ -41,9 +42,10 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
   onOpenAuthModal,
   density = 'normal'
 }) => {
-  const { t, setLanguage } = useLanguage();
+  const { setLanguage, siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).multiLangModal;
   const { user, isAuthenticated, hasActivePlan } = useAuth();
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showSuccess, showError } = useToast();
 
   const [selectedLang, setSelectedLang] = useState<LanguageCode>('en');
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
@@ -55,13 +57,11 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
   const handleTranslate = async (targetLang: LanguageCode) => {
     if (!isAuthenticated) {
-      onOpenAuthModal?.('O registo é obrigatório para traduzir o currículo.');
+      onOpenAuthModal?.(ui.authTranslateReq);
       return;
     }
     if (!hasActivePlan) {
-      onOpenPricingModal?.(
-        'A tradução executiva multilíngue com IA (inglês, espanhol, francês, alemão) é exclusiva para subscritores Pro e Executivo VIP.'
-      );
+      onOpenPricingModal?.(ui.planTranslateReq);
       return;
     }
 
@@ -77,7 +77,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData?.error || `Erro ${response.status} ao comunicar com o servidor.`);
+        throw new Error(errData?.error || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -95,28 +95,30 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         setTranslatedCV(merged);
         setLastTranslatedLang(targetLang);
         const targetLangName =
-          SUPPORTED_LANGUAGES.find((l) => l.code === targetLang)?.name || targetLang.toUpperCase();
+          ui.langNames[targetLang as keyof typeof ui.langNames] ||
+          SUPPORTED_LANGUAGES.find((l) => l.code === targetLang)?.name ||
+          targetLang.toUpperCase();
         showSuccess(
-          t('cvLang.translationReady', 'Tradução Concluída!'),
-          `Currículo adaptado para ${targetLangName}.`
+          ui.translationReadyTitle,
+          `${ui.translationReadySubPrefix} ${targetLangName}.`
         );
         if (user) {
           void dispatchUserNotification({
             user,
             eventType: 'translation',
-            title: 'Tradução Multilíngue Concluída',
-            message: `O seu currículo foi traduzido e adaptado para ${targetLangName}.`,
+            title: ui.notifTranslateTitle,
+            message: `${ui.notifTranslateMsgPrefix} ${targetLangName}.`,
             targetResource: `translation/${targetLang}`
           });
         }
       } else {
-        throw new Error('Resposta de tradução inválida.');
+        throw new Error(ui.translationErrorFallback);
       }
     } catch (err: any) {
       console.error('Falha ao traduzir CV:', err);
       showError(
-        'Erro na Tradução',
-        err.message || 'Não foi possível traduzir o currículo. Tente novamente mais tarde.'
+        ui.translationErrorTitle,
+        err.message || ui.translationErrorFallback
       );
     } finally {
       setIsTranslating(false);
@@ -134,7 +136,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         details: `Exportação multilingue Word (${targetLang.toUpperCase()}) bloqueada: não autenticado.`,
         metadata: { format: 'docx', language: targetLang }
       });
-      onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para exportar o currículo.'));
+      onOpenAuthModal?.(ui.authExportReq);
       return;
     }
     if (!hasActivePlan) {
@@ -147,7 +149,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         details: `Exportação multilingue Word (${targetLang.toUpperCase()}) bloqueada: plano pago exigido.`,
         metadata: { format: 'docx', language: targetLang }
       });
-      onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em Word requer um plano ativo.'));
+      onOpenPricingModal?.(ui.planExportReq);
       return;
     }
 
@@ -180,19 +182,19 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         void dispatchUserNotification({
           user,
           eventType: 'export',
-          title: 'Exportação Multilíngue Concluída',
-          message: `Currículo no idioma ${langUpper} (${templateInfo.shortName}) exportado em Word (.docx).`,
+          title: ui.notifExportTitle,
+          message: `${ui.notifExportWordPrefix} ${langUpper} (${templateInfo.shortName}) (.docx).`,
           targetResource: `resumes/${docToExport.templateStyle}/docx/${targetLang}`
         });
       }
 
       showSuccess(
-        'Word Descarregado!',
-        `Ficheiro no idioma ${langUpper} exportado com formatação nativa OpenXML.`
+        ui.wordSuccessTitle,
+        `${ui.wordSuccessSubPrefix} ${langUpper} ${ui.wordSuccessSubSuffix}`
       );
     } catch (err: any) {
       console.error('Falha ao exportar docx:', err);
-      showError('Erro ao Descarregar Word', 'Não foi possível compilar o documento.');
+      showError(ui.wordErrorTitle, ui.wordErrorDesc);
     } finally {
       setIsExportingWord(false);
     }
@@ -209,7 +211,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         details: `Exportação multilingue PDF (${selectedLang.toUpperCase()}) bloqueada: não autenticado.`,
         metadata: { format: 'pdf', language: selectedLang }
       });
-      onOpenAuthModal?.(t('doc.pdfReqAuth', 'O registo é obrigatório para imprimir ou guardar em PDF.'));
+      onOpenAuthModal?.(ui.authPdfReq);
       return;
     }
     if (!hasActivePlan) {
@@ -222,7 +224,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         details: `Exportação multilingue PDF (${selectedLang.toUpperCase()}) bloqueada: plano pago exigido.`,
         metadata: { format: 'pdf', language: selectedLang }
       });
-      onOpenPricingModal?.(t('doc.officialDocSub', 'A exportação oficial em PDF requer um plano ativo.'));
+      onOpenPricingModal?.(ui.planPdfReq);
       return;
     }
 
@@ -239,8 +241,8 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       void dispatchUserNotification({
         user,
         eventType: 'export',
-        title: 'Exportação Multilíngue PDF',
-        message: `Currículo no idioma ${selectedLang.toUpperCase()} preparado para impressão/PDF.`,
+        title: ui.notifExportTitle,
+        message: `${ui.notifExportPdfPrefix} ${selectedLang.toUpperCase()} ${ui.notifExportPdfSuffix}`,
         targetResource: `resumes/${docToPrint.templateStyle}/pdf/${selectedLang}`
       });
     }
@@ -267,10 +269,10 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">
-                {t('cvLang.modalTitle', 'Baixar Currículo em Outro Idioma')}
+                {ui.modalTitle}
               </h2>
               <p className="text-xs text-slate-500">
-                {t('cvLang.modalSubtitle', 'Tradução executiva completa para processos seletivos internacionais')}
+                {ui.modalSubtitle}
               </p>
             </div>
           </div>
@@ -278,6 +280,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
             type="button"
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
+            aria-label={ui.close}
           >
             <X className="w-4 h-4" />
           </button>
@@ -288,7 +291,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
           {/* Target Language Selection */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2.5">
-              {t('cvLang.selectLang', 'Selecione o idioma de destino:')}
+              {ui.selectLang}
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {SUPPORTED_LANGUAGES.map((lang) => {
@@ -308,7 +311,9 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                     <div className="flex items-center gap-2.5">
                       <span className="text-xl leading-none">{lang.flag}</span>
                       <div>
-                        <div className="text-xs font-medium">{lang.name}</div>
+                        <div className="text-xs font-medium">
+                          {ui.langNames[lang.code as keyof typeof ui.langNames] || lang.name}
+                        </div>
                         <div className="text-[10px] text-slate-500">{lang.code.toUpperCase()}</div>
                       </div>
                     </div>
@@ -328,8 +333,8 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                 <Languages className="w-4 h-4 text-slate-700" />
                 <span className="text-xs font-semibold text-slate-800">
                   {lastTranslatedLang === selectedLang && translatedCV
-                    ? `Tradução para ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name} Ativa`
-                    : `Pronto para traduzir para ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name}`}
+                    ? `${ui.activeTranslationPrefix} ${ui.langNames[selectedLang as keyof typeof ui.langNames] || selectedLang.toUpperCase()}${ui.activeTranslationSuffix ? ` ${ui.activeTranslationSuffix}` : ''}`
+                    : `${ui.readyTranslationPrefix} ${ui.langNames[selectedLang as keyof typeof ui.langNames] || selectedLang.toUpperCase()}${ui.readyTranslationSuffix ? ` ${ui.readyTranslationSuffix}` : ''}`}
                 </span>
               </div>
               <button
@@ -341,15 +346,15 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                 {isTranslating ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>{t('cvLang.translating', 'Traduzindo com IA...')}</span>
+                    <span>{ui.translating}</span>
                   </>
                 ) : (
                   <>
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>
                       {lastTranslatedLang === selectedLang && translatedCV
-                        ? 'Atualizar Tradução'
-                        : t('cvLang.translateAction', 'Traduzir com IA')}
+                        ? ui.updateTranslation
+                        : ui.translateAction}
                     </span>
                   </>
                 )}
@@ -357,7 +362,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed">
-              Preserva títulos executivos alinhados aos padrões do mercado alvo, reformula as realizações com verbos fortes e mantém 100% de precisão em métricas e palavras-chave ATS.
+              {ui.explanation}
             </p>
           </div>
 
@@ -367,10 +372,10 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  {t('cvLang.previewTranslated', 'Pré-visualização do Documento')}
+                  {ui.previewTranslated}
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
-                  {SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name} ({selectedLang.toUpperCase()})
+                  {ui.langNames[selectedLang as keyof typeof ui.langNames] || selectedLang.toUpperCase()} ({selectedLang.toUpperCase()})
                 </span>
               </div>
 
@@ -399,7 +404,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
           {/* Download Options */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2.5">
-              {t('cvLang.translationReady', 'Opções de Exportação:')}
+              {ui.exportOptionsLabel}
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -420,9 +425,9 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                   </div>
                   <div>
                     <div className="text-xs font-semibold">
-                      {isExportingWord ? t('nav.downloading', 'A exportar...') : t('cvLang.downloadDocx', 'Baixar Word (.docx)')}
+                      {isExportingWord ? ui.downloading : ui.downloadDocx}
                     </div>
-                    <div className="text-[10px] text-slate-500">Formatação nativa OpenXML</div>
+                    <div className="text-[10px] text-slate-500">{ui.openXmlSub}</div>
                   </div>
                 </div>
                 {!isAuthenticated || !hasActivePlan ? (
@@ -448,9 +453,9 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                   </div>
                   <div>
                     <div className="text-xs font-semibold">
-                      {t('cvLang.downloadPdf', 'Baixar / Imprimir PDF')}
+                      {ui.downloadPdf}
                     </div>
-                    <div className="text-[10px] text-slate-300">Layout A4 vetorial sem marcas</div>
+                    <div className="text-[10px] text-slate-300">{ui.vectorA4Sub}</div>
                   </div>
                 </div>
                 {!isAuthenticated || !hasActivePlan ? (
@@ -466,7 +471,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
           {activeDoc && (
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
               <span className="text-xs text-slate-500">
-                Deseja continuar editando este currículo no idioma selecionado?
+                {ui.continueEditingPrompt}
               </span>
               <button
                 type="button"
@@ -475,13 +480,13 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                   onApplyTranslatedCV(activeDoc);
                   onClose();
                   showSuccess(
-                    'Currículo Carregado no Editor',
-                    `O editor principal agora exibe a versão traduzida em ${SUPPORTED_LANGUAGES.find((l) => l.code === selectedLang)?.name}.`
+                    ui.loadedEditorTitle,
+                    `${ui.loadedEditorSubPrefix} ${ui.langNames[selectedLang as keyof typeof ui.langNames] || selectedLang.toUpperCase()}.`
                   );
                 }}
                 className="text-xs font-semibold text-slate-900 hover:text-slate-700 underline underline-offset-4"
               >
-                {t('cvLang.applyToEditor', 'Carregar no Editor Principal')} →
+                {ui.applyToEditor} →
               </button>
             </div>
           )}
@@ -491,9 +496,9 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
         <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <div className="text-[11px] text-slate-500">
             {hasActivePlan ? (
-              <span className="text-emerald-700 font-medium">✓ Downloads e traduções ilimitadas no seu plano</span>
+              <span className="text-emerald-700 font-medium">{ui.unlimitedFooter}</span>
             ) : (
-              <span className="text-amber-800 font-medium">Downloads oficiais requerem plano Pro ou Executivo</span>
+              <span className="text-amber-800 font-medium">{ui.planRequiredFooter}</span>
             )}
           </div>
           <button
@@ -501,7 +506,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
             onClick={onClose}
             className="px-3.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200/60 rounded-md transition-colors"
           >
-            {t('common.close', 'Fechar')}
+            {ui.close}
           </button>
         </div>
       </div>

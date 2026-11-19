@@ -3,6 +3,8 @@ import { CVData } from '../types/cv';
 import { SAMPLE_AVATARS } from '../data/templateCatalog';
 import { Camera, Trash2, Check, Upload, HelpCircle, X } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { useLanguage } from '../context/LanguageContext';
+import { EDITOR_UI_TRANSLATIONS } from '../i18n/editorUiTranslations';
 
 interface PhotoManagerModalProps {
   isOpen: boolean;
@@ -62,6 +64,8 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showWarning, showError } = useToast();
+  const { siteLanguage } = useLanguage();
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).photoModal;
 
   if (!isOpen) return null;
 
@@ -73,7 +77,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
     if (!file) return;
 
     if (file.size > 8 * 1024 * 1024) {
-      showWarning('Ficheiro Muito Grande', 'Por favor escolha uma foto com menos de 8MB.');
+      showWarning(ui.fileTooLargeTitle, ui.fileTooLargeMsg);
       return;
     }
 
@@ -87,9 +91,9 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
           showPhoto: true
         }
       });
-      showSuccess('Foto Atualizada!', 'A sua fotografia foi otimizada para impressão nítida no documento.');
+      showSuccess(ui.updatedTitle, ui.updatedMsg);
     } catch {
-      showError('Erro ao Processar Foto', 'Não foi possível carregar a imagem selecionada.');
+      showError(ui.errorTitle, ui.errorMsg);
     }
   };
 
@@ -135,9 +139,9 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
               <Camera className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold">Foto de Perfil Profissional</h3>
+              <h3 className="text-sm sm:text-base font-bold">{ui.headerTitle}</h3>
               <p className="text-[11px] text-slate-300">
-                Padrão Europeu Europass, Criativo e Minimalista
+                {ui.headerSubtitle}
               </p>
             </div>
           </div>
@@ -169,7 +173,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
               {isPhotoVisible && (
                 <span
                   className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center text-white text-[10px]"
-                  title="Foto ativa no currículo"
+                  title={ui.activePhotoTitle}
                 >
                   ✓
                 </span>
@@ -179,7 +183,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs font-bold text-slate-800">
-                  {currentPhoto ? 'Foto Carregada' : 'Sem Foto Configurada'}
+                  {currentPhoto ? ui.loadedLabel : ui.emptyLabel}
                 </span>
                 {currentPhoto && (
                   <button
@@ -188,7 +192,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
                     className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 flex items-center gap-1"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Remover</span>
+                    <span>{ui.removeBtn}</span>
                   </button>
                 )}
               </div>
@@ -206,13 +210,13 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
                   </label>
                   <span className="text-xs text-slate-600">
                     {cv.personalDetails.showPhoto !== false
-                      ? 'Visível no CV'
-                      : 'Ocultada no CV'}
+                      ? ui.visibleLabel
+                      : ui.hiddenLabel}
                   </span>
                 </div>
               ) : (
                 <p className="text-[11px] text-slate-500">
-                  Carregue a sua foto ou escolha um avatar profissional para testar.
+                  {ui.uploadHint}
                 </p>
               )}
             </div>
@@ -233,10 +237,10 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
               className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-xs"
             >
               <Upload className="w-4 h-4" />
-              <span>Carregar Foto do Meu Computador / Telemóvel</span>
+              <span>{ui.uploadBtn}</span>
             </button>
             <p className="text-[10px] text-center text-slate-500 mt-1.5">
-              Formatos recomendados: JPG, PNG ou WEBP (máx. 3MB). Fundo neutro e iluminação suave.
+              {ui.formatsHint}
             </p>
           </div>
 
@@ -245,13 +249,14 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Camera className="w-3.5 h-3.5 text-slate-700" />
-                <span>Ou selecione um avatar executivo ilustrativo:</span>
+                <span>{ui.avatarsTitle}</span>
               </span>
             </div>
 
             <div className="grid grid-cols-4 gap-2.5">
               {SAMPLE_AVATARS.map((avatar) => {
                 const isSelected = currentPhoto === avatar.url;
+                const localizedAvatarName = ui.avatarNames[avatar.id] || avatar.name;
                 return (
                   <button
                     key={avatar.id}
@@ -265,11 +270,11 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
                   >
                     <img
                       src={avatar.url}
-                      alt={avatar.name}
+                      alt={localizedAvatarName}
                       className="w-12 h-12 rounded-full object-cover border border-slate-200"
                     />
                     <span className="text-[10px] font-medium text-slate-700 truncate w-full">
-                      {avatar.name}
+                      {localizedAvatarName}
                     </span>
                   </button>
                 );
@@ -281,7 +286,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
           <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200 text-xs text-blue-950 flex items-start gap-2.5">
             <HelpCircle className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
             <div className="text-[11px] leading-relaxed">
-              <strong>Dica de Conformidade:</strong> A foto será exibida nos modelos <em>Europeu Europass</em>, <em>Criativo Split</em> e <em>Minimalista Nórdico</em>. Se você selecionar o modelo <em>Harvard</em> ou <em>ATS Estrito</em>, o sistema ocultará a foto para evitar desclassificação por leis de viés nos EUA/UK.
+              <strong>{ui.complianceTipLabel}</strong> {ui.complianceTipText}
             </div>
           </div>
         </div>
@@ -293,7 +298,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
           >
-            Concluir & Aplicar
+            {ui.doneBtn}
           </button>
         </div>
       </div>

@@ -51,6 +51,7 @@ interface CVDocumentViewProps {
   onSelectLanguage?: (lang: LanguageCode) => void;
   isTranslatingContent?: boolean;
   translatingTargetLang?: LanguageCode | null;
+  contentLanguage?: LanguageCode;
 }
 
 const ACCENT_COLORS = [
@@ -74,17 +75,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   onDensityChange,
   onSelectLanguage,
   isTranslatingContent = false,
-  translatingTargetLang = null
+  translatingTargetLang = null,
+  contentLanguage = 'pt'
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
-  const { language: appLang, setLanguage, t } = useLanguage();
+  const { studioText, t } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [jsonImportSuccess, setJsonImportSuccess] = useState<string | null>(null);
-  const [docLang, setDocLang] = useState<LanguageCode>(appLang || 'pt');
+  const [docLang, setDocLang] = useState<LanguageCode>(contentLanguage || 'pt');
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState<boolean>(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
@@ -105,10 +107,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const canExportClean = exportRequiresPaidPlan ? isAuthenticated && hasActivePlan : true;
 
   useEffect(() => {
-    if (appLang) {
-      setDocLang(appLang);
+    if (contentLanguage) {
+      setDocLang(contentLanguage);
     }
-  }, [appLang]);
+  }, [contentLanguage]);
 
   const setDensity = (newDensity: 'compact' | 'normal' | 'relaxed') => {
     onDensityChange?.(newDensity);
@@ -530,7 +532,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       Enquadramento &amp; Visualização
                     </div>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-700 font-medium">Espaçamento</span>
+                      <span className="text-xs text-slate-700 font-medium">{studioText.docToolbar.density}</span>
                       <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5">
                         <button
                           type="button"
@@ -553,7 +555,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          1 Pág
+                          {studioText.docToolbar.compact}
                         </button>
                         <button
                           type="button"
@@ -576,7 +578,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          Padrão
+                          {studioText.docToolbar.normal}
                         </button>
                         <button
                           type="button"
@@ -599,7 +601,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          Amplo
+                          {studioText.docToolbar.relaxed}
                         </button>
                       </div>
                     </div>
@@ -611,7 +613,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           type="button"
                           onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
                           className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
-                          title="Diminuir Zoom"
+                          title={studioText.docToolbar.zoomOut}
                         >
                           <ZoomOut className="w-3.5 h-3.5" />
                         </button>
@@ -619,7 +621,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           type="button"
                           onClick={() => setZoomLevel(100)}
                           className="text-[11px] font-mono tabular-nums text-slate-800 px-1.5 font-semibold"
-                          title="Restaurar 100%"
+                          title="100%"
                         >
                           {zoomLevel}%
                         </button>
@@ -627,7 +629,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           type="button"
                           onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
                           className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
-                          title="Aumentar Zoom"
+                          title={studioText.docToolbar.zoomIn}
                         >
                           <ZoomIn className="w-3.5 h-3.5" />
                         </button>
@@ -740,7 +742,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     >
                       <span className="flex items-center gap-2">
                         <Copy className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Copiar Texto Puro</span>
+                        <span>{copied ? studioText.docToolbar.copied : studioText.docToolbar.copy}</span>
                       </span>
                       {copied && <Check className="w-3.5 h-3.5 text-emerald-600" />}
                     </button>
@@ -755,7 +757,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
                       >
                         <Download className="w-3 h-3 text-slate-500" />
-                        <span>Backup JSON</span>
+                        <span>{studioText.docToolbar.jsonBackup}</span>
                       </button>
                       <button
                         type="button"
@@ -803,38 +805,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             ) : (
               <Edit3 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
             )}
-            <span className="hidden xl:inline">{isInlineEditing ? 'Editando A4' : 'Editar A4'}</span>
+            <span className="hidden xl:inline">{isInlineEditing ? studioText.docToolbar.doneEdit : studioText.docToolbar.inlineEdit}</span>
           </button>
-
-          {/* Quick Zoom Controls */}
-          <div className="hidden xl:flex items-center gap-0.5 border border-slate-200 rounded-lg bg-slate-50 p-0.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.max(60, z - 10))}
-              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
-              title="Diminuir Zoom"
-              aria-label="Diminuir Zoom"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel(100)}
-              className="text-[11px] font-mono tabular-nums text-slate-700 px-1.5 font-semibold"
-              title="Restaurar Zoom 100%"
-            >
-              {zoomLevel}%
-            </button>
-            <button
-              type="button"
-              onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
-              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
-              title="Aumentar Zoom"
-              aria-label="Aumentar Zoom"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </div>
 
         {/* Hidden JSON file input */}
@@ -852,7 +824,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           <div className="flex items-center gap-1 shrink-0">
             <div
               className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0"
-              title="Traduzir conteúdo completo do currículo e carta de apresentação"
+              title={studioText.docToolbar.cvContentLangTooltip}
             >
               {(['pt', 'en', 'es', 'fr', 'de'] as const).map((lang) => {
                 const isTargetLoading = isTranslatingContent && translatingTargetLang === lang;
@@ -873,18 +845,14 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         return;
                       }
                       setDocLang(lang);
-                      if (onSelectLanguage) {
-                        onSelectLanguage(lang);
-                      } else {
-                        setLanguage(lang);
-                      }
+                      onSelectLanguage?.(lang);
                     }}
                     className={`px-1.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-md transition-colors flex items-center gap-1 disabled:opacity-60 ${
                       docLang === lang
                         ? 'bg-white text-slate-950 shadow-2xs'
                         : 'text-slate-500 hover:text-slate-900'
                     }`}
-                    title={`Traduzir CV e Carta para ${lang.toUpperCase()}`}
+                    title={`${studioText.docToolbar.cvContentLangTooltip} (${lang.toUpperCase()})`}
                   >
                     {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-700" />}
                     <span>{lang.toUpperCase()}</span>
@@ -922,7 +890,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             ) : (
               <Printer className="w-3.5 h-3.5 text-slate-700 shrink-0" />
             )}
-            <span>PDF</span>
+            <span>{studioText.docToolbar.pdfBtn}</span>
           </button>
 
           {/* Word Export Button */}
@@ -960,7 +928,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             ) : (
               <Download className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span>Word (.docx)</span>
+            <span>{isExportingWord ? studioText.docToolbar.generating : studioText.docToolbar.wordBtn}</span>
           </button>
 
           {/* Multi-Language Pack Download Trigger */}
@@ -978,10 +946,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               setIsMultiLangModalOpen(true);
             }}
             className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 whitespace-nowrap"
-            title={t('doc.downloadMultilangDesc', 'Traduzir e descarregar o currículo em Inglês, Espanhol, Francês ou Alemão')}
+            title={t('doc.downloadMultilangDesc', studioText.docToolbar.otherLangs)}
           >
             <Globe className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-            <span className="hidden 2xl:inline">Pacote</span>
+            <span className="hidden 2xl:inline">{studioText.docToolbar.otherLangs}</span>
           </button>
         </div>
       </div>

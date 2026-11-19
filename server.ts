@@ -18,7 +18,45 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isProduction = process.env.NODE_ENV === 'production';
-const PORT = Number(process.env.PORT) || 3000;
+
+function parseCliFlag(names: string[]): string | undefined {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    for (const name of names) {
+      if (arg === name && i + 1 < argv.length && !argv[i + 1].startsWith('-')) {
+        return argv[i + 1];
+      }
+      if (arg.startsWith(`${name}=`)) {
+        return arg.slice(name.length + 1);
+      }
+    }
+  }
+  return undefined;
+}
+
+const cliPortRaw = parseCliFlag(['--port', '-p']);
+const cliHostRaw = parseCliFlag(['--host', '-h']);
+const envPort = Number(process.env.PORT);
+const nginxPort = Number(process.env.NGINX_PORT);
+const defaultAppPort = Number(process.env.DEFAULT_APP_PORT) || 3000;
+
+const PORT = (() => {
+  const fromCli = Number(cliPortRaw);
+  if (Number.isInteger(fromCli) && fromCli > 0 && fromCli <= 65535) {
+    return fromCli;
+  }
+  // Avoid colliding with the reverse proxy (nginx on NGINX_PORT) when running `npm run dev` in container shells
+  if (!isProduction && Number.isInteger(nginxPort) && envPort === nginxPort) {
+    return defaultAppPort;
+  }
+  if (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535) {
+    return envPort;
+  }
+  return defaultAppPort;
+})();
+
+const HOST = (cliHostRaw || process.env.HOST || '0.0.0.0').trim() || '0.0.0.0';
 
 export function createApiApp() {
   const app = express();
@@ -376,7 +414,7 @@ export function createApiApp() {
   const stripePublishableKey =
     process.env.STRIPE_PUBLISHABLE_KEY ||
     process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-    'pk_live_51SZIxqBnqz01NuqKqCW35zbD4WIxv1ws4HhsX8s2p78SHrldEIfpcTuvllYhATRFBcDq9hy1zAUjuGZnvF6Wi4Wg00CjKUEhsr';
+    'pk_live_51SZIxqBnqz01NuqKqCW35zbD4WIxv1ws4HhsX8s2p78SHrldEIfpcTuvlLYhATRFBcDq9hy1zAUjuGZnvF6Wi4Wg00CjKUEhsr';
 
   let stripeClient: Stripe | null = null;
   if (stripeSecretKey) {
@@ -709,6 +747,48 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
 
       const cleanJobDesc = typeof jobDescription === 'string' ? jobDescription.trim() : '';
       const isStandardMode = generationMode === 'standard' || !cleanJobDesc;
+      const trimmedRawInfo = typeof rawCandidateInfo === 'string' ? rawCandidateInfo.trim() : '';
+
+      let enrichedLinkedInContext = '';
+      if (candidateLinkedIn && /linkedin\.com\/in\//i.test(String(candidateLinkedIn)) && trimmedRawInfo.length < 300) {
+        try {
+          const { normalizedUrl: lkNormUrl, slug: lkSlug } = normalizeLinkedInUrl(String(candidateLinkedIn));
+          const lkCleanName = lkSlug
+            .replace(/-\d{4,}$/, '')
+            .replace(/[-_.]/g, ' ')
+            .replace(/\b\w/g, (c: string) => c.toUpperCase())
+            .trim();
+          const lkPub = await fetchLinkedInPublicProfileData(lkNormUrl);
+          const parts: string[] = [];
+          if (lkPub.ogTitle || lkPub.ogDescription) {
+            parts.push(`Meta LinkedIn: ${lkPub.ogTitle} — ${lkPub.ogDescription}`);
+          }
+          if (lkPub.jsonLdObjects.length > 0) {
+            parts.push(`JSON-LD LinkedIn: ${JSON.stringify(lkPub.jsonLdObjects).slice(0, 8000)}`);
+          }
+          if (lkPub.visibleText.length > 120) {
+            parts.push(`Conteúdo Público LinkedIn:\n${lkPub.visibleText.slice(0, 14000)}`);
+          }
+          try {
+            const lkRes = await ai.models.generateContent({
+              model: 'gemini-4-hydrogen',
+              contents: `Pesquise publicamente no Google e no LinkedIn todos os cargos, empresas, datas, formação académica, competências, certificações, projetos e idiomas de "${lkCleanName}" (${lkNormUrl}). Extraia apenas factos reais.`,
+              config: {
+                tools: [{ googleSearch: {} }],
+                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+              }
+            });
+            if (lkRes.text && lkRes.text.trim().length > 80) {
+              parts.push(`Pesquisa Web LinkedIn:\n${lkRes.text.trim().slice(0, 14000)}`);
+            }
+          } catch {
+            // proceed with whatever public data was gathered
+          }
+          enrichedLinkedInContext = parts.join('\n\n');
+        } catch {
+          // non-blocking enrichment
+        }
+      }
 
       const customInstructionBlock = adminPromptConfig?.systemInstruction
         ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
@@ -722,19 +802,20 @@ O candidato enviou um currículo existente, texto bruto, notas de carreira ou pe
 
 SUA MISSÃO:
 1. Analisar os dados fornecidos e GERAR UM CURRÍCULO ESTRUTURADO COMPLETO no padrão solicitado (${targetStandard || 'Padrão Corporativo Internacional & Executivo'}).
-2. PRESERVAR FIELMENTE a profissão real, cargos reais, empresas, datas, formação académica, competências, certificações e idiomas do candidato. NÃO invente cargos executivos, empresas ou indústrias que não existam nos dados originais.
+2. PRESERVAR FIELMENTE 100% dos cargos reais, empresas, datas, formações académicas, competências, certificações, projetos, prémios, publicações, voluntariado e idiomas do candidato — NÃO resuma nem elimine experiências ou certificações. NÃO invente cargos executivos, empresas ou indústrias que não existam nos dados originais.
 3. Melhorar a clareza, ortografia, organização em bullet points orientados a resultados e legibilidade para recrutadores e filtros ATS, mantendo total fidelidade à trajetória real do candidato.
 
 DADOS BRUTOS / CURRÍCULO DO CANDIDATO:
-${rawCandidateInfo || ''}
+${trimmedRawInfo}
 ${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
+${enrichedLinkedInContext ? `\nDADOS EXTRAÍDOS DO LINKEDIN:\n${enrichedLinkedInContext}` : ''}
 
-DIRETRIZES DE EXTRAÇÃO E MELHORIA:
-1. Extraia o Nome Completo, Título Profissional real do candidato, Localização, Telefone, E-mail e LinkedIn.
-2. Resumo Profissional (Summary): Escreva um resumo claro e profissional de 3 a 5 linhas baseado exclusivamente na experiência e área real do candidato.
-3. Competências Principais (Core Competencies): Agrupe as competências e ferramentas reais do candidato em 4 a 6 categorias objetivas.
-4. Experiência Profissional: Liste todas as experiências encontradas em ordem cronológica reversa, mantendo empresas, cargos e períodos reais, refinando os bullet points para serem diretos, fortes e mensuráveis quando houver dados.
-5. Formação Académica, Formação Especializada/Certificações, Idiomas e Referências: Extraia tudo o que constar nos dados (se não houver referências no texto, retorne lista vazia [] e não invente contactos falsos).
+DIRETRIZES DE EXTRAÇÃO E MELHORIA COMPLETA:
+1. Extraia o Nome Completo, Título Profissional real do candidato, Localização, Telefone, E-mail, LinkedIn e Website/Portfólio.
+2. Resumo Profissional (Summary): Escreva um resumo claro e executivo de 4 a 6 linhas baseado exclusivamente na experiência e área real do candidato.
+3. Competências Principais (Core Competencies): Agrupe TODAS as competências, tecnologias, metodologias e ferramentas reais do candidato em 5 a 8 categorias objetivas.
+4. Experiência Profissional: Liste TODAS as experiências encontradas (sem omitir nenhuma) em ordem cronológica reversa, mantendo empresas, cargos e períodos reais, estruturando 3 a 5 bullet points fortes por cargo.
+5. Formação Académica, Certificações/Licenças/Cursos/Projetos/Publicações/Voluntariado (em trainings[]), Idiomas e Referências: Extraia absolutamente tudo o que constar nos dados (se não houver referências no texto, retorne lista vazia [] e não invente contactos falsos).
 
 Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 {
@@ -791,8 +872,9 @@ Analisar minuciosamente os dados do candidato e GERAR UM CURRÍCULO ESTRUTURADO 
 Padrão Institucional Alvo: ${targetStandard || 'Padrão Corporativo Internacional & Executivo'}.
 
 DADOS BRUTOS DO CANDIDATO:
-${rawCandidateInfo || ''}
+${trimmedRawInfo}
 ${candidateLinkedIn ? `Perfil / Link do LinkedIn: ${candidateLinkedIn}` : ''}
+${enrichedLinkedInContext ? `\nDADOS EXTRAÍDOS DO LINKEDIN:\n${enrichedLinkedInContext}` : ''}
 
 DESCRIÇÃO DA VAGA / REQUISITOS:
 ${cleanJobDesc}
@@ -1164,224 +1246,666 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
 
 
   // -------------------------------------------------------------
-  // LINKEDIN PUBLIC PROFILE EXTRACTION JOB
+  // LINKEDIN FULL PROFILE EXTRACTION ENGINE (URL + HTML/JSON-LD + Google Search/URL Grounding + PDF/Text)
   // -------------------------------------------------------------
+  function normalizeLinkedInUrl(rawInput: string): { normalizedUrl: string; slug: string } {
+    let trimmed = String(rawInput || '').trim().slice(0, 500);
+    if (!trimmed) return { normalizedUrl: '', slug: '' };
+    if (!/^https?:\/\//i.test(trimmed)) {
+      if (/linkedin\.com/i.test(trimmed)) {
+        trimmed = `https://${trimmed.replace(/^\/+/, '')}`;
+      } else if (/^in\/[a-zA-Z0-9_-]+/i.test(trimmed)) {
+        trimmed = `https://www.linkedin.com/${trimmed}`;
+      } else if (/^[a-zA-Z0-9-]{3,80}$/.test(trimmed)) {
+        trimmed = `https://www.linkedin.com/in/${trimmed}`;
+      }
+    }
+    const match = trimmed.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    const rawSlug = match ? decodeURIComponent(match[1]) : '';
+    const cleanSlug = rawSlug.replace(/[^a-zA-Z0-9À-ÿ._-]/g, '');
+    const normalizedUrl = cleanSlug
+      ? `https://www.linkedin.com/in/${encodeURIComponent(cleanSlug)}/`
+      : trimmed;
+    return { normalizedUrl, slug: cleanSlug };
+  }
+
+  function decodeLinkedInHtmlEntities(input: string): string {
+    return input
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n)))
+      .replace(/&nbsp;/g, ' ');
+  }
+
+  async function fetchLinkedInPublicProfileData(targetUrl: string): Promise<{
+    status: 'public_html' | 'authwall_blocked' | 'not_found' | 'skipped';
+    ogTitle: string;
+    ogDescription: string;
+    ogImage: string;
+    jsonLdObjects: any[];
+    visibleText: string;
+  }> {
+    if (!targetUrl) {
+      return { status: 'skipped', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+    }
+
+    try {
+      let currentUrl = await assertSafeExternalUrl(targetUrl);
+      if (!currentUrl.hostname.toLowerCase().endsWith('linkedin.com')) {
+        return { status: 'not_found', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+      }
+
+      let html = '';
+      let finalStatus = 0;
+
+      for (let hop = 0; hop < 3; hop += 1) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 7000);
+        try {
+          const resp = await fetch(currentUrl.toString(), {
+            redirect: 'manual',
+            signal: controller.signal,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
+          });
+          finalStatus = resp.status;
+          if (resp.status >= 300 && resp.status < 400) {
+            const loc = resp.headers.get('location');
+            if (!loc) break;
+            if (/authwall|uas\/login|checkpoint/i.test(loc)) {
+              return { status: 'authwall_blocked', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+            }
+            const nextUrl = await assertSafeExternalUrl(new URL(loc, currentUrl).toString());
+            if (!nextUrl.hostname.toLowerCase().endsWith('linkedin.com')) {
+              return { status: 'authwall_blocked', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+            }
+            currentUrl = nextUrl;
+            continue;
+          }
+          html = await resp.text();
+          break;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      if (finalStatus === 999 || finalStatus === 403 || finalStatus === 401) {
+        return { status: 'authwall_blocked', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+      }
+      if (!html) {
+        return { status: 'not_found', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+      }
+
+      const extractMeta = (attr: string, name: string): string => {
+        const re1 = new RegExp(`<meta[^>]+${attr}=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i');
+        const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+${attr}=["']${name}["']`, 'i');
+        const m = html.match(re1) || html.match(re2);
+        return m ? decodeLinkedInHtmlEntities(m[1]).trim() : '';
+      };
+
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const pageTitle = titleMatch ? decodeLinkedInHtmlEntities(titleMatch[1]).trim() : '';
+      const ogTitle = extractMeta('property', 'og:title') || pageTitle;
+      const ogDescription =
+        extractMeta('property', 'og:description') || extractMeta('name', 'description');
+      const rawOgImage = extractMeta('property', 'og:image');
+      const isGhostAvatar =
+        !rawOgImage ||
+        /ghost|static\.licdn\.com\/aero-v1\/sc\/h\/|default|placeholder|icon/i.test(rawOgImage);
+      const ogImage = isGhostAvatar ? '' : rawOgImage;
+
+      const jsonLdObjects: any[] = [];
+      const ldMatches = html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+      for (const m of ldMatches) {
+        try {
+          const parsed = JSON.parse(m[1].trim());
+          jsonLdObjects.push(parsed);
+        } catch {
+          // ignore malformed ld+json block
+        }
+      }
+
+      const isAuthwallPage =
+        /authwall|uas\/login|join linkedin|sign in \| linkedin|entrar \| linkedin|cadastre-se no linkedin/i.test(
+          `${pageTitle} ${ogTitle}`
+        ) && jsonLdObjects.length === 0;
+
+      if (isAuthwallPage) {
+        return { status: 'authwall_blocked', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+      }
+
+      const visibleText = decodeLinkedInHtmlEntities(
+        html
+          .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+          .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+          .replace(/<svg[\s\S]*?<\/svg>/gi, ' ')
+          .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+          .replace(/<\/(p|div|li|h[1-6]|section|article|tr|br)>/gi, '\n')
+          .replace(/<[^>]+>/g, ' ')
+      )
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+        .slice(0, 26000);
+
+      return {
+        status: visibleText.length > 180 || jsonLdObjects.length > 0 || ogDescription.length > 40 ? 'public_html' : 'authwall_blocked',
+        ogTitle,
+        ogDescription,
+        ogImage,
+        jsonLdObjects,
+        visibleText
+      };
+    } catch (err) {
+      console.warn('Aviso ao tentar fetch público do LinkedIn:', (err as any)?.message || err);
+      return { status: 'authwall_blocked', ogTitle: '', ogDescription: '', ogImage: '', jsonLdObjects: [], visibleText: '' };
+    }
+  }
+
+  function parseLinkedInRawTextFallback(rawText: string, cleanName: string, cleanUrl: string, usernameSlug: string, templateStyle: string) {
+    const lines = rawText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l && !/^---/.test(l) && !/^(linkedin|page \d+ of \d+|página \d+ de \d+)$/i.test(l));
+
+    const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const phoneMatch = rawText.match(/(\+?\d[\d\s().-]{7,18}\d)/);
+    const siteMatch = rawText.match(/https?:\/\/(?![^\s]*linkedin\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s)]*/i);
+
+    const detectedName =
+      lines[0] && lines[0].length >= 3 && lines[0].length <= 65 && !lines[0].includes('@')
+        ? lines[0].replace(/\|.*$/, '').trim()
+        : cleanName;
+    const detectedTitle =
+      lines[1] && lines[1].length >= 4 && lines[1].length <= 120 && !lines[1].includes('@')
+        ? lines[1]
+        : 'Especialista / Líder Profissional';
+
+    const bullets = lines
+      .filter((l) => /^[-•*▪●]\s+/.test(l))
+      .map((l) => l.replace(/^[-•*▪●]\s+/, '').trim())
+      .filter((l) => l.length > 10);
+
+    return {
+      personalDetails: {
+        name: detectedName.toUpperCase(),
+        title: detectedTitle,
+        location: 'Disponível para Projetos / Remoto',
+        phone: phoneMatch ? phoneMatch[0].trim() : '',
+        email: emailMatch ? emailMatch[0] : '',
+        linkedin: cleanUrl || `https://www.linkedin.com/in/${usernameSlug}`,
+        website: siteMatch ? siteMatch[0] : ''
+      },
+      summary:
+        lines.slice(2, 8).filter((l) => l.length > 45).join(' ').slice(0, 650) ||
+        `Profissional com experiência em ${detectedTitle}, focado em entrega de resultados, excelência técnica e colaboração estratégica.`,
+      competencies: [
+        {
+          id: 'comp-lk-1',
+          category: 'Competências & Especialidades',
+          description:
+            lines.filter((l) => l.length > 5 && l.length < 70 && !l.includes('@')).slice(2, 10).join(', ') ||
+            'Gestão Estratégica, Liderança Técnica e Execução de Projetos'
+        }
+      ],
+      experiences: [
+        {
+          id: 'exp-lk-1',
+          company: 'Experiência Extraída do Perfil LinkedIn',
+          role: detectedTitle,
+          period: 'Histórico Profissional',
+          location: '',
+          highlights:
+            bullets.length > 0
+              ? bullets.slice(0, 8)
+              : lines.filter((l) => l.length > 35).slice(0, 5)
+        }
+      ],
+      educations: [],
+      trainings: [],
+      languages: [{ language: 'Português', level: 'Fluente / Nativo' }],
+      references: [],
+      templateStyle
+    };
+  }
+
   app.post('/api/extract-linkedin', aiRateLimitMiddleware, async (req, res) => {
     try {
-      const { url, rawText } = req.body || {};
+      const { url, rawText, targetStandard, preferredTemplate, accentColor, fontFamily, language } = req.body || {};
       const jobId = `job_lk_${crypto.randomUUID().slice(0, 8)}`;
 
       if (!url && !rawText) {
-        return res.status(400).json({ error: 'URL do perfil ou texto de apoio não fornecido.' });
+        return res.status(400).json({ error: 'URL do perfil do LinkedIn ou texto/PDF do perfil não fornecido.' });
       }
 
-      const cleanUrl = String(url || '').trim().slice(0, 500);
-      const boundedRawText = String(rawText || '').slice(0, 30000);
-      const usernameMatch = cleanUrl.match(/linkedin\.com\/in\/([^/?#]+)/i);
-      const usernameSlug = usernameMatch ? usernameMatch[1] : 'perfil-profissional';
+      const { normalizedUrl, slug } = normalizeLinkedInUrl(String(url || ''));
+      const usernameSlug = slug || 'perfil-profissional';
+      const cleanUrl = normalizedUrl || String(url || '').trim().slice(0, 500);
+      const boundedRawText = String(rawText || '').trim().slice(0, 45000);
       const cleanName = usernameSlug
+        .replace(/-\d{4,}$/, '')
         .replace(/[-_.]/g, ' ')
-        .replace(/\b\w/g, (c: string) => c.toUpperCase());
+        .replace(/\b\w/g, (c: string) => c.toUpperCase())
+        .trim();
 
-      // If Gemini AI is available, parse and format profile into CVData
+      const resolvedTemplateStyle =
+        preferredTemplate ||
+        (targetStandard === 'tech'
+          ? 'tech_modern'
+          : targetStandard === 'harvard'
+          ? 'executive_harvard'
+          : targetStandard === 'europass'
+          ? 'european_europass'
+          : targetStandard === 'ats'
+          ? 'ats_compact'
+          : 'executive_harvard');
+
+      const logs: string[] = [];
+
+      // STAGE 1: Direct SSRF-safe public LinkedIn HTML + JSON-LD + OpenGraph inspection
+      const publicData = await fetchLinkedInPublicProfileData(cleanUrl);
+      if (publicData.status === 'public_html') {
+        logs.push('Perfil público LinkedIn acedido com sucesso (HTML/JSON-LD/OpenGraph).');
+      } else if (publicData.status === 'authwall_blocked') {
+        logs.push('LinkedIn aplicou barreira de sessão direta — ativando busca web indexada e análise profunda.');
+      }
+
+      // STAGE 2: Google Search Grounding via Gemini to recover full public career details
+      let groundingDossier = '';
+      let groundingSources: Array<{ title: string; uri: string }> = [];
+
+      if (ai && cleanUrl && /linkedin\.com\/in\//i.test(cleanUrl) && boundedRawText.length < 1200) {
+        const researchPrompt = `
+Pesquise publicamente na web e em páginas indexadas do LinkedIn, GitHub, portfólios e imprensa sobre este profissional:
+URL do LinkedIn: ${cleanUrl}
+Nome / identificador: ${cleanName}
+
+OBJETIVO: Recolher ABSOLUTAMENTE TUDO o que estiver indexado publicamente sobre este profissional:
+1. Nome completo exato e Título profissional (Headline)
+2. Localização (cidade/país)
+3. Resumo / Biografia profissional ("Sobre")
+4. TODAS as Experiências Profissionais encontradas (empresa, cargo exato, datas de início/fim, localização, conquistas e projetos)
+5. TODA a Formação Académica (universidades, cursos, graus, datas, honras)
+6. TODAS as Competências (Skills), Tecnologias, Ferramentas e Metodologias
+7. TODAS as Licenças, Certificações, Cursos, Projetos, Publicações, Prémios e Voluntariado
+8. TODOS os Idiomas e links externos (website, portfólio, GitHub)
+
+REGRAS ESTRITAS:
+- Baseie-se estritamente nos resultados de pesquisa encontrados. NÃO invente empregos, empresas ou números fictícios.
+- Liste o máximo de factos reais e detalhados possível.
+        `.trim();
+
+        const searchErrors: string[] = [];
+        for (const searchModel of ['gemini-4-hydrogen', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']) {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 16000);
+          try {
+            const researchRes = await Promise.race([
+              ai.models.generateContent({
+                model: searchModel,
+                contents: researchPrompt,
+                config: {
+                  tools: [{ googleSearch: {} }],
+                  ...(searchModel === 'gemini-4-hydrogen'
+                    ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                    : {}),
+                  abortSignal: controller.signal
+                }
+              }),
+              new Promise<never>((_, reject) => {
+                controller.signal.addEventListener('abort', () => reject(new Error('Timeout na pesquisa LinkedIn')), {
+                  once: true
+                });
+              })
+            ]);
+
+            groundingDossier = (researchRes.text || '').trim().slice(0, 28000);
+            const rawChunks = researchRes.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+            const seenUris = new Set<string>();
+            for (const ch of rawChunks as any[]) {
+              const uri = ch?.web?.uri;
+              const title = ch?.web?.title;
+              if (uri && !seenUris.has(uri)) {
+                seenUris.add(uri);
+                groundingSources.push({ title: String(title || uri).slice(0, 120), uri: String(uri) });
+              }
+              if (groundingSources.length >= 6) break;
+            }
+            if (groundingDossier.length > 80) {
+              logs.push(
+                `Pesquisa web indexada concluída via ${searchModel} (${groundingSources.length} fonte(s) pública(s) verificada(s)).`
+              );
+              break;
+            }
+          } catch (groundErr: any) {
+            const safeMsg = sanitizeTelemetryText(groundErr?.message || String(groundErr), 180);
+            searchErrors.push(`${searchModel}: ${safeMsg}`);
+            console.warn(`Grounding LinkedIn falhou em ${searchModel}:`, safeMsg);
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        if (!groundingDossier && searchErrors.length > 0) {
+          logs.push('Pesquisa web indexada temporariamente limitada — usando metadados públicos e PDF/texto se anexado.');
+        }
+      }
+
+      const evidenceSegments: string[] = [];
+      if (publicData.ogTitle || publicData.ogDescription) {
+        evidenceSegments.push(
+          `[METADATA OPENGRAPH LINKEDIN]\nog:title: ${publicData.ogTitle}\nog:description: ${publicData.ogDescription}\nog:image: ${publicData.ogImage || 'Nenhuma'}`
+        );
+      }
+      if (publicData.jsonLdObjects.length > 0) {
+        evidenceSegments.push(
+          `[DADOS ESTRUTURADOS JSON-LD DO PERFIL]\n${JSON.stringify(publicData.jsonLdObjects, null, 2).slice(0, 12000)}`
+        );
+      }
+      if (publicData.visibleText.length > 120) {
+        evidenceSegments.push(`[TEXTO EXTRAÍDO DA PÁGINA PÚBLICA LINKEDIN]\n${publicData.visibleText.slice(0, 18000)}`);
+      }
+      if (groundingDossier.length > 80) {
+        evidenceSegments.push(`[PESQUISA WEB PROFUNDA & URL GROUNDING]\n${groundingDossier}`);
+      }
+      if (boundedRawText.length > 20) {
+        evidenceSegments.push(`[PDF / TEXTO COMPLETO DO LINKEDIN ENVIADO PELO UTILIZADOR]\n${boundedRawText}`);
+      }
+
+      const combinedEvidence = evidenceSegments.join('\n\n====================================\n\n');
+      const hasStrongEvidence =
+        boundedRawText.length > 80 ||
+        publicData.visibleText.length > 250 ||
+        publicData.jsonLdObjects.length > 0 ||
+        groundingDossier.length > 260;
+
+      // STAGE 3: Full-Profile Executive CVData Synthesis via Gemini
       if (ai) {
         try {
-          const prompt = `
-Você é um especialista em recrutamento executivo e engenharia de dados de perfis profissionais.
-O utilizador solicitou a extração e formatação do histórico profissional a partir do URL público do LinkedIn:
-URL: ${cleanUrl}
-Nome identificado a partir do perfil: ${cleanName}
-Texto adicional fornecido: ${boundedRawText || 'Nenhum texto adicional'}
+          trackAuthenticatedAiUsage(req);
+          const outLangHint =
+            language === 'en'
+              ? 'English (preserve original proper nouns, translate/format section descriptions cleanly in English)'
+              : language === 'es'
+              ? 'Español'
+              : language === 'fr'
+              ? 'Français'
+              : language === 'de'
+              ? 'Deutsch'
+              : language === 'it'
+              ? 'Italiano'
+              : 'Português (ou idioma predominante dos dados reais do perfil)';
 
-Gere um modelo completo de currículo executivo (CVData) baseado neste perfil profissional, estruturado segundo os padrões mais rigorosos de ATS e recrutamento executivo (com conquistas quantificadas no padrão Google XYZ, competências categorizadas e histórico de carreira realista).
+          const synthesisPrompt = `
+Você é o principal arquiteto de currículos executivos e parser de dados de carreira ATS.
+O utilizador pediu para IMPORTAR TUDO DO LINKEDIN (sem omitir nada) e transformar num currículo visualmente bonito, completo e rigoroso.
 
-Retorne ESTRITAMENTE em formato JSON com esta estrutura:
+URL do LinkedIn: ${cleanUrl || 'Não informada'}
+Nome de referência: ${cleanName}
+Idioma preferido: ${outLangHint}
+Modelo visual alvo: ${resolvedTemplateStyle}
+
+EVIDÊNCIAS REAIS RECOLHIDAS DO PERFIL:
+${combinedEvidence || 'Apenas URL pública fornecida sem texto adicional acessível (perfil possivelmente privado).'}
+
+INSTRUÇÕES CRÍTICAS PARA PUXAR TUDO:
+1. EXTRAÇÃO EXAUSTIVA: Extraia 100% das informações presentes nas evidências!
+   - Extraia TODAS as experiências profissionais encontradas (não pare em 2 — se houver 5, 8 ou 12 cargos, inclua TODOS em ordem cronológica reversa!).
+   - Para cada cargo, mantenha empresa, cargo, datas e localização reais e crie de 3 a 6 bullet points ricos baseados nos factos e responsabilidades descritos.
+   - Extraia TODAS as competências, tecnologias, stacks e metodologias, agrupando-as em 5 a 8 categorias claras em "competencies".
+   - Extraia TODAS as formações académicas em "educations" (inclua grau, instituição, período e gpaOrHonors quando existir).
+   - Em "trainings", inclua ABSOLUTAMENTE TODAS as certificações, licenças, cursos relevantes, projetos de destaque, publicações, prémios/honras e trabalho voluntário encontrados no perfil (ex: "Certificação: ...", "Projeto: ...", "Prémio: ...", "Voluntariado: ...").
+   - Extraia TODOS os idiomas em "languages" com nível claro.
+   - Em "references", inclua recomendações recebidas no LinkedIn caso existam nas evidências; caso contrário retorne lista vazia [].
+2. FIDELIDADE ABSOLUTA:
+   - Use apenas informações reais das evidências fornecidas. NÃO invente telefones fictícios, emails falsos ou empresas inexistentes. Se faltar email ou telefone, deixe string vazia "" (não coloque dados falsos).
+   - Se o perfil tiver poucos dados públicos porque o LinkedIn bloqueou o acesso privado, preencha apenas o que foi verificado e indique em "extractionNotes" o que faltou.
+3. ESTÉTICA & TEMPLATE ("Currículo Bonito"):
+   - Escolha o melhor "recommendedAccentColor" em hex executivo (ex: "#0f172a", "#1e3a8a", "#0f766e", "#1d4ed8") e "recommendedFontFamily" ("jakarta" | "garamond" | "mono" | "cinzel") conforme a área real do candidato.
+   - Mantenha "templateStyle": "${resolvedTemplateStyle}" (ou sugira "tech_modern" se for engenharia/TI e targetStandard não tiver forçado outro).
+
+Retorne ESTRITAMENTE JSON válido com esta estrutura exata:
 {
   "personalDetails": {
-    "name": "${cleanName.toUpperCase()}",
-    "title": "Título Profissional Executivo e de Liderança",
-    "location": "Localização Principal (ex: São Paulo, Brasil / Lisboa / Luanda / Remoto)",
-    "phone": "+55 11 99876-5432",
-    "email": "${usernameSlug.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'contacto'}@perfil-profissional.com",
+    "name": "NOME COMPLETO EM MAIÚSCULAS",
+    "title": "Headline / Título Profissional Real",
+    "location": "Cidade, País",
+    "phone": "",
+    "email": "",
     "linkedin": "${cleanUrl || 'linkedin.com/in/' + usernameSlug}",
-    "website": "https://github.com/${usernameSlug.toLowerCase()}"
+    "website": ""
   },
-  "summary": "Resumo executivo de alto impacto de 4 a 6 linhas destacando especialidade, anos de experiência e impacto mensurável.",
+  "summary": "Resumo executivo completo e persuasivo (4 a 6 linhas) fiel ao perfil.",
   "competencies": [
-    { "id": "comp-lk-1", "category": "Liderança & Estratégia", "description": "Gestão de equipas, desenho de metas e governança de resultados." },
-    { "id": "comp-lk-2", "category": "Domínio Técnico & Sistemas", "description": "Arquiteturas escaláveis, processos ágeis e tecnologias modernas." },
-    { "id": "comp-lk-3", "category": "Gestão de P&L e Eficiência", "description": "Otimização de custos, orçamentos e eficiência operacional." },
-    { "id": "comp-lk-4", "category": "Comunicação com Stakeholders", "description": "Alinhamento com diretoria executiva e parceiros internacionais." }
+    { "id": "comp-lk-1", "category": "Categoria Temática", "description": "Lista completa de competências e ferramentas desta categoria" }
   ],
   "experiences": [
     {
       "id": "exp-lk-1",
-      "company": "Empresa Líder de Mercado",
-      "role": "Líder Sénior / Diretor Funcional",
-      "period": "2022 – Presente",
-      "location": "Híbrido / Remoto",
-      "highlights": [
-        "Liderou projetos estratégicos com equipa de 15+ profissionais, reduzindo tempo de entrega em 34%.",
-        "Implementou novos processos operacionais gerando poupança anual superior a $250.000.",
-        "Aumentou os índices de satisfação interna e conformidade de entregas para 98%."
-      ]
-    },
-    {
-      "id": "exp-lk-2",
-      "company": "Corporação Anterior",
-      "role": "Especialista / Coordenador",
-      "period": "2019 – 2022",
-      "location": "Presencial",
-      "highlights": [
-        "Coordenou reestruturação de fluxos operacionais, elevando a eficiência da unidade em 28%.",
-        "Conduziu capacitação técnica de mais de 40 colaboradores."
-      ]
+      "company": "Nome Real da Empresa",
+      "role": "Cargo Real",
+      "period": "MM/AAAA – MM/AAAA ou Presente",
+      "location": "Cidade / Remoto",
+      "donor": "Área / Unidade (opcional)",
+      "highlights": ["Realização detalhada 1", "Realização detalhada 2", "Realização detalhada 3"]
     }
   ],
   "educations": [
     {
       "id": "edu-lk-1",
-      "degree": "Pós-Graduação / MBA Executivo",
-      "institution": "Escola de Negócios / Universidade de Referência",
-      "period": "2020 – 2021"
-    },
-    {
-      "id": "edu-lk-2",
-      "degree": "Bacharelado / Licenciatura",
-      "institution": "Universidade de Tecnologia e Ciências",
-      "period": "2015 – 2019"
+      "degree": "Curso / Grau Académico",
+      "institution": "Instituição de Ensino",
+      "period": "AAAA – AAAA",
+      "gpaOrHonors": ""
     }
   ],
-  "trainings": [
-    "Certificação Profissional Internacional",
-    "Gestão Ágil e Governança de Projetos",
-    "Liderança Executiva & Tomada de Decisão"
-  ],
+  "trainings": ["Certificação / Projeto / Curso / Prémio / Voluntariado"],
   "languages": [
-    { "language": "Português", "level": "Nativo" },
-    { "language": "Inglês", "level": "Fluente / Negociação Profissional" }
+    { "language": "Idioma", "level": "Nível" }
   ],
-  "references": [
-    {
-      "id": "ref-lk-1",
-      "name": "Diretor Executivo de Operações",
-      "institutionAndPosition": "Empresa Líder / Conselho Diretivo",
-      "contact": "referencia@empresa.com"
-    }
-  ],
-  "templateStyle": "executive_harvard"
+  "references": [],
+  "recommendedAccentColor": "#0f172a",
+  "recommendedFontFamily": "jakarta",
+  "templateStyle": "${resolvedTemplateStyle}",
+  "extractionNotes": "Breve nota factual sobre as secções encontradas."
 }
           `.trim();
 
-          const response = await generateContentWithRetry(prompt, {
-            responseMimeType: 'application/json'
+          const synthesisRes = await generateContentWithRetry(synthesisPrompt, {
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
           });
 
-          const extractedCV = parseAiJson(response.text);
+          const rawParsed = parseAiJson(synthesisRes.text);
+          const experiences = Array.isArray(rawParsed?.experiences) ? rawParsed.experiences : [];
+          const competencies = Array.isArray(rawParsed?.competencies) ? rawParsed.competencies : [];
+          const educations = Array.isArray(rawParsed?.educations) ? rawParsed.educations : [];
+          const trainings = Array.isArray(rawParsed?.trainings) ? rawParsed.trainings : [];
+          const languages = Array.isArray(rawParsed?.languages) ? rawParsed.languages : [];
+          const references = Array.isArray(rawParsed?.references) ? rawParsed.references : [];
+
+          const extractedCV = {
+            personalDetails: {
+              name: String(rawParsed?.personalDetails?.name || cleanName).toUpperCase(),
+              title: String(rawParsed?.personalDetails?.title || publicData.ogTitle || 'Especialista Profissional'),
+              location: String(rawParsed?.personalDetails?.location || ''),
+              phone: String(rawParsed?.personalDetails?.phone || ''),
+              email: String(rawParsed?.personalDetails?.email || ''),
+              linkedin: String(rawParsed?.personalDetails?.linkedin || cleanUrl || `https://www.linkedin.com/in/${usernameSlug}`),
+              website: String(rawParsed?.personalDetails?.website || ''),
+              ...(publicData.ogImage
+                ? {
+                    photoUrl: `/api/proxy-image?url=${encodeURIComponent(publicData.ogImage)}`,
+                    showPhoto: resolvedTemplateStyle === 'european_europass' || resolvedTemplateStyle === 'creative_split'
+                  }
+                : {})
+            },
+            summary: String(rawParsed?.summary || publicData.ogDescription || ''),
+            competencies: competencies.map((c: any, idx: number) => ({
+              id: c.id || `comp-lk-${idx + 1}`,
+              category: String(c.category || 'Competências'),
+              description: String(c.description || '')
+            })),
+            experiences: experiences.map((e: any, idx: number) => ({
+              id: e.id || `exp-lk-${idx + 1}`,
+              company: String(e.company || ''),
+              role: String(e.role || ''),
+              period: String(e.period || ''),
+              location: e.location ? String(e.location) : undefined,
+              donor: e.donor ? String(e.donor) : undefined,
+              highlights: Array.isArray(e.highlights) ? e.highlights.map((h: any) => String(h)) : []
+            })),
+            educations: educations.map((ed: any, idx: number) => ({
+              id: ed.id || `edu-lk-${idx + 1}`,
+              degree: String(ed.degree || ''),
+              institution: String(ed.institution || ''),
+              period: String(ed.period || ''),
+              gpaOrHonors: ed.gpaOrHonors ? String(ed.gpaOrHonors) : undefined
+            })),
+            trainings: trainings.map((t: any) => String(t)).filter(Boolean),
+            languages: languages.map((lng: any) => ({
+              language: String(lng.language || ''),
+              level: String(lng.level || '')
+            })),
+            references: references.map((r: any, idx: number) => ({
+              id: r.id || `ref-lk-${idx + 1}`,
+              name: String(r.name || ''),
+              institutionAndPosition: String(r.institutionAndPosition || ''),
+              contact: String(r.contact || '')
+            })),
+            templateStyle: rawParsed?.templateStyle || resolvedTemplateStyle,
+            accentColor: accentColor || rawParsed?.recommendedAccentColor || '#0f172a',
+            fontFamily: fontFamily || rawParsed?.recommendedFontFamily || 'jakarta'
+          };
+
+          const highlightsTotal = extractedCV.experiences.reduce(
+            (sum: number, exp: any) => sum + (exp.highlights?.length || 0),
+            0
+          );
+
+          const needsSupplementalPdfOrPaste =
+            !boundedRawText &&
+            publicData.status === 'authwall_blocked' &&
+            (extractedCV.experiences.length <= 1 || !hasStrongEvidence);
+
+          const completenessScore = Math.min(
+            100,
+            Math.round(
+              (extractedCV.personalDetails.name ? 15 : 0) +
+                (extractedCV.summary.length > 40 ? 15 : 0) +
+                Math.min(35, extractedCV.experiences.length * 10) +
+                Math.min(15, extractedCV.competencies.length * 3) +
+                Math.min(10, extractedCV.educations.length * 5) +
+                Math.min(5, extractedCV.trainings.length * 2) +
+                Math.min(5, extractedCV.languages.length * 2.5)
+            )
+          );
+
+          logs.push(
+            `Extração estruturada: ${extractedCV.experiences.length} cargo(s), ${highlightsTotal} conquista(s), ${extractedCV.competencies.length} bloco(s) de competências, ${extractedCV.trainings.length} certificação(ões)/projeto(s).`
+          );
+
           return res.json({
             jobId,
             status: 'completed',
-            source: 'gemini_extraction',
+            source: boundedRawText ? 'linkedin_pdf_and_ai' : groundingDossier ? 'linkedin_grounding_ai' : 'gemini_extraction',
             url: cleanUrl,
             extractedCV,
-            logs: [
-              'Conectado ao perfil público do LinkedIn com sucesso.',
-              'Mapeados histórico de cargos, competências e conquistas.',
-              'Calibrada formatação de impacto Google XYZ e padrões de leitura ATS.'
-            ]
+            extractionReport: {
+              directFetchStatus: publicData.status,
+              groundingUsed: groundingDossier.length > 100,
+              rawTextUsed: boundedRawText.length > 20,
+              profilePhotoFound: Boolean(publicData.ogImage),
+              groundingSources,
+              completenessScore,
+              needsSupplementalPdfOrPaste,
+              extractionNotes: String(rawParsed?.extractionNotes || ''),
+              counts: {
+                experiences: extractedCV.experiences.length,
+                competencies: extractedCV.competencies.length,
+                educations: extractedCV.educations.length,
+                trainings: extractedCV.trainings.length,
+                languages: extractedCV.languages.length,
+                highlightsTotal
+              }
+            },
+            logs
           });
-        } catch (aiErr) {
-          console.warn('Falha no Gemini para extração LinkedIn, aplicando fallback inteligente:', aiErr);
+        } catch (aiErr: any) {
+          console.warn('Falha no Gemini para extração LinkedIn, aplicando parser local:', aiErr?.message || aiErr);
         }
       }
 
-      // Smart fallback profile extraction
-      const fallbackCV = {
-        personalDetails: {
-          name: cleanName.toUpperCase(),
-          title: 'Líder Executivo em Gestão, Estratégia & Tecnologia',
-          location: 'Disponível para Mobilidade / Trabalho Remoto',
-          phone: '+55 11 98765-4321',
-          email: `${usernameSlug.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'contacto'}@perfil-profissional.com`,
-          linkedin: cleanUrl || `https://linkedin.com/in/${usernameSlug}`,
-          website: `https://linkedin.com/in/${usernameSlug}`
-        },
-        summary: `Profissional de alta liderança com sólida trajetória comprovada em gestão de projetos complexos, eficiência operacional e transformação de processos. Reconhecido pela capacidade de liderar equipas multidisciplinares, alinhar objetivos estratégicos e entregar resultados quantificáveis em ambientes corporativos competitivos.`,
-        competencies: [
-          { id: 'comp-1', category: 'Liderança Estratégica & Governança', description: 'Gestão de metas operacionais, OKRs e relatórios para a diretoria.' },
-          { id: 'comp-2', category: 'Eficiência de Processos & P&L', description: 'Otimização de custos, alocação de recursos e conformidade rigorosa.' },
-          { id: 'comp-3', category: 'Transformação Digital & Dados', description: 'Business Intelligence, análise preditiva e desenho de arquiteturas ágeis.' },
-          { id: 'comp-4', category: 'Gestão de Risco & Stakeholders', description: 'Mediação institucional, negociação de alto nível e compliance.' }
-        ],
-        experiences: [
-          {
-            id: 'exp-1',
-            company: 'Organização Corporativa de Grande Porte',
-            role: 'Head de Operações & Estratégia',
-            period: '2021 – Presente',
-            location: 'Híbrido',
-            highlights: [
-              'Liderou transformação dos fluxos de trabalho gerando aumento de produtividade de 31% e redução de desperdícios operacionais.',
-              'Geriu portfólio de iniciativas transversais com orçamento superior a $1.2M, concluindo 100% dos marcos no prazo.',
-              'Supervisionou equipa multidisciplinar de 18 especialistas em 3 unidades regionais.'
-            ]
-          },
-          {
-            id: 'exp-2',
-            company: 'Empresa de Consultoria e Serviços Estratégicos',
-            role: 'Gerente Sénior de Projetos',
-            period: '2018 – 2021',
-            location: 'Presencial',
-            highlights: [
-              'Estruturou auditorias de qualidade e governança que elevaram os índices de retenção de clientes para 94%.',
-              'Reduziu o ciclo médio de entrega de projetos em 22% através da implementação de metodologias ágeis.'
-            ]
-          }
-        ],
-        educations: [
-          {
-            id: 'edu-1',
-            degree: 'Mestrado Profissional / MBA Executivo',
-            institution: 'Universidade de Referência Internacional',
-            period: '2019 – 2021'
-          },
-          {
-            id: 'edu-2',
-            degree: 'Licenciatura em Engenharia / Administração',
-            institution: 'Faculdade de Tecnologia e Ciências',
-            period: '2014 – 2018'
-          }
-        ],
-        trainings: [
-          'Certificação em Gestão de Projetos Avançada (PMP / Scrum Master)',
-          'Governança Corporativa e Gestão de Crises',
-          'Inteligência de Dados e Analytics Executivo'
-        ],
-        languages: [
-          { language: 'Português', level: 'Nativo' },
-          { language: 'Inglês', level: 'Fluente (Profissional Completo)' }
-        ],
-        references: [
-          {
-            id: 'ref-1',
-            name: 'Carlos Alberto Menezes',
-            institutionAndPosition: 'Vice-Presidente de Operações / Holding',
-            contact: 'carlos.menezes@holding-exec.com'
-          }
-        ],
-        templateStyle: 'executive_harvard'
-      };
+      // Fallback when Gemini API key is unavailable or all AI models fail
+      const fallbackCV = boundedRawText
+        ? parseLinkedInRawTextFallback(boundedRawText, cleanName, cleanUrl, usernameSlug, resolvedTemplateStyle)
+        : {
+            personalDetails: {
+              name: cleanName.toUpperCase(),
+              title: publicData.ogTitle || 'Especialista Profissional',
+              location: '',
+              phone: '',
+              email: '',
+              linkedin: cleanUrl || `https://www.linkedin.com/in/${usernameSlug}`,
+              website: '',
+              ...(publicData.ogImage
+                ? {
+                    photoUrl: `/api/proxy-image?url=${encodeURIComponent(publicData.ogImage)}`,
+                    showPhoto: false
+                  }
+                : {})
+            },
+            summary:
+              publicData.ogDescription ||
+              'Perfil conectado via URL do LinkedIn. Para importar todos os cargos, competências, formações e certificações automaticamente, anexe o PDF do seu LinkedIn ("Mais -> Guardar como PDF") ou cole o texto completo do perfil.',
+            competencies: [],
+            experiences: [],
+            educations: [],
+            trainings: [],
+            languages: [],
+            references: [],
+            templateStyle: resolvedTemplateStyle,
+            accentColor: accentColor || '#0f172a',
+            fontFamily: fontFamily || 'jakarta'
+          };
 
       return res.json({
         jobId,
         status: 'completed',
-        source: 'smart_parser',
+        source: boundedRawText ? 'local_text_parser' : 'public_meta_only',
         url: cleanUrl,
         extractedCV: fallbackCV,
+        extractionReport: {
+          directFetchStatus: publicData.status,
+          groundingUsed: false,
+          rawTextUsed: boundedRawText.length > 20,
+          profilePhotoFound: Boolean(publicData.ogImage),
+          groundingSources,
+          completenessScore: boundedRawText ? 55 : 20,
+          needsSupplementalPdfOrPaste: !boundedRawText,
+          extractionNotes: !boundedRawText
+            ? 'LinkedIn restringiu secções privadas sem login. Anexe o PDF do LinkedIn para extração 100% completa.'
+            : 'Extraído a partir do texto/PDF fornecido.',
+          counts: {
+            experiences: fallbackCV.experiences.length,
+            competencies: fallbackCV.competencies.length,
+            educations: fallbackCV.educations.length,
+            trainings: fallbackCV.trainings.length,
+            languages: fallbackCV.languages.length,
+            highlightsTotal: fallbackCV.experiences.reduce((s: number, e: any) => s + (e.highlights?.length || 0), 0)
+          }
+        },
         logs: [
-          'Perfil público localizado e validado.',
-          'Carreira e competências estruturadas com sucesso pelo worker em background.',
-          'Pronto para inserção no editor.'
+          ...logs,
+          boundedRawText
+            ? 'Dados do perfil extraídos localmente a partir do texto/PDF enviado.'
+            : 'Cabeçalho público importado; anexe o PDF do LinkedIn para carregar todas as experiências.'
         ]
       });
     } catch (err: any) {
@@ -1796,6 +2320,123 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     res.json(buildPaymentConfigPayload());
   });
 
+  app.get('/api/payments/card-health', async (_req, res) => {
+    const secretMode = !stripeSecretKey
+      ? 'missing'
+      : stripeSecretKey.startsWith('sk_live_') || stripeSecretKey.startsWith('rk_live_')
+      ? 'live'
+      : 'test';
+    const publishableMode = !stripePublishableKey
+      ? 'missing'
+      : stripePublishableKey.startsWith('pk_live_')
+      ? 'live'
+      : 'test';
+    const keysMatchMode = secretMode !== 'missing' && publishableMode !== 'missing' && secretMode === publishableMode;
+
+    if (!stripeClient) {
+      return res.json({
+        ready: false,
+        secretMode,
+        publishableMode,
+        keysMatchMode,
+        apiReachable: false,
+        error: 'Chave secreta Stripe não configurada.'
+      });
+    }
+
+    try {
+      await stripeClient.products.list({ limit: 1 });
+      return res.json({
+        ready: Boolean(stripeClient && stripePublishableKey && keysMatchMode),
+        secretMode,
+        publishableMode,
+        keysMatchMode,
+        apiReachable: true
+      });
+    } catch (err: any) {
+      return res.json({
+        ready: false,
+        secretMode,
+        publishableMode,
+        keysMatchMode,
+        apiReachable: false,
+        error: err?.message || 'Falha ao validar conexão com o processador de cartão.'
+      });
+    }
+  });
+
+  function activateOrderAndUserPlan(order: any) {
+    if (!order) return null;
+    order.status = 'paid';
+    order.updatedAt = new Date().toISOString();
+    const targetUser =
+      (order.userId && authStore.users[order.userId]) ||
+      (order.userEmail ? findBackendUserByEmail(order.userEmail) : undefined);
+    if (targetUser && ['pro', 'executive'].includes(order.plan)) {
+      const normalizedCycle = normalizeServerCycle(order.billingCycle);
+      const days = getServerCycleSpec(normalizedCycle).days;
+      targetUser.plan = order.plan;
+      targetUser.creditsRemaining = 9999;
+      targetUser.billingCycle = normalizedCycle;
+      targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      targetUser.stripeStatus = 'active';
+      targetUser.status = 'active';
+      targetUser.updatedAt = new Date().toISOString();
+    }
+    persistAuthStore();
+    return targetUser || null;
+  }
+
+  // 1B. Check Personal Pix Payment Status (polls backend approval from Admin Panel)
+  app.get('/api/payments/pix/status/:orderId', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const orderId = String(req.params.orderId || '').trim();
+      const sessionUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const cleanEmail = String(sessionUser?.email || payload.email || '').trim().toLowerCase();
+      const directOrders = authStore.ordersByUser?.[payload.uid] || [];
+      let order = directOrders.find((o) => o?.id === orderId || o?.orderNumber === orderId);
+      if (!order && cleanEmail) {
+        for (const list of Object.values(authStore.ordersByUser || {})) {
+          const found = (list || []).find(
+            (o) =>
+              (o?.id === orderId || o?.orderNumber === orderId) &&
+              String(o?.userEmail || '').trim().toLowerCase() === cleanEmail
+          );
+          if (found) {
+            order = found;
+            break;
+          }
+        }
+      }
+      if (!order) {
+        return res.status(404).json({ error: 'Pedido Pix não encontrado.' });
+      }
+
+      if (order.status === 'paid') {
+        const syncedUser = activateOrderAndUserPlan(order) || sessionUser;
+        return res.json({
+          status: 'paid',
+          order,
+          user: syncedUser ? sanitizeUser(syncedUser) : null
+        });
+      }
+
+      return res.json({
+        status: order.status,
+        order,
+        user: sessionUser ? sanitizeUser(sessionUser) : null
+      });
+    } catch (err: any) {
+      console.error('Erro em GET /api/payments/pix/status:', err);
+      return res.status(500).json({ error: 'Erro ao verificar estado do pagamento Pix.' });
+    }
+  });
+
   // 2. Create Tokenized Card Recurring Subscription Intent (In-Modal PCI-DSS Flow)
   app.post('/api/payments/create-subscription-intent', async (req, res) => {
     try {
@@ -1890,11 +2531,26 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       if (!stripeClient) {
         return res.status(503).json({
-          error: 'O pagamento por cartão não está disponível neste momento. Utilize o Pix Instantâneo ou tente mais tarde.'
+          error: 'O pagamento por cartão não está disponível neste momento. Utilize o Pix ou tente mais tarde.'
+        });
+      }
+
+      if (unitAmountCents > 0 && unitAmountCents < 50) {
+        return res.status(400).json({
+          error:
+            targetCurrency === 'brl'
+              ? 'O valor mínimo para pagamento por cartão é R$ 0,50 BRL. Para este valor, utilize o Pix.'
+              : 'O valor mínimo para cobrança em cartão USD é $0.50. Altere a moeda para BRL ou utilize o Pix.'
         });
       }
 
       let customerId = sessionUser?.stripeCustomerId;
+      if (customerId) {
+        const existingCus = await stripeClient.customers.retrieve(customerId).catch(() => null);
+        if (!existingCus || (existingCus as any).deleted) {
+          customerId = undefined;
+        }
+      }
       if (!customerId) {
         const existingCustomers = await stripeClient.customers.list({ email: cleanEmail, limit: 1 });
         if (existingCustomers.data.length > 0) {
@@ -2204,6 +2860,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!stripeClient) {
         return res.status(503).json({
           error: 'O pagamento por cartão não está disponível neste momento. Utilize o pagamento via Pix.'
+        });
+      }
+
+      if (unitAmountCents > 0 && unitAmountCents < 50) {
+        return res.status(400).json({
+          error:
+            targetCurrency === 'brl'
+              ? 'O valor mínimo para pagamento por cartão é R$ 0,50 BRL. Para este valor, utilize o Pix.'
+              : 'O valor mínimo para cobrança em cartão USD é $0.50. Altere a moeda para BRL ou utilize o Pix.'
         });
       }
 
@@ -3114,25 +3779,400 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return cur.count <= maxRequests;
   }
 
+  // -------------------------------------------------------------
+  // ANTI-BOT REGISTRATION SHIELD (CAPTCHA + HONEYPOT + TIMING + DISPOSABLE EMAIL + STRICT RATE LIMIT)
+  // -------------------------------------------------------------
+  const checkSignupChallengeRateLimit = createRateLimiter(25, 60_000);
+  const checkSignupAttemptLimit = createRateLimiter(12, 15 * 60_000);
+  const checkSignupSuccessLimit = createRateLimiter(5, 60 * 60_000);
+
+  interface SignupChallengeEntry {
+    id: string;
+    expectedAnswer: string;
+    issuedAt: number;
+    expiresAt: number;
+    attempts: number;
+  }
+  const activeSignupChallenges = new Map<string, SignupChallengeEntry>();
+
+  const DISPOSABLE_EMAIL_DOMAINS = new Set([
+    'mailinator.com',
+    'tempmail.com',
+    'temp-mail.org',
+    'temp-mail.io',
+    '10minutemail.com',
+    '10minutemail.net',
+    'guerrillamail.com',
+    'guerrillamail.info',
+    'guerrillamail.org',
+    'guerrillamail.net',
+    'guerrillamailblock.com',
+    'sharklasers.com',
+    'grr.la',
+    'yopmail.com',
+    'yopmail.fr',
+    'yopmail.net',
+    'trashmail.com',
+    'trashmail.net',
+    'getnada.com',
+    'nada.email',
+    'dispostable.com',
+    'maildrop.cc',
+    'mohmal.com',
+    'fakeinbox.com',
+    'throwawaymail.com',
+    'mailnesia.com',
+    'mintemail.com',
+    'mytemp.email',
+    'emailondeck.com',
+    'burnermail.io',
+    'tempail.com',
+    'tempr.email',
+    'mailcatch.com',
+    'moakt.com',
+    'inboxbear.com',
+    'spamgourmet.com',
+    'spambog.com',
+    'crazymailing.com',
+    'dropmail.me',
+    'harakirimail.com',
+    'mail-temporaire.fr',
+    'tmpmail.org',
+    'tmpmail.net',
+    'tempinbox.com',
+    'trash-mail.com',
+    'jetable.org',
+    'wegwerfmail.de'
+  ]);
+
+  function isAutomatedBotUserAgent(req: express.Request): boolean {
+    const ua = String(req.headers['user-agent'] || '').trim().toLowerCase();
+    if (!ua || ua.length < 8) return true;
+    return /(curl\/|wget\/|python-requests|python-urllib|aiohttp|httpx|scrapy|go-http-client|java\/|axios\/|node-fetch|undici|postmanruntime|insomnia\/|headlesschrome|phantomjs|selenium|playwright|puppeteer|mechanize|nikto|sqlmap|zgrab)/i.test(
+      ua
+    );
+  }
+
+  function signChallengeToken(challengeId: string, issuedAt: number): string {
+    const payload = `${challengeId}.${issuedAt}`;
+    const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(payload).digest('base64url');
+    return `${payload}.${sig}`;
+  }
+
+  function verifyChallengeToken(token: string, expectedChallengeId: string): boolean {
+    try {
+      const parts = String(token || '').split('.');
+      if (parts.length !== 3) return false;
+      const [cid, issuedRaw, providedSig] = parts;
+      if (cid !== expectedChallengeId) return false;
+      const expectedSig = crypto
+        .createHmac('sha256', AUTH_TOKEN_SECRET)
+        .update(`${cid}.${issuedRaw}`)
+        .digest('base64url');
+      const a = Buffer.from(providedSig, 'utf8');
+      const b = Buffer.from(expectedSig, 'utf8');
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch {
+      return false;
+    }
+  }
+
+  function buildMathCaptchaSvg(chars: string[]): string {
+    const width = 188;
+    const height = 52;
+    const lineColors = ['#cbd5e1', '#94a3b8', '#e2e8f0'];
+    const textColors = ['#0f172a', '#1e293b', '#334155', '#92400e'];
+
+    let noiseLines = '';
+    for (let i = 0; i < 5; i += 1) {
+      const x1 = crypto.randomInt(0, 40);
+      const y1 = crypto.randomInt(5, height - 5);
+      const cx = crypto.randomInt(50, 140);
+      const cy = crypto.randomInt(2, height - 2);
+      const x2 = crypto.randomInt(width - 40, width);
+      const y2 = crypto.randomInt(5, height - 5);
+      const color = lineColors[i % lineColors.length];
+      noiseLines += `<path d="M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}" fill="none" stroke="${color}" stroke-width="1.35" opacity="0.85"/>`;
+    }
+
+    let noiseDots = '';
+    for (let i = 0; i < 16; i += 1) {
+      const cx = crypto.randomInt(6, width - 6);
+      const cy = crypto.randomInt(4, height - 4);
+      const r = (crypto.randomInt(10, 22) / 10).toFixed(1);
+      noiseDots += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#94a3b8" opacity="0.45"/>`;
+    }
+
+    const totalChars = chars.length;
+    const step = (width - 28) / Math.max(1, totalChars);
+    let glyphSvg = '';
+    chars.forEach((ch, idx) => {
+      const x = Math.round(16 + idx * step + crypto.randomInt(-2, 3));
+      const y = Math.round(33 + crypto.randomInt(-5, 5));
+      const rot = crypto.randomInt(-11, 12);
+      const color = textColors[crypto.randomInt(0, textColors.length)];
+      const safeChar = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      glyphSvg += `<text x="${x}" y="${y}" fill="${color}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" font-weight="800" transform="rotate(${rot} ${x} ${y})">${safeChar}</text>`;
+    });
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="${width}" height="${height}" rx="8" fill="#f8fafc"/>
+  <path d="M0 17 H${width} M0 35 H${width} M47 0 V${height} M94 0 V${height} M141 0 V${height}" stroke="#e2e8f0" stroke-width="0.7" opacity="0.6"/>
+  ${noiseLines}
+  ${noiseDots}
+  ${glyphSvg}
+</svg>`;
+  }
+
+  app.get('/api/auth/signup-challenge', (req, res) => {
+    if (!checkSignupChallengeRateLimit(req)) {
+      return res.status(429).json({
+        error: 'Demasiados pedidos de verificação. Aguarde um momento.'
+      });
+    }
+
+    const now = Date.now();
+    if (activeSignupChallenges.size > 4500) {
+      for (const [k, v] of activeSignupChallenges.entries()) {
+        if (now > v.expiresAt) activeSignupChallenges.delete(k);
+      }
+      if (activeSignupChallenges.size > 4500) activeSignupChallenges.clear();
+    }
+
+    const useSubtraction = crypto.randomInt(0, 3) === 0;
+    let a = crypto.randomInt(2, 16);
+    let b = crypto.randomInt(1, 12);
+    let answer = a + b;
+    let op = '+';
+    if (useSubtraction) {
+      a = crypto.randomInt(7, 20);
+      b = crypto.randomInt(1, Math.min(8, a - 1));
+      answer = a - b;
+      op = '-';
+    }
+
+    const chars = [...String(a), op, ...String(b), '=', '?'];
+    const svgMarkup = buildMathCaptchaSvg(chars);
+    const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgMarkup, 'utf8').toString('base64')}`;
+
+    const challengeId = crypto.randomBytes(12).toString('hex');
+    const issuedAt = now;
+    const ttlMs = 10 * 60_000;
+
+    activeSignupChallenges.set(challengeId, {
+      id: challengeId,
+      expectedAnswer: String(answer),
+      issuedAt,
+      expiresAt: issuedAt + ttlMs,
+      attempts: 0
+    });
+
+    const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+    const botProtectionEnabled = gov.enableBotProtection !== false;
+
+    return res.json({
+      challengeId,
+      challengeToken: signChallengeToken(challengeId, issuedAt),
+      imageUrl: svgDataUrl,
+      minWaitMs: 2000,
+      expiresInSeconds: 600,
+      botProtectionEnabled
+    });
+  });
+
   app.post('/api/auth/register', (req, res) => {
     try {
-      if (!checkAuthRateLimit(req, 20, 60_000)) {
-        return res.status(429).json({
-          code: 'auth/too-many-requests',
-          error: 'Demasiadas tentativas consecutivas. Aguarde um minuto antes de tentar novamente.'
+      const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+      if (gov.allowNewRegistrations === false) {
+        return res.status(403).json({
+          code: 'auth/registrations-paused',
+          error: 'Novos registos estão temporariamente pausados pelo administrador.'
         });
       }
 
-      const { name, email, password, targetRole, rememberMe = true } = req.body || {};
+      if (!checkAuthRateLimit(req, 15, 60_000) || !checkSignupAttemptLimit(req)) {
+        appendServerAuditLog(req, {
+          actorRole: 'anonymous',
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/auth/register',
+          details: 'Registo bloqueado por excesso de tentativas consecutivas (proteção anti-robôs).',
+          metadata: { httpStatus: 429, botReason: 'rate_limit' }
+        });
+        return res.status(429).json({
+          code: 'auth/too-many-requests',
+          error: 'Demasiadas tentativas consecutivas. Aguarde alguns minutos antes de tentar novamente.'
+        });
+      }
+
+      const botProtectionEnabled = gov.enableBotProtection !== false;
+      const {
+        name,
+        email,
+        password,
+        targetRole,
+        rememberMe = true,
+        challengeId,
+        challengeToken,
+        challengeAnswer,
+        website,
+        companyUrl,
+        companyPhone,
+        hpTrap
+      } = req.body || {};
+
       const cleanEmail = String(email || '').trim().toLowerCase();
       const cleanName = String(name || '').trim();
       const cleanPassword = String(password || '');
+
+      if (botProtectionEnabled) {
+        // 1. Block known headless/script HTTP user-agents
+        if (isAutomatedBotUserAgent(req)) {
+          appendServerAuditLog(req, {
+            actorEmail: cleanEmail || 'bot@unknown',
+            actorRole: 'anonymous',
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: '/api/auth/register',
+            details: 'Tentativa de registo automatizado bloqueada (cliente HTTP/robô detetado).',
+            metadata: { httpStatus: 403, botReason: 'automated_user_agent' }
+          });
+          return res.status(403).json({
+            code: 'auth/bot-detected',
+            error: 'Registo bloqueado pela proteção anti-robôs. Utilize um navegador padrão.'
+          });
+        }
+
+        // 2. Honeypot invisible fields trap
+        const honeypotTriggered = [website, companyUrl, companyPhone, hpTrap].some(
+          (val) => typeof val === 'string' && val.trim().length > 0
+        );
+        if (honeypotTriggered) {
+          appendServerAuditLog(req, {
+            actorEmail: cleanEmail || 'bot@honeypot',
+            actorRole: 'anonymous',
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'critical',
+            status: 'blocked',
+            targetResource: '/api/auth/register',
+            details: 'Robô de spam detetado e bloqueado via campo armadilha (honeypot) no formulário de registo.',
+            metadata: { httpStatus: 403, botReason: 'honeypot_triggered' }
+          });
+          return res.status(403).json({
+            code: 'auth/bot-detected',
+            error: 'Submissão rejeitada pela proteção automática contra robôs.'
+          });
+        }
+
+        // 3. Reject spam links inside name field
+        if (!cleanName || cleanName.length > 100 || /(https?:\/\/|www\.|<script)/i.test(cleanName)) {
+          return res.status(400).json({
+            code: 'auth/invalid-name',
+            error: 'Insira um nome válido sem URLs ou caracteres inválidos.'
+          });
+        }
+
+        // 4. Cryptographic single-use CAPTCHA + human minimum timing check
+        const cid = String(challengeId || '').trim();
+        const ctok = String(challengeToken || '').trim();
+        const cans = String(challengeAnswer ?? '').trim();
+
+        if (!cid || !ctok || !verifyChallengeToken(ctok, cid)) {
+          appendServerAuditLog(req, {
+            actorEmail: cleanEmail || 'bot@no-token',
+            actorRole: 'anonymous',
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: '/api/auth/register',
+            details: 'Tentativa de registo bloqueada: desafio de verificação humana ausente ou inválido.',
+            metadata: { httpStatus: 400, botReason: 'missing_or_invalid_captcha_token' }
+          });
+          return res.status(400).json({
+            code: 'auth/captcha-expired',
+            error: 'Complete a verificação humana antes de criar a conta.'
+          });
+        }
+
+        const entry = activeSignupChallenges.get(cid);
+        if (!entry || Date.now() > entry.expiresAt) {
+          if (entry) activeSignupChallenges.delete(cid);
+          return res.status(400).json({
+            code: 'auth/captcha-expired',
+            error: 'O código de verificação expirou. Resolva o novo desafio exibido.'
+          });
+        }
+
+        if (Date.now() - entry.issuedAt < 1800) {
+          activeSignupChallenges.delete(cid);
+          appendServerAuditLog(req, {
+            actorEmail: cleanEmail || 'bot@fast-submit',
+            actorRole: 'anonymous',
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: '/api/auth/register',
+            details: 'Submissão suspeita bloqueada por preenchimento instantâneo (< 1.8s).',
+            metadata: { httpStatus: 403, botReason: 'submitted_too_fast' }
+          });
+          return res.status(403).json({
+            code: 'auth/bot-detected',
+            error: 'Submissão demasiado rápida detetada pela proteção anti-robôs. Tente novamente.'
+          });
+        }
+
+        if (!cans || cans !== entry.expectedAnswer) {
+          entry.attempts += 1;
+          if (entry.attempts >= 2) {
+            activeSignupChallenges.delete(cid);
+            return res.status(400).json({
+              code: 'auth/captcha-expired',
+              error: 'Resposta incorreta na verificação humana. Foi gerado um novo desafio.'
+            });
+          }
+          return res.status(400).json({
+            code: 'auth/captcha-invalid',
+            error: 'Resposta da verificação humana incorreta. Confira a soma/subtração e tente novamente.'
+          });
+        }
+
+        // Single-use: consume challenge immediately
+        activeSignupChallenges.delete(cid);
+      }
 
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         return res.status(400).json({
           code: 'auth/invalid-email',
           error: 'O formato do endereço de e-mail não é válido.'
         });
+      }
+
+      if (botProtectionEnabled) {
+        const emailDomain = cleanEmail.split('@')[1] || '';
+        if (DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+          appendServerAuditLog(req, {
+            actorEmail: cleanEmail,
+            actorRole: 'anonymous',
+            action: 'unauthorized_access_attempt',
+            category: 'security',
+            severity: 'warning',
+            status: 'blocked',
+            targetResource: '/api/auth/register',
+            details: `Registo bloqueado: domínio de e-mail temporário/descartável (${emailDomain}).`,
+            metadata: { httpStatus: 400, botReason: 'disposable_email' }
+          });
+          return res.status(400).json({
+            code: 'auth/disposable-email',
+            error: 'Não é permitido criar conta com e-mail temporário/descartável. Utilize um e-mail permanente (Gmail, Outlook ou corporativo).'
+          });
+        }
       }
 
       if (!cleanPassword || cleanPassword.length < 6) {
@@ -3147,6 +4187,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(409).json({
           code: 'auth/email-already-in-use',
           error: 'Este endereço de e-mail já está associado a uma conta existente. Tente iniciar sessão.'
+        });
+      }
+
+      if (!checkSignupSuccessLimit(req)) {
+        appendServerAuditLog(req, {
+          actorEmail: cleanEmail,
+          actorRole: 'anonymous',
+          action: 'unauthorized_access_attempt',
+          category: 'security',
+          severity: 'warning',
+          status: 'blocked',
+          targetResource: '/api/auth/register',
+          details: 'Limite horário de criação de novas contas por IP excedido.',
+          metadata: { httpStatus: 429, botReason: 'hourly_signup_cap' }
+        });
+        return res.status(429).json({
+          code: 'auth/too-many-requests',
+          error: 'Limite temporário de novas contas atingido nesta rede. Tente novamente mais tarde.'
         });
       }
 
@@ -3389,6 +4447,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         (verified.email_verified ? findBackendUserByEmail(cleanEmail) : undefined);
 
       if (!record) {
+        const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+        if (gov.allowNewRegistrations === false && !isVerifiedAdmin) {
+          return res.status(403).json({
+            code: 'auth/registrations-paused',
+            error: 'Novos registos estão temporariamente pausados pelo administrador.'
+          });
+        }
         record = {
           id: cleanUid,
           name: String(name || verified.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
@@ -4152,6 +5217,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // Saved Resumes Persistence API (supports both backend-auth and Firebase-synced users)
   app.get('/api/resumes', (req, res) => {
     try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) {
@@ -4166,8 +5232,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const list = authStore.resumesByUser?.[payload.uid] || [];
-      return res.json({ resumes: list });
+      const userRecord =
+        authStore.users[payload.uid] ||
+        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
+      }
+      const ownerUid = userRecord.id;
+      const list = Array.isArray(authStore.resumesByUser?.[ownerUid])
+        ? authStore.resumesByUser[ownerUid].filter((r) => r && r.id && r.id !== 'resume-default')
+        : [];
+      return res.json({ resumes: list, ownerUid });
     } catch (err: any) {
       console.error('Erro em GET /api/resumes:', err);
       return res.status(500).json({ error: 'Erro ao carregar currículos guardados.' });
@@ -4190,6 +5265,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
+      const userRecord =
+        authStore.users[payload.uid] ||
+        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
+      }
+      const ownerUid = userRecord.id;
       const { id, title, targetJob, updatedAt, data } = req.body || {};
       if (!id || !title || !data) {
         return res.status(400).json({ error: 'Dados do currículo incompletos.' });
@@ -4197,7 +5279,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!authStore.resumesByUser) {
         authStore.resumesByUser = {};
       }
-      const existing = authStore.resumesByUser[payload.uid] || [];
+      const existing = authStore.resumesByUser[ownerUid] || [];
       const savedItem = {
         id: String(id).slice(0, 128),
         title: String(title).trim().slice(0, 150),
@@ -4205,7 +5287,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         updatedAt: String(updatedAt || new Date().toLocaleDateString('pt-PT')),
         data
       };
-      authStore.resumesByUser[payload.uid] = [
+      authStore.resumesByUser[ownerUid] = [
         savedItem,
         ...existing.filter((r) => r.id !== savedItem.id && r.title !== savedItem.title)
       ].slice(0, 50);
@@ -4233,9 +5315,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
+      const userRecord =
+        authStore.users[payload.uid] ||
+        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
+      }
+      const ownerUid = userRecord.id;
       const resumeId = String(req.params.id || '');
-      if (authStore.resumesByUser && authStore.resumesByUser[payload.uid]) {
-        authStore.resumesByUser[payload.uid] = authStore.resumesByUser[payload.uid].filter(
+      if (authStore.resumesByUser && authStore.resumesByUser[ownerUid]) {
+        authStore.resumesByUser[ownerUid] = authStore.resumesByUser[ownerUid].filter(
           (r) => r.id !== resumeId
         );
         persistAuthStore();
@@ -4245,6 +5334,21 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       console.error('Erro em DELETE /api/resumes/:id:', err);
       return res.status(500).json({ error: 'Falha ao remover currículo do servidor.' });
     }
+  });
+
+  app.get('/api/admin/users/:id/resumes', (req, res) => {
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    const targetId = String(req.params.id || '').trim();
+    const targetUser =
+      authStore.users[targetId] ||
+      Object.values(authStore.users).find((u) => u.id === targetId || u.firebaseUid === targetId);
+    const lookupKey = targetUser?.id || targetId;
+    const list = Array.isArray(authStore.resumesByUser?.[lookupKey])
+      ? authStore.resumesByUser[lookupKey].filter((r) => r && r.id && r.id !== 'resume-default')
+      : [];
+    return res.json({ resumes: list, ownerUid: lookupKey });
   });
 
   // Orders Persistence API for Backend-Authenticated users
@@ -4357,7 +5461,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         stripePaymentIntentId:
           typeof bodyOrder.stripePaymentIntentId === 'string' ? bodyOrder.stripePaymentIntentId.slice(0, 128) : undefined,
         receiptUrl:
-          typeof bodyOrder.receiptUrl === 'string' && bodyOrder.receiptUrl.startsWith('https://')
+          typeof bodyOrder.receiptUrl === 'string' &&
+          (bodyOrder.receiptUrl.startsWith('https://') || bodyOrder.receiptUrl.startsWith('/api/orders/'))
             ? bodyOrder.receiptUrl.slice(0, 500)
             : undefined,
         createdAt: typeof bodyOrder.createdAt === 'string' ? bodyOrder.createdAt.slice(0, 50) : new Date().toISOString(),
@@ -4389,6 +5494,131 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     } catch (err: any) {
       console.error('Erro em POST /api/orders:', err);
       return res.status(500).json({ error: 'Erro ao registar pedido no servidor.' });
+    }
+  });
+
+  const memoryPixReceipts = new Map<string, { mimeType: string; buffer: Buffer }>();
+  const PIX_RECEIPT_MIME_EXT: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'application/pdf': 'pdf'
+  };
+
+  app.post('/api/orders/:orderId/receipt', (req, res) => {
+    try {
+      if (!checkUploadRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados uploads. Aguarde um minuto.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Autenticação necessária.' });
+      }
+      const orderId = String(req.params.orderId || '').trim();
+      if (!/^[a-zA-Z0-9_-]{3,80}$/.test(orderId)) {
+        return res.status(400).json({ error: 'Identificador de pedido inválido.' });
+      }
+      const cleanEmail = String(payload.email || '').trim().toLowerCase();
+      const userOrders = authStore.ordersByUser?.[payload.uid] || [];
+      let order = userOrders.find((o) => o?.id === orderId);
+      if (!order && cleanEmail) {
+        for (const list of Object.values(authStore.ordersByUser || {})) {
+          const found = (list || []).find(
+            (o) => o?.id === orderId && String(o?.userEmail || '').trim().toLowerCase() === cleanEmail
+          );
+          if (found) {
+            order = found;
+            break;
+          }
+        }
+      }
+      if (!order) {
+        return res.status(404).json({ error: 'Pedido não encontrado.' });
+      }
+      const { mimeType, base64Data } = req.body || {};
+      const cleanMime = String(mimeType || '').toLowerCase().trim();
+      const ext = PIX_RECEIPT_MIME_EXT[cleanMime];
+      if (!ext || typeof base64Data !== 'string' || !base64Data.trim()) {
+        return res.status(400).json({ error: 'Formato inválido. Envie PNG, JPG, WebP ou PDF.' });
+      }
+      const stripped = base64Data.replace(/^data:[^;]+;base64,/i, '').trim();
+      const buffer = Buffer.from(stripped, 'base64');
+      if (!buffer.length || buffer.length > 1_500_000) {
+        return res.status(400).json({ error: 'Comprovante excede o limite de 1,5 MB.' });
+      }
+
+      memoryPixReceipts.set(orderId, { mimeType: cleanMime, buffer });
+      try {
+        const receiptsDir = path.join(AUTH_DATA_DIR, 'receipts');
+        if (!fs.existsSync(receiptsDir)) {
+          fs.mkdirSync(receiptsDir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(receiptsDir, `${orderId}.${ext}`), buffer, { mode: 0o600 });
+        fs.writeFileSync(
+          path.join(receiptsDir, `${orderId}.meta.json`),
+          JSON.stringify({ mimeType: cleanMime, ext }),
+          { mode: 0o600 }
+        );
+      } catch {
+        // serverless read-only fallback uses memoryPixReceipts
+      }
+
+      const receiptUrl = `/api/orders/${orderId}/receipt`;
+      order.receiptUrl = receiptUrl;
+      order.updatedAt = new Date().toISOString();
+      persistAuthStore();
+
+      return res.json({ success: true, receiptUrl });
+    } catch (err) {
+      console.error('Erro em POST /api/orders/:orderId/receipt:', err);
+      return res.status(500).json({ error: 'Falha ao guardar o comprovante.' });
+    }
+  });
+
+  app.get('/api/orders/:orderId/receipt', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const orderId = String(req.params.orderId || '').trim();
+      if (!/^[a-zA-Z0-9_-]{3,80}$/.test(orderId)) {
+        return res.status(400).json({ error: 'Identificador inválido.' });
+      }
+      const callerRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const isAdmin =
+        callerRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+      const ownsOrder = (authStore.ordersByUser?.[payload.uid] || []).some((o) => o?.id === orderId);
+      if (!isAdmin && !ownsOrder) {
+        return res.status(403).json({ error: 'Acesso negado ao comprovante.' });
+      }
+
+      const mem = memoryPixReceipts.get(orderId);
+      if (mem) {
+        res.setHeader('Content-Type', mem.mimeType);
+        res.setHeader('Cache-Control', 'private, max-age=300');
+        return res.send(mem.buffer);
+      }
+
+      const receiptsDir = path.join(AUTH_DATA_DIR, 'receipts');
+      const metaPath = path.join(receiptsDir, `${orderId}.meta.json`);
+      if (fs.existsSync(metaPath)) {
+        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+        const filePath = path.join(receiptsDir, `${orderId}.${meta.ext}`);
+        if (fs.existsSync(filePath)) {
+          res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
+          res.setHeader('Cache-Control', 'private, max-age=300');
+          return res.send(fs.readFileSync(filePath));
+        }
+      }
+
+      return res.status(404).json({ error: 'Comprovante não encontrado.' });
+    } catch (err) {
+      console.error('Erro em GET /api/orders/:orderId/receipt:', err);
+      return res.status(500).json({ error: 'Erro ao carregar comprovante.' });
     }
   });
 
@@ -4635,6 +5865,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   // Admin Overview Snapshot
   app.get('/api/admin/overview', (req, res) => {
     if (!requireAdminSession(req, res)) return;
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     const users = Object.values(authStore.users).map((u) => sanitizeUser(u));
     const ordersMap = new Map<string, any>();
     Object.values(authStore.ordersByUser || {}).forEach((arr) => {
@@ -4776,11 +6007,25 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   app.delete('/api/admin/users/:id', (req, res) => {
     const adminPayload = requireAdminSession(req, res);
     if (!adminPayload) return;
-    const userId = String(req.params.id || '');
-    const deletedEmail = authStore.users[userId]?.email || userId;
-    delete authStore.users[userId];
-    if (authStore.resumesByUser) delete authStore.resumesByUser[userId];
-    if (authStore.ordersByUser) delete authStore.ordersByUser[userId];
+    const userId = String(req.params.id || '').trim();
+    const queryEmail = String(req.query?.email || req.body?.email || '').trim().toLowerCase();
+    const deletedKeys: string[] = [];
+    let deletedEmail = authStore.users[userId]?.email || queryEmail || userId;
+
+    for (const [key, rec] of Object.entries(authStore.users)) {
+      const recEmail = String(rec?.email || '').trim().toLowerCase();
+      const matchesId = key === userId || rec?.id === userId || rec?.firebaseUid === userId;
+      const matchesEmail = Boolean(queryEmail && recEmail === queryEmail);
+      if (matchesId || matchesEmail) {
+        if (rec?.email) deletedEmail = rec.email;
+        delete authStore.users[key];
+        deletedKeys.push(key);
+        if (authStore.resumesByUser) delete authStore.resumesByUser[key];
+        if (authStore.ordersByUser) delete authStore.ordersByUser[key];
+      }
+    }
+    if (authStore.resumesByUser && userId) delete authStore.resumesByUser[userId];
+    if (authStore.ordersByUser && userId) delete authStore.ordersByUser[userId];
     persistAuthStore();
     appendServerAuditLog(req, {
       actorUserId: adminPayload.uid,
@@ -4793,7 +6038,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       targetResource: `users/${userId}`,
       details: `Registo de utilizador ${deletedEmail} eliminado pelo administrador.`
     });
-    return res.json({ success: true });
+    return res.json({ success: true, deletedKeys });
   });
 
   // Admin Orders Management
@@ -6118,24 +7363,115 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
+  // -------------------------------------------------------------
+  // SEO ENDPOINTS: DYNAMIC ROBOTS.TXT & MULTILINGUAL SITEMAP.XML
+  // -------------------------------------------------------------
+  function resolveSeoOrigin(req: express.Request): string {
+    if (process.env.APP_URL) {
+      return process.env.APP_URL.replace(/\/+$/, '');
+    }
+    const hostHeader = req.get('x-forwarded-host') || req.get('host');
+    const protoHeader = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    if (hostHeader) {
+      return `${protoHeader}://${hostHeader}`;
+    }
+    return 'https://ais-pre-ffiukhfder2kc5oxywnvqc-584774058317.europe-west2.run.app';
+  }
+
+  app.get('/robots.txt', (req, res) => {
+    const origin = resolveSeoOrigin(req);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(
+      [
+        'User-agent: *',
+        'Allow: /',
+        'Disallow: /api/',
+        'Disallow: /conta',
+        'Disallow: /admin',
+        '',
+        `Sitemap: ${origin}/sitemap.xml`,
+        ''
+      ].join('\n')
+    );
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const origin = resolveSeoOrigin(req);
+    const lastmod = new Date().toISOString().split('T')[0];
+    const langs = ['pt', 'en', 'es', 'fr', 'de', 'it'] as const;
+    const routes: Array<{ path: string; changefreq: string; priority: string }> = [
+      { path: '/', changefreq: 'weekly', priority: '1.0' },
+      { path: '/modelos-cv', changefreq: 'weekly', priority: '0.9' },
+      { path: '/exemplos-cv', changefreq: 'weekly', priority: '0.9' },
+      { path: '/modelos-carta', changefreq: 'weekly', priority: '0.85' },
+      { path: '/exemplos-carta', changefreq: 'weekly', priority: '0.85' },
+      { path: '/editor', changefreq: 'weekly', priority: '0.9' },
+      { path: '/importar-curriculo', changefreq: 'monthly', priority: '0.8' },
+      { path: '/radar-ats', changefreq: 'weekly', priority: '0.9' },
+      { path: '/vagas', changefreq: 'daily', priority: '0.85' },
+      { path: '/otimizador-ia', changefreq: 'weekly', priority: '0.85' },
+      { path: '/carta-apresentacao', changefreq: 'weekly', priority: '0.85' },
+      { path: '/simulador-entrevista', changefreq: 'weekly', priority: '0.8' }
+    ];
+
+    const urlEntries = routes
+      .map((route) => {
+        const loc = `${origin}${route.path}`;
+        const alternates = [
+          ...langs.map((lng) => {
+            const href = lng === 'pt' ? loc : `${loc}?lang=${lng}`;
+            return `    <xhtml:link rel="alternate" hreflang="${lng}" href="${href}" />`;
+          }),
+          `    <xhtml:link rel="alternate" hreflang="x-default" href="${loc}" />`
+        ].join('\n');
+
+        return [
+          '  <url>',
+          `    <loc>${loc}</loc>`,
+          `    <lastmod>${lastmod}</lastmod>`,
+          `    <changefreq>${route.changefreq}</changefreq>`,
+          `    <priority>${route.priority}</priority>`,
+          alternates,
+          '  </url>'
+        ].join('\n');
+      })
+      .join('\n');
+
+    const xml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+      urlEntries,
+      '</urlset>'
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(xml);
+  });
+
   return app;
 }
 
 export async function startServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
+  let viteServer: { middlewares: any; close: () => Promise<void> } | null = null;
 
   // Vite middleware in dev or static files in production
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
+    const disableHmr = process.env.DISABLE_HMR === 'true';
+    viteServer = await createViteServer({
       server: {
         middlewareMode: true,
-        hmr: process.env.DISABLE_HMR === 'true' ? false : { server: httpServer }
+        hmr: !disableHmr,
+        ws: disableHmr ? false : { server: httpServer },
+        watch: disableHmr ? null : {}
       },
       appType: 'spa'
     });
-    app.use(vite.middlewares);
+    app.use(viteServer.middlewares);
   } else {
     app.use(express.static(path.resolve(__dirname, 'dist')));
     app.get('*', (_req, res) => {
@@ -6143,11 +7479,58 @@ export async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 CV Studio Server running on http://0.0.0.0:${PORT}`);
+  let isShuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    const forceTimer = setTimeout(() => {
+      process.exit(0);
+    }, 1500);
+    forceTimer.unref();
+
+    try {
+      if (viteServer) {
+        await viteServer.close();
+      }
+    } catch {
+      // ignore vite close errors during shutdown
+    }
+
+    try {
+      httpServer.close(() => {
+        clearTimeout(forceTimer);
+        process.exit(0);
+      });
+      if (typeof (httpServer as any).closeAllConnections === 'function') {
+        (httpServer as any).closeAllConnections();
+      }
+    } catch {
+      clearTimeout(forceTimer);
+      process.exit(0);
+    }
+    void signal;
+  };
+
+  process.once('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+  process.once('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+
+  httpServer.on('error', (err: NodeJS.ErrnoException) => {
+    console.error(`❌ Failed to start CV Studio Server on ${HOST}:${PORT}:`, err?.message || err);
+    process.exit(1);
+  });
+
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`🚀 CV Studio Server running on http://${HOST}:${PORT}`);
   });
 }
 
 if (!process.env.VERCEL && !process.env.VERCEL_ENV) {
-  void startServer();
+  startServer().catch((err) => {
+    console.error('❌ Fatal error starting CV Studio Server:', err);
+    process.exit(1);
+  });
 }

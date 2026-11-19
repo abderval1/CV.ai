@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { CVData } from '../types/cv';
+import { useLanguage } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS, ToolsUiDictionary, getIntlLocale } from '../i18n/toolsUiTranslations';
 import {
   Briefcase,
   ExternalLink,
@@ -79,48 +81,30 @@ interface JobMatchesPanelProps {
 
 const PREFS_STORAGE_KEY = 'cv_job_preferences_v1';
 
-const COUNTRY_OPTIONS: Array<{ id: string; label: string }> = [
-  { id: 'remoto_global', label: 'Remoto Global' },
-  { id: 'brasil', label: 'Brasil' },
-  { id: 'portugal', label: 'Portugal' },
-  { id: 'angola', label: 'Angola' },
-  { id: 'espanha', label: 'Espanha' },
-  { id: 'reino_unido', label: 'Reino Unido' },
-  { id: 'alemanha', label: 'Alemanha' },
-  { id: 'franca', label: 'França' },
-  { id: 'estados_unidos', label: 'Estados Unidos' },
-  { id: 'canada', label: 'Canadá' },
-  { id: 'europa', label: 'União Europeia' }
-];
+const COUNTRY_IDS = [
+  'remoto_global',
+  'brasil',
+  'portugal',
+  'angola',
+  'espanha',
+  'reino_unido',
+  'alemanha',
+  'franca',
+  'estados_unidos',
+  'canada',
+  'europa'
+] as const;
 
-const CONTRACT_TYPE_OPTIONS: Array<{ id: string; label: string }> = [
-  { id: 'full_time', label: 'Tempo Integral' },
-  { id: 'contract', label: 'Contrato / PJ / Freelance' },
-  { id: 'part_time', label: 'Meio Período' },
-  { id: 'internship', label: 'Estágio / Trainee' }
-];
+const CONTRACT_TYPE_IDS = ['full_time', 'contract', 'part_time', 'internship'] as const;
 
-const CONTRACT_LABELS: Record<string, string> = {
-  full_time: 'Tempo Integral',
-  contract: 'Contrato / PJ',
-  part_time: 'Meio Período',
-  internship: 'Estágio'
-};
-
-const WORKPLACE_LABELS: Record<string, string> = {
-  remote: 'Remoto',
-  hybrid: 'Híbrido',
-  onsite: 'Presencial'
-};
-
-const SOURCE_TABS: Array<{ id: string; label: string }> = [
-  { id: 'all', label: 'Todos os Portais' },
-  { id: 'linkedin', label: 'LinkedIn' },
-  { id: 'radar', label: 'Radar de Vagas' },
-  { id: 'remotive', label: 'Remotive' },
-  { id: 'arbeitnow', label: 'Arbeitnow' },
-  { id: 'jobicy', label: 'Jobicy' },
-  { id: 'remoteok', label: 'RemoteOK' }
+const SOURCE_IDS: Array<'all' | 'linkedin' | 'radar' | 'remotive' | 'arbeitnow' | 'jobicy' | 'remoteok'> = [
+  'all',
+  'linkedin',
+  'radar',
+  'remotive',
+  'arbeitnow',
+  'jobicy',
+  'remoteok'
 ];
 
 function loadSavedPreferences(): JobPreferences {
@@ -141,50 +125,56 @@ function loadSavedPreferences(): JobPreferences {
 }
 
 function formatSalaryDisplay(
-  salary: MatchedRadarJob['salary']
+  salary: MatchedRadarJob['salary'],
+  periodUnits: ToolsUiDictionary['jobMatches']['periodUnits'],
+  locale: string
 ): string | null {
   if (salary == null) return null;
   if (typeof salary === 'string') return salary.trim() || null;
   if (typeof salary === 'number' && Number.isFinite(salary)) {
-    return salary.toLocaleString('pt-PT');
+    return salary.toLocaleString(locale);
   }
   if (typeof salary === 'object') {
     const { min, max, currency, period } = salary;
     const periodMap: Record<string, string> = {
-      year: '/ano',
-      annual: '/ano',
-      yearly: '/ano',
-      month: '/mês',
-      monthly: '/mês',
-      hour: '/hora',
-      hourly: '/hora',
-      day: '/dia',
-      week: '/semana'
+      year: periodUnits.year,
+      annual: periodUnits.year,
+      yearly: periodUnits.year,
+      month: periodUnits.month,
+      monthly: periodUnits.month,
+      hour: periodUnits.hour,
+      hourly: periodUnits.hour,
+      day: periodUnits.day,
+      week: periodUnits.week
     };
     const pSuffix = period ? periodMap[String(period).toLowerCase()] || `/${period}` : '';
     const curPrefix = currency ? `${String(currency).toUpperCase()} ` : '';
     if (typeof min === 'number' && typeof max === 'number' && min !== max) {
-      return `${curPrefix}${min.toLocaleString('pt-PT')} – ${max.toLocaleString('pt-PT')}${pSuffix}`;
+      return `${curPrefix}${min.toLocaleString(locale)} – ${max.toLocaleString(locale)}${pSuffix}`;
     }
     if (typeof min === 'number' || typeof max === 'number') {
       const val = typeof min === 'number' ? min : (max as number);
-      return `${curPrefix}${val.toLocaleString('pt-PT')}${pSuffix}`;
+      return `${curPrefix}${val.toLocaleString(locale)}${pSuffix}`;
     }
   }
   return null;
 }
 
-function formatRelativeDate(iso?: string | null): string {
-  if (!iso) return 'Recente';
+function formatRelativeDate(
+  iso: string | null | undefined,
+  ui: ToolsUiDictionary['jobMatches'],
+  locale: string
+): string {
+  if (!iso) return ui.relRecent;
   const ts = new Date(iso).getTime();
-  if (Number.isNaN(ts)) return 'Recente';
+  if (Number.isNaN(ts)) return ui.relRecent;
   const diffHours = Math.max(0, Math.floor((Date.now() - ts) / (1000 * 60 * 60)));
-  if (diffHours < 1) return 'Hoje';
-  if (diffHours < 24) return `Há ${diffHours}h`;
+  if (diffHours < 1) return ui.relToday;
+  if (diffHours < 24) return `${ui.relHoursPrefix}${diffHours}${ui.relHoursSuffix}`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays === 1) return 'Ontem';
-  if (diffDays < 30) return `Há ${diffDays}d`;
-  return new Date(iso).toLocaleDateString('pt-PT');
+  if (diffDays === 1) return ui.relYesterday;
+  if (diffDays < 30) return `${ui.relDaysPrefix}${diffDays}${ui.relDaysSuffix}`;
+  return new Date(iso).toLocaleDateString(locale);
 }
 
 function getSafeExternalHttpUrl(raw?: string | null): string {
@@ -197,6 +187,9 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   cv,
   onApplyJobToTailor
 }) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).jobMatches;
+  const intlLocale = getIntlLocale(siteLanguage);
   const [data, setData] = useState<JobMatchResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -275,16 +268,16 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         });
         const json = await res.json();
         if (!res.ok) {
-          throw new Error(json?.error || 'Falha ao buscar vagas nos portais conectados.');
+          throw new Error(json?.error || ui.errFetch);
         }
         setData(json as JobMatchResponse);
       } catch (err: any) {
-        setError(err?.message || 'Erro ao conectar com os portais de vagas.');
+        setError(err?.message || ui.errFetch);
       } finally {
         setIsLoading(false);
       }
     },
-    [cv, activeSearch, workplaceFilter, sourceFilter, preferences]
+    [cv, activeSearch, workplaceFilter, sourceFilter, preferences, ui.errFetch]
   );
 
   // Automatic debounced personalization whenever CV, filters, or user preferences change
@@ -386,19 +379,19 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         .slice(0, 12)
         .join(', ');
       const headerBlock = [
-        `Cargo: ${job.title}`,
-        `Empresa: ${job.company}`,
-        `Portal: ${job.sourceName}`,
-        `Modalidade: ${WORKPLACE_LABELS[job.workplace] || job.workplace}`,
-        job.locations?.length ? `Localização: ${job.locations.join(', ')}` : '',
-        skillsLine ? `Competências e Palavras-Chave: ${skillsLine}` : ''
+        `${ui.tailorHeader.role} ${job.title}`,
+        `${ui.tailorHeader.company} ${job.company}`,
+        `${ui.tailorHeader.portal} ${job.sourceName}`,
+        `${ui.tailorHeader.workplace} ${ui.workplaces[job.workplace as keyof typeof ui.workplaces] || job.workplace}`,
+        job.locations?.length ? `${ui.tailorHeader.location} ${job.locations.join(', ')}` : '',
+        skillsLine ? `${ui.tailorHeader.skills} ${skillsLine}` : ''
       ]
         .filter(Boolean)
         .join('\n');
 
       const combinedText = fullDescription
-        ? `${headerBlock}\n\nDescrição da Vaga:\n${fullDescription.slice(0, 4000)}`
-        : `${headerBlock}\n\nCritérios de compatibilidade detetados: ${job.matchedKeywords.join(', ')}.`;
+        ? `${headerBlock}\n\n${ui.tailorHeader.description}\n${fullDescription.slice(0, 4000)}`
+        : `${headerBlock}\n\n${ui.tailorHeader.criteria} ${job.matchedKeywords.join(', ')}.`;
 
       onApplyJobToTailor(combinedText, 'ats');
     } finally {
@@ -427,19 +420,19 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             <div className="flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-slate-800 shrink-0" />
               <h2 className="text-sm font-bold text-slate-950 tracking-tight">
-                Vagas Compatíveis com o seu CV
+                {ui.title}
               </h2>
             </div>
             <p className="text-xs text-slate-600 mt-1">
-              Cruzamento ao vivo em{' '}
+              {ui.subtitlePrefix}{' '}
               <span className="font-semibold text-slate-800">
-                LinkedIn, Radar de Vagas, Remotive, Arbeitnow, Jobicy e RemoteOK
+                LinkedIn, {ui.sources.radar}, Remotive, Arbeitnow, Jobicy & RemoteOK
               </span>{' '}
-              para{' '}
+              {ui.subtitleMiddle}{' '}
               <span className="font-semibold text-slate-900">
                 {preferences.targetRoles.length > 0
                   ? preferences.targetRoles.join(', ')
-                  : cv.personalDetails?.title || 'o seu perfil'}
+                  : cv.personalDetails?.title || ui.subtitleDefaultProfile}
               </span>
               .
             </p>
@@ -452,7 +445,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Atualizar</span>
+            <span>{ui.refreshBtn}</span>
           </button>
         </div>
 
@@ -460,7 +453,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-3 border-t border-slate-100 pt-3 gap-3">
           <div>
             <span className="text-[11px] font-medium text-slate-500 block">
-              Vagas compatíveis
+              {ui.compatibleJobs}
             </span>
             <span className="text-xl font-extrabold text-slate-950 tabular-nums">
               {isLoading && !data ? '—' : compatibleCount}
@@ -469,21 +462,21 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
           <div>
             <span className="text-[11px] font-medium text-slate-500 block">
-              Base ativa indexada
+              {ui.indexedPool}
             </span>
             <span className="text-xl font-bold text-slate-800 tabular-nums">
-              {totalPlatformJobs > 0 ? totalPlatformJobs.toLocaleString('pt-PT') : '—'}
+              {totalPlatformJobs > 0 ? totalPlatformJobs.toLocaleString(intlLocale) : '—'}
             </span>
           </div>
 
           <div className="col-span-2 sm:col-span-1">
             <span className="text-[11px] font-medium text-slate-500 block">
-              Critérios analisados
+              {ui.analyzedCriteria}
             </span>
             <span className="text-xs font-medium text-slate-700 line-clamp-1 mt-1">
               {data?.profileQueriesUsed?.length
                 ? data.profileQueriesUsed.join(', ')
-                : cv.personalDetails?.title || 'Perfil completo'}
+                : cv.personalDetails?.title || ui.fullProfile}
             </span>
           </div>
         </div>
@@ -500,12 +493,12 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             <SlidersHorizontal className="w-4 h-4 text-slate-800 shrink-0" />
             <div className="min-w-0">
               <span className="text-xs font-bold text-slate-950 block">
-                Configurar Preferências de Vagas
+                {ui.configTitle}
               </span>
               <span className="text-[11px] text-slate-500 block truncate">
                 {activePrefCount > 0
-                  ? `${preferences.countries.length} país(es) · ${preferences.targetRoles.length} cargo(s) · ${preferences.contractTypes.length} contrato(s) (atualização automática)`
-                  : 'Personalize países, cargos e tipos de contrato'}
+                  ? `${preferences.countries.length} ${ui.configSummaryCountries} · ${preferences.targetRoles.length} ${ui.configSummaryRoles} · ${preferences.contractTypes.length} ${ui.configSummaryContracts} ${ui.configSummaryAuto}`
+                  : ui.configSummaryEmpty}
               </span>
             </div>
             {isConfigOpen ? (
@@ -520,10 +513,10 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               type="button"
               onClick={handleResetPreferences}
               className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-950 inline-flex items-center gap-1 whitespace-nowrap shrink-0"
-              title="Limpar todas as preferências"
+              title={ui.clearTitle}
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Limpar</span>
+              <span>{ui.clearBtn}</span>
             </button>
           )}
         </div>
@@ -533,7 +526,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             {/* 1. Target Roles */}
             <div className="space-y-2">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                Cargos Preferidos
+                {ui.targetRolesLabel}
               </label>
 
               <form onSubmit={handleAddCustomRole} className="flex items-center gap-2">
@@ -541,7 +534,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                   type="text"
                   value={customRoleInput}
                   onChange={(e) => setCustomRoleInput(e.target.value)}
-                  placeholder="Adicionar cargo (ex: Product Manager, React Developer)..."
+                  placeholder={ui.rolePlaceholder}
                   className="flex-1 min-w-0 px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
                 />
                 <button
@@ -549,7 +542,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                   className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Adicionar</span>
+                  <span>{ui.addBtn}</span>
                 </button>
               </form>
 
@@ -592,23 +585,23 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             {/* 2. Preferred Countries / Regions */}
             <div className="space-y-2 border-t border-slate-100 pt-3">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                Países e Regiões Preferidas
+                {ui.countriesLabel}
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {COUNTRY_OPTIONS.map((country) => {
-                  const selected = preferences.countries.includes(country.id);
+                {COUNTRY_IDS.map((countryId) => {
+                  const selected = preferences.countries.includes(countryId);
                   return (
                     <button
-                      key={country.id}
+                      key={countryId}
                       type="button"
-                      onClick={() => toggleCountry(country.id)}
+                      onClick={() => toggleCountry(countryId)}
                       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                         selected
                           ? 'bg-slate-900 text-white'
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
-                      {country.label}
+                      {ui.countries[countryId] || countryId}
                     </button>
                   );
                 })}
@@ -618,23 +611,23 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             {/* 3. Preferred Contract Types */}
             <div className="space-y-2 border-t border-slate-100 pt-3">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
-                Tipos de Contrato Preferidos
+                {ui.contractsLabel}
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {CONTRACT_TYPE_OPTIONS.map((ct) => {
-                  const selected = preferences.contractTypes.includes(ct.id);
+                {CONTRACT_TYPE_IDS.map((ctId) => {
+                  const selected = preferences.contractTypes.includes(ctId);
                   return (
                     <button
-                      key={ct.id}
+                      key={ctId}
                       type="button"
-                      onClick={() => toggleContractType(ct.id)}
+                      onClick={() => toggleContractType(ctId)}
                       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                         selected
                           ? 'bg-slate-900 text-white'
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
-                      {ct.label}
+                      {ui.contracts[ctId] || ctId}
                     </button>
                   );
                 })}
@@ -649,7 +642,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-semibold text-slate-700">
-              Pesquisar o seu perfil diretamente noutros grandes portais:
+              {ui.externalPortalsTitle}
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
@@ -685,7 +678,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Filtrar por cargo, empresa ou competência (ex: React, Finance, SAP)..."
+              placeholder={ui.searchPlaceholder}
               className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
             />
           </div>
@@ -694,7 +687,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             disabled={isLoading}
             className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
           >
-            Filtrar
+            {ui.filterBtn}
           </button>
           {activeSearch && (
             <button
@@ -705,31 +698,31 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               }}
               className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-950 whitespace-nowrap shrink-0"
             >
-              Limpar
+              {ui.clearFilterBtn}
             </button>
           )}
         </form>
 
         {/* Source Filter Tabs */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-0.5">
-          {SOURCE_TABS.map((tab) => {
+          {SOURCE_IDS.map((tabId) => {
             const countVal =
-              tab.id === 'all' ? totalCompatibleAllSources : sourceCounts[tab.id] ?? 0;
-            if (tab.id !== 'all' && data && countVal === 0 && sourceFilter !== tab.id) {
+              tabId === 'all' ? totalCompatibleAllSources : sourceCounts[tabId] ?? 0;
+            if (tabId !== 'all' && data && countVal === 0 && sourceFilter !== tabId) {
               return null;
             }
             return (
               <button
-                key={tab.id}
+                key={tabId}
                 type="button"
-                onClick={() => setSourceFilter(tab.id)}
+                onClick={() => setSourceFilter(tabId)}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 tabular-nums ${
-                  sourceFilter === tab.id
+                  sourceFilter === tabId
                     ? 'bg-slate-900 text-white'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                 }`}
               >
-                {tab.label}
+                {ui.sources[tabId] || tabId}
                 {data ? ` (${countVal})` : ''}
               </button>
             );
@@ -738,25 +731,18 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
         {/* Workplace Filter */}
         <div className="flex items-center gap-1 overflow-x-auto no-scrollbar border-t border-slate-100 pt-2">
-          {(
-            [
-              { id: 'all', label: 'Todas modalidades' },
-              { id: 'remote', label: 'Remoto' },
-              { id: 'hybrid', label: 'Híbrido' },
-              { id: 'onsite', label: 'Presencial' }
-            ] as const
-          ).map((opt) => (
+          {(['all', 'remote', 'hybrid', 'onsite'] as const).map((wpId) => (
             <button
-              key={opt.id}
+              key={wpId}
               type="button"
-              onClick={() => setWorkplaceFilter(opt.id)}
+              onClick={() => setWorkplaceFilter(wpId)}
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
-                workplaceFilter === opt.id
+                workplaceFilter === wpId
                   ? 'bg-slate-800 text-white'
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              {opt.label}
+              {ui.workplaces[wpId]}
             </button>
           ))}
         </div>
@@ -772,7 +758,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             onClick={() => void fetchMatches()}
             className="px-3.5 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
           >
-            Tentar Novamente
+            {ui.retryBtn}
           </button>
         </div>
       ) : isLoading ? (
@@ -793,11 +779,10 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
           <Globe className="w-6 h-6 text-slate-400 mx-auto" />
           <div className="space-y-1">
             <p className="text-sm font-bold text-slate-900">
-              Nenhuma vaga exata encontrada para as preferências selecionadas
+              {ui.emptyTitle}
             </p>
             <p className="text-xs text-slate-600 max-w-md mx-auto">
-              Experimente adicionar &quot;Remoto Global&quot; nos países ou alargar os cargos e
-              tipos de contrato selecionados acima.
+              {ui.emptyDesc}
             </p>
           </div>
           {(activeSearch || workplaceFilter !== 'all' || sourceFilter !== 'all' || activePrefCount > 0) && (
@@ -812,7 +797,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               }}
               className="px-3.5 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
             >
-              Repor Filtros e Preferências
+              {ui.resetFiltersBtn}
             </button>
           )}
         </div>
@@ -825,14 +810,15 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                 : job.matchScore >= 52
                 ? 'text-amber-700'
                 : 'text-slate-700';
+            const wpLabel = ui.workplaces[job.workplace as keyof typeof ui.workplaces] || String(job.workplace || '');
             const locationText =
               job.locations && job.locations.length > 0
                 ? job.locations.slice(0, 2).map((l) => String(l)).join(', ')
-                : WORKPLACE_LABELS[job.workplace] || 'Remoto / Global';
+                : wpLabel || ui.workplaces.remote;
             const contractLabel = job.employmentType
-              ? CONTRACT_LABELS[job.employmentType] || String(job.employmentType)
+              ? ui.contracts[job.employmentType] || String(job.employmentType)
               : null;
-            const salaryLabel = formatSalaryDisplay(job.salary);
+            const salaryLabel = formatSalaryDisplay(job.salary, ui.periodUnits, intlLocale);
 
             return (
               <article
@@ -854,7 +840,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                       {' · '}
                       <span className="font-semibold text-slate-700">{String(job.sourceName || '')}</span>
                       {' · '}
-                      <span>{WORKPLACE_LABELS[job.workplace] || String(job.workplace || '')}</span>
+                      <span>{wpLabel}</span>
                       {contractLabel ? (
                         <>
                           {' · '}
@@ -864,7 +850,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                       {' · '}
                       <span>{locationText}</span>
                       {' · '}
-                      <span className="tabular-nums">{formatRelativeDate(job.postedAt)}</span>
+                      <span className="tabular-nums">{formatRelativeDate(job.postedAt, ui, intlLocale)}</span>
                     </p>
                   </div>
 
@@ -872,7 +858,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                     <span className={`text-sm font-extrabold tabular-nums block ${scoreTone}`}>
                       {job.matchScore}%
                     </span>
-                    <span className="text-[11px] text-slate-500 block">match</span>
+                    <span className="text-[11px] text-slate-500 block">{ui.matchLabel}</span>
                   </div>
                 </div>
 
@@ -880,14 +866,14 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                   <p className="text-xs text-slate-600 leading-relaxed">
                     {job.matchedKeywords.length > 0 && (
                       <span>
-                        <span className="font-semibold text-slate-800">No seu CV:</span>{' '}
+                        <span className="font-semibold text-slate-800">{ui.inYourCvLabel}</span>{' '}
                         {job.matchedKeywords.map((k) => String(k)).join(', ')}
                       </span>
                     )}
                     {job.matchedKeywords.length > 0 && salaryLabel ? ' · ' : ''}
                     {salaryLabel && (
                       <span className="font-semibold text-slate-800 tabular-nums">
-                        Salário: {salaryLabel}
+                        {ui.salaryLabel} {salaryLabel}
                       </span>
                     )}
                   </p>
@@ -901,7 +887,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
                     >
-                      <span>Aplicar à Vaga</span>
+                      <span>{ui.applyBtn}</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
 
@@ -912,7 +898,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                         rel="noopener noreferrer"
                         className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
                       >
-                        <span>Ver no {job.sourceName}</span>
+                        <span>{ui.viewOnPrefix} {job.sourceName}</span>
                       </a>
                     )}
                   </div>
@@ -928,7 +914,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                     ) : (
                       <Target className="w-3.5 h-3.5 text-amber-600" />
                     )}
-                    <span>Adaptar CV (ATS)</span>
+                    <span>{ui.adaptAtsBtn}</span>
                   </button>
                 </div>
               </article>

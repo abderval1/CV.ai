@@ -145,6 +145,7 @@ async function apiAuthFetch(url: string, options: RequestInit = {}) {
   try {
     const response = await fetch(url, {
       ...options,
+      cache: options.cache || 'no-store',
       credentials: 'include',
       headers,
       signal: options.signal || controller.signal
@@ -210,6 +211,18 @@ export function getAuthErrorMessage(err: any): string {
     case 'auth/operation-not-allowed':
     case 'auth/configuration-not-found':
       return 'Método de autenticação não configurado no provedor externo.';
+    case 'auth/bot-detected':
+      return 'Submissão bloqueada pela proteção anti-robôs. Recarregue a verificação e preencha manualmente.';
+    case 'auth/captcha-invalid':
+      return 'Resposta da verificação humana incorreta. Confira o cálculo e tente novamente.';
+    case 'auth/captcha-expired':
+      return 'A verificação humana expirou ou precisa de ser atualizada. Resolva o novo desafio abaixo.';
+    case 'auth/disposable-email':
+      return 'E-mails temporários/descartáveis não são aceites. Utilize um e-mail pessoal ou corporativo permanente.';
+    case 'auth/invalid-name':
+      return 'Insira um nome válido sem links ou caracteres especiais.';
+    case 'auth/registrations-paused':
+      return 'Novos registos estão temporariamente pausados pelo administrador.';
     default: {
       const msg = String(err.message || '');
       const lower = msg.toLowerCase();
@@ -251,7 +264,14 @@ interface AuthContextType {
     email: string,
     password?: string,
     targetRole?: string,
-    rememberMe?: boolean
+    rememberMe?: boolean,
+    antiBot?: {
+      challengeId?: string;
+      challengeToken?: string;
+      challengeAnswer?: string;
+      website?: string;
+      companyPhone?: string;
+    }
   ) => Promise<boolean>;
   resetPassword: (email: string) => Promise<ResetPasswordResult>;
   completePasswordReset: (email: string, code: string, newPassword: string) => Promise<boolean>;
@@ -288,6 +308,36 @@ const FIREBASE_EMAIL_UNAVAILABLE_CODES = new Set([
   'auth/internal-error'
 ]);
 
+const getScopedResumesStorageKey = (uid?: string | null) =>
+  uid ? `${LOCAL_STORAGE_RESUMES_KEY}_${uid}` : `${LOCAL_STORAGE_RESUMES_KEY}_visitor`;
+
+const sanitizeResumeList = (items: unknown): SavedResume[] => {
+  if (!Array.isArray(items)) return [];
+  return items.filter(
+    (item): item is SavedResume =>
+      Boolean(item && typeof item === 'object' && (item as SavedResume).id && (item as SavedResume).id !== 'resume-default')
+  );
+};
+
+const readScopedResumesFromStorage = (uid?: string | null): SavedResume[] => {
+  if (!uid) return [];
+  try {
+    const saved = localStorage.getItem(getScopedResumesStorageKey(uid));
+    return saved ? sanitizeResumeList(JSON.parse(saved)) : [];
+  } catch {
+    return [];
+  }
+};
+
+const clearLegacyUnscopedResumeCaches = () => {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_RESUMES_KEY);
+    localStorage.removeItem(`${LOCAL_STORAGE_RESUMES_KEY}_visitor`);
+  } catch {
+    // ignore
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
@@ -312,48 +362,95 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
+  const activeResumesOwnerRef = useRef<string | null>(user?.id || null);
+
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_RESUMES_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // fallback
-    }
-    return [
-      {
-        id: 'resume-default',
-        title: 'Currículo Padrão (Executivo)',
-        targetJob: 'Coordenador de Projetos & Sistemas',
-        updatedAt: new Date().toLocaleDateString('pt-PT'),
-        data: GENERIC_DEFAULT_CV
-      }
-    ];
+    clearLegacyUnscopedResumeCaches();
+    return user?.id ? readScopedResumesFromStorage(user.id) : [];
   });
 
   const resumesUnsubRef = useRef<Unsubscribe | null>(null);
   const authSyncLockRef = useRef<boolean>(false);
   const sessionEpochRef = useRef<number>(0);
 
-  const hydrateResumesFromBackend = async () => {
+  const resetResumesForUserSwitch = (nextUid: string | null) => {
+    if (resumesUnsubRef.current) {
+      resumesUnsubRef.current();
+      resumesUnsubRef.current = null;
+    }
+    clearLegacyUnscopedResumeCaches();
+    activeResumesOwnerRef.current = nextUid;
+    setSavedResumes(nextUid ? readScopedResumesFromStorage(nextUid) : []);
+  };
+
+  const hydrateResumesFromBackend = async (expectedEpoch?: number, expectedUid?: string) => {
+    const epochCheck = expectedEpoch ?? sessionEpochRef.current;
+    const targetUid = expectedUid ?? activeResumesOwnerRef.current;
+    if (!targetUid) {
+      setSavedResumes([]);
+      return;
+    }
     try {
       const { response, data } = await apiAuthFetch('/api/resumes', { method: 'GET' });
-      if (response.ok && Array.isArray(data?.resumes) && data.resumes.length > 0) {
-        setSavedResumes((prev) => {
-          const byId = new Map<string, SavedResume>();
-          for (const item of data.resumes as SavedResume[]) {
-            if (item && item.id) byId.set(item.id, item);
-          }
-          for (const existingItem of prev) {
-            if (existingItem && existingItem.id && !byId.has(existingItem.id) && existingItem.id !== 'resume-default') {
-              byId.set(existingItem.id, existingItem);
-            }
-          }
-          const merged = Array.from(byId.values());
-          return merged.length > 0 ? merged : prev;
-        });
+      if (epochCheck !== sessionEpochRef.current || activeResumesOwnerRef.current !== targetUid) {
+        return;
+      }
+      if (response.ok && Array.isArray(data?.resumes)) {
+        const cleanServerResumes = sanitizeResumeList(data.resumes);
+        setSavedResumes(cleanServerResumes);
+      } else if (response.status === 401) {
+        setSavedResumes([]);
       }
     } catch (err) {
       console.warn('Aviso ao carregar currículos do servidor:', err);
+    }
+  };
+
+  const attachFirestoreResumesListener = (firestoreUid: string, ownerUid: string, epoch: number) => {
+    if (resumesUnsubRef.current) {
+      resumesUnsubRef.current();
+      resumesUnsubRef.current = null;
+    }
+    try {
+      const resumesColRef = collection(db, 'users', firestoreUid, 'resumes');
+      resumesUnsubRef.current = onSnapshot(
+        resumesColRef,
+        (snapshot) => {
+          if (epoch !== sessionEpochRef.current || activeResumesOwnerRef.current !== ownerUid) {
+            return;
+          }
+          if (!snapshot.empty) {
+            const cloudResumes: SavedResume[] = snapshot.docs
+              .map((docItem) => {
+                const d = docItem.data();
+                return {
+                  id: docItem.id,
+                  title: d.title || 'Currículo',
+                  targetJob: d.targetJob || 'Vaga Executiva',
+                  updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
+                  data: (d.data as CVData) || GENERIC_DEFAULT_CV,
+                  _createdAt: String(d.createdAt || '')
+                };
+              })
+              .sort((a, b) => (b._createdAt || b.id).localeCompare(a._createdAt || a.id))
+              .map(({ _createdAt: _, ...rest }) => rest);
+            setSavedResumes(sanitizeResumeList(cloudResumes));
+          } else {
+            void hydrateResumesFromBackend(epoch, ownerUid);
+          }
+        },
+        (error) => {
+          if (epoch !== sessionEpochRef.current || activeResumesOwnerRef.current !== ownerUid) {
+            return;
+          }
+          const info = buildFirestoreErrorInfo(error, OperationType.GET, `users/${firestoreUid}/resumes`);
+          console.error('Firestore Resumes Listener Error: ', JSON.stringify(info));
+          void hydrateResumesFromBackend(epoch, ownerUid);
+        }
+      );
+    } catch (err) {
+      console.error('Erro ao subscrever currículos do Firestore:', err);
+      void hydrateResumesFromBackend(epoch, ownerUid);
     }
   };
 
@@ -370,14 +467,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  // Sync resumes state with localStorage
+  // Sync resumes state strictly under the active authenticated user's key
   useEffect(() => {
     try {
-      localStorage.setItem(LOCAL_STORAGE_RESUMES_KEY, JSON.stringify(savedResumes));
+      clearLegacyUnscopedResumeCaches();
+      if (user?.id && activeResumesOwnerRef.current === user.id) {
+        localStorage.setItem(getScopedResumesStorageKey(user.id), JSON.stringify(sanitizeResumeList(savedResumes)));
+      }
     } catch (e) {
       console.warn('Erro ao guardar currículos locais:', e);
     }
-  }, [savedResumes]);
+  }, [savedResumes, user?.id]);
 
   // Handle redirect auth result if Google popup fell back to redirect on mobile
   useEffect(() => {
@@ -390,6 +490,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (result?.user) {
           consumeRedirectPendingMarker();
           sessionEpochRef.current += 1;
+          const epoch = sessionEpochRef.current;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
           const isVerifiedAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
           const profile: User = {
@@ -405,7 +506,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
           if (!cancelled) {
+            if (activeResumesOwnerRef.current !== synced.id) {
+              resetResumesForUserSwitch(synced.id);
+            }
             setUser(synced);
+            attachFirestoreResumesListener(result.user.uid, synced.id, epoch);
             setAuthRedirectError(null);
             setAuthLoading(false);
           }
@@ -579,46 +684,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('Aviso ao sincronizar sessão com backend:', backendErr);
           }
 
+          const activeSessionEpoch = sessionEpochRef.current;
+
+          if (activeResumesOwnerRef.current !== hydratedUser.id) {
+            resetResumesForUserSwitch(hydratedUser.id);
+          }
           setUser(hydratedUser);
           setAuthRedirectError(null);
           void loadNotificationPreferences(hydratedUser.id).catch(() => {});
 
-          // Attach listener for user's resumes subcollection
-          try {
-            const resumesColRef = collection(db, 'users', uid, 'resumes');
-            resumesUnsubRef.current = onSnapshot(
-              resumesColRef,
-              (snapshot) => {
-                if (!snapshot.empty) {
-                  const cloudResumes: SavedResume[] = snapshot.docs
-                    .map((docItem) => {
-                      const d = docItem.data();
-                      return {
-                        id: docItem.id,
-                        title: d.title || 'Currículo',
-                        targetJob: d.targetJob || 'Vaga Executiva',
-                        updatedAt: d.updatedAt || new Date().toLocaleDateString('pt-PT'),
-                        data: (d.data as CVData) || GENERIC_DEFAULT_CV,
-                        _createdAt: String(d.createdAt || '')
-                      };
-                    })
-                    .sort((a, b) => (b._createdAt || b.id).localeCompare(a._createdAt || a.id))
-                    .map(({ _createdAt: _, ...rest }) => rest);
-                  setSavedResumes(cloudResumes);
-                } else {
-                  void hydrateResumesFromBackend();
-                }
-              },
-              (error) => {
-                const info = buildFirestoreErrorInfo(error, OperationType.GET, `users/${uid}/resumes`);
-                console.error('Firestore Resumes Listener Error: ', JSON.stringify(info));
-                void hydrateResumesFromBackend();
-              }
-            );
-          } catch (err) {
-            console.error('Erro ao subscrever currículos do Firestore:', err);
-            void hydrateResumesFromBackend();
-          }
+          // Attach listener strictly for this authenticated user's resumes subcollection
+          attachFirestoreResumesListener(uid, hydratedUser.id, activeSessionEpoch);
         } else {
           // No active Firebase user: verify whether a valid Backend Auth session exists before clearing user
           const epochAtStart = sessionEpochRef.current;
@@ -629,9 +705,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
             if (response.ok && data?.authenticated && data.user) {
+              if (activeResumesOwnerRef.current !== data.user.id) {
+                resetResumesForUserSwitch(data.user.id);
+              }
               setUser(data.user);
-              void hydrateResumesFromBackend();
+              void hydrateResumesFromBackend(epochAtStart, data.user.id);
             } else if (!localStorage.getItem('curriculopro_impersonating_admin') && !getStoredAuthToken()) {
+              resetResumesForUserSwitch(null);
               setUser(null);
               setStoredAuthToken(null);
             }
@@ -641,6 +721,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               !getStoredAuthToken() &&
               !localStorage.getItem('curriculopro_impersonating_admin')
             ) {
+              resetResumesForUserSwitch(null);
               setUser(null);
             }
           }
@@ -707,6 +788,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (result?.user) {
           consumeRedirectPendingMarker();
           sessionEpochRef.current += 1;
+          const epoch = sessionEpochRef.current;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
           const isAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
           const profile: User = {
@@ -721,7 +803,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
+          if (activeResumesOwnerRef.current !== synced.id) {
+            resetResumesForUserSwitch(synced.id);
+          }
           setUser(synced);
+          attachFirestoreResumesListener(result.user.uid, synced.id, epoch);
           setAuthRedirectError(null);
           return true;
         }
@@ -760,9 +846,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (response.ok && data?.user && data?.token) {
       sessionEpochRef.current += 1;
+      const epoch = sessionEpochRef.current;
       setStoredAuthToken(data.token, rememberMe);
+      resetResumesForUserSwitch(data.user.id);
       setUser(data.user);
-      void hydrateResumesFromBackend();
+      void hydrateResumesFromBackend(epoch, data.user.id);
       return true;
     }
 
@@ -793,6 +881,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ).catch(() => {});
         const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
         if (cred.user) {
+          sessionEpochRef.current += 1;
+          const epoch = sessionEpochRef.current;
           const isAdmin = isUserAdmin(cleanEmail) && Boolean(cred.user.emailVerified);
           const profile: User = {
             id: cred.user.uid,
@@ -805,7 +895,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           const synced = await syncFirebaseUserToBackend(cred.user, profile, 'password', rememberMe);
-          setUser((prev) => prev || synced);
+          resetResumesForUserSwitch(synced.id);
+          setUser(synced);
+          attachFirestoreResumesListener(cred.user.uid, synced.id, epoch);
           return true;
         }
       } catch (fbErr: any) {
@@ -833,7 +925,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     password?: string,
     targetRole?: string,
-    rememberMe = true
+    rememberMe = true,
+    antiBot?: {
+      challengeId?: string;
+      challengeToken?: string;
+      challengeAnswer?: string;
+      website?: string;
+      companyPhone?: string;
+    }
   ): Promise<boolean> => {
     if (!password || password.length < 6) {
       const err: any = new Error('A palavra-passe deve conter pelo menos 6 caracteres.');
@@ -861,15 +960,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           email: cleanEmail,
           password,
           targetRole: cleanRole,
-          rememberMe
+          rememberMe,
+          ...(antiBot || {})
         })
       });
 
       if (response.ok && data?.user && data?.token) {
         sessionEpochRef.current += 1;
+        const epoch = sessionEpochRef.current;
         setStoredAuthToken(data.token, rememberMe);
+        resetResumesForUserSwitch(data.user.id);
         setUser(data.user);
-        void hydrateResumesFromBackend();
+        void hydrateResumesFromBackend(epoch, data.user.id);
         return true;
       }
 
@@ -957,8 +1059,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (data?.token && data?.user) {
+      sessionEpochRef.current += 1;
+      const epoch = sessionEpochRef.current;
       setStoredAuthToken(data.token, true);
+      resetResumesForUserSwitch(data.user.id);
       setUser(data.user);
+      void hydrateResumesFromBackend(epoch, data.user.id);
     }
     return true;
   };
@@ -1065,6 +1171,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async (): Promise<void> => {
     sessionEpochRef.current += 1;
+    resetResumesForUserSwitch(null);
+    try {
+      localStorage.removeItem('curriculo_draft_v1');
+      localStorage.removeItem('curriculo_job_draft_v1');
+      localStorage.removeItem('curriculo_letter_draft_v1');
+      localStorage.removeItem('curriculo_draft_v1_visitor');
+      localStorage.removeItem('curriculo_job_draft_v1_visitor');
+      localStorage.removeItem('curriculo_letter_draft_v1_visitor');
+    } catch {
+      // ignore
+    }
     try {
       if (auth.currentUser) {
         await signOut(auth);
@@ -1267,16 +1384,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cloudCv = cleanCv;
     }
 
-    // 1. If authenticated with Firebase, persist to Firestore subcollection
-    if (auth.currentUser) {
-      const uid = auth.currentUser.uid;
-      const resumeDocRef = doc(db, 'users', uid, 'resumes', id);
+    // 1. If authenticated with Firebase, persist strictly under the target owner's Firestore subcollection
+    const targetFirestoreUid = originalAdminUser && user?.id ? user.id : auth.currentUser?.uid;
+    if (auth.currentUser && targetFirestoreUid) {
+      const resumeDocRef = doc(db, 'users', targetFirestoreUid, 'resumes', id);
       try {
         await setDoc(
           resumeDocRef,
           sanitizeForFirestore({
             id,
-            userId: uid,
+            userId: targetFirestoreUid,
             title: safeTitle,
             targetJob: safeTargetJob,
             updatedAt: formattedDate,
@@ -1287,15 +1404,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err: any) {
         const errMsg = String(err?.message || err?.code || '');
         if (errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
-          handleFirestoreError(err, OperationType.CREATE, `users/${uid}/resumes/${id}`);
+          handleFirestoreError(err, OperationType.CREATE, `users/${targetFirestoreUid}/resumes/${id}`);
         }
-        const info = buildFirestoreErrorInfo(err, OperationType.CREATE, `users/${uid}/resumes/${id}`);
+        const info = buildFirestoreErrorInfo(err, OperationType.CREATE, `users/${targetFirestoreUid}/resumes/${id}`);
         console.warn('Firestore save fallback active:', JSON.stringify(info));
       }
     }
 
-    // 2. Sync to Backend persistence API (/api/resumes) when session token exists
-    if (getStoredAuthToken() || user) {
+    // 2. Sync to Backend persistence API (/api/resumes) when session token exists and not impersonating another user
+    if (!originalAdminUser && (getStoredAuthToken() || user)) {
       try {
         await apiAuthFetch('/api/resumes', {
           method: 'POST',
@@ -1313,7 +1430,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setSavedResumes((prev) => [newResume, ...prev.filter((r) => r.id !== newResume.id && r.title !== newResume.title)]);
-    if (user) {
+    if (user && !originalAdminUser) {
       void dispatchUserNotification({
         user,
         eventType: 'resume_update',
@@ -1331,22 +1448,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteResume = async (id: string): Promise<void> => {
-    if (auth.currentUser) {
-      const uid = auth.currentUser.uid;
-      const resumeDocRef = doc(db, 'users', uid, 'resumes', id);
+    const targetFirestoreUid = originalAdminUser && user?.id ? user.id : auth.currentUser?.uid;
+    if (auth.currentUser && targetFirestoreUid) {
+      const resumeDocRef = doc(db, 'users', targetFirestoreUid, 'resumes', id);
       try {
         await deleteDoc(resumeDocRef);
       } catch (err: any) {
         const errMsg = String(err?.message || err?.code || '');
         if (errMsg.includes('permission-denied') || errMsg.includes('Missing or insufficient permissions')) {
-          handleFirestoreError(err, OperationType.DELETE, `users/${uid}/resumes/${id}`);
+          handleFirestoreError(err, OperationType.DELETE, `users/${targetFirestoreUid}/resumes/${id}`);
         }
-        const info = buildFirestoreErrorInfo(err, OperationType.DELETE, `users/${uid}/resumes/${id}`);
+        const info = buildFirestoreErrorInfo(err, OperationType.DELETE, `users/${targetFirestoreUid}/resumes/${id}`);
         console.warn('Firestore delete fallback active:', JSON.stringify(info));
       }
     }
 
-    if (getStoredAuthToken() || user) {
+    if (!originalAdminUser && (getStoredAuthToken() || user)) {
       try {
         await apiAuthFetch(`/api/resumes/${encodeURIComponent(id)}`, { method: 'DELETE' });
       } catch (err) {
@@ -1363,6 +1480,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    sessionEpochRef.current += 1;
+    const epoch = sessionEpochRef.current;
     setOriginalAdminUser(user);
     localStorage.setItem('curriculopro_impersonating_admin', JSON.stringify(user));
 
@@ -1381,10 +1500,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Erro ao registar log de impersonate:', e);
     }
 
+    resetResumesForUserSwitch(targetUser.id);
     setUser({
       ...targetUser,
       notes: `[Sessão de Suporte Ativa] ${targetUser.notes || ''}`
     });
+
+    // Load the impersonated target user's own resumes (admin session has read permission)
+    if (auth.currentUser) {
+      attachFirestoreResumesListener(targetUser.id, targetUser.id, epoch);
+    }
+    try {
+      const { response, data } = await apiAuthFetch(
+        `/api/admin/users/${encodeURIComponent(targetUser.id)}/resumes`,
+        { method: 'GET' }
+      );
+      if (epoch === sessionEpochRef.current && activeResumesOwnerRef.current === targetUser.id && response.ok && Array.isArray(data?.resumes) && data.resumes.length > 0) {
+        setSavedResumes(sanitizeResumeList(data.resumes));
+      }
+    } catch {
+      // ignore if backend resumes not present
+    }
+
     void recordAuditLog({
       actorUserId: user.id,
       actorEmail: user.email,
@@ -1400,6 +1537,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const stopImpersonating = async (): Promise<void> => {
     if (!originalAdminUser) return;
+
+    sessionEpochRef.current += 1;
+    const epoch = sessionEpochRef.current;
 
     try {
       const { logImpersonationAction } = await import('../services/adminModulesService');
@@ -1429,9 +1569,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Erro ao registar finalização de impersonate:', e);
     }
 
+    resetResumesForUserSwitch(originalAdminUser.id);
     setUser(originalAdminUser);
     setOriginalAdminUser(null);
     localStorage.removeItem('curriculopro_impersonating_admin');
+
+    if (auth.currentUser) {
+      attachFirestoreResumesListener(auth.currentUser.uid, originalAdminUser.id, epoch);
+    } else {
+      void hydrateResumesFromBackend(epoch, originalAdminUser.id);
+    }
   };
 
   const isPro = Boolean(user && (user.plan === 'pro' || user.plan === 'executive'));

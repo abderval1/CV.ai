@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CVData, InterviewQuestion, InterviewAnswerEvaluation } from '../types/cv';
 import { SAMPLE_JOB_OFFERS } from '../data/initialCV';
+import { useLanguage } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS, getIntlLocale } from '../i18n/toolsUiTranslations';
 import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
@@ -38,6 +40,8 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   onUpdateJobDescription,
   onOpenPricing
 }) => {
+  const { siteLanguage } = useLanguage();
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).interviewSim;
   const [activeJobDesc, setActiveJobDesc] = useState<string>(
     jobDescription || SAMPLE_JOB_OFFERS[0].description
   );
@@ -70,7 +74,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
-      recognition.lang = 'pt-PT';
+      recognition.lang = getIntlLocale(siteLanguage);
 
       recognition.onresult = (event: any) => {
         let transcript = '';
@@ -98,7 +102,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
       recognitionRef.current = recognition;
     }
-  }, [questions, currentQuestionIndex]);
+  }, [questions, currentQuestionIndex, siteLanguage]);
 
   const toggleListening = () => {
     if (!speechSupported || !recognitionRef.current) return;
@@ -118,7 +122,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   // Generate 5 questions via API
   const handleGenerateQuestions = async () => {
     if (platformSettings.enableAiFeaturesGlobally === false) {
-      setErrorMessage('O gerador de entrevistas por IA encontra-se temporariamente pausado pela administração.');
+      setErrorMessage(ui.errAiPausedGen);
       return;
     }
 
@@ -137,7 +141,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.error || 'Falha ao gerar perguntas de entrevista.');
+        throw new Error(data?.error || ui.errGenDefault);
       }
       if (data.questions && Array.isArray(data.questions)) {
         setQuestions(data.questions);
@@ -146,11 +150,11 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         setEvaluations({});
         trackFrontendTelemetry({ type: 'ai_called', feature: 'interviewSim', tokens: 1500 });
       } else {
-        throw new Error('Formato de perguntas inválido retornado pelo servidor.');
+        throw new Error(ui.errGenDefault);
       }
     } catch (err: any) {
       console.error('Falha ao gerar perguntas:', err);
-      setErrorMessage(err.message || 'Erro ao gerar perguntas de entrevista.');
+      setErrorMessage(err.message || ui.errGenDefault);
       logGenerationError({
         timestamp: new Date().toISOString(),
         userEmail: currentCV.personalDetails.email || 'anonymous',
@@ -179,11 +183,11 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   const handleScoreAnswer = async () => {
     if (!currentQ) return;
     if (platformSettings.enableAiFeaturesGlobally === false) {
-      setErrorMessage('A avaliação por IA encontra-se temporariamente pausada pela administração.');
+      setErrorMessage(ui.errAiPausedEval);
       return;
     }
     if (!currentAnswer.trim() || currentAnswer.trim().length < 15) {
-      setErrorMessage('Por favor elabore uma resposta mais detalhada (mínimo 15 caracteres) antes de avaliar.');
+      setErrorMessage(ui.errShortAnswer);
       return;
     }
 
@@ -205,7 +209,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.error || 'Erro ao avaliar resposta.');
+        throw new Error(data?.error || ui.errEvalDefault);
       }
       setEvaluations((prev) => ({
         ...prev,
@@ -221,7 +225,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
       trackFrontendTelemetry({ type: 'ai_called', feature: 'interviewSim', tokens: 1100 });
     } catch (err: any) {
       console.error('Falha ao avaliar resposta:', err);
-      setErrorMessage('Erro ao avaliar resposta. Tente novamente.');
+      setErrorMessage(ui.errEvalDefault);
       logGenerationError({
         timestamp: new Date().toISOString(),
         userEmail: currentCV.personalDetails.email || 'anonymous',
@@ -255,15 +259,14 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                 <Target className="w-3.5 h-3.5 text-amber-400" />
-                Preparação de Entrevista Executiva
+                {ui.badge}
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-              Simulador de Entrevista Executiva & Scoring IA
+              {ui.title}
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Pratique as 5 perguntas comportamentais e técnicas mais prováveis para a sua vaga alvo.
-              Receba pontuação instantânea, análise do método STAR e sugestões de respostas modelo.
+              {ui.subtitle}
             </p>
           </div>
 
@@ -275,7 +278,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
               className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingQuestions ? 'animate-spin' : ''}`} />
-              <span>{isGeneratingQuestions ? 'A Gerar 5 Perguntas...' : 'Gerar Novas Perguntas'}</span>
+              <span>{isGeneratingQuestions ? ui.generatingBtn : ui.generateBtn}</span>
             </button>
           </div>
         </div>
@@ -283,14 +286,14 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         {/* Global Progress Bar */}
         <div className="pt-3 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400">Progresso da Simulação:</span>
+            <span className="text-slate-400">{ui.simProgress}</span>
             <span className="font-bold text-white font-mono">
-              {evaluatedCount} / {questions.length} Respondidas
+              {evaluatedCount} / {questions.length} {ui.answeredSuffix}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-slate-400">Média Geral de Prontidão:</span>
+            <span className="text-slate-400">{ui.readinessAvg}</span>
             <span
               className={`font-black font-mono text-xs px-2 py-0.5 rounded-full ${
                 averageScore >= 85
@@ -302,13 +305,13 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                   : 'bg-slate-800 text-slate-400'
               }`}
             >
-              {averageScore > 0 ? `${averageScore}%` : 'Pendente'}
+              {averageScore > 0 ? `${averageScore}%` : ui.pending}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5 text-slate-400 text-[11px] truncate">
             <Target className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="truncate">Candidato: {currentCV.personalDetails.name || 'Perfil Ativo'}</span>
+            <span className="truncate">{ui.candidateLabel} {currentCV.personalDetails.name || ui.profileActive}</span>
           </div>
         </div>
       </div>
@@ -324,7 +327,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
             onClick={() => setErrorMessage(null)}
             className="text-xs font-semibold hover:underline"
           >
-            Fechar
+            {ui.closeErr}
           </button>
         </div>
       )}
@@ -353,7 +356,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                   <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] bg-slate-100 text-slate-800 font-mono">
                     {idx + 1}
                   </span>
-                  <span>Pergunta {idx + 1}</span>
+                  <span>{ui.qTabPrefix} {idx + 1}</span>
                   {hasEvaluation ? (
                     <span
                       className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold ${
@@ -365,7 +368,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       {score}%
                     </span>
                   ) : isAnswered ? (
-                    <span className="w-2 h-2 rounded-full bg-blue-500" title="Resposta em rascunho" />
+                    <span className="w-2 h-2 rounded-full bg-blue-500" title={ui.draftTitle} />
                   ) : null}
                 </button>
               );
@@ -389,13 +392,13 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       }`}
                     >
                       {currentQ.type === 'behavioral'
-                        ? 'Comportamental (STAR)'
+                        ? ui.typeBehavioral
                         : currentQ.type === 'technical'
-                        ? 'Técnica & Metodologia'
-                        : 'Cenário Situacional'}
+                        ? ui.typeTechnical
+                        : ui.typeSituational}
                     </span>
                     <span className="text-xs text-slate-400 font-mono">
-                      Pergunta {currentQuestionIndex + 1} de {questions.length}
+                      {ui.questionWord} {currentQuestionIndex + 1} {ui.ofWord} {questions.length}
                     </span>
                   </div>
 
@@ -405,7 +408,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
                       disabled={currentQuestionIndex === 0}
                       className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
-                      title="Pergunta anterior"
+                      title={ui.prevTitle}
                     >
                       <ArrowLeft className="w-4 h-4" />
                     </button>
@@ -416,7 +419,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       }
                       disabled={currentQuestionIndex === questions.length - 1}
                       className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-40 transition-colors"
-                      title="Próxima pergunta"
+                      title={ui.nextTitle}
                     >
                       <ArrowRight className="w-4 h-4" />
                     </button>
@@ -433,7 +436,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs text-slate-600 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-slate-900">
                       <HelpCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>O que o Recrutador Procura:</span>
+                      <span>{ui.recruiterSeeks}</span>
                     </div>
                     <p className="text-[11px] leading-relaxed">{currentQ.context}</p>
                   </div>
@@ -441,7 +444,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                   <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/60 text-xs text-amber-950 space-y-1">
                     <div className="flex items-center gap-1.5 font-bold text-amber-900">
                       <Lightbulb className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                      <span>Fórmula Recomendada:</span>
+                      <span>{ui.recommendedFormula}</span>
                     </div>
                     <p className="text-[11px] leading-relaxed">{currentQ.suggestedStructure}</p>
                   </div>
@@ -451,7 +454,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                 {currentQ.keyCriteria && currentQ.keyCriteria.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Critérios Chave:
+                      {ui.keyCriteria}
                     </span>
                     {currentQ.keyCriteria.map((crit, idx) => (
                       <span
@@ -470,7 +473,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                     <MessageSquare className="w-3.5 h-3.5 text-slate-700" />
-                    <span>A Sua Resposta para Esta Pergunta:</span>
+                    <span>{ui.yourAnswerLabel}</span>
                   </label>
 
                   <div className="flex items-center gap-2">
@@ -483,17 +486,17 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                             ? 'bg-rose-100 text-rose-700 border border-rose-300 animate-pulse'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
                         }`}
-                        title="Falar resposta com o microfone"
+                        title={ui.micTitle}
                       >
                         {isListening ? (
                           <>
                             <MicOff className="w-3.5 h-3.5 text-rose-600" />
-                            <span>A Gravar...</span>
+                            <span>{ui.recordingBtn}</span>
                           </>
                         ) : (
                           <>
                             <Mic className="w-3.5 h-3.5 text-slate-700" />
-                            <span>Ditado por Voz</span>
+                            <span>{ui.voiceDictateBtn}</span>
                           </>
                         )}
                       </button>
@@ -511,12 +514,12 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       setAnswers((prev) => ({ ...prev, [currentQ.id]: val }));
                     }}
                     rows={5}
-                    placeholder="Digite a sua resposta como se estivesse diante do painel de recrutadores. Descreva o contexto real, a ação que você tomou pessoalmente e o resultado alcançado com dados ou métricas..."
+                    placeholder={ui.answerPlaceholder}
                     className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all leading-relaxed"
                   />
                   <div className="absolute right-3 bottom-3 text-[10px] text-slate-400 font-mono">
-                    {currentAnswer.length} caracteres ·{' '}
-                    {currentAnswer.trim() ? currentAnswer.trim().split(/\s+/).length : 0} palavras
+                    {currentAnswer.length} {ui.charsWord} ·{' '}
+                    {currentAnswer.trim() ? currentAnswer.trim().split(/\s+/).length : 0} {ui.wordsWord}
                   </div>
                 </div>
 
@@ -524,7 +527,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
                   <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>O algoritmo analisa clareza, métricas quantificadas e método STAR.</span>
+                    <span>{ui.starHint}</span>
                   </div>
 
                   <button
@@ -536,12 +539,12 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     {isEvaluating ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>A Avaliar Resposta...</span>
+                        <span>{ui.evaluatingBtn}</span>
                       </>
                     ) : (
                       <>
                         <Award className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Avaliar Resposta (Método STAR)</span>
+                        <span>{ui.evaluateBtn}</span>
                         <Send className="w-3 h-3" />
                       </>
                     )}
@@ -568,7 +571,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                            Veredito da Avaliação:
+                            {ui.verdictTitle}
                           </h4>
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -584,10 +587,10 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
                           {currentEval.score >= 85
-                            ? 'Excelente estrutura executiva com forte apelo para o entrevistador.'
+                            ? ui.verdictHigh
                             : currentEval.score >= 70
-                            ? 'Resposta positiva, porém mais dados e métricas elevariam a sua autoridade.'
-                            : 'Resposta genérica ou curta. Aplique as recomendações abaixo.'}
+                            ? ui.verdictMid
+                            : ui.verdictLow}
                         </p>
                       </div>
                     </div>
@@ -599,7 +602,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     <div className="p-3.5 bg-emerald-50/60 border border-emerald-200/80 rounded-xl space-y-2">
                       <div className="flex items-center gap-1.5 font-bold text-emerald-900">
                         <ThumbsUp className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Pontos Fortes Identificados:</span>
+                        <span>{ui.strengthsTitle}</span>
                       </div>
                       <ul className="space-y-1 text-emerald-950 text-[11px]">
                         {currentEval.strengths.map((s, idx) => (
@@ -615,7 +618,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-2">
                       <div className="flex items-center gap-1.5 font-bold text-amber-900">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        <span>Oportunidades de Melhoria:</span>
+                        <span>{ui.improvementsTitle}</span>
                       </div>
                       <ul className="space-y-1 text-amber-950 text-[11px]">
                         {currentEval.improvements.map((imp, idx) => (
@@ -633,7 +636,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
                     <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
                       <div className="flex items-center gap-1.5 font-bold text-slate-900">
                         <Award className="w-4 h-4 text-amber-600" />
-                        <span>Sugestão de Resposta Modelo Executiva (Padrão STAR):</span>
+                        <span>{ui.modelAnswerTitle}</span>
                       </div>
                       <p className="text-slate-700 text-[11px] leading-relaxed italic">
                         "{currentEval.recommendedAnswer}"
@@ -649,9 +652,9 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-4">
           <MessageSquare className="w-10 h-10 text-slate-300 mx-auto" />
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Nenhuma pergunta gerada ainda</h3>
+            <h3 className="text-sm font-bold text-slate-900">{ui.emptyTitle}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Clique no botão acima para formular 5 perguntas sob medida para a sua candidatura.
+              {ui.emptyDesc}
             </p>
           </div>
           <button
@@ -659,7 +662,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
             onClick={handleGenerateQuestions}
             className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs"
           >
-            Gerar Perguntas de Entrevista
+            {ui.emptyBtn}
           </button>
         </div>
       )}
