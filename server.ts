@@ -34,6 +34,93 @@ const SERVER_ROOT_DIR = (() => {
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// -------------------------------------------------------------
+// INTERNAL REAL-TIME ERROR MONITORING (ZERO EXTERNAL KEYS NEEDED)
+// -------------------------------------------------------------
+interface ServerMonitoringContext {
+  route?: string;
+  method?: string;
+  statusCode?: number;
+  source?: string;
+  userEmail?: string;
+  extra?: Record<string, unknown>;
+}
+
+let serverErrorStoreSink: ((entry: Record<string, any>) => void) | null = null;
+let processHooksRegistered = false;
+
+function scrubMonitorText(input: unknown, maxLen = 900): string {
+  return String(input ?? '')
+    .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/AIza[0-9A-Za-z\-_]{20,}/g, '[REDACTED]')
+    .replace(/sk_(?:live|test)_[0-9A-Za-z]{12,}/g, '[REDACTED]')
+    .replace(/rk_(?:live|test)_[0-9A-Za-z]{12,}/g, '[REDACTED]')
+    .replace(/(password|secret|token|cookie|authorization)=[^&\s]+/gi, '$1=[REDACTED]')
+    .slice(0, maxLen);
+}
+
+export async function captureServerException(
+  error: unknown,
+  context: ServerMonitoringContext = {}
+): Promise<void> {
+  const errObj = error instanceof Error ? error : new Error(String(error || 'Unknown server error'));
+  const errType = scrubMonitorText(errObj.name || 'Error', 60);
+  const errMsg = scrubMonitorText(errObj.message || 'Erro interno no servidor', 600);
+  const stackStr = scrubMonitorText(errObj.stack || '', 1500);
+  const route = scrubMonitorText(context.route || 'unknown', 180);
+  const method = scrubMonitorText(context.method || 'SERVER', 16);
+  const statusCode = Number(context.statusCode) || 500;
+  const source = scrubMonitorText(context.source || 'express_backend', 80);
+  const environment = process.env.VERCEL_ENV || process.env.NODE_ENV || 'production';
+
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      tag: 'ERROR_MONITOR',
+      timestamp: new Date().toISOString(),
+      source,
+      environment,
+      runtime: process.env.VERCEL || process.env.VERCEL_ENV ? 'vercel-serverless' : 'node-server',
+      region: process.env.VERCEL_REGION || 'local',
+      method,
+      route,
+      statusCode,
+      errorType: errType,
+      message: errMsg,
+      stack: stackStr.split('\n').slice(0, 6).join(' | ')
+    })
+  );
+
+  if (serverErrorStoreSink) {
+    try {
+      serverErrorStoreSink({
+        id: `err_srv_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`,
+        timestamp: new Date().toISOString(),
+        userEmail: scrubMonitorText(context.userEmail || 'system', 180),
+        operationType: `${source}:${method} ${route}`.slice(0, 80),
+        errorMessage: scrubMonitorText(
+          `${errType}: ${errMsg}${stackStr ? ' | ' + stackStr.split('\n').slice(0, 3).join(' ') : ''}`,
+          950
+        ),
+        modelUsed: 'internal-server-monitor',
+        resolved: false
+      });
+    } catch {
+      // never fail inside monitor sink
+    }
+  }
+}
+
+if (!processHooksRegistered && typeof process !== 'undefined') {
+  processHooksRegistered = true;
+  process.on('unhandledRejection', (reason) => {
+    void captureServerException(reason, { source: 'process_unhandled_rejection', statusCode: 500 });
+  });
+  process.on('uncaughtException', (err) => {
+    void captureServerException(err, { source: 'process_uncaught_exception', statusCode: 500 });
+  });
+}
+
 function parseCliFlag(names: string[]): string | undefined {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 1) {
@@ -77,6 +164,21 @@ export function createApiApp() {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
+
+  // Automatic real-time HTTP 5xx diagnostic capture for every API response
+  app.use((req, res, next) => {
+    res.on('finish', () => {
+      if (res.statusCode >= 500 && !(res as any).__errorCaptured && !req.originalUrl?.includes('/api/error-logs')) {
+        void captureServerException(new Error(`HTTP ${res.statusCode} emitted by route ${req.method} ${req.originalUrl}`), {
+          route: req.originalUrl || req.path,
+          method: req.method,
+          statusCode: res.statusCode,
+          source: 'express_http_5xx'
+        });
+      }
+    });
+    next();
+  });
 
   // Security HTTP headers (iframe-compatible for AI Studio preview, no X-Frame-Options: DENY)
   app.use((req, res, next) => {
@@ -5404,7 +5506,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const items = (authStore.notificationsByUser?.[payload.uid] || []).slice(0, 40);
+      const userRec = resolveAuthenticatedUserRecord(payload);
+      const ownerUid = userRec?.id || payload.uid;
+      const items = (authStore.notificationsByUser?.[ownerUid] || []).slice(0, 40);
       return res.json({ notifications: items });
     } catch {
       return res.status(500).json({ error: 'Erro ao carregar notificações.' });
@@ -5542,10 +5646,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
+      const userRec = resolveAuthenticatedUserRecord(payload);
+      const ownerUid = userRec?.id || payload.uid;
       const targetId = String(req.params.id || '');
-      const list = authStore.notificationsByUser?.[payload.uid] || [];
+      const list = authStore.notificationsByUser?.[ownerUid] || [];
       if (authStore.notificationsByUser) {
-        authStore.notificationsByUser[payload.uid] = list.map((item) =>
+        authStore.notificationsByUser[ownerUid] = list.map((item) =>
           targetId === 'all' || item.id === targetId ? { ...item, read: true } : item
         );
         persistAuthStore();
@@ -5563,8 +5669,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
+      const userRec = resolveAuthenticatedUserRecord(payload);
+      const ownerUid = userRec?.id || payload.uid;
       if (authStore.notificationsByUser) {
-        authStore.notificationsByUser[payload.uid] = [];
+        authStore.notificationsByUser[ownerUid] = [];
         persistAuthStore();
       }
       return res.json({ success: true });
@@ -8631,8 +8739,19 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return res.send(xml);
   });
 
-  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('Erro não tratado na API Express:', err);
+  serverErrorStoreSink = (entry) => {
+    authStore.errorLogs = [entry, ...(authStore.errorLogs || [])].slice(0, 100);
+    persistAuthStore();
+  };
+
+  app.use(async (err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    (res as any).__errorCaptured = true;
+    await captureServerException(err, {
+      route: req.originalUrl || req.path,
+      method: req.method,
+      statusCode: Number(err?.status) || 500,
+      source: 'express_unhandled_middleware'
+    });
     if (!res.headersSent) {
       return res.status(Number(err?.status) || 500).json({
         error: 'Erro interno do servidor ao processar a solicitação.'

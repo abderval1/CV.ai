@@ -389,10 +389,14 @@ export async function markNotificationAsRead(userId: string, notificationId: str
   );
   setCachedNotifications(userId, cached);
 
-  if (auth.currentUser && auth.currentUser.uid === userId) {
+  if (auth.currentUser && auth.currentUser.uid === userId && /^[a-zA-Z0-9_\-]{1,128}$/.test(notificationId)) {
     const path = `users/${userId}/notifications/${notificationId}`;
+    const docRef = doc(db, 'users', userId, 'notifications', notificationId);
     try {
-      await updateDoc(doc(db, 'users', userId, 'notifications', notificationId), { read: true });
+      const existingSnap = await getDoc(docRef);
+      if (existingSnap.exists()) {
+        await updateDoc(docRef, { read: true });
+      }
     } catch (err: any) {
       const msg = String(err?.message || err?.code || '');
       if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
@@ -426,8 +430,13 @@ export async function markAllNotificationsAsRead(
   if (auth.currentUser && auth.currentUser.uid === userId) {
     await Promise.all(
       unreadIds.map(async (id) => {
+        if (!/^[a-zA-Z0-9_\-]{1,128}$/.test(id)) return;
+        const docRef = doc(db, 'users', userId, 'notifications', id);
         try {
-          await updateDoc(doc(db, 'users', userId, 'notifications', id), { read: true });
+          const existingSnap = await getDoc(docRef);
+          if (existingSnap.exists()) {
+            await updateDoc(docRef, { read: true });
+          }
         } catch (err: any) {
           const msg = String(err?.message || err?.code || '');
           if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
@@ -459,8 +468,13 @@ export async function clearUserNotifications(
   if (auth.currentUser && auth.currentUser.uid === userId) {
     await Promise.all(
       items.map(async (item) => {
+        if (!item?.id || !/^[a-zA-Z0-9_\-]{1,128}$/.test(item.id)) return;
+        const docRef = doc(db, 'users', userId, 'notifications', item.id);
         try {
-          await deleteDoc(doc(db, 'users', userId, 'notifications', item.id));
+          const existingSnap = await getDoc(docRef);
+          if (existingSnap.exists()) {
+            await deleteDoc(docRef);
+          }
         } catch (err: any) {
           const msg = String(err?.message || err?.code || '');
           if (msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {

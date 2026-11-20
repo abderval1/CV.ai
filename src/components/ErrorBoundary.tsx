@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react';
 import { SiteLanguageCode } from '../i18n/siteTranslations';
+import { captureClientException } from '../services/errorMonitoringService';
 
 interface Props {
   children: ReactNode;
@@ -81,6 +82,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error in CV Studio React Tree:', error, errorInfo);
+    captureClientException(error, {
+      operationType: 'react_error_boundary',
+      componentStack: errorInfo?.componentStack || undefined,
+      level: 'fatal'
+    });
   }
 
   private handleReset = () => {
