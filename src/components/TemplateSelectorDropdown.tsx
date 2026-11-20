@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TemplateStyle } from '../types/cv';
 import { CV_TEMPLATES, getTemplateById } from '../data/templateCatalog';
-import { getStoredTemplatesSync } from '../services/adminModulesService';
+import { getStoredTemplatesSync, trackFrontendTelemetry } from '../services/adminModulesService';
 import {
   ChevronDown,
   Camera,
@@ -155,6 +155,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                       key={item.id}
                       type="button"
                       onClick={() => {
+                        trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
                         onSelectStyle(item.id);
                         setIsOpen(false);
                       }}
@@ -213,6 +214,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
                       key={item.id}
                       type="button"
                       onClick={() => {
+                        trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
                         onSelectStyle(item.id);
                         setIsOpen(false);
                       }}

@@ -253,6 +253,48 @@ service cloud.firestore {
              isValidOptionalString(data, 'targetResource', 180);
     }
 
+    function isValidSupportThread(data) {
+      return data.keys().hasAll([
+               'id', 'userId', 'userName', 'userEmail', 'status',
+               'lastMessageAt', 'unreadByUser', 'unreadByAdmin', 'createdAt', 'updatedAt'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'userId', 'userName', 'userEmail', 'userAvatarUrl', 'userPlan',
+               'status', 'lastMessageText', 'lastMessageSenderRole', 'lastMessageAt',
+               'unreadByUser', 'unreadByAdmin', 'createdAt', 'updatedAt'
+             ]) &&
+             isValidId(data.id) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120 &&
+             data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 180 &&
+             isValidOptionalString(data, 'userAvatarUrl', 500) &&
+             (!('userPlan' in data) || data.userPlan == null || data.userPlan in ['free', 'pro', 'executive']) &&
+             data.status in ['open', 'resolved'] &&
+             isValidOptionalString(data, 'lastMessageText', 500) &&
+             (!('lastMessageSenderRole' in data) || data.lastMessageSenderRole == null || data.lastMessageSenderRole in ['user', 'admin']) &&
+             data.lastMessageAt is string && data.lastMessageAt.size() >= 10 && data.lastMessageAt.size() <= 50 &&
+             data.unreadByUser is number && data.unreadByUser >= 0 &&
+             data.unreadByAdmin is number && data.unreadByAdmin >= 0 &&
+             data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 50 &&
+             data.updatedAt is string && data.updatedAt.size() >= 10 && data.updatedAt.size() <= 50;
+    }
+
+    function isValidSupportMessage(data) {
+      return data.keys().hasAll([
+               'id', 'threadId', 'senderId', 'senderName', 'senderRole', 'text', 'createdAt'
+             ]) &&
+             data.keys().hasOnly([
+               'id', 'threadId', 'senderId', 'senderName', 'senderRole', 'text', 'createdAt'
+             ]) &&
+             isValidId(data.id) &&
+             isValidId(data.threadId) &&
+             data.senderId is string && data.senderId.size() >= 1 && data.senderId.size() <= 128 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 120 &&
+             data.senderRole in ['user', 'admin'] &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 2000 &&
+             data.createdAt is string && data.createdAt.size() >= 10 && data.createdAt.size() <= 50;
+    }
+
     // Connection testing doc
     match /test/connection {
       allow read: if true;
@@ -532,6 +574,57 @@ service cloud.firestore {
                          )
                        );
       allow update, delete: if false;
+    }
+
+    // Registered User Support Chat Threads & Messages
+    match /supportThreads/{threadId} {
+      allow get: if isSignedIn() && isValidId(threadId) && (isAdmin() || threadId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(threadId) &&
+                       isValidSupportThread(incoming()) &&
+                       incoming().id == threadId && (
+                         isAdmin() ||
+                         (
+                           threadId == request.auth.uid &&
+                           incoming().userId == request.auth.uid &&
+                           incoming().status == 'open' &&
+                           incoming().unreadByUser == 0
+                         )
+                       );
+      allow update: if isSignedIn() &&
+                       isValidId(threadId) &&
+                       isValidSupportThread(incoming()) &&
+                       incoming().id == existing().id &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt && (
+                         isAdmin() ||
+                         (
+                           threadId == request.auth.uid &&
+                           (incoming().status == existing().status || incoming().status == 'open')
+                         )
+                       );
+      allow delete: if isAdmin() && isValidId(threadId);
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && isValidId(threadId) && isValidId(messageId) && (
+          isAdmin() || threadId == request.auth.uid
+        );
+        allow create: if isSignedIn() &&
+                         isValidId(threadId) &&
+                         isValidId(messageId) &&
+                         isValidSupportMessage(incoming()) &&
+                         incoming().id == messageId &&
+                         incoming().threadId == threadId && (
+                           isAdmin() ||
+                           (
+                             threadId == request.auth.uid &&
+                             incoming().senderId == request.auth.uid &&
+                             incoming().senderRole == 'user'
+                           )
+                         );
+        allow update, delete: if false;
+      }
     }
   }
 }

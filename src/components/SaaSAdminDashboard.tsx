@@ -13,7 +13,9 @@ import {
   anonymizeUserRecord,
   deleteUserAccountRecord,
   isUserAdmin,
-  ADMIN_EMAILS
+  ADMIN_EMAILS,
+  fetchAdminUserResumes,
+  AdminUserResumeSummary
 } from '../services/saasDbService';
 import {
   DEFAULT_PROMPT_CONFIGS,
@@ -43,8 +45,19 @@ import {
   fetchPlatformSettings,
   savePlatformSettings,
   getFrontendTelemetry,
+  fetchServerTelemetry,
+  fetchAiHealthStatus,
+  AiLiveHealthSnapshot,
   emitAdminConfigUpdated
 } from '../services/adminModulesService';
+import {
+  fetchAdminSupportThreads,
+  sendAdminSupportReply,
+  markAdminSupportThreadRead,
+  updateAdminSupportThreadStatus,
+  subscribeSupportChatWebSocket,
+  SupportWsStatus
+} from '../services/supportChatService';
 import {
   User,
   SaaSOrder,
@@ -54,7 +67,8 @@ import {
   OrderStatus,
   PaymentMethod,
   UserRole,
-  UserStatus
+  UserStatus,
+  SupportChatThread
 } from '../types/cv';
 import {
   BILLING_CYCLES,
@@ -132,7 +146,13 @@ import {
   QrCode,
   Edit3,
   CreditCard,
-  Copy
+  Copy,
+  MessageCircle,
+  Send,
+  FileText,
+  Wifi,
+  WifiOff,
+  Clock
 } from 'lucide-react';
 import {
   AdminFinancialCharts,
@@ -152,6 +172,7 @@ export type AdminActiveModule =
   | 'ai_prompts'
   | 'templates_content'
   | 'users_support'
+  | 'support_chat'
   | 'pricing_marketing'
   | 'security_monitoring';
 
@@ -181,13 +202,18 @@ const MODULE_META: Record<
     shortLabel: 'CRM & Faturas',
     subtitle: 'Perfis de clientes, notas CRM, ações manuais, reembolsos e modo Personificar'
   },
+  support_chat: {
+    label: '5. Chat de Suporte & Atendimento',
+    shortLabel: 'Chat de Suporte',
+    subtitle: 'Conversas em tempo real com utilizadores registados e respostas de Admin/Moderador'
+  },
   pricing_marketing: {
-    label: '5. Monetização, Planos & Campanhas',
+    label: '6. Monetização, Planos & Campanhas',
     shortLabel: 'Planos & Marketing',
-    subtitle: 'Edição ao vivo de preços ($8/$12), cupons promocionais e avisos transversais'
+    subtitle: 'Edição ao vivo de preços, cupons promocionais e avisos transversais'
   },
   security_monitoring: {
-    label: '6. Segurança, RGPD & Governança',
+    label: '7. Segurança, RGPD & Governança',
     shortLabel: 'Segurança & Governança',
     subtitle: 'Modo manutenção, controlo global, logs de auditoria Firestore, RGPD e RBAC'
   }
@@ -299,9 +325,25 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [drawerRole, setDrawerRole] = useState<UserRole>('user');
   const [drawerStatus, setDrawerStatus] = useState<UserStatus>('active');
   const [isSavingDrawer, setIsSavingDrawer] = useState<boolean>(false);
+  const [drawerResumes, setDrawerResumes] = useState<AdminUserResumeSummary[]>([]);
+  const [isLoadingDrawerResumes, setIsLoadingDrawerResumes] = useState<boolean>(false);
+
+  // Live AI Health & Support Chat States
+  const [aiLiveHealth, setAiLiveHealth] = useState<AiLiveHealthSnapshot | null>(null);
+  const [isProbingAiHealth, setIsProbingAiHealth] = useState<boolean>(false);
+  const [supportThreads, setSupportThreads] = useState<SupportChatThread[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [chatSearch, setChatSearch] = useState<string>('');
+  const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'open' | 'resolved'>('all');
+  const [adminChatReply, setAdminChatReply] = useState<string>('');
+  const [isSendingChatReply, setIsSendingChatReply] = useState<boolean>(false);
+  const [supportWsStatus, setSupportWsStatus] = useState<SupportWsStatus>('connecting');
+  const adminChatEndRef = React.useRef<HTMLDivElement | null>(null);
 
   // Inner Modals
   const [showNewUserModal, setShowNewUserModal] = useState<boolean>(false);
+  const [isCreatingUser, setIsCreatingUser] = useState<boolean>(false);
+  const [newUserError, setNewUserError] = useState<string | null>(null);
   const [showNewOrderModal, setShowNewOrderModal] = useState<boolean>(false);
   const [showNewCouponModal, setShowNewCouponModal] = useState<boolean>(false);
   const [showNewBannerModal, setShowNewBannerModal] = useState<boolean>(false);
@@ -334,6 +376,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [newUserForm, setNewUserForm] = useState({
     name: '',
     email: '',
+    password: '',
     plan: 'pro' as SubscriptionPlan,
     phone: '',
     role: 'user' as UserRole,
@@ -404,7 +447,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         plans,
         settings,
         impLogs,
-        auditLogs
+        auditLogs,
+        serverTelemetry,
+        liveHealth,
+        chatResp
       ] = await Promise.all([
         fetchAllUsers(),
         fetchAllOrders(),
@@ -421,7 +467,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         fetchEditablePlans(),
         fetchPlatformSettings(),
         fetchImpersonationLogsAsync(),
-        fetchAuditLogs()
+        fetchAuditLogs(),
+        fetchServerTelemetry(),
+        fetchAiHealthStatus(false),
+        fetchAdminSupportThreads().catch(() => ({ threads: [] as SupportChatThread[], unreadTotal: 0 }))
       ]);
 
       setUsersList(users);
@@ -444,7 +493,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setEditablePlans(plans);
       setPlatformSettings(settings);
       setImpersonationLogs(impLogs);
-      setTelemetry(getFrontendTelemetry());
+      setTelemetry(serverTelemetry);
+      if (liveHealth) setAiLiveHealth(liveHealth);
+      if (Array.isArray(chatResp?.threads)) {
+        setSupportThreads(chatResp.threads);
+        if (!selectedThreadId && chatResp.threads.length > 0) {
+          setSelectedThreadId(chatResp.threads[0].id);
+        }
+      }
       try {
         const cardHealthRes = await fetch('/api/payments/card-health', { credentials: 'include' });
         if (cardHealthRes.ok) {
@@ -582,6 +638,42 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     };
   }, [isOpen, isAdminAccess, isImpersonating]);
 
+  // Real-time WebSocket Support Chat subscription for Admin / Moderator
+  const activeChatStateRef = React.useRef<{ activeModule: AdminActiveModule; selectedThreadId: string | null }>({
+    activeModule,
+    selectedThreadId
+  });
+  activeChatStateRef.current = { activeModule, selectedThreadId };
+
+  useEffect(() => {
+    if (!isOpen || (!isAdminAccess && !isImpersonating)) return;
+    const unsub = subscribeSupportChatWebSocket(
+      (evt) => {
+        if (evt.type === 'support_chat_update' && evt.thread) {
+          const incoming = evt.thread;
+          setSupportThreads((prev) => {
+            const exists = prev.some((t) => t.id === incoming.id);
+            const next = exists
+              ? prev.map((t) => (t.id === incoming.id ? incoming : t))
+              : [incoming, ...prev];
+            return [...next].sort(
+              (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+            );
+          });
+          if (
+            activeChatStateRef.current.activeModule === 'support_chat' &&
+            activeChatStateRef.current.selectedThreadId === incoming.id &&
+            incoming.unreadByAdmin > 0
+          ) {
+            void markAdminSupportThreadRead(incoming.id);
+          }
+        }
+      },
+      setSupportWsStatus
+    );
+    return () => unsub();
+  }, [isOpen, isAdminAccess, isImpersonating]);
+
   // Open User 360° Drawer
   const openUserDrawer = (target: User) => {
     setInspectedUser(target);
@@ -589,6 +681,48 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     setDrawerPlan(target.plan || 'free');
     setDrawerRole(target.role || 'user');
     setDrawerStatus(target.status || 'active');
+    setDrawerResumes([]);
+    setIsLoadingDrawerResumes(true);
+    fetchAdminUserResumes(target.id)
+      .then((resumes) => setDrawerResumes(resumes))
+      .catch(() => setDrawerResumes([]))
+      .finally(() => setIsLoadingDrawerResumes(false));
+  };
+
+  const handleOpenSupportChatForUser = (target: User) => {
+    setSupportThreads((prev) => {
+      if (prev.some((t) => t.id === target.id || t.userEmail.toLowerCase() === target.email.toLowerCase())) {
+        return prev;
+      }
+      const nowIso = new Date().toISOString();
+      const starter: SupportChatThread = {
+        id: target.id,
+        userId: target.id,
+        userName: target.name || target.email,
+        userEmail: target.email,
+        userAvatarUrl: target.avatarUrl,
+        userPlan: target.plan,
+        status: 'open',
+        lastMessageText: '',
+        lastMessageAt: nowIso,
+        unreadByUser: 0,
+        unreadByAdmin: 0,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        messages: []
+      };
+      return [starter, ...prev];
+    });
+    const matched = supportThreads.find(
+      (t) => t.id === target.id || t.userEmail.toLowerCase() === target.email.toLowerCase()
+    );
+    const tid = matched?.id || target.id;
+    setSelectedThreadId(tid);
+    setInspectedUser(null);
+    setActiveModule('support_chat');
+    if (matched && matched.unreadByAdmin > 0) {
+      void markAdminSupportThreadRead(tid);
+    }
   };
 
   const handleSaveUserDrawer = async () => {
@@ -1520,9 +1654,30 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!selectedPrompt) return;
     const def = DEFAULT_PROMPT_CONFIGS.find((p) => p.id === selectedPrompt.id);
     if (!def) return;
-    const restored = { ...def, updatedAt: new Date().toISOString() };
-    await handleSavePrompt(restored);
-    showNotification(`Prompt "${restored.name}" restaurado para o padrão original.`);
+    try {
+      const restored = { ...def, updatedAt: new Date().toISOString() };
+      await handleSavePrompt(restored);
+      showNotification(`Prompt "${restored.name}" restaurado para o padrão original.`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao restaurar prompt padrão.');
+    }
+  };
+
+  const handleProbeAiHealth = async () => {
+    setIsProbingAiHealth(true);
+    try {
+      const snap = await fetchAiHealthStatus(true);
+      if (snap) {
+        setAiLiveHealth(snap);
+        showNotification('Diagnóstico de latência Gemini concluído em tempo real!');
+      } else {
+        showNotification('Não foi possível consultar o estado ao vivo dos modelos IA.');
+      }
+    } catch {
+      showNotification('Erro ao testar latência dos modelos Gemini.');
+    } finally {
+      setIsProbingAiHealth(false);
+    }
   };
 
   const handleTestPromptWithAI = async () => {
@@ -1585,27 +1740,41 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       .map((t) => (t.id === updatedCurrent.id ? updatedCurrent : t.id === updatedSwap.id ? updatedSwap : t))
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
+    const previousList = templatesList;
     setTemplatesList(nextList);
-    await Promise.all([saveAdminTemplate(updatedCurrent), saveAdminTemplate(updatedSwap)]);
-    showNotification(`Ordem de exibição de "${current.shortName}" atualizada!`);
+    try {
+      await Promise.all([saveAdminTemplate(updatedCurrent), saveAdminTemplate(updatedSwap)]);
+      showNotification(`Ordem de exibição de "${current.shortName}" atualizada!`);
+    } catch (err: any) {
+      setTemplatesList(previousList);
+      showNotification(err?.message || 'Erro ao reordenar templates.');
+    }
   };
 
   const handleToggleTemplate = async (templateId: string, currentActive: boolean) => {
     const target = templatesList.find((t) => t.id === templateId);
     if (!target) return;
     const updated = { ...target, isActive: !currentActive };
-    await saveAdminTemplate(updated);
-    setTemplatesList((prev) => prev.map((t) => (t.id === templateId ? updated : t)));
-    showNotification(`Template "${target.shortName}" ${!currentActive ? 'ATIVADO' : 'DESATIVADO'}.`);
+    try {
+      await saveAdminTemplate(updated);
+      setTemplatesList((prev) => prev.map((t) => (t.id === templateId ? updated : t)));
+      showNotification(`Template "${target.shortName}" ${!currentActive ? 'ATIVADO' : 'DESATIVADO'}.`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao alterar estado do template.');
+    }
   };
 
   const handleTemplateTierChange = async (templateId: string, newTier: 'free' | 'pro' | 'executive') => {
     const target = templatesList.find((t) => t.id === templateId);
     if (!target) return;
     const updated = { ...target, tierRequired: newTier };
-    await saveAdminTemplate(updated);
-    setTemplatesList((prev) => prev.map((t) => (t.id === templateId ? updated : t)));
-    showNotification(`Nível do modelo "${target.shortName}" alterado para ${newTier.toUpperCase()}.`);
+    try {
+      await saveAdminTemplate(updated);
+      setTemplatesList((prev) => prev.map((t) => (t.id === templateId ? updated : t)));
+      showNotification(`Nível do modelo "${target.shortName}" alterado para ${newTier.toUpperCase()}.`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao alterar nível do template.');
+    }
   };
 
   const handleSaveTemplateMeta = async (updatedItem: TemplateAdminItem) => {
@@ -1615,10 +1784,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       badge: updatedItem.badge.trim() || 'ATS',
       atsScore: Math.max(50, Math.min(100, Number(updatedItem.atsScore) || 95))
     };
-    await saveAdminTemplate(cleaned);
-    setTemplatesList((prev) => prev.map((t) => (t.id === cleaned.id ? cleaned : t)));
-    setEditingTemplate(null);
-    showNotification(`Metadados de "${cleaned.shortName}" guardados ao vivo!`);
+    try {
+      await saveAdminTemplate(cleaned);
+      setTemplatesList((prev) => prev.map((t) => (t.id === cleaned.id ? cleaned : t)));
+      setEditingTemplate(null);
+      showNotification(`Metadados de "${cleaned.shortName}" guardados ao vivo!`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao guardar metadados do template.');
+    }
   };
 
   const handleExportGdprJson = (req: GdprDataRequest) => {
@@ -1648,36 +1821,92 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   };
 
   const handleAnonymizeGdpr = async (req: GdprDataRequest) => {
-    const matchingUser = usersList.find(
-      (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
-    );
-    if (matchingUser) {
-      await anonymizeUserRecord(matchingUser.id);
-      setUsersList((prev) =>
-        prev.map((u) =>
-          u.id === matchingUser.id
-            ? {
-                ...u,
-                name: 'Utilizador Anonimizado (RGPD)',
-                email: `anon-${matchingUser.id.slice(0, 8)}@eliminado.rgpd`,
-                phone: '',
-                status: 'suspended',
-                plan: 'free',
-                creditsRemaining: 0
-              }
-            : u
+    try {
+      const matchingUser = usersList.find(
+        (u) => u.id === req.userId || u.email.toLowerCase() === req.userEmail.toLowerCase()
+      );
+      if (matchingUser) {
+        await anonymizeUserRecord(matchingUser.id);
+        setUsersList((prev) =>
+          prev.map((u) =>
+            u.id === matchingUser.id
+              ? {
+                  ...u,
+                  name: 'Utilizador Anonimizado (RGPD)',
+                  email: `anon-${matchingUser.id.slice(0, 8)}@eliminado.rgpd`,
+                  phone: '',
+                  status: 'suspended',
+                  plan: 'free',
+                  creditsRemaining: 0
+                }
+              : u
+          )
+        );
+      }
+      await updateGdprRequestStatus(req.id, 'completed', 'Dados pessoais anonimizados conforme Art. 17 RGPD.');
+      setGdprList((prev) =>
+        prev.map((item) =>
+          item.id === req.id
+            ? { ...item, status: 'completed', notes: 'Dados pessoais anonimizados conforme Art. 17 RGPD.' }
+            : item
         )
       );
+      showNotification(`Dados de ${req.userEmail} anonimizados e pedido concluído.`);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao anonimizar dados RGPD.');
     }
-    await updateGdprRequestStatus(req.id, 'completed', 'Dados pessoais anonimizados conforme Art. 17 RGPD.');
-    setGdprList((prev) =>
-      prev.map((item) =>
-        item.id === req.id
-          ? { ...item, status: 'completed', notes: 'Dados pessoais anonimizados conforme Art. 17 RGPD.' }
-          : item
-      )
-    );
-    showNotification(`Dados de ${req.userEmail} anonimizados e pedido concluído.`);
+  };
+
+  const handleSelectSupportThread = (threadId: string) => {
+    setSelectedThreadId(threadId);
+    const th = supportThreads.find((t) => t.id === threadId);
+    if (th && th.unreadByAdmin > 0) {
+      setSupportThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, unreadByAdmin: 0 } : t))
+      );
+      void markAdminSupportThreadRead(threadId);
+    }
+  };
+
+  const handleSendAdminChatReply = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!selectedThreadId || !adminChatReply.trim() || isSendingChatReply) return;
+    setIsSendingChatReply(true);
+    try {
+      const res = await sendAdminSupportReply(selectedThreadId, adminChatReply.trim());
+      setAdminChatReply('');
+      setSupportThreads((prev) => {
+        const exists = prev.some((t) => t.id === res.thread.id);
+        const next = exists
+          ? prev.map((t) => (t.id === res.thread.id ? res.thread : t))
+          : [res.thread, ...prev];
+        return [...next].sort(
+          (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+        );
+      });
+      setTimeout(() => {
+        adminChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao enviar resposta no chat.');
+    } finally {
+      setIsSendingChatReply(false);
+    }
+  };
+
+  const handleToggleSupportThreadStatus = async (thread: SupportChatThread) => {
+    const nextStatus = thread.status === 'resolved' ? 'open' : 'resolved';
+    try {
+      const updated = await updateAdminSupportThreadStatus(thread.id, nextStatus);
+      setSupportThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      showNotification(
+        nextStatus === 'resolved'
+          ? `Conversa com ${thread.userName} marcada como Resolvida.`
+          : `Conversa com ${thread.userName} reaberta.`
+      );
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao atualizar estado da conversa.');
+    }
   };
 
   const handleDeleteGdpr = (req: GdprDataRequest) => {
@@ -1952,6 +2181,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const unresolvedErrorsCount = errorLogsList.filter((e) => !e.resolved).length;
   const pendingGdprCount = gdprList.filter((g) => g.status === 'pending').length;
   const blockedSecurityCount = auditStats.blockedCount;
+  const unreadSupportChatCount = supportThreads.reduce((acc, t) => acc + (Number(t.unreadByAdmin) || 0), 0);
 
   const navItems: Array<{
     id: AdminActiveModule;
@@ -1982,6 +2212,13 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       label: 'CRM & Faturas',
       icon: <Users className="w-4 h-4" />,
       badge: usersList.length
+    },
+    {
+      id: 'support_chat',
+      label: 'Chat de Suporte',
+      icon: <MessageCircle className="w-4 h-4" />,
+      badge: unreadSupportChatCount > 0 ? unreadSupportChatCount : supportThreads.length || undefined,
+      badgeAlert: unreadSupportChatCount > 0
     },
     {
       id: 'pricing_marketing',
@@ -3376,20 +3613,66 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                          {Object.entries(aiRouting.healthStatus).map(([modelName, info]) => (
-                            <div key={modelName} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-                              <div>
-                                <div className="font-mono font-bold text-slate-900">{modelName}</div>
-                                <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
-                                  Latência média: {info.latencyMs}ms
-                                </div>
-                              </div>
-                              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">
-                                {info.status}
+                        <div className="pt-2 border-t border-slate-100 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <span className="font-bold text-slate-900 text-xs">
+                                Telemetria de Latência Gemini em Tempo Real
                               </span>
+                              <p className="text-[11px] text-slate-500">
+                                {aiLiveHealth?.configured
+                                  ? aiLiveHealth.aiPaused
+                                    ? 'Motores pausados globalmente pela Governança.'
+                                    : 'Chave Gemini ativa no servidor. Latências medidas em chamadas reais.'
+                                  : 'Chave GEMINI_API_KEY não configurada no servidor.'}
+                              </p>
                             </div>
-                          ))}
+                            <button
+                              type="button"
+                              onClick={handleProbeAiHealth}
+                              disabled={isProbingAiHealth}
+                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-[11px] flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${isProbingAiHealth ? 'animate-spin' : ''}`} />
+                              <span>{isProbingAiHealth ? 'A testar API...' : 'Testar Latência Ao Vivo'}</span>
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {Object.entries(aiLiveHealth?.models || aiRouting.healthStatus).map(([modelName, rawInfo]: [string, any]) => {
+                              const liveEntry = aiLiveHealth?.models?.[modelName];
+                              const statusVal = liveEntry?.status || rawInfo?.status || 'idle';
+                              const latencyVal = liveEntry?.latencyMs ?? (rawInfo?.latencyMs > 0 ? rawInfo.latencyMs : null);
+                              const callsCount = liveEntry?.callsCount ?? 0;
+                              const badgeClass =
+                                statusVal === 'healthy'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : statusVal === 'degraded' || statusVal === 'cooldown'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : statusVal === 'unavailable'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-slate-200 text-slate-700';
+                              return (
+                                <div key={modelName} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="font-mono font-bold text-slate-900 truncate">{modelName}</div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5 font-mono">
+                                      {latencyVal !== null ? `Latência média: ${latencyVal}ms` : 'Sem chamadas recentes'}
+                                      {callsCount > 0 ? ` · ${callsCount} req` : ''}
+                                    </div>
+                                    {liveEntry?.lastError && (
+                                      <div className="text-[10px] text-rose-600 truncate mt-0.5" title={liveEntry.lastError}>
+                                        {liveEntry.lastError}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${badgeClass}`}>
+                                    {statusVal}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -3929,8 +4212,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             >
                               <option value="all">Todos os Planos</option>
                               <option value="free">Gratuito</option>
-                              <option value="pro">Pro ($8)</option>
-                              <option value="executive">Executivo VIP ($12)</option>
+                              <option value="pro">Pro (${financialMetrics.proPrice})</option>
+                              <option value="executive">Executivo VIP (${financialMetrics.execPrice})</option>
                             </select>
 
                             <select
@@ -5321,7 +5604,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-bold text-slate-900">
-                                    Proteção Anti-Robôs no Registo (CAPTCHA + Honeypot + E-mails Temp)
+                                    Proteção Anti-Robôs no Registo (CAPTCHA de Soma + Honeypot + E-mails Temp)
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 text-[10px] font-bold whitespace-nowrap">
+                                    Ativo · Sem chaves externas
                                   </span>
                                   {(() => {
                                     const botBlockedCount = auditLogsList.filter(
@@ -5337,7 +5623,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                   })()}
                                 </div>
                                 <span className="text-[11px] text-slate-500 block mt-0.5">
-                                  Exige desafio visual assinado pelo servidor, tempo mínimo humano, campos armadilha invisíveis, bloqueio de e-mails descartáveis e limite por IP.
+                                  Exige soma visual gerada em SVG no servidor, tempo mínimo humano, campos armadilha invisíveis, bloqueio de e-mails descartáveis e limite por IP.
                                 </span>
                               </div>
                               <input
@@ -5725,6 +6011,54 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
                     {securitySubTab === 'rbac' && (
                       <div className="space-y-5">
+                        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="text-sm font-bold text-slate-900">
+                              Administradores Ativos no Sistema
+                            </h3>
+                            <span className="text-[11px] font-mono text-slate-500">
+                              Allowlist + Papel Admin
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
+                            {Array.from(
+                              new Map<string, { id: string; name: string; email: string }>([
+                                ...ADMIN_EMAILS.map(
+                                  (email): [string, { id: string; name: string; email: string }] => [
+                                    email.toLowerCase(),
+                                    {
+                                      id: `allow-${email}`,
+                                      name: email.split('@')[0],
+                                      email
+                                    }
+                                  ]
+                                ),
+                                ...usersList
+                                  .filter((u) => u.role === 'admin' || isUserAdmin(u.email, u.role))
+                                  .map(
+                                    (u): [string, { id: string; name: string; email: string }] => [
+                                      u.email.toLowerCase(),
+                                      { id: u.id, name: u.name, email: u.email }
+                                    ]
+                                  )
+                              ]).values()
+                            ).map((adm) => (
+                              <div
+                                key={adm.email}
+                                className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-bold text-slate-900 truncate">{adm.name}</p>
+                                  <p className="text-[11px] font-mono text-slate-500 truncate">{adm.email}</p>
+                                </div>
+                                <span className="px-2 py-0.5 rounded bg-slate-900 text-amber-400 text-[10px] font-bold uppercase shrink-0">
+                                  ADMIN
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
                           <h3 className="text-sm font-bold text-slate-900">Matriz de Acessos da Equipa (RBAC)</h3>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
@@ -5778,6 +6112,315 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     )}
                   </div>
                 )}
+
+                {/* ========================================================= */}
+                {/* MÓDULO 7: CHAT DE SUPORTE & MODERAÇÃO EM TEMPO REAL */}
+                {/* ========================================================= */}
+                {activeModule === 'support_chat' && (() => {
+                  const filteredThreads = supportThreads.filter((th) => {
+                    if (chatFilter === 'unread' && !(th.unreadByAdmin > 0)) return false;
+                    if (chatFilter === 'open' && th.status !== 'open') return false;
+                    if (chatFilter === 'resolved' && th.status !== 'resolved') return false;
+                    const q = chatSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return (
+                      th.userName.toLowerCase().includes(q) ||
+                      th.userEmail.toLowerCase().includes(q) ||
+                      (th.lastMessageText || '').toLowerCase().includes(q)
+                    );
+                  });
+                  const activeThread =
+                    supportThreads.find((t) => t.id === selectedThreadId) || filteredThreads[0] || null;
+                  const crmUserForThread = activeThread
+                    ? usersList.find(
+                        (u) =>
+                          u.id === activeThread.userId ||
+                          u.email.toLowerCase() === activeThread.userEmail.toLowerCase()
+                      )
+                    : undefined;
+
+                  return (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-12rem)] min-h-[520px]">
+                      {/* Left Column: Conversations Inbox */}
+                      <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl flex flex-col overflow-hidden">
+                        <div className="p-3.5 border-b border-slate-200 space-y-2.5 bg-slate-50/70">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                              <MessageCircle className="w-4 h-4 text-amber-600" />
+                              Conversas ({supportThreads.length})
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                supportWsStatus === 'connected'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {supportWsStatus === 'connected' ? (
+                                <Wifi className="w-3 h-3" />
+                              ) : (
+                                <WifiOff className="w-3 h-3" />
+                              )}
+                              {supportWsStatus === 'connected' ? 'Tempo Real' : 'A sincronizar'}
+                            </span>
+                          </div>
+
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              value={chatSearch}
+                              onChange={(e) => setChatSearch(e.target.value)}
+                              placeholder="Pesquisar utilizador ou mensagem..."
+                              className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-4 gap-1 text-[10px] font-bold">
+                            {(
+                              [
+                                { id: 'all', label: 'Todos' },
+                                { id: 'unread', label: `Não Lidos (${unreadSupportChatCount})` },
+                                { id: 'open', label: 'Abertos' },
+                                { id: 'resolved', label: 'Resolvidos' }
+                              ] as const
+                            ).map((tab) => (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setChatFilter(tab.id)}
+                                className={`py-1 px-1.5 rounded-md truncate transition-colors ${
+                                  chatFilter === tab.id
+                                    ? 'bg-slate-900 text-white'
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                {tab.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                          {filteredThreads.length === 0 ? (
+                            <div className="p-8 text-center text-xs text-slate-500 space-y-2">
+                              <MessageCircle className="w-7 h-7 text-slate-300 mx-auto" />
+                              <p className="font-semibold text-slate-700">Nenhuma conversa encontrada</p>
+                              <p className="text-[11px] text-slate-400">
+                                Quando utilizadores registados enviarem mensagens pelo ícone de chat, aparecem aqui em tempo real.
+                              </p>
+                            </div>
+                          ) : (
+                            filteredThreads.map((th) => {
+                              const isSelected = activeThread?.id === th.id;
+                              const hasUnread = th.unreadByAdmin > 0;
+                              return (
+                                <button
+                                  key={th.id}
+                                  type="button"
+                                  onClick={() => handleSelectSupportThread(th.id)}
+                                  className={`w-full text-left p-3 transition-colors flex items-start gap-2.5 ${
+                                    isSelected
+                                      ? 'bg-slate-900 text-white'
+                                      : hasUnread
+                                      ? 'bg-amber-50/70 hover:bg-amber-50 text-slate-900'
+                                      : 'bg-white hover:bg-slate-50 text-slate-900'
+                                  }`}
+                                >
+                                  <div
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden ${
+                                      isSelected ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-800'
+                                    }`}
+                                  >
+                                    {th.userAvatarUrl ? (
+                                      <img src={th.userAvatarUrl} alt={th.userName} className="w-full h-full object-cover" />
+                                    ) : (
+                                      (th.userName || th.userEmail || 'U').charAt(0).toUpperCase()
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-1.5">
+                                      <span className="text-xs font-bold truncate">{th.userName}</span>
+                                      <span
+                                        className={`text-[10px] font-mono tabular-nums shrink-0 ${
+                                          isSelected ? 'text-slate-300' : 'text-slate-400'
+                                        }`}
+                                      >
+                                        {new Date(th.lastMessageAt).toLocaleTimeString('pt-PT', {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </span>
+                                    </div>
+                                    <p
+                                      className={`text-[11px] truncate ${
+                                        isSelected ? 'text-slate-300' : 'text-slate-500'
+                                      }`}
+                                    >
+                                      {th.lastMessageText || th.userEmail}
+                                    </p>
+                                    <div className="flex items-center justify-between gap-1.5 mt-1">
+                                      <span
+                                        className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                                          th.status === 'resolved'
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : isSelected
+                                            ? 'bg-slate-800 text-amber-300'
+                                            : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                      >
+                                        {th.status === 'resolved' ? 'Resolvido' : 'Aberto'}
+                                      </span>
+                                      {hasUnread && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold leading-none">
+                                          {th.unreadByAdmin}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Conversation Thread & Reply Composer */}
+                      <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl flex flex-col overflow-hidden">
+                        {!activeThread ? (
+                          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-xs text-slate-500 space-y-2">
+                            <MessageCircle className="w-10 h-10 text-slate-300" />
+                            <p className="text-sm font-bold text-slate-800">Selecione uma conversa para responder</p>
+                            <p className="max-w-sm text-slate-500">
+                              Também pode iniciar uma conversa diretamente a partir da ficha CRM 360° de qualquer utilizador registado.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-sm font-bold text-slate-900 truncate">
+                                    {activeThread.userName}
+                                  </h3>
+                                  <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                                    {(activeThread.userPlan || 'free').toUpperCase()}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] font-mono text-slate-500 truncate">
+                                  {activeThread.userEmail}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {crmUserForThread && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openUserDrawer(crmUserForThread)}
+                                    className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700"
+                                  >
+                                    Ver Ficha CRM
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleSupportThreadStatus(activeThread)}
+                                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors ${
+                                    activeThread.status === 'resolved'
+                                      ? 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                  }`}
+                                >
+                                  {activeThread.status === 'resolved' ? (
+                                    <>
+                                      <Clock className="w-3.5 h-3.5" />
+                                      <span>Reabrir Ticket</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      <span>Marcar Resolvido</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/60">
+                              {(activeThread.messages || []).length === 0 ? (
+                                <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
+                                  Sem mensagens ainda. Envie a primeira mensagem abaixo para iniciar atendimento.
+                                </div>
+                              ) : (
+                                (activeThread.messages || []).map((m) => {
+                                  const isAdminMsg = m.senderRole === 'admin';
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      className={`flex flex-col ${isAdminMsg ? 'items-end' : 'items-start'}`}
+                                    >
+                                      <div className="flex items-center gap-1.5 mb-1 px-1 text-[10px] text-slate-500">
+                                        <span className="font-bold">
+                                          {isAdminMsg ? m.senderName || 'Admin / Moderador' : activeThread.userName}
+                                        </span>
+                                        <span className="font-mono tabular-nums text-slate-400">
+                                          {new Date(m.createdAt).toLocaleString('pt-PT', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                      </div>
+                                      <div
+                                        className={`max-w-[78%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap wrap-break-word ${
+                                          isAdminMsg
+                                            ? 'bg-slate-900 text-white rounded-tr-xs'
+                                            : 'bg-white text-slate-900 border border-slate-200 rounded-tl-xs shadow-2xs'
+                                        }`}
+                                      >
+                                        {m.text}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                              <div ref={adminChatEndRef} />
+                            </div>
+
+                            <form
+                              onSubmit={handleSendAdminChatReply}
+                              className="p-3 bg-white border-t border-slate-200 flex items-end gap-2"
+                            >
+                              <textarea
+                                rows={2}
+                                maxLength={2000}
+                                value={adminChatReply}
+                                onChange={(e) => setAdminChatReply(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void handleSendAdminChatReply();
+                                  }
+                                }}
+                                placeholder={`Responder para ${activeThread.userName}...`}
+                                className="flex-1 resize-none px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                              />
+                              <button
+                                type="submit"
+                                disabled={!adminChatReply.trim() || isSendingChatReply}
+                                className="h-[44px] px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                <Send className="w-3.5 h-3.5 text-amber-400" />
+                                <span>{isSendingChatReply ? 'A enviar...' : 'Responder'}</span>
+                              </button>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </main>
@@ -5933,6 +6576,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleOpenSupportChatForUser(inspectedUser)}
+                    className="py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold rounded-lg border border-emerald-200 flex items-center justify-center gap-1.5"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>Abrir Chat de Suporte</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleToggleSuspendUser(inspectedUser)}
                     className="py-2 px-3 bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold rounded-lg border border-rose-200 flex items-center justify-center gap-1.5"
                   >
@@ -5948,6 +6599,44 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     <span>Eliminar Conta</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Saved Resumes for this User */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  Currículos Guardados ({drawerResumes.length})
+                </h4>
+                {isLoadingDrawerResumes ? (
+                  <p className="text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    A carregar currículos da conta...
+                  </p>
+                ) : drawerResumes.length === 0 ? (
+                  <p className="text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    Nenhum currículo guardado encontrado para este utilizador.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {drawerResumes.map((resItem) => (
+                      <div
+                        key={resItem.id}
+                        className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900 truncate">{resItem.title}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {resItem.targetJob || 'Sem cargo alvo definido'}
+                          </p>
+                        </div>
+                        {resItem.updatedAt && (
+                          <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                            {new Date(resItem.updatedAt).toLocaleDateString('pt-PT')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Billing History for this User */}
@@ -6059,7 +6748,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-sm font-bold text-slate-900">Criar Novo Utilizador</h3>
-              <button type="button" onClick={() => setShowNewUserModal(false)} className="text-slate-400 hover:text-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewUserModal(false);
+                  setNewUserError(null);
+                }}
+                className="text-slate-400 hover:text-slate-700"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -6067,21 +6763,46 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                await createManualCustomer({
-                  name: newUserForm.name,
-                  email: newUserForm.email,
-                  plan: newUserForm.plan,
-                  phone: newUserForm.phone,
-                  role: newUserForm.role,
-                  creditsRemaining: newUserForm.credits,
-                  notes: newUserForm.notes
-                });
-                setShowNewUserModal(false);
-                loadAllModules();
-                showNotification(`Utilizador ${newUserForm.name} cadastrado!`);
+                setNewUserError(null);
+                setIsCreatingUser(true);
+                try {
+                  await createManualCustomer({
+                    name: newUserForm.name,
+                    email: newUserForm.email,
+                    password: newUserForm.password || undefined,
+                    plan: newUserForm.plan,
+                    phone: newUserForm.phone,
+                    role: newUserForm.role,
+                    creditsRemaining: newUserForm.plan === 'free' ? 5 : newUserForm.credits,
+                    notes: newUserForm.notes
+                  });
+                  setShowNewUserModal(false);
+                  setNewUserForm({
+                    name: '',
+                    email: '',
+                    password: '',
+                    plan: 'pro',
+                    phone: '',
+                    role: 'user',
+                    credits: 9999,
+                    notes: ''
+                  });
+                  loadAllModules();
+                  showNotification(`Utilizador ${newUserForm.name} cadastrado!`);
+                } catch (err: any) {
+                  setNewUserError(err?.message || 'Erro ao criar utilizador.');
+                } finally {
+                  setIsCreatingUser(false);
+                }
               }}
               className="space-y-3 text-xs"
             >
+              {newUserError && (
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-medium">
+                  {newUserError}
+                </div>
+              )}
+
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">Nome Completo</label>
                 <input
@@ -6093,13 +6814,39 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    required
+                    value={newUserForm.email}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Telefone (opcional)</label>
+                  <input
+                    type="text"
+                    value={newUserForm.phone}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, phone: e.target.value })}
+                    placeholder="+351..."
+                    className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">E-mail</label>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Palavra-passe inicial (opcional, mín. 6 caracteres)
+                </label>
                 <input
-                  type="email"
-                  required
-                  value={newUserForm.email}
-                  onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                  type="password"
+                  minLength={6}
+                  value={newUserForm.password}
+                  onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                  placeholder="Deixe vazio se o cliente usar login Google"
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
                 />
               </div>
@@ -6113,8 +6860,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                     className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900"
                   >
                     <option value="free">Gratuito</option>
-                    <option value="pro">Pro ($8)</option>
-                    <option value="executive">Executivo VIP ($12)</option>
+                    <option value="pro">Pro (${financialMetrics.proPrice})</option>
+                    <option value="executive">Executivo VIP (${financialMetrics.execPrice})</option>
                   </select>
                 </div>
 
@@ -6134,13 +6881,20 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowNewUserModal(false)}
+                  onClick={() => {
+                    setShowNewUserModal(false);
+                    setNewUserError(null);
+                  }}
                   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold"
                 >
                   Cancelar
                 </button>
-                <button type="submit" className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg">
-                  Criar Utilizador
+                <button
+                  type="submit"
+                  disabled={isCreatingUser}
+                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg disabled:opacity-50"
+                >
+                  {isCreatingUser ? 'A criar...' : 'Criar Utilizador'}
                 </button>
               </div>
             </form>

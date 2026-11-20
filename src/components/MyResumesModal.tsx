@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
 import { CVData } from '../types/cv';
 import { X, FileText, Trash2, ArrowUpRight, Plus, Check } from 'lucide-react';
 import { GENERIC_DEFAULT_CV, BLANK_CV } from '../data/initialCV';
+import { getStoredQuotasSync } from '../services/adminModulesService';
 
 interface MyResumesModalProps {
   isOpen: boolean;
@@ -37,23 +38,53 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [planQuotas, setPlanQuotas] = useState(() => getStoredQuotasSync());
+
+  useEffect(() => {
+    const syncHandler = () => setPlanQuotas(getStoredQuotasSync());
+    window.addEventListener('admin-config-updated', syncHandler);
+    return () => window.removeEventListener('admin-config-updated', syncHandler);
+  }, []);
 
   if (!isOpen) return null;
+
+  const isAdminUser = user?.role === 'admin';
+  const activeQuota = planQuotas.find((q) => q.planId === (user?.plan || 'free'));
+  const maxResumesLimit = !isAdminUser && activeQuota && activeQuota.maxResumes < 9000 ? activeQuota.maxResumes : null;
 
   const handleSaveCurrent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
-    if (!hasActivePlan) {
+    if (!hasActivePlan && !isAdminUser) {
       onOpenPricingModal?.(
         'A gravação e sincronização de múltiplas versões de currículos na nuvem é exclusiva para assinantes Pro e Executivo VIP.'
       );
       return;
     }
 
+    const savedTitle = newTitle.trim();
+    const isUpdatingExisting = savedResumes.some(
+      (r) => r.title.trim().toLowerCase() === savedTitle.toLowerCase()
+    );
+    if (
+      !isAdminUser &&
+      !isUpdatingExisting &&
+      maxResumesLimit !== null &&
+      savedResumes.length >= maxResumesLimit
+    ) {
+      showError(
+        'Limite do Plano Atingido',
+        `O seu plano permite até ${maxResumesLimit} currículo(s) guardado(s). Atualize ou substitua uma versão existente.`
+      );
+      onOpenPricingModal?.(
+        `Atingiu o limite de ${maxResumesLimit} currículo(s) do seu plano. Faça upgrade para guardar versões ilimitadas.`
+      );
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const savedTitle = newTitle.trim();
       await saveCurrentResume(currentCV, savedTitle, currentCV.personalDetails.title);
       setNewTitle('');
       setSaveSuccess(true);
@@ -67,7 +98,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
       const rawMsg = String(err?.message || '');
       const friendlyDetail = rawMsg.includes('permission')
         ? 'Sem permissão na nuvem para guardar esta versão. Verifique a sua sessão e tente novamente.'
-        : 'Não foi possível guardar a nova versão do currículo. Tente novamente.';
+        : rawMsg || 'Não foi possível guardar a nova versão do currículo. Tente novamente.';
       showError('Erro ao Salvar', friendlyDetail);
     } finally {
       setIsSaving(false);
@@ -81,7 +112,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   };
 
   const handleCreateNewBlank = () => {
-    if (!hasActivePlan) {
+    if (!hasActivePlan && !isAdminUser) {
       onOpenPricingModal?.(
         'A criação de novos currículos a partir do zero é exclusiva para assinantes Pro e Executivo VIP.'
       );
@@ -92,7 +123,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
   };
 
   const handleLoadGenericTemplate = () => {
-    if (!hasActivePlan) {
+    if (!hasActivePlan && !isAdminUser) {
       onOpenPricingModal?.(
         'A substituição e carregamento de modelos de currículo é exclusiva para assinantes Pro e Executivo VIP.'
       );
@@ -164,7 +195,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
         <div className="p-5 flex-1 overflow-y-auto space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-500 pb-1">
             <span className="font-semibold uppercase tracking-wider text-[11px] tabular-nums">
-              {m.savedCountLabel} ({savedResumes.length})
+              {m.savedCountLabel} ({savedResumes.length}{maxResumesLimit !== null ? `/${maxResumesLimit}` : ''})
             </span>
 
             <div className="flex items-center gap-2">

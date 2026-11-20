@@ -253,3 +253,35 @@ export interface UserNotificationItem {
   createdAt: string;
   targetResource?: string;
 }
+
+export type SupportChatSenderRole = 'user' | 'admin';
+export type SupportThreadStatus = 'open' | 'resolved';
+
+export interface SupportChatMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: SupportChatSenderRole;
+  text: string;
+  createdAt: string;
+}
+
+export interface SupportChatThread {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatarUrl?: string;
+  userPlan?: SubscriptionPlan;
+  status: SupportThreadStatus;
+  lastMessageText?: string;
+  lastMessageSenderRole?: SupportChatSenderRole;
+  lastMessageAt: string;
+  unreadByUser: number;
+  unreadByAdmin: number;
+  createdAt: string;
+  updatedAt: string;
+  messages?: SupportChatMessage[];
+}
+

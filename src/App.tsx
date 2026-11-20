@@ -22,6 +22,7 @@ import { PlanGateGuard } from './components/PlanGateGuard';
 import { InterviewSimulator } from './components/InterviewSimulator';
 import { JobMatchesPanel } from './components/JobMatchesPanel';
 import { SystemNotificationBanner } from './components/SystemNotificationBanner';
+import { SupportChatModal } from './components/SupportChatModal';
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/LanguageContext';
@@ -44,6 +45,8 @@ import {
   fetchSystemBanners,
   getStoredPlatformSettingsSync,
   getStoredPromptSync,
+  getStoredQuotasSync,
+  getStoredTemplatesSync,
   trackFrontendTelemetry,
   logGenerationError,
   emitAdminConfigUpdated
@@ -211,8 +214,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState<boolean>(false);
   const [isTemplateAdvisorOpen, setIsTemplateAdvisorOpen] = useState<boolean>(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState<boolean>(false);
+  const [isSupportChatOpen, setIsSupportChatOpen] = useState<boolean>(false);
+  const [supportChatUnreadCount, setSupportChatUnreadCount] = useState<number>(0);
   const [profileInitialSubTab, setProfileInitialSubTab] = useState<'overview' | 'resumes' | 'settings'>('overview');
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+  const [planQuotas, setPlanQuotas] = useState(() => getStoredQuotasSync());
   const resumeStartedTrackedRef = useRef<boolean>(false);
 
   // Hydrate Admin Governance, Editable Plans, Prompts, Templates, Locales & Banners from Firestore on app boot
@@ -228,14 +234,20 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       fetchProfessionSnippets(),
       fetchSystemBanners()
     ])
-      .then(([settings]) => {
+      .then(([settings, , , , , quotas]) => {
         if (!mounted) return;
         setPlatformSettings(settings);
+        if (Array.isArray(quotas) && quotas.length > 0) {
+          setPlanQuotas(quotas);
+        }
         emitAdminConfigUpdated('hydrate');
       })
       .catch((err) => console.warn('Erro ao hidratar configurações do Admin:', err));
 
-    const syncHandler = () => setPlatformSettings(getStoredPlatformSettingsSync());
+    const syncHandler = () => {
+      setPlatformSettings(getStoredPlatformSettingsSync());
+      setPlanQuotas(getStoredQuotasSync());
+    };
     window.addEventListener('admin-config-updated', syncHandler);
 
     const qp = new URLSearchParams(window.location.search);
@@ -499,9 +511,15 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
   const handleUseShowcaseItem = useCallback(
     (payload: ShowcaseSelectionPayload | { targetTab: 'raw'; label: string }) => {
+      const tmplCfg =
+        'templateStyle' in payload && payload.templateStyle
+          ? getStoredTemplatesSync().find((t) => t.id === payload.templateStyle)
+          : undefined;
+
       if ('cvData' in payload && payload.cvData) {
         updateCvWithCache(payload.cvData);
       } else if ('templateStyle' in payload && payload.templateStyle) {
+        trackFrontendTelemetry({ type: 'template_selected', templateStyle: payload.templateStyle });
         updateCvWithCache((prev) => ({
           ...prev,
           templateStyle: payload.templateStyle!,
@@ -522,10 +540,19 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         return;
       }
 
-      if (!hasActivePlan) {
+      const isAdminUser = isUserAdmin(user?.email, user?.role);
+      if (!isAdminUser && !hasActivePlan && tmplCfg?.tierRequired !== 'free') {
         setPendingModelTarget({ targetTab: payload.targetTab, label: payload.label });
         handleOpenPricingModal(
           `${appUi.planModelPromptPrefix} ${payload.label}${appUi.planModelPromptSuffix}`
+        );
+        return;
+      }
+
+      if (!isAdminUser && tmplCfg?.tierRequired === 'executive' && !isExecutive) {
+        handleOpenPricingModal(
+          `${appUi.planModelPromptPrefix} ${payload.label} (Plano Executivo VIP)`,
+          'executive'
         );
         return;
       }
@@ -534,7 +561,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       setMobileViewMode('controls');
       showSuccess(appUi.modelLoadedTitle, `${payload.label} ${appUi.modelLoadedSubSuffix}`);
     },
-    [hasActivePlan, isAuthenticated, showSuccess, updateCvWithCache, updateLetterWithCache, appUi, handleOpenPricingModal]
+    [hasActivePlan, isAuthenticated, isExecutive, user?.email, user?.role, showSuccess, updateCvWithCache, updateLetterWithCache, appUi, handleOpenPricingModal]
   );
 
   // Translate BOTH CV content and Cover Letter content whenever any language selector is clicked
@@ -627,6 +654,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       editedEntry && lastEditedLangRef.current !== targetLang
         ? editedEntry
         : { cv: latestCv, letterBody: latestLetter };
+
+    if (platformSettings.enableAiFeaturesGlobally === false && !isUserAdmin(user?.email, user?.role)) {
+      showError(
+        appUi.translationErrorTitle,
+        'Os recursos de tradução com IA estão temporariamente pausados pela administração.'
+      );
+      return;
+    }
 
     const reqId = ++translationReqIdRef.current;
     setIsTranslatingContent(true);
@@ -870,6 +905,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     activeTab === 'examples-cover';
   const isStudioMode = activeTab !== 'home' && activeTab !== 'profile' && !isShowcaseMode;
   const isAdminViewer = isUserAdmin(user?.email, user?.role);
+  const activePlanQuota = planQuotas.find((q) => q.planId === (user?.plan || 'free'));
+  const canUseAiTailor = isAdminViewer || (activePlanQuota ? activePlanQuota.allowAiTailor : isPro);
+  const canUseAtsRadar = isAdminViewer || (activePlanQuota ? activePlanQuota.allowAtsRadar : isPro);
+  const canUseCoverLetter = isAdminViewer || (activePlanQuota ? activePlanQuota.allowCoverLetter : isPro);
+  const canUseInterviewSim = isAdminViewer || (activePlanQuota ? activePlanQuota.allowInterviewSim : isExecutive);
 
   if (platformSettings.maintenanceMode && !isAdminViewer) {
     return (
@@ -977,6 +1017,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onOpenTemplateAdvisor={() => setIsTemplateAdvisorOpen(true)}
         onOpenUserProfile={() => setIsUserProfileModalOpen(true)}
         onOpenNotificationPreferences={handleOpenNotificationPreferences}
+        onOpenSupportChat={() => setIsSupportChatOpen(true)}
+        supportChatUnreadCount={supportChatUnreadCount}
       />
 
       {/* Word Export Floating Toast Notification */}
@@ -1288,7 +1330,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={(targetPlan) => handleOpenPricingModal(undefined, targetPlan || 'pro')}
                     />
-                  ) : !isPro ? (
+                  ) : !canUseAtsRadar ? (
                     <PlanGateGuard
                       requiredTier="pro"
                       featureTitle={studioText.gates.atsPro.title}
@@ -1328,7 +1370,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={(targetPlan) => handleOpenPricingModal(undefined, targetPlan || 'pro')}
                     />
-                  ) : !isPro ? (
+                  ) : !canUseAiTailor ? (
                     <PlanGateGuard
                       requiredTier="pro"
                       featureTitle={studioText.gates.aiPro.title}
@@ -1356,7 +1398,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={() => handleOpenPricingModal(undefined, 'executive')}
                     />
-                  ) : !isExecutive ? (
+                  ) : !canUseInterviewSim ? (
                     <PlanGateGuard
                       requiredTier="executive"
                       featureTitle={studioText.gates.interviewExec.title}
@@ -1385,7 +1427,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
                       onOpenPricingModal={(targetPlan) => handleOpenPricingModal(undefined, targetPlan || 'pro')}
                     />
-                  ) : !isPro ? (
+                  ) : !canUseCoverLetter ? (
                     <PlanGateGuard
                       requiredTier="pro"
                       featureTitle={studioText.gates.coverPro.title}
@@ -1636,6 +1678,13 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onUpdateCV={updateCvWithCache}
         onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
         onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
+      />
+
+      {/* Registered User Direct Support Chat Modal */}
+      <SupportChatModal
+        isOpen={isSupportChatOpen}
+        onClose={() => setIsSupportChatOpen(false)}
+        onUnreadCountChange={setSupportChatUnreadCount}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import Stripe from 'stripe';
 import mammoth from 'mammoth';
 import { PDFParse } from 'pdf-parse';
+import { WebSocketServer, WebSocket } from 'ws';
 
 dotenv.config();
 
@@ -258,27 +259,255 @@ export function createApiApp() {
     return raw;
   }
 
-  function trackAuthenticatedAiUsage(req: express.Request): {
+  interface ServerTelemetryData {
+    resumesStartedCount: number;
+    checkoutOpenedCount: number;
+    wordExportsCount: number;
+    aiCallsCount: number;
+    estimatedTokensUsed: number;
+    templateSelections: Record<string, number>;
+    languageSelections: Record<string, number>;
+    featureUsage: {
+      aiTailor: number;
+      atsRadar: number;
+      coverLetter: number;
+      interviewSim: number;
+      rawImport: number;
+    };
+    lastUpdated: string;
+  }
+
+  function createEmptyTelemetry(): ServerTelemetryData {
+    return {
+      resumesStartedCount: 0,
+      checkoutOpenedCount: 0,
+      wordExportsCount: 0,
+      aiCallsCount: 0,
+      estimatedTokensUsed: 0,
+      templateSelections: {},
+      languageSelections: {},
+      featureUsage: {
+        aiTailor: 0,
+        atsRadar: 0,
+        coverLetter: 0,
+        interviewSim: 0,
+        rawImport: 0
+      },
+      lastUpdated: new Date().toISOString()
+    };
+  }
+
+  function ensureServerTelemetry(): ServerTelemetryData {
+    if (!authStore.telemetry || typeof authStore.telemetry !== 'object') {
+      authStore.telemetry = createEmptyTelemetry();
+    }
+    if (!authStore.telemetry.templateSelections) authStore.telemetry.templateSelections = {};
+    if (!authStore.telemetry.languageSelections) authStore.telemetry.languageSelections = {};
+    if (!authStore.telemetry.featureUsage) {
+      authStore.telemetry.featureUsage = createEmptyTelemetry().featureUsage;
+    }
+    return authStore.telemetry as ServerTelemetryData;
+  }
+
+  function recordServerTelemetry(
+    event:
+      | { type: 'resume_started' }
+      | { type: 'checkout_opened' }
+      | { type: 'word_exported'; templateStyle?: string }
+      | { type: 'template_selected'; templateStyle: string }
+      | { type: 'language_switched'; language: string }
+      | { type: 'ai_called'; feature: 'aiTailor' | 'atsRadar' | 'coverLetter' | 'interviewSim' | 'rawImport'; tokens?: number }
+  ) {
+    try {
+      const tel = ensureServerTelemetry();
+      if (event.type === 'resume_started') {
+        tel.resumesStartedCount += 1;
+      } else if (event.type === 'checkout_opened') {
+        tel.checkoutOpenedCount += 1;
+      } else if (event.type === 'word_exported') {
+        tel.wordExportsCount += 1;
+        if (event.templateStyle) {
+          const k = String(event.templateStyle).slice(0, 60);
+          tel.templateSelections[k] = (tel.templateSelections[k] || 0) + 1;
+        }
+      } else if (event.type === 'template_selected') {
+        const k = String(event.templateStyle || '').slice(0, 60);
+        if (k) tel.templateSelections[k] = (tel.templateSelections[k] || 0) + 1;
+      } else if (event.type === 'language_switched') {
+        const l = String(event.language || '').slice(0, 16).toLowerCase();
+        if (l) tel.languageSelections[l] = (tel.languageSelections[l] || 0) + 1;
+      } else if (event.type === 'ai_called') {
+        tel.aiCallsCount += 1;
+        tel.estimatedTokensUsed += Math.max(0, Math.min(20000, Number(event.tokens) || 1400));
+        tel.featureUsage[event.feature] = (tel.featureUsage[event.feature] || 0) + 1;
+      }
+      tel.lastUpdated = new Date().toISOString();
+      persistAuthStore();
+    } catch {
+      // non-blocking telemetry error
+    }
+  }
+
+  const DEFAULT_SERVER_PLAN_QUOTAS = [
+    {
+      planId: 'free',
+      planName: 'Gratuito (Degustação)',
+      monthlyCredits: 5,
+      unlimited: false,
+      maxResumes: 1,
+      allowAiTailor: false,
+      allowInterviewSim: false,
+      allowCoverLetter: false,
+      allowAtsRadar: false
+    },
+    {
+      planId: 'pro',
+      planName: 'Profissional Pro',
+      monthlyCredits: 9999,
+      unlimited: true,
+      maxResumes: 9999,
+      allowAiTailor: true,
+      allowInterviewSim: false,
+      allowCoverLetter: true,
+      allowAtsRadar: true
+    },
+    {
+      planId: 'executive',
+      planName: 'Executivo VIP',
+      monthlyCredits: 9999,
+      unlimited: true,
+      maxResumes: 9999,
+      allowAiTailor: true,
+      allowInterviewSim: true,
+      allowCoverLetter: true,
+      allowAtsRadar: true
+    }
+  ];
+
+  function getServerPlanQuotasList() {
+    const raw = authStore.adminConfig?.planQuotas;
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    return DEFAULT_SERVER_PLAN_QUOTAS;
+  }
+
+  function getServerPlanQuota(planId?: string) {
+    const target = planId || 'free';
+    const list = getServerPlanQuotasList();
+    return list.find((q: any) => q?.planId === target) || DEFAULT_SERVER_PLAN_QUOTAS.find((q) => q.planId === target) || DEFAULT_SERVER_PLAN_QUOTAS[0];
+  }
+
+  function getFreePlanDefaultCredits(): number {
+    const freeQuota = getServerPlanQuota('free');
+    if (freeQuota?.unlimited) return 9999;
+    const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+    if (typeof freeQuota?.monthlyCredits === 'number' && freeQuota.monthlyCredits >= 0) {
+      return freeQuota.monthlyCredits;
+    }
+    if (typeof gov.maxDailyFreeAiCalls === 'number' && gov.maxDailyFreeAiCalls >= 0) {
+      return gov.maxDailyFreeAiCalls;
+    }
+    return 5;
+  }
+
+  function isAiGloballyPaused(): boolean {
+    const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
+    return gov.enableAiFeaturesGlobally === false;
+  }
+
+  function resolveServerPromptConfig(
+    promptId: 'coverLetter' | 'experienceOptimizer' | 'resumeSummary' | 'atsScanner' | 'interviewSim' | 'translateDoc',
+    clientPromptConfig?: any
+  ): { systemInstruction?: string; temperature?: number; preferredModel?: string; fallbackModel?: string } | undefined {
+    const list = authStore.adminConfig?.promptsConfig;
+    const serverItem = Array.isArray(list) ? list.find((p: any) => p?.id === promptId) : undefined;
+    const src = serverItem || clientPromptConfig;
+    if (!src || typeof src !== 'object') return undefined;
+    return {
+      systemInstruction: typeof src.systemInstruction === 'string' ? src.systemInstruction.slice(0, 3000) : undefined,
+      temperature: typeof src.temperature === 'number' ? src.temperature : undefined,
+      preferredModel: typeof src.preferredModel === 'string' ? src.preferredModel : undefined,
+      fallbackModel: typeof src.fallbackModel === 'string' ? src.fallbackModel : undefined
+    };
+  }
+
+  type QuotaFeatureKey = 'aiTailor' | 'atsRadar' | 'coverLetter' | 'interviewSim';
+
+  function trackAuthenticatedAiUsage(
+    req: express.Request,
+    featureKey?: QuotaFeatureKey
+  ): {
     quotaExceeded?: boolean;
+    dailyLimitReached?: boolean;
+    featureBlocked?: boolean;
     creditsRemaining?: number;
+    message?: string;
   } {
     try {
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) return {};
       const record = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
-      if (!record || record.status === 'suspended') return {};
+      if (!record || record.status === 'suspended') {
+        return {
+          quotaExceeded: true,
+          message: 'Conta inválida ou suspensa.'
+        };
+      }
 
       const isAdmin = record.role === 'admin' || ADMIN_EMAILS_BACKEND.has(record.email.toLowerCase());
-      const isPaid = record.plan === 'pro' || record.plan === 'executive';
+      const planQuota = getServerPlanQuota(record.plan || 'free');
+      const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
 
-      if (!isAdmin && !isPaid) {
-        const remaining = typeof record.creditsRemaining === 'number' ? record.creditsRemaining : 5;
+      if (!isAdmin && featureKey) {
+        const featureMap: Record<QuotaFeatureKey, boolean> = {
+          aiTailor: Boolean(planQuota?.allowAiTailor),
+          atsRadar: Boolean(planQuota?.allowAtsRadar),
+          coverLetter: Boolean(planQuota?.allowCoverLetter),
+          interviewSim: Boolean(planQuota?.allowInterviewSim)
+        };
+        if (featureMap[featureKey] === false) {
+          return {
+            featureBlocked: true,
+            creditsRemaining: record.creditsRemaining,
+            message: `Este recurso de IA não está incluído no plano atual (${planQuota?.planName || record.plan}). Faça upgrade para desbloquear.`
+          };
+        }
+      }
+
+      const isPaid = record.plan === 'pro' || record.plan === 'executive';
+      const isUnlimited = isAdmin || Boolean(planQuota?.unlimited) || (isPaid && Number(planQuota?.monthlyCredits) >= 9999);
+
+      const todayYmd = new Date().toISOString().slice(0, 10);
+      if (record.dailyAiCallsDate !== todayYmd) {
+        record.dailyAiCallsDate = todayYmd;
+        record.dailyAiCallsCount = 0;
+      }
+
+      if (!isUnlimited) {
+        if (record.plan === 'free' && typeof gov.maxDailyFreeAiCalls === 'number' && gov.maxDailyFreeAiCalls >= 0) {
+          if ((record.dailyAiCallsCount || 0) >= gov.maxDailyFreeAiCalls) {
+            return {
+              quotaExceeded: true,
+              dailyLimitReached: true,
+              creditsRemaining: record.creditsRemaining ?? 0,
+              message: `O limite diário gratuito de ${gov.maxDailyFreeAiCalls} chamadas de IA foi atingido. Volte amanhã ou faça upgrade.`
+            };
+          }
+        }
+
+        const defaultCredits = getFreePlanDefaultCredits();
+        const remaining = typeof record.creditsRemaining === 'number' ? record.creditsRemaining : defaultCredits;
         if (remaining <= 0) {
-          return { quotaExceeded: true, creditsRemaining: 0 };
+          return {
+            quotaExceeded: true,
+            creditsRemaining: 0,
+            message: 'Os seus créditos de IA esgotaram. Faça upgrade para Pro ou Executivo VIP para uso ilimitado.'
+          };
         }
         record.creditsRemaining = remaining - 1;
       }
+
+      record.dailyAiCallsCount = (record.dailyAiCallsCount || 0) + 1;
       record.creditsUsed = (record.creditsUsed || 0) + 1;
       record.updatedAt = new Date().toISOString();
       persistAuthStore();
@@ -302,8 +531,111 @@ export function createApiApp() {
     });
   }
 
-  // Cooldown tracker (ms timestamp) to avoid re-stalling parallel/subsequent requests on congested models
+  // Cooldown & Live Latency/Health Runtime Tracker per Gemini model
   const modelCooldownUntil = new Map<string, number>();
+  interface ModelRuntimeStat {
+    callsCount: number;
+    successCount: number;
+    errorCount: number;
+    totalLatencyMs: number;
+    avgLatencyMs: number | null;
+    lastLatencyMs: number | null;
+    lastUsedAt: string | null;
+    lastError: string | null;
+  }
+  const aiModelRuntimeStats = new Map<string, ModelRuntimeStat>();
+
+  function recordModelStat(model: string, latencyMs: number, ok: boolean, errMsg?: string) {
+    const cur = aiModelRuntimeStats.get(model) || {
+      callsCount: 0,
+      successCount: 0,
+      errorCount: 0,
+      totalLatencyMs: 0,
+      avgLatencyMs: null,
+      lastLatencyMs: null,
+      lastUsedAt: null,
+      lastError: null
+    };
+    cur.callsCount += 1;
+    cur.lastUsedAt = new Date().toISOString();
+    cur.lastLatencyMs = latencyMs;
+    if (ok) {
+      cur.successCount += 1;
+      cur.totalLatencyMs += latencyMs;
+      cur.avgLatencyMs = Math.round(cur.totalLatencyMs / cur.successCount);
+      cur.lastError = null;
+    } else {
+      cur.errorCount += 1;
+      cur.lastError = errMsg ? sanitizeTelemetryText(errMsg, 180) : 'Erro de execução';
+    }
+    aiModelRuntimeStats.set(model, cur);
+  }
+
+  function getAiHealthSnapshot() {
+    const routing = (authStore.adminConfig?.aiRouting || {}) as Record<string, any>;
+    const trackedModels = Array.from(
+      new Set(
+        [
+          'gemini-4-hydrogen',
+          'gemini-3.1-flash-lite',
+          'gemini-flash-latest',
+          routing.primaryModel,
+          routing.fallbackModel,
+          routing.costSavingModel,
+          ...Array.from(aiModelRuntimeStats.keys())
+        ].filter((m): m is string => Boolean(m))
+      )
+    );
+    const now = Date.now();
+    const models: Record<
+      string,
+      {
+        status: 'healthy' | 'degraded' | 'cooldown' | 'unavailable' | 'idle';
+        latencyMs: number | null;
+        lastLatencyMs: number | null;
+        callsCount: number;
+        successCount: number;
+        errorCount: number;
+        lastUsedAt: string | null;
+        lastError: string | null;
+        cooldownRemainingSec: number;
+      }
+    > = {};
+
+    for (const modelName of trackedModels) {
+      const stat = aiModelRuntimeStats.get(modelName);
+      const cooldownUntil = modelCooldownUntil.get(modelName) || 0;
+      const cooldownRemainingSec = cooldownUntil > now ? Math.ceil((cooldownUntil - now) / 1000) : 0;
+      let status: 'healthy' | 'degraded' | 'cooldown' | 'unavailable' | 'idle' = 'idle';
+      if (!ai) {
+        status = 'unavailable';
+      } else if (cooldownRemainingSec > 0) {
+        status = 'cooldown';
+      } else if (stat && stat.errorCount > 0 && stat.successCount === 0) {
+        status = 'degraded';
+      } else if (stat && stat.successCount > 0) {
+        status = stat.errorCount > stat.successCount ? 'degraded' : 'healthy';
+      }
+      models[modelName] = {
+        status,
+        latencyMs: stat?.avgLatencyMs ?? null,
+        lastLatencyMs: stat?.lastLatencyMs ?? null,
+        callsCount: stat?.callsCount ?? 0,
+        successCount: stat?.successCount ?? 0,
+        errorCount: stat?.errorCount ?? 0,
+        lastUsedAt: stat?.lastUsedAt ?? null,
+        lastError: stat?.lastError ?? null,
+        cooldownRemainingSec
+      };
+    }
+
+    return {
+      configured: Boolean(ai),
+      aiPaused: isAiGloballyPaused(),
+      models,
+      checkedAt: new Date().toISOString()
+    };
+  }
 
   function parseAiJson<T = any>(raw: string | undefined): T {
     const cleaned = (raw ?? '{}')
@@ -315,15 +647,16 @@ export function createApiApp() {
     return JSON.parse(cleaned || '{}') as T;
   }
 
-  // Resilient Gemini call with low-latency thinking, AbortController timeout, and fast active model failover
+  // Resilient Gemini call honoring Admin AI Routing Policy + AbortController timeout + live telemetry
   async function generateContentWithRetry(
     contents: any,
     config?: Record<string, any>,
-    routingOverride?: { preferredModel?: string; fallbackModel?: string }
+    routingOverride?: { preferredModel?: string; fallbackModel?: string; useCostSaving?: boolean }
   ) {
     if (!ai) {
       throw new Error('GEMINI_API_KEY não configurada no servidor.');
     }
+    const serverRouting = (authStore.adminConfig?.aiRouting || {}) as Record<string, any>;
     const normalizeModel = (m?: string) => {
       if (!m) return undefined;
       if (m === 'gemini-3.8-flash' || m === 'gemini-flash-latest') return 'gemini-4-hydrogen';
@@ -331,22 +664,32 @@ export function createApiApp() {
     };
     const defaultOrder = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
     const customOrder = [
+      ...(routingOverride?.useCostSaving ? [normalizeModel(serverRouting.costSavingModel)] : []),
       normalizeModel(routingOverride?.preferredModel),
+      normalizeModel(serverRouting.primaryModel),
       normalizeModel(routingOverride?.fallbackModel),
+      normalizeModel(serverRouting.fallbackModel),
       ...defaultOrder
     ].filter((m): m is string => Boolean(m));
-    const baseModels = Array.from(new Set(customOrder));
+    const maxRetries = Math.max(1, Math.min(5, Number(serverRouting.maxRetries) || 3));
+    const baseModels = Array.from(new Set(customOrder)).slice(0, Math.max(2, maxRetries));
     const now = Date.now();
     const healthyModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) <= now);
     const cooledModels = baseModels.filter((m) => (modelCooldownUntil.get(m) || 0) > now);
     const candidateModels = [...healthyModels, ...cooledModels];
 
+    const configuredTimeout = Number(serverRouting.timeoutMs);
+    const timeoutMs =
+      Number.isFinite(configuredTimeout) && configuredTimeout >= 5000
+        ? Math.min(60000, configuredTimeout)
+        : 25000;
+
     let lastError: any = null;
 
     for (const model of candidateModels) {
       const controller = new AbortController();
-      const timeoutMs = 25000;
       const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const callStartedAt = Date.now();
       try {
         const effectiveConfig: Record<string, any> = {
           ...(config || {}),
@@ -379,10 +722,14 @@ export function createApiApp() {
           raceTimeout
         ]);
 
+        const latency = Date.now() - callStartedAt;
         modelCooldownUntil.delete(model);
+        recordModelStat(model, latency, true);
         return result;
       } catch (err: any) {
         lastError = err;
+        const latency = Date.now() - callStartedAt;
+        recordModelStat(model, latency, false, err?.message || String(err));
         const msg = String(err?.message || '');
         const isTransient =
           err?.name === 'AbortError' ||
@@ -626,6 +973,14 @@ export function createApiApp() {
         return res.status(400).json({ error: 'Dados do currículo não fornecidos.' });
       }
 
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados pelo administrador.',
+          aiPaused: true,
+          fallback: true
+        });
+      }
+
       if (!ai) {
         return res.status(503).json({
           error: 'Chave GEMINI_API_KEY não configurada no servidor. O modo inteligente local continuará funcionando.',
@@ -633,18 +988,20 @@ export function createApiApp() {
         });
       }
 
-      const usageCheck = trackAuthenticatedAiUsage(req);
-      if (usageCheck.quotaExceeded) {
-        return res.status(402).json({
-          error: 'Os seus 5 créditos gratuitos de avaliação esgotaram. Faça upgrade para Pro ou Executivo VIP para uso ilimitado.',
-          quotaExceeded: true,
+      const usageCheck = trackAuthenticatedAiUsage(req, 'aiTailor');
+      if (usageCheck.featureBlocked || usageCheck.quotaExceeded) {
+        return res.status(usageCheck.featureBlocked ? 403 : 402).json({
+          error: usageCheck.message || 'Os seus créditos gratuitos de avaliação esgotaram. Faça upgrade para Pro ou Executivo VIP para uso ilimitado.',
+          quotaExceeded: Boolean(usageCheck.quotaExceeded),
+          featureBlocked: Boolean(usageCheck.featureBlocked),
           fallback: true
         });
       }
 
+      const resolvedPromptConfig = resolveServerPromptConfig('experienceOptimizer', adminPromptConfig);
       const safeJobDescription = typeof jobDescription === 'string' ? jobDescription.slice(0, 12000) : '';
-      const customInstructionBlock = adminPromptConfig?.systemInstruction
-        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${String(adminPromptConfig.systemInstruction).slice(0, 2000)}\n`
+      const customInstructionBlock = resolvedPromptConfig?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${resolvedPromptConfig.systemInstruction.slice(0, 2000)}\n`
         : '';
 
       const prompt = `
@@ -695,14 +1052,19 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
         prompt,
         {
           responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
+          ...(typeof resolvedPromptConfig?.temperature === 'number'
+            ? { temperature: resolvedPromptConfig.temperature }
             : {})
         },
-        adminPromptConfig
+        resolvedPromptConfig
       );
 
       const parsedData = parseAiJson(response.text);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'aiTailor',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsedData);
     } catch (err: any) {
       console.error('Erro na rota /api/tailor-cv:', err);
@@ -729,6 +1091,14 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
         return res.status(400).json({ error: 'Nenhuma informação do candidato foi fornecida.' });
       }
 
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados pelo administrador.',
+          aiPaused: true,
+          fallback: true
+        });
+      }
+
       if (!ai) {
         return res.status(503).json({
           error: 'Chave GEMINI_API_KEY não configurada no servidor.',
@@ -739,7 +1109,7 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
       const usageCheck = trackAuthenticatedAiUsage(req);
       if (usageCheck.quotaExceeded) {
         return res.status(402).json({
-          error: 'Os seus créditos gratuitos esgotaram. Faça upgrade para gerar novos currículos com IA ilimitada.',
+          error: usageCheck.message || 'Os seus créditos gratuitos esgotaram. Faça upgrade para gerar novos currículos com IA ilimitada.',
           quotaExceeded: true,
           fallback: true
         });
@@ -790,8 +1160,9 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
         }
       }
 
-      const customInstructionBlock = adminPromptConfig?.systemInstruction
-        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+      const resolvedRawPrompt = resolveServerPromptConfig('resumeSummary', adminPromptConfig);
+      const customInstructionBlock = resolvedRawPrompt?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${resolvedRawPrompt.systemInstruction}\n`
         : '';
 
       const prompt = isStandardMode
@@ -936,12 +1307,20 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          ...(typeof resolvedRawPrompt?.temperature === 'number'
+            ? { temperature: resolvedRawPrompt.temperature }
+            : {})
         },
-        adminPromptConfig
+        resolvedRawPrompt
       );
 
       const parsed = parseAiJson(response.text);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'rawImport',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/generate-from-raw:', err);
@@ -957,14 +1336,31 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
     try {
       const { cvData, jobDescription, recipientName, organizationName, language, adminPromptConfig } = req.body;
 
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados pelo administrador.',
+          aiPaused: true,
+          fallback: true
+        });
+      }
+
       if (!ai) {
         return res.status(503).json({
           error: 'Chave GEMINI_API_KEY não configurada no servidor.',
           fallback: true
         });
       }
-      trackAuthenticatedAiUsage(req);
+      const usageCheck = trackAuthenticatedAiUsage(req, 'coverLetter');
+      if (usageCheck.featureBlocked || usageCheck.quotaExceeded) {
+        return res.status(usageCheck.featureBlocked ? 403 : 402).json({
+          error: usageCheck.message || 'Os seus créditos gratuitos esgotaram. Faça upgrade para continuar.',
+          quotaExceeded: Boolean(usageCheck.quotaExceeded),
+          featureBlocked: Boolean(usageCheck.featureBlocked),
+          fallback: true
+        });
+      }
 
+      const resolvedCoverPrompt = resolveServerPromptConfig('coverLetter', adminPromptConfig);
       const candidateName = cvData?.personalDetails?.name || cvData?.name || 'Candidato Executivo';
       const candidateTitle = cvData?.personalDetails?.title || cvData?.title || 'Especialista Sênior';
       const candidateContacts = [
@@ -976,7 +1372,7 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
 
       const prompt = `
 Você é um consultor executivo sênior de Recursos Humanos especializado em cartas de motivação e apresentação de alto nível para grandes corporações, empresas de consultoria e posições executivas globais.
-${adminPromptConfig?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n` : ''}Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
+${resolvedCoverPrompt?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${resolvedCoverPrompt.systemInstruction}\n` : ''}Escreva uma Carta de Apresentação / Motivação Estratégica formal no idioma: ${language || 'English (Inglês)'}.
 
 DADOS DO CANDIDATO:
 Nome: ${candidateName}
@@ -1013,14 +1409,19 @@ Responda ESTRITAMENTE em JSON:
         prompt,
         {
           responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
+          ...(typeof resolvedCoverPrompt?.temperature === 'number'
+            ? { temperature: resolvedCoverPrompt.temperature }
             : {})
         },
-        adminPromptConfig
+        resolvedCoverPrompt
       );
 
       const parsed = parseAiJson(response.text);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'coverLetter',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/cover-letter:', err);
@@ -1043,14 +1444,31 @@ Responda ESTRITAMENTE em JSON:
         return res.status(400).json({ error: 'O texto excede o limite permitido para tradução.' });
       }
 
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados pelo administrador.',
+          aiPaused: true,
+          fallback: true
+        });
+      }
+
       if (!ai) {
         return res.status(503).json({
           error: 'Serviço de tradução IA indisponível: configure GEMINI_API_KEY no servidor.',
           fallback: true
         });
       }
-      trackAuthenticatedAiUsage(req);
+      const usageCheck = trackAuthenticatedAiUsage(req, 'coverLetter');
+      if (usageCheck.featureBlocked || usageCheck.quotaExceeded) {
+        return res.status(usageCheck.featureBlocked ? 403 : 402).json({
+          error: usageCheck.message || 'Os seus créditos gratuitos esgotaram. Faça upgrade para continuar.',
+          quotaExceeded: Boolean(usageCheck.quotaExceeded),
+          featureBlocked: Boolean(usageCheck.featureBlocked),
+          fallback: true
+        });
+      }
 
+      const resolvedTranslatePrompt = resolveServerPromptConfig('translateDoc', adminPromptConfig);
       const langMap: Record<string, string> = {
         pt: 'Portuguese (Português Corporativo e Executivo Formal)',
         en: 'English (International Executive & Corporate Standard)',
@@ -1062,7 +1480,7 @@ Responda ESTRITAMENTE em JSON:
 
       const prompt = `
 You are a senior executive translator specialized in international corporate correspondence, cover letters, and motivation statements.
-${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Translate the entire Cover Letter below accurately and naturally into: ${targetLangName}.
+${resolvedTranslatePrompt?.systemInstruction ? `ADMIN INSTRUCTION: ${resolvedTranslatePrompt.systemInstruction}\n` : ''}Translate the entire Cover Letter below accurately and naturally into: ${targetLangName}.
 
 CRITICAL GUIDELINES:
 1. Translate EVERY single sentence and heading written by the user (subject line, header labels like "To:"/"Subject:", opening salutation, all body paragraphs, closing salutation, and job title in the signature).
@@ -1082,9 +1500,12 @@ Respond STRICTLY in valid JSON:
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          ...(typeof resolvedTranslatePrompt?.temperature === 'number'
+            ? { temperature: resolvedTranslatePrompt.temperature }
+            : {})
         },
-        adminPromptConfig
+        { ...(resolvedTranslatePrompt || {}), useCostSaving: true }
       );
 
       const parsedRaw = parseAiJson(response.text);
@@ -1092,6 +1513,11 @@ Respond STRICTLY in valid JSON:
       if (!parsed.translatedText) {
         return res.status(502).json({ error: 'A IA não retornou o texto traduzido da carta.' });
       }
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'coverLetter',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/translate-letter:', err);
@@ -1122,14 +1548,30 @@ Respond STRICTLY in valid JSON:
       const langKey = String(targetLanguage || 'en').toLowerCase();
       const targetLangName = langMap[langKey] || targetLanguage || 'English';
 
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados pelo administrador.',
+          aiPaused: true,
+          fallback: true
+        });
+      }
+
       if (!ai) {
         return res.status(503).json({
           error: 'Serviço de tradução IA indisponível: configure GEMINI_API_KEY no servidor.',
           fallback: true
         });
       }
-      trackAuthenticatedAiUsage(req);
+      const usageCheck = trackAuthenticatedAiUsage(req);
+      if (usageCheck.quotaExceeded) {
+        return res.status(402).json({
+          error: usageCheck.message || 'Os seus créditos gratuitos esgotaram. Faça upgrade para continuar.',
+          quotaExceeded: true,
+          fallback: true
+        });
+      }
 
+      const resolvedTranslatePrompt = resolveServerPromptConfig('translateDoc', adminPromptConfig);
       const cvForTranslation = {
         personalDetails: {
           name: cvData.personalDetails?.name || '',
@@ -1147,7 +1589,7 @@ Respond STRICTLY in valid JSON:
 
       const prompt = `
 You are a world-class executive career consultant and international translator.
-${adminPromptConfig?.systemInstruction ? `ADMIN INSTRUCTION: ${adminPromptConfig.systemInstruction}\n` : ''}Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName} (language code: ${langKey}).
+${resolvedTranslatePrompt?.systemInstruction ? `ADMIN INSTRUCTION: ${resolvedTranslatePrompt.systemInstruction}\n` : ''}Your task is to translate ALL user-written content in the provided CVData JSON into: ${targetLangName} (language code: ${langKey}).
 
 CRITICAL GUIDELINES:
 1. MANDATORY TARGET LANGUAGE: Every user-written field MUST be output in ${targetLangName}. Even if the input text is in Portuguese, English, Spanish, French, or German, do NOT leave source-language sentences untranslated.
@@ -1174,10 +1616,19 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
       const response = await generateContentWithRetry(
         prompt,
         {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          ...(typeof resolvedTranslatePrompt?.temperature === 'number'
+            ? { temperature: resolvedTranslatePrompt.temperature }
+            : {})
         },
-        adminPromptConfig
+        { ...(resolvedTranslatePrompt || {}), useCostSaving: true }
       );
+
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'aiTailor',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
 
       const rawParsed = parseAiJson(response.text);
       const parsed = rawParsed?.translatedCV || rawParsed?.cvData || rawParsed;
@@ -1521,7 +1972,7 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
       let groundingDossier = '';
       let groundingSources: Array<{ title: string; uri: string }> = [];
 
-      if (ai && cleanUrl && /linkedin\.com\/in\//i.test(cleanUrl) && boundedRawText.length < 1200) {
+      if (ai && !isAiGloballyPaused() && cleanUrl && /linkedin\.com\/in\//i.test(cleanUrl) && boundedRawText.length < 1200) {
         const researchPrompt = `
 Pesquise publicamente na web e em páginas indexadas do LinkedIn, GitHub, portfólios e imprensa sobre este profissional:
 URL do LinkedIn: ${cleanUrl}
@@ -1626,9 +2077,16 @@ REGRAS ESTRITAS:
         groundingDossier.length > 260;
 
       // STAGE 3: Full-Profile Executive CVData Synthesis via Gemini
-      if (ai) {
+      if (ai && !isAiGloballyPaused()) {
         try {
-          trackAuthenticatedAiUsage(req);
+          const lkUsage = trackAuthenticatedAiUsage(req);
+          if (lkUsage.quotaExceeded) {
+            return res.status(402).json({
+              error: lkUsage.message || 'Os seus créditos gratuitos esgotaram. Faça upgrade para importar perfis com IA.',
+              quotaExceeded: true,
+              fallback: true
+            });
+          }
           const outLangHint =
             language === 'en'
               ? 'English (preserve original proper nouns, translate/format section descriptions cleanly in English)'
@@ -1921,7 +2379,17 @@ Retorne ESTRITAMENTE JSON válido com esta estrutura exata:
     try {
       const { jobDescription, cvData, adminPromptConfig } = req.body;
 
-      if (!ai) {
+      const interviewUsage = trackAuthenticatedAiUsage(req, 'interviewSim');
+      if (interviewUsage.featureBlocked || interviewUsage.quotaExceeded) {
+        return res.status(interviewUsage.featureBlocked ? 403 : 402).json({
+          error: interviewUsage.message || 'O Simulador de Entrevista STAR requer um plano habilitado ou créditos disponíveis.',
+          quotaExceeded: Boolean(interviewUsage.quotaExceeded),
+          featureBlocked: Boolean(interviewUsage.featureBlocked),
+          fallback: true
+        });
+      }
+
+      if (!ai || isAiGloballyPaused()) {
         // High quality fallback questions based on job or executive standards
         return res.json({
           questions: [
@@ -1969,9 +2437,10 @@ Retorne ESTRITAMENTE JSON válido com esta estrutura exata:
         });
       }
 
+      const resolvedInterviewPrompt = resolveServerPromptConfig('interviewSim', adminPromptConfig);
       const prompt = `
 Você é um Diretor de RH e Headhunter Executivo especialista em simulação de entrevistas de alta contratação para posições corporativas internacionais, Big Tech e liderança executiva.
-${adminPromptConfig?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n` : ''}
+${resolvedInterviewPrompt?.systemInstruction ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${resolvedInterviewPrompt.systemInstruction}\n` : ''}
 Com base na descrição da vaga e no perfil do candidato abaixo, gere EXATAMENTE 5 perguntas de entrevista personalizadas, combinando perguntas comportamentais (baseadas no método STAR) e técnicas/situacionais desafiadoras.
 
 DESCRIÇÃO DA VAGA:
@@ -2001,15 +2470,19 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
         prompt,
         {
           responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
+          ...(typeof resolvedInterviewPrompt?.temperature === 'number'
+            ? { temperature: resolvedInterviewPrompt.temperature }
             : {})
         },
-        adminPromptConfig
+        resolvedInterviewPrompt
       );
 
       const parsed = parseAiJson(response.text);
-      trackAuthenticatedAiUsage(req);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'interviewSim',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/generate-questions:', err);
@@ -2036,7 +2509,17 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
         });
       }
 
-      if (!ai) {
+      const scoreUsage = trackAuthenticatedAiUsage(req, 'interviewSim');
+      if (scoreUsage.featureBlocked || scoreUsage.quotaExceeded) {
+        return res.status(scoreUsage.featureBlocked ? 403 : 402).json({
+          error: scoreUsage.message || 'O Simulador de Entrevista STAR requer um plano habilitado ou créditos disponíveis.',
+          quotaExceeded: Boolean(scoreUsage.quotaExceeded),
+          featureBlocked: Boolean(scoreUsage.featureBlocked),
+          fallback: true
+        });
+      }
+
+      if (!ai || isAiGloballyPaused()) {
         const hasNumbers = /\d+%|\$\d+|\b\d+\b/.test(answer);
         const lengthScore = Math.min(40, Math.floor(answer.length / 10));
         const metricScore = hasNumbers ? 30 : 10;
@@ -2058,8 +2541,9 @@ Gere 5 perguntas com a seguinte estrutura em formato JSON:
         });
       }
 
-      const customInstructionBlock = adminPromptConfig?.systemInstruction
-        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${adminPromptConfig.systemInstruction}\n`
+      const resolvedInterviewPrompt = resolveServerPromptConfig('interviewSim', adminPromptConfig);
+      const customInstructionBlock = resolvedInterviewPrompt?.systemInstruction
+        ? `\nDIRETRIZ PERSONALIZADA DO ADMINISTRADOR:\n${resolvedInterviewPrompt.systemInstruction}\n`
         : '';
 
       const prompt = `
@@ -2098,15 +2582,19 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         prompt,
         {
           responseMimeType: 'application/json',
-          ...(typeof adminPromptConfig?.temperature === 'number'
-            ? { temperature: adminPromptConfig.temperature }
+          ...(typeof resolvedInterviewPrompt?.temperature === 'number'
+            ? { temperature: resolvedInterviewPrompt.temperature }
             : {})
         },
-        adminPromptConfig
+        resolvedInterviewPrompt
       );
 
       const parsed = parseAiJson(response.text);
-      trackAuthenticatedAiUsage(req);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'interviewSim',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
       return res.json(parsed);
     } catch (err: any) {
       console.error('Erro na rota /api/interview/score-answer:', err);
@@ -3313,6 +3801,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     avatarUrl?: string;
     creditsRemaining: number;
     creditsUsed: number;
+    dailyAiCallsDate?: string;
+    dailyAiCallsCount?: number;
     totalCvGenerated: number;
     billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
     subscriptionExpiresAt?: string;
@@ -3333,6 +3823,34 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     attempts: number;
   }
 
+  interface SupportChatMessageRecord {
+    id: string;
+    threadId: string;
+    senderId: string;
+    senderName: string;
+    senderRole: 'user' | 'admin';
+    text: string;
+    createdAt: string;
+  }
+
+  interface SupportChatThreadRecord {
+    id: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    userAvatarUrl?: string;
+    userPlan?: 'free' | 'pro' | 'executive';
+    status: 'open' | 'resolved';
+    lastMessageText?: string;
+    lastMessageSenderRole?: 'user' | 'admin';
+    lastMessageAt: string;
+    unreadByUser: number;
+    unreadByAdmin: number;
+    createdAt: string;
+    updatedAt: string;
+    messages: SupportChatMessageRecord[];
+  }
+
   interface AuthStoreData {
     users: Record<string, BackendUserRecord>;
     resetTokens: Record<string, PasswordResetRecord>;
@@ -3346,7 +3864,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     auditLogs?: any[];
     notificationPrefsByUser?: Record<string, any>;
     notificationsByUser?: Record<string, any[]>;
+    supportChats?: Record<string, SupportChatThreadRecord>;
     promoSessions?: Record<string, any>;
+    telemetry?: ServerTelemetryData;
   }
 
   let runtimeFallbackSecret: string | null = null;
@@ -3489,7 +4009,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
               parsed.notificationsByUser && typeof parsed.notificationsByUser === 'object'
                 ? parsed.notificationsByUser
                 : {},
-            promoSessions: parsed.promoSessions && typeof parsed.promoSessions === 'object' ? parsed.promoSessions : {}
+            supportChats:
+              parsed.supportChats && typeof parsed.supportChats === 'object'
+                ? parsed.supportChats
+                : {},
+            promoSessions: parsed.promoSessions && typeof parsed.promoSessions === 'object' ? parsed.promoSessions : {},
+            telemetry:
+              parsed.telemetry && typeof parsed.telemetry === 'object'
+                ? parsed.telemetry
+                : createEmptyTelemetry()
           };
         }
       }
@@ -3509,7 +4037,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       auditLogs: [],
       notificationPrefsByUser: {},
       notificationsByUser: {},
-      promoSessions: {}
+      supportChats: {},
+      promoSessions: {},
+      telemetry: createEmptyTelemetry()
     };
   }
 
@@ -3524,7 +4054,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   if (!authStore.auditLogs) authStore.auditLogs = [];
   if (!authStore.notificationPrefsByUser) authStore.notificationPrefsByUser = {};
   if (!authStore.notificationsByUser) authStore.notificationsByUser = {};
+  if (!authStore.supportChats) authStore.supportChats = {};
   if (!authStore.promoSessions) authStore.promoSessions = {};
+  if (!authStore.telemetry) authStore.telemetry = createEmptyTelemetry();
 
   function persistAuthStore() {
     try {
@@ -3939,19 +4471,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (activeSignupChallenges.size > 4500) activeSignupChallenges.clear();
     }
 
-    const useSubtraction = crypto.randomInt(0, 3) === 0;
-    let a = crypto.randomInt(2, 16);
-    let b = crypto.randomInt(1, 12);
-    let answer = a + b;
-    let op = '+';
-    if (useSubtraction) {
-      a = crypto.randomInt(7, 20);
-      b = crypto.randomInt(1, Math.min(8, a - 1));
-      answer = a - b;
-      op = '-';
-    }
+    const a = crypto.randomInt(2, 19);
+    const b = crypto.randomInt(1, 15);
+    const answer = a + b;
 
-    const chars = [...String(a), op, ...String(b), '=', '?'];
+    const chars = [...String(a), '+', ...String(b), '=', '?'];
     const svgMarkup = buildMathCaptchaSvg(chars);
     const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgMarkup, 'utf8').toString('base64')}`;
 
@@ -4077,7 +4601,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
         }
 
-        // 4. Cryptographic single-use CAPTCHA + human minimum timing check
+        // 4. Server-signed single-use Addition CAPTCHA + human minimum timing check
         const cid = String(challengeId || '').trim();
         const ctok = String(challengeToken || '').trim();
         const cans = String(challengeAnswer ?? '').trim();
@@ -4096,7 +4620,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
           return res.status(400).json({
             code: 'auth/captcha-expired',
-            error: 'Complete a verificação humana antes de criar a conta.'
+            error: 'Complete a soma de verificação humana antes de criar a conta.'
           });
         }
 
@@ -4105,7 +4629,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           if (entry) activeSignupChallenges.delete(cid);
           return res.status(400).json({
             code: 'auth/captcha-expired',
-            error: 'O código de verificação expirou. Resolva o novo desafio exibido.'
+            error: 'O código de verificação expirou. Resolva a nova soma exibida.'
           });
         }
 
@@ -4134,12 +4658,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             activeSignupChallenges.delete(cid);
             return res.status(400).json({
               code: 'auth/captcha-expired',
-              error: 'Resposta incorreta na verificação humana. Foi gerado um novo desafio.'
+              error: 'Resposta incorreta na verificação. Foi gerada uma nova soma.'
             });
           }
           return res.status(400).json({
             code: 'auth/captcha-invalid',
-            error: 'Resposta da verificação humana incorreta. Confira a soma/subtração e tente novamente.'
+            error: 'Resposta incorreta. Confira a soma na imagem e tente novamente.'
           });
         }
 
@@ -4223,7 +4747,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         status: 'active',
         plan: isAdmin ? 'executive' : 'free',
         targetRole: targetRole ? String(targetRole).trim() : 'Profissional Executivo',
-        creditsRemaining: isAdmin ? 9999 : 5,
+        creditsRemaining: isAdmin ? 9999 : getFreePlanDefaultCredits(),
         creditsUsed: 0,
         totalCvGenerated: 0,
         billingCycle: isAdmin ? 'yearly' : 'monthly',
@@ -4467,7 +4991,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           avatarUrl: typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')
             ? avatarUrl.slice(0, 500)
             : verified.picture || undefined,
-          creditsRemaining: isVerifiedAdmin ? 9999 : 5,
+          creditsRemaining: isVerifiedAdmin ? 9999 : getFreePlanDefaultCredits(),
           creditsUsed: 0,
           totalCvGenerated: 0,
           billingCycle: isVerifiedAdmin ? 'yearly' : 'monthly',
@@ -5279,7 +5803,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!authStore.resumesByUser) {
         authStore.resumesByUser = {};
       }
-      const existing = authStore.resumesByUser[ownerUid] || [];
+      const existing = (authStore.resumesByUser[ownerUid] || []).filter((r) => r && r.id && r.id !== 'resume-default');
       const savedItem = {
         id: String(id).slice(0, 128),
         title: String(title).trim().slice(0, 150),
@@ -5287,10 +5811,35 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         updatedAt: String(updatedAt || new Date().toLocaleDateString('pt-PT')),
         data
       };
+
+      const isAdminOwner =
+        userRecord.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(userRecord.email || '').toLowerCase());
+      const planQuota = getServerPlanQuota(userRecord.plan || 'free');
+      const maxResumesLimit = Number(planQuota?.maxResumes);
+      const isReplacingExisting = existing.some((r) => r.id === savedItem.id || r.title === savedItem.title);
+      if (
+        !isAdminOwner &&
+        !isReplacingExisting &&
+        !planQuota?.unlimited &&
+        Number.isFinite(maxResumesLimit) &&
+        maxResumesLimit >= 0 &&
+        maxResumesLimit < 9999 &&
+        existing.length >= maxResumesLimit
+      ) {
+        return res.status(402).json({
+          error: `Limite de ${maxResumesLimit} currículo(s) guardado(s) no plano ${planQuota?.planName || userRecord.plan} atingido. Faça upgrade para guardar mais versões.`,
+          quotaExceeded: true,
+          maxResumes: maxResumesLimit
+        });
+      }
+
       authStore.resumesByUser[ownerUid] = [
         savedItem,
         ...existing.filter((r) => r.id !== savedItem.id && r.title !== savedItem.title)
       ].slice(0, 50);
+      if (!isReplacingExisting) {
+        userRecord.totalCvGenerated = (userRecord.totalCvGenerated || 0) + 1;
+      }
       persistAuthStore();
       return res.status(201).json({ success: true, resume: savedItem });
     } catch (err: any) {
@@ -5862,6 +6411,84 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return res.json({ auditLogs: authStore.auditLogs || [] });
   });
 
+  // Public Telemetry Intake (Funnel, Template Selections, Exports, Languages)
+  app.post('/api/telemetry/event', (req, res) => {
+    try {
+      if (!checkTelemetryRateLimit(req)) {
+        return res.status(429).json({ error: 'Demasiados eventos de telemetria.' });
+      }
+      const body = req.body || {};
+      const type = String(body.type || '');
+      if (type === 'resume_started') {
+        recordServerTelemetry({ type: 'resume_started' });
+      } else if (type === 'checkout_opened') {
+        recordServerTelemetry({ type: 'checkout_opened' });
+      } else if (type === 'word_exported') {
+        recordServerTelemetry({
+          type: 'word_exported',
+          templateStyle: typeof body.templateStyle === 'string' ? body.templateStyle : undefined
+        });
+      } else if (type === 'template_selected' && typeof body.templateStyle === 'string') {
+        recordServerTelemetry({ type: 'template_selected', templateStyle: body.templateStyle });
+      } else if (type === 'language_switched' && typeof body.language === 'string') {
+        recordServerTelemetry({ type: 'language_switched', language: body.language });
+      } else {
+        return res.status(400).json({ error: 'Evento de telemetria inválido.' });
+      }
+      return res.status(201).json({ success: true });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao registar telemetria.' });
+    }
+  });
+
+  // Live Gemini Model Health & Latency Probe (Admin Only)
+  app.get('/api/admin/ai-health', async (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    const shouldProbe = String(req.query?.probe || '') === '1';
+    if (shouldProbe && ai) {
+      const routing = (authStore.adminConfig?.aiRouting || {}) as Record<string, any>;
+      const probeModels = Array.from(
+        new Set([
+          routing.primaryModel || 'gemini-4-hydrogen',
+          routing.fallbackModel || 'gemini-3.1-flash-lite',
+          'gemini-4-hydrogen',
+          'gemini-3.1-flash-lite'
+        ])
+      ).filter((m) => typeof m === 'string' && m !== 'gemini-flash-latest');
+
+      await Promise.all(
+        probeModels.map(async (modelName) => {
+          const startedAt = Date.now();
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 10000);
+          try {
+            await Promise.race([
+              ai!.models.generateContent({
+                model: modelName,
+                contents: 'Reply with OK',
+                config: {
+                  abortSignal: controller.signal,
+                  ...(modelName === 'gemini-4-hydrogen' ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {})
+                }
+              }),
+              new Promise<never>((_, reject) => {
+                controller.signal.addEventListener('abort', () => reject(new Error('Probe timeout')), { once: true });
+              })
+            ]);
+            modelCooldownUntil.delete(modelName);
+            recordModelStat(modelName, Date.now() - startedAt, true);
+          } catch (probeErr: any) {
+            recordModelStat(modelName, Date.now() - startedAt, false, probeErr?.message || 'Probe failed');
+          } finally {
+            clearTimeout(timer);
+          }
+        })
+      );
+    }
+    return res.json(getAiHealthSnapshot());
+  });
+
   // Admin Overview Snapshot
   app.get('/api/admin/overview', (req, res) => {
     if (!requireAdminSession(req, res)) return;
@@ -5878,6 +6505,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     const orders = Array.from(ordersMap.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
+    const supportChatsUnreadCount = Object.values(authStore.supportChats || {}).reduce(
+      (sum, th) => sum + (Number(th?.unreadByAdmin) || 0),
+      0
+    );
     return res.json({
       users,
       orders,
@@ -5886,33 +6517,55 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       errorLogs: authStore.errorLogs || [],
       gdprRequests: authStore.gdprRequests || [],
       impersonationLogs: authStore.impersonationLogs || [],
-      auditLogs: authStore.auditLogs || []
+      auditLogs: authStore.auditLogs || [],
+      telemetry: ensureServerTelemetry(),
+      aiHealth: getAiHealthSnapshot(),
+      supportChatsUnreadCount
     });
   });
 
   // Admin User Management
   app.post('/api/admin/users', (req, res) => {
-    if (!requireAdminSession(req, res)) return;
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
     try {
-      const { id, name, email, role, status, plan, phone, creditsRemaining, billingCycle, notes } = req.body || {};
+      const { id, name, email, role, status, plan, phone, creditsRemaining, billingCycle, notes, password } = req.body || {};
       const cleanEmail = String(email || '').trim().toLowerCase();
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
         return res.status(400).json({ error: 'E-mail válido obrigatório.' });
       }
+      const cleanPassword = typeof password === 'string' ? password.trim() : '';
+      if (cleanPassword && cleanPassword.length < 6) {
+        return res.status(400).json({ error: 'Se definir uma palavra-passe inicial, deve ter pelo menos 6 caracteres.' });
+      }
       const existing = findBackendUserByEmail(cleanEmail);
       const uid = id || existing?.id || `usr_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
       const nowIso = new Date().toISOString();
+      const targetPlan = ['free', 'pro', 'executive'].includes(plan) ? plan : 'pro';
+      let passwordHash = existing?.passwordHash;
+      let passwordSalt = existing?.passwordSalt;
+      if (cleanPassword) {
+        const hashed = hashPassword(cleanPassword);
+        passwordHash = hashed.hash;
+        passwordSalt = hashed.salt;
+      }
       const record: BackendUserRecord = {
         ...(existing || {}),
         id: uid,
         name: String(name || existing?.name || 'Novo Cliente').trim(),
         email: cleanEmail,
+        ...(passwordHash ? { passwordHash, passwordSalt } : {}),
         role: role === 'admin' || ADMIN_EMAILS_BACKEND.has(cleanEmail) ? 'admin' : 'user',
         status: status === 'suspended' ? 'suspended' : 'active',
-        plan: ['free', 'pro', 'executive'].includes(plan) ? plan : 'pro',
+        plan: targetPlan,
         phone: typeof phone === 'string' ? phone : existing?.phone || '',
-        notes: typeof notes === 'string' ? notes : existing?.notes || 'Cadastrado manualmente pelo admin',
-        creditsRemaining: typeof creditsRemaining === 'number' ? creditsRemaining : (plan === 'free' ? 5 : 9999),
+        notes: typeof notes === 'string' && notes.trim() ? notes : existing?.notes || 'Cadastrado manualmente pelo admin',
+        creditsRemaining:
+          typeof creditsRemaining === 'number'
+            ? creditsRemaining
+            : targetPlan === 'free'
+            ? getFreePlanDefaultCredits()
+            : 9999,
         creditsUsed: existing?.creditsUsed ?? 0,
         totalCvGenerated: existing?.totalCvGenerated ?? 0,
         billingCycle: normalizeServerCycle(billingCycle),
@@ -5922,6 +6575,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       };
       authStore.users[uid] = record;
       persistAuthStore();
+      appendServerAuditLog(req, {
+        actorUserId: adminPayload.uid,
+        actorEmail: adminPayload.email,
+        actorRole: 'admin',
+        action: 'admin_user_modified',
+        category: 'admin',
+        severity: record.role === 'admin' ? 'warning' : 'info',
+        status: 'success',
+        targetResource: `users/${record.id}`,
+        details: `Administrador criou/atualizou cliente manualmente: ${record.email} (plano=${record.plan}, papel=${record.role}).`
+      });
       return res.status(201).json({ success: true, user: sanitizeUser(record) });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Erro ao criar utilizador.' });
@@ -6246,6 +6910,402 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     });
     persistAuthStore();
     return res.status(201).json({ success: true });
+  });
+
+  // =========================================================================
+  // SUPPORT CHAT REAL-TIME HUB (REGISTERED USERS <-> ADMINS / MODERATORS)
+  // =========================================================================
+  interface SupportWsClient {
+    ws: WebSocket;
+    uid: string;
+    email: string;
+    isAdmin: boolean;
+  }
+
+  const supportWsClients = new Set<SupportWsClient>();
+
+  function broadcastSupportChatEvent(targetUserId: string, payloadObj: Record<string, any>) {
+    const serialized = JSON.stringify(payloadObj);
+    supportWsClients.forEach((client) => {
+      try {
+        if (client.ws.readyState !== WebSocket.OPEN) return;
+        if (client.isAdmin || client.uid === targetUserId) {
+          client.ws.send(serialized);
+        }
+      } catch {
+        // ignore closed/stale socket errors
+      }
+    });
+  }
+
+  (app as any).__attachSupportChatWs = (httpServer: http.Server) => {
+    const wss = new WebSocketServer({ noServer: true });
+    httpServer.on('upgrade', (request, socket, head) => {
+      try {
+        const parsedUrl = new URL(request.url || '/', 'http://localhost');
+        if (parsedUrl.pathname !== '/ws/support-chat') {
+          return;
+        }
+        const queryToken = parsedUrl.searchParams.get('token');
+        const cookieToken = parseCookies(request.headers.cookie)['ce_session'];
+        const token = (queryToken || cookieToken || '').trim();
+        const payload = token ? verifySessionToken(token) : null;
+        if (!payload?.uid) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+        if (userRec?.status === 'suspended') {
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+        const isAdminClient = Boolean(
+          payload.role === 'admin' ||
+            userRec?.role === 'admin' ||
+            ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())
+        );
+        const clientUid = userRec?.id || payload.uid;
+        wss.handleUpgrade(request, socket, head, (ws) => {
+          const clientObj: SupportWsClient = {
+            ws,
+            uid: clientUid,
+            email: payload.email,
+            isAdmin: isAdminClient
+          };
+          supportWsClients.add(clientObj);
+          try {
+            ws.send(JSON.stringify({ type: 'connected', uid: clientUid, isAdmin: isAdminClient }));
+          } catch {
+            // ignore
+          }
+          ws.on('message', (raw) => {
+            try {
+              const msg = JSON.parse(String(raw || ''));
+              if (msg?.type === 'ping') {
+                ws.send(JSON.stringify({ type: 'pong', ts: Date.now() }));
+              }
+            } catch {
+              // ignore malformed keepalive
+            }
+          });
+          ws.on('close', () => {
+            supportWsClients.delete(clientObj);
+          });
+          ws.on('error', () => {
+            supportWsClients.delete(clientObj);
+          });
+        });
+      } catch {
+        try {
+          socket.destroy();
+        } catch {
+          // ignore
+        }
+      }
+    });
+  };
+
+  function getOrBuildThreadForUser(userRec: BackendUserRecord): SupportChatThreadRecord {
+    if (!authStore.supportChats) authStore.supportChats = {};
+    const existing =
+      authStore.supportChats[userRec.id] ||
+      Object.values(authStore.supportChats).find(
+        (t) =>
+          t.userId === userRec.id ||
+          (userRec.email && t.userEmail.toLowerCase() === userRec.email.toLowerCase())
+      );
+    if (existing) {
+      // Keep user metadata fresh
+      existing.userName = userRec.name || existing.userName;
+      existing.userEmail = userRec.email || existing.userEmail;
+      if (userRec.avatarUrl) existing.userAvatarUrl = userRec.avatarUrl;
+      existing.userPlan = userRec.plan;
+      return existing;
+    }
+    const nowIso = new Date().toISOString();
+    const starter: SupportChatThreadRecord = {
+      id: userRec.id,
+      userId: userRec.id,
+      userName: userRec.name || userRec.email.split('@')[0] || 'Utilizador',
+      userEmail: userRec.email,
+      ...(userRec.avatarUrl ? { userAvatarUrl: userRec.avatarUrl } : {}),
+      userPlan: userRec.plan,
+      status: 'open',
+      lastMessageText: '',
+      lastMessageAt: nowIso,
+      unreadByUser: 0,
+      unreadByAdmin: 0,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messages: []
+    };
+    return starter;
+  }
+
+  function sanitizeSupportThreadSummary(t: SupportChatThreadRecord, includeMessages = false) {
+    return {
+      id: t.id,
+      userId: t.userId,
+      userName: t.userName,
+      userEmail: t.userEmail,
+      userAvatarUrl: t.userAvatarUrl,
+      userPlan: t.userPlan || 'free',
+      status: t.status,
+      lastMessageText: t.lastMessageText || '',
+      lastMessageSenderRole: t.lastMessageSenderRole,
+      lastMessageAt: t.lastMessageAt,
+      unreadByUser: Number(t.unreadByUser) || 0,
+      unreadByAdmin: Number(t.unreadByAdmin) || 0,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      ...(includeMessages ? { messages: Array.isArray(t.messages) ? t.messages : [] } : {})
+    };
+  }
+
+  // Registered User: Fetch own support chat thread & messages
+  app.get('/api/support-chat/thread', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Apenas utilizadores registados podem aceder ao chat de suporte.' });
+      }
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRec || userRec.status === 'suspended') {
+        return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
+      }
+      const thread = getOrBuildThreadForUser(userRec);
+      return res.json({ thread: sanitizeSupportThreadSummary(thread, true) });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao carregar conversa de suporte.' });
+    }
+  });
+
+  // Registered User: Send message to Admin / Moderator
+  app.post('/api/support-chat/messages', (req, res) => {
+    try {
+      if (!checkTelemetryRateLimit(req)) {
+        return res.status(429).json({ error: 'Muitas mensagens seguidas. Aguarde um momento.' });
+      }
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Apenas utilizadores registados podem enviar mensagens ao suporte.' });
+      }
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRec || userRec.status === 'suspended') {
+        return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
+      }
+      const rawText = String(req.body?.text || '').trim();
+      if (!rawText) {
+        return res.status(400).json({ error: 'Escreva uma mensagem antes de enviar.' });
+      }
+      const cleanText = rawText.slice(0, 2000);
+      const nowIso = new Date().toISOString();
+
+      if (!authStore.supportChats) authStore.supportChats = {};
+      const thread = getOrBuildThreadForUser(userRec);
+      const msg: SupportChatMessageRecord = {
+        id: `msg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        threadId: thread.id,
+        senderId: userRec.id,
+        senderName: userRec.name || userRec.email,
+        senderRole: 'user',
+        text: cleanText,
+        createdAt: nowIso
+      };
+
+      thread.messages = [...(thread.messages || []), msg].slice(-250);
+      thread.status = 'open';
+      thread.lastMessageText = cleanText.slice(0, 500);
+      thread.lastMessageSenderRole = 'user';
+      thread.lastMessageAt = nowIso;
+      thread.updatedAt = nowIso;
+      thread.unreadByAdmin = (Number(thread.unreadByAdmin) || 0) + 1;
+      thread.unreadByUser = 0;
+
+      authStore.supportChats[thread.id] = thread;
+      persistAuthStore();
+
+      const fullThread = sanitizeSupportThreadSummary(thread, true);
+      broadcastSupportChatEvent(thread.userId, {
+        type: 'support_chat_update',
+        action: 'message_created',
+        thread: fullThread,
+        message: msg
+      });
+
+      return res.status(201).json({ success: true, thread: fullThread, message: msg });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao enviar mensagem de suporte.' });
+    }
+  });
+
+  // Registered User: Mark admin replies as read
+  app.post('/api/support-chat/read', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      if (!userRec) {
+        return res.status(404).json({ error: 'Utilizador não encontrado.' });
+      }
+      const thread = getOrBuildThreadForUser(userRec);
+      if (authStore.supportChats?.[thread.id]) {
+        authStore.supportChats[thread.id].unreadByUser = 0;
+        authStore.supportChats[thread.id].updatedAt = new Date().toISOString();
+        persistAuthStore();
+        broadcastSupportChatEvent(thread.userId, {
+          type: 'support_chat_update',
+          action: 'read_by_user',
+          thread: sanitizeSupportThreadSummary(authStore.supportChats[thread.id], true)
+        });
+      }
+      return res.json({ success: true });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao marcar mensagens como lidas.' });
+    }
+  });
+
+  // Admin / Moderator: List all support threads
+  app.get('/api/admin/support-chat/threads', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    const threads = Object.values(authStore.supportChats || {})
+      .filter((t) => t && Array.isArray(t.messages) && t.messages.length > 0)
+      .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime())
+      .map((t) => sanitizeSupportThreadSummary(t, true));
+    const unreadTotal = threads.reduce((acc, t) => acc + (t.unreadByAdmin || 0), 0);
+    return res.json({ threads, unreadTotal });
+  });
+
+  // Admin / Moderator: Send reply to a user's support thread
+  app.post('/api/admin/support-chat/:threadId/messages', (req, res) => {
+    const adminPayload = requireAdminSession(req, res);
+    if (!adminPayload) return;
+    try {
+      const threadId = String(req.params.threadId || '').trim();
+      if (!authStore.supportChats) authStore.supportChats = {};
+      let thread = authStore.supportChats[threadId];
+
+      // Allow admin to initiate or reply to a registered user even if threadId is user.id
+      if (!thread) {
+        const targetUser =
+          authStore.users[threadId] ||
+          Object.values(authStore.users).find((u) => u.id === threadId || u.firebaseUid === threadId);
+        if (!targetUser) {
+          return res.status(404).json({ error: 'Conversa ou utilizador não encontrado.' });
+        }
+        thread = getOrBuildThreadForUser(targetUser);
+        authStore.supportChats[thread.id] = thread;
+      }
+
+      const rawText = String(req.body?.text || '').trim();
+      if (!rawText) {
+        return res.status(400).json({ error: 'Escreva uma resposta antes de enviar.' });
+      }
+      const cleanText = rawText.slice(0, 2000);
+      const adminUser = authStore.users[adminPayload.uid] || findBackendUserByEmail(adminPayload.email);
+      const nowIso = new Date().toISOString();
+
+      const msg: SupportChatMessageRecord = {
+        id: `msg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        threadId: thread.id,
+        senderId: adminPayload.uid,
+        senderName: adminUser?.name ? `${adminUser.name} (Admin)` : 'Equipa de Suporte',
+        senderRole: 'admin',
+        text: cleanText,
+        createdAt: nowIso
+      };
+
+      thread.messages = [...(thread.messages || []), msg].slice(-250);
+      thread.status = 'open';
+      thread.lastMessageText = cleanText.slice(0, 500);
+      thread.lastMessageSenderRole = 'admin';
+      thread.lastMessageAt = nowIso;
+      thread.updatedAt = nowIso;
+      thread.unreadByUser = (Number(thread.unreadByUser) || 0) + 1;
+      thread.unreadByAdmin = 0;
+
+      // Also push an in-app notification bell entry for the user
+      if (!authStore.notificationsByUser) authStore.notificationsByUser = {};
+      const existingNotifs = authStore.notificationsByUser[thread.userId] || [];
+      authStore.notificationsByUser[thread.userId] = [
+        {
+          id: `ntf_chat_${Date.now()}`,
+          userId: thread.userId,
+          eventType: 'resume_update',
+          title: 'Nova resposta do Suporte',
+          message: cleanText.slice(0, 220),
+          channelSystem: true,
+          channelEmail: false,
+          emailDeliveryStatus: 'not_requested',
+          read: false,
+          createdAt: nowIso,
+          targetResource: 'support_chat'
+        },
+        ...existingNotifs
+      ].slice(0, 40);
+
+      persistAuthStore();
+
+      const fullThread = sanitizeSupportThreadSummary(thread, true);
+      broadcastSupportChatEvent(thread.userId, {
+        type: 'support_chat_update',
+        action: 'admin_replied',
+        thread: fullThread,
+        message: msg
+      });
+
+      return res.status(201).json({ success: true, thread: fullThread, message: msg });
+    } catch {
+      return res.status(500).json({ error: 'Erro ao enviar resposta administrativa.' });
+    }
+  });
+
+  // Admin / Moderator: Mark thread as read by admin
+  app.post('/api/admin/support-chat/:threadId/read', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const threadId = String(req.params.threadId || '').trim();
+    const thread = authStore.supportChats?.[threadId];
+    if (thread) {
+      thread.unreadByAdmin = 0;
+      thread.updatedAt = new Date().toISOString();
+      persistAuthStore();
+      broadcastSupportChatEvent(thread.userId, {
+        type: 'support_chat_update',
+        action: 'read_by_admin',
+        thread: sanitizeSupportThreadSummary(thread, true)
+      });
+    }
+    return res.json({ success: true });
+  });
+
+  // Admin / Moderator: Update thread status ('open' | 'resolved')
+  app.patch('/api/admin/support-chat/:threadId', (req, res) => {
+    if (!requireAdminSession(req, res)) return;
+    const threadId = String(req.params.threadId || '').trim();
+    const thread = authStore.supportChats?.[threadId];
+    if (!thread) {
+      return res.status(404).json({ error: 'Conversa não encontrada.' });
+    }
+    const nextStatus = req.body?.status === 'resolved' ? 'resolved' : 'open';
+    thread.status = nextStatus;
+    thread.unreadByAdmin = 0;
+    thread.updatedAt = new Date().toISOString();
+    persistAuthStore();
+    const fullThread = sanitizeSupportThreadSummary(thread, true);
+    broadcastSupportChatEvent(thread.userId, {
+      type: 'support_chat_update',
+      action: 'status_changed',
+      thread: fullThread
+    });
+    return res.json({ success: true, thread: fullThread });
   });
 
   // =========================================================================
@@ -7456,6 +8516,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 export async function startServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
+  if (typeof (app as any).__attachSupportChatWs === 'function') {
+    (app as any).__attachSupportChatWs(httpServer);
+  }
   let viteServer: { middlewares: any; close: () => Promise<void> } | null = null;
 
   // Vite middleware in dev or static files in production

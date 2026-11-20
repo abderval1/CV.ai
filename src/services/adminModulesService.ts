@@ -129,9 +129,9 @@ export const DEFAULT_AI_ROUTING: AiModelRoutingConfig = {
   maxRetries: 3,
   timeoutMs: 8000,
   healthStatus: {
-    'gemini-4-hydrogen': { status: 'healthy', latencyMs: 420 },
-    'gemini-3.1-flash-lite': { status: 'healthy', latencyMs: 260 },
-    'gemini-flash-latest': { status: 'healthy', latencyMs: 310 }
+    'gemini-4-hydrogen': { status: 'healthy', latencyMs: 0 },
+    'gemini-3.1-flash-lite': { status: 'healthy', latencyMs: 0 },
+    'gemini-flash-latest': { status: 'healthy', latencyMs: 0 }
   }
 };
 
@@ -481,7 +481,9 @@ async function adminApiFetch(path: string, options: RequestInit = {}): Promise<a
     data = null;
   }
   if (!res.ok) {
-    throw new Error(data?.error || `HTTP ${res.status}`);
+    const err = new Error(data?.error || `HTTP ${res.status}`);
+    (err as any).status = res.status;
+    throw err;
   }
   return data;
 }
@@ -518,14 +520,16 @@ async function fetchPublicAdminConfig(): Promise<Record<string, any> | null> {
 }
 
 async function saveAdminConfigScope(scope: string, payload: any): Promise<void> {
-  if (!getAuthToken()) return;
   try {
     await adminApiFetch(`/api/admin/config/${encodeURIComponent(scope)}`, {
       method: 'POST',
       body: JSON.stringify({ data: payload })
     });
-  } catch (e) {
-    console.warn(`Erro ao sincronizar ${scope} no servidor:`, e);
+  } catch (e: any) {
+    if (e?.status && e.status !== 401) {
+      throw e;
+    }
+    console.warn(`Aviso ao sincronizar ${scope} no servidor:`, e);
   }
 }
 
@@ -534,17 +538,15 @@ async function saveAdminConfigScope(scope: string, payload: any): Promise<void> 
 // -------------------------------------------------------------
 
 export async function fetchPromptsConfig(): Promise<PromptTemplateConfig[]> {
-  if (getAuthToken()) {
-    try {
-      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
-      const list = overview?.adminConfig?.promptsConfig;
-      if (Array.isArray(list) && list.length > 0) {
-        setStored('curriculopro_prompts_config', list);
-        return list;
-      }
-    } catch {
-      // fall through
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    const list = overview?.config?.promptsConfig || overview?.adminConfig?.promptsConfig;
+    if (Array.isArray(list) && list.length > 0) {
+      setStored('curriculopro_prompts_config', list);
+      return list;
     }
+  } catch {
+    // fall through
   }
 
   if (auth.currentUser) {
@@ -587,17 +589,15 @@ export async function savePromptConfig(item: PromptTemplateConfig): Promise<void
 }
 
 export async function fetchAiRoutingConfig(): Promise<AiModelRoutingConfig> {
-  if (getAuthToken()) {
-    try {
-      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
-      const cfg = overview?.adminConfig?.aiRouting;
-      if (cfg && typeof cfg === 'object' && cfg.primaryModel) {
-        setStored('curriculopro_ai_routing', cfg);
-        return cfg;
-      }
-    } catch {
-      // fall through
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    const cfg = overview?.config?.aiRouting || overview?.adminConfig?.aiRouting;
+    if (cfg && typeof cfg === 'object' && cfg.primaryModel) {
+      setStored('curriculopro_ai_routing', cfg);
+      return cfg;
     }
+  } catch {
+    // fall through
   }
 
   if (auth.currentUser) {
@@ -899,16 +899,14 @@ export async function deleteSystemBanner(id: string): Promise<void> {
 }
 
 export async function fetchErrorLogs(): Promise<TechnicalGenerationErrorLog[]> {
-  if (getAuthToken()) {
-    try {
-      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
-      if (Array.isArray(overview?.errorLogs)) {
-        setStored('curriculopro_error_logs', overview.errorLogs);
-        return overview.errorLogs;
-      }
-    } catch {
-      // fall through
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    if (Array.isArray(overview?.errorLogs)) {
+      setStored('curriculopro_error_logs', overview.errorLogs);
+      return overview.errorLogs;
     }
+  } catch {
+    // fall through
   }
 
   if (auth.currentUser) {
@@ -966,15 +964,14 @@ export async function resolveErrorLog(logId: string, adminEmail: string): Promis
     setStored('curriculopro_error_logs', list);
   }
 
-  if (getAuthToken()) {
-    try {
-      await adminApiFetch(`/api/admin/error-logs/${encodeURIComponent(logId)}/resolve`, {
-        method: 'PATCH',
-        body: JSON.stringify({ resolvedAt, resolvedBy: adminEmail })
-      });
-    } catch (e) {
-      console.warn('Erro ao resolver log no backend:', e);
-    }
+  try {
+    await adminApiFetch(`/api/admin/error-logs/${encodeURIComponent(logId)}/resolve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ resolvedAt, resolvedBy: adminEmail })
+    });
+  } catch (e: any) {
+    if (e?.status && e.status !== 401) throw e;
+    console.warn('Aviso ao resolver log no backend:', e);
   }
 
   if (auth.currentUser) {
@@ -991,16 +988,14 @@ export async function resolveErrorLog(logId: string, adminEmail: string): Promis
 }
 
 export async function fetchGdprRequests(): Promise<GdprDataRequest[]> {
-  if (getAuthToken()) {
-    try {
-      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
-      if (Array.isArray(overview?.gdprRequests)) {
-        setStored('curriculopro_gdpr_requests', overview.gdprRequests);
-        return overview.gdprRequests;
-      }
-    } catch {
-      // fall through
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    if (Array.isArray(overview?.gdprRequests)) {
+      setStored('curriculopro_gdpr_requests', overview.gdprRequests);
+      return overview.gdprRequests;
     }
+  } catch {
+    // fall through
   }
 
   if (auth.currentUser) {
@@ -1065,15 +1060,14 @@ export async function updateGdprRequestStatus(
     setStored('curriculopro_gdpr_requests', list);
   }
 
-  if (getAuthToken()) {
-    try {
-      await adminApiFetch(`/api/admin/gdpr/${encodeURIComponent(requestId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status, notes })
-      });
-    } catch (e) {
-      console.warn('Erro ao atualizar pedido RGPD no backend:', e);
-    }
+  try {
+    await adminApiFetch(`/api/admin/gdpr/${encodeURIComponent(requestId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, notes })
+    });
+  } catch (e: any) {
+    if (e?.status && e.status !== 401) throw e;
+    console.warn('Aviso ao atualizar pedido RGPD no backend:', e);
   }
 
   if (auth.currentUser) {
@@ -1097,15 +1091,13 @@ export async function logImpersonationAction(log: Omit<ImpersonationAuditLog, 'i
   const list = [item, ...getStored<ImpersonationAuditLog[]>('curriculopro_impersonation_logs', [])].slice(0, 100);
   setStored('curriculopro_impersonation_logs', list);
 
-  if (getAuthToken()) {
-    try {
-      await adminApiFetch('/api/admin/impersonation-logs', {
-        method: 'POST',
-        body: JSON.stringify(item)
-      });
-    } catch (e) {
-      console.warn('Erro ao guardar registo de personificação no backend:', e);
-    }
+  try {
+    await adminApiFetch('/api/admin/impersonation-logs', {
+      method: 'POST',
+      body: JSON.stringify(item)
+    });
+  } catch (e) {
+    console.warn('Aviso ao guardar registo de personificação no backend:', e);
   }
 
   if (auth.currentUser) {
@@ -1122,16 +1114,14 @@ export function fetchImpersonationLogs(): ImpersonationAuditLog[] {
 }
 
 export async function fetchImpersonationLogsAsync(): Promise<ImpersonationAuditLog[]> {
-  if (getAuthToken()) {
-    try {
-      const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
-      if (Array.isArray(overview?.impersonationLogs)) {
-        setStored('curriculopro_impersonation_logs', overview.impersonationLogs);
-        return overview.impersonationLogs;
-      }
-    } catch {
-      // fall through
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    if (Array.isArray(overview?.impersonationLogs)) {
+      setStored('curriculopro_impersonation_logs', overview.impersonationLogs);
+      return overview.impersonationLogs;
     }
+  } catch {
+    // fall through
   }
 
   if (auth.currentUser) {
@@ -1387,6 +1377,65 @@ const DEFAULT_TELEMETRY: FrontendTelemetryData = {
   lastUpdated: new Date().toISOString()
 };
 
+export interface AiLiveModelHealth {
+  status: 'healthy' | 'degraded' | 'cooldown' | 'unavailable' | 'idle';
+  latencyMs: number | null;
+  lastLatencyMs: number | null;
+  callsCount: number;
+  successCount: number;
+  errorCount: number;
+  lastUsedAt: string | null;
+  lastError: string | null;
+  cooldownRemainingSec: number;
+}
+
+export interface AiLiveHealthSnapshot {
+  configured: boolean;
+  aiPaused: boolean;
+  models: Record<string, AiLiveModelHealth>;
+  checkedAt: string;
+}
+
+export async function fetchAiHealthStatus(probe: boolean = false): Promise<AiLiveHealthSnapshot | null> {
+  try {
+    return await adminApiFetch(`/api/admin/ai-health${probe ? '?probe=1' : ''}`, { method: 'GET' });
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchServerTelemetry(): Promise<FrontendTelemetryData> {
+  const local = getFrontendTelemetry();
+  try {
+    const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
+    const srv = overview?.telemetry;
+    if (srv && typeof srv === 'object') {
+      const merged: FrontendTelemetryData = {
+        resumesStartedCount: Math.max(Number(srv.resumesStartedCount) || 0, local.resumesStartedCount || 0),
+        checkoutOpenedCount: Math.max(Number(srv.checkoutOpenedCount) || 0, local.checkoutOpenedCount || 0),
+        wordExportsCount: Math.max(Number(srv.wordExportsCount) || 0, local.wordExportsCount || 0),
+        aiCallsCount: Math.max(Number(srv.aiCallsCount) || 0, local.aiCallsCount || 0),
+        estimatedTokensUsed: Math.max(Number(srv.estimatedTokensUsed) || 0, local.estimatedTokensUsed || 0),
+        templateSelections: { ...(local.templateSelections || {}), ...(srv.templateSelections || {}) },
+        languageSelections: { ...(local.languageSelections || {}), ...(srv.languageSelections || {}) },
+        featureUsage: {
+          aiTailor: Math.max(Number(srv.featureUsage?.aiTailor) || 0, local.featureUsage?.aiTailor || 0),
+          atsRadar: Math.max(Number(srv.featureUsage?.atsRadar) || 0, local.featureUsage?.atsRadar || 0),
+          coverLetter: Math.max(Number(srv.featureUsage?.coverLetter) || 0, local.featureUsage?.coverLetter || 0),
+          interviewSim: Math.max(Number(srv.featureUsage?.interviewSim) || 0, local.featureUsage?.interviewSim || 0),
+          rawImport: Math.max(Number(srv.featureUsage?.rawImport) || 0, local.featureUsage?.rawImport || 0)
+        },
+        lastUpdated: srv.lastUpdated || local.lastUpdated || new Date().toISOString()
+      };
+      setStored('curriculopro_frontend_telemetry', merged);
+      return merged;
+    }
+  } catch {
+    // fallback to local
+  }
+  return local;
+}
+
 export function getFrontendTelemetry(): FrontendTelemetryData {
   return getStored('curriculopro_frontend_telemetry', DEFAULT_TELEMETRY);
 }
@@ -1421,5 +1470,15 @@ export function trackFrontendTelemetry(
   }
   cur.lastUpdated = new Date().toISOString();
   setStored('curriculopro_frontend_telemetry', cur);
+
+  if (typeof window !== 'undefined' && event.type !== 'ai_called') {
+    fetch('/api/telemetry/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event),
+      keepalive: true
+    }).catch(() => {});
+  }
 }
+
 

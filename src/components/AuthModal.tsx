@@ -133,9 +133,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Mostrar ou ocultar palavra-passe',
         closeAria: 'Fechar janela de autenticação',
         humanCheckTitle: 'Verificação Humana (Anti-Robôs)',
-        humanCheckHint: 'Resolva o cálculo da imagem para confirmar que não é um robô.',
-        humanCheckPlaceholder: 'Resposta',
-        humanCheckRequired: 'Por favor resolva a verificação humana (cálculo da imagem) antes de criar a conta.',
+        humanCheckHint: 'Some os números da imagem para confirmar que não é um robô.',
+        humanCheckPlaceholder: 'Soma',
+        humanCheckRequired: 'Por favor some os números da imagem antes de criar a conta.',
         humanCheckRefresh: 'Trocar desafio',
         humanCheckLoadErr: 'Não foi possível carregar o desafio. Clique em Trocar.'
       },
@@ -176,9 +176,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Show or hide password',
         closeAria: 'Close authentication modal',
         humanCheckTitle: 'Human Verification (Anti-Bot)',
-        humanCheckHint: 'Solve the calculation in the image to prove you are human.',
-        humanCheckPlaceholder: 'Answer',
-        humanCheckRequired: 'Please solve the human verification challenge before registering.',
+        humanCheckHint: 'Add the numbers shown in the image to prove you are human.',
+        humanCheckPlaceholder: 'Sum',
+        humanCheckRequired: 'Please add the numbers in the image before registering.',
         humanCheckRefresh: 'New challenge',
         humanCheckLoadErr: 'Could not load challenge. Click refresh.'
       },
@@ -219,9 +219,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Mostrar u ocultar contraseña',
         closeAria: 'Cerrar ventana de acceso',
         humanCheckTitle: 'Verificación Humana (Anti-Bots)',
-        humanCheckHint: 'Resuelve la operación de la imagen para continuar.',
-        humanCheckPlaceholder: 'Resultado',
-        humanCheckRequired: 'Por favor resuelve la verificación humana antes de crear tu cuenta.',
+        humanCheckHint: 'Suma los números de la imagen para continuar.',
+        humanCheckPlaceholder: 'Suma',
+        humanCheckRequired: 'Por favor suma los números de la imagen antes de crear tu cuenta.',
         humanCheckRefresh: 'Cambiar',
         humanCheckLoadErr: 'No se pudo cargar el reto. Pulsa actualizar.'
       },
@@ -262,9 +262,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Afficher ou masquer le mot de passe',
         closeAria: 'Fermer la fenêtre de connexion',
         humanCheckTitle: 'Vérification Humaine (Anti-Robots)',
-        humanCheckHint: 'Résolvez le calcul dans l’image pour confirmer.',
-        humanCheckPlaceholder: 'Réponse',
-        humanCheckRequired: 'Veuillez résoudre la vérification humaine avant de créer un compte.',
+        humanCheckHint: 'Additionnez les nombres dans l’image pour confirmer.',
+        humanCheckPlaceholder: 'Total',
+        humanCheckRequired: 'Veuillez additionner les nombres de l’image avant de créer un compte.',
         humanCheckRefresh: 'Actualiser',
         humanCheckLoadErr: 'Échec du chargement. Cliquez sur actualiser.'
       },
@@ -305,9 +305,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Passwort anzeigen oder verbergen',
         closeAria: 'Anmeldefenster schließen',
         humanCheckTitle: 'Menschliche Prüfung (Bot-Schutz)',
-        humanCheckHint: 'Lösen Sie die Rechenaufgabe im Bild.',
-        humanCheckPlaceholder: 'Antwort',
-        humanCheckRequired: 'Bitte lösen Sie die menschliche Prüfung vor der Registrierung.',
+        humanCheckHint: 'Addieren Sie die Zahlen im Bild zur Bestätigung.',
+        humanCheckPlaceholder: 'Summe',
+        humanCheckRequired: 'Bitte addieren Sie die Zahlen im Bild vor der Registrierung.',
         humanCheckRefresh: 'Neu laden',
         humanCheckLoadErr: 'Konnte nicht geladen werden. Bitte neu laden.'
       },
@@ -348,9 +348,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         togglePassAria: 'Mostra o nascondi password',
         closeAria: 'Chiudi finestra di accesso',
         humanCheckTitle: 'Verifica Umana (Anti-Bot)',
-        humanCheckHint: 'Risolvi il calcolo nell’immagine per continuare.',
-        humanCheckPlaceholder: 'Risposta',
-        humanCheckRequired: 'Risolvi la verifica umana prima di registrarti.',
+        humanCheckHint: 'Somma i numeri nell’immagine per continuare.',
+        humanCheckPlaceholder: 'Somma',
+        humanCheckRequired: 'Somma i numeri nell’immagine prima di registrarti.',
         humanCheckRefresh: 'Aggiorna',
         humanCheckLoadErr: 'Impossibile caricare la sfida. Riprova.'
       }
@@ -1151,7 +1151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </div>
 
-                {/* Human Verification CAPTCHA Box */}
+                {/* Addition CAPTCHA Box */}
                 <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/90 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800">
@@ -1192,9 +1192,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       type="text"
                       inputMode="numeric"
                       autoComplete="off"
-                      maxLength={4}
+                      maxLength={3}
                       value={captchaAnswer}
-                      onChange={(e) => setCaptchaAnswer(e.target.value.replace(/[^\d-]/g, ''))}
+                      onChange={(e) => setCaptchaAnswer(e.target.value.replace(/\D/g, ''))}
                       placeholder={authFeedback.humanCheckPlaceholder}
                       aria-label={authFeedback.humanCheckTitle}
                       className="flex-1 min-w-[90px] min-h-[48px] text-center font-mono text-base font-bold border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900 focus:ring-2 focus:ring-slate-900/15 bg-white text-slate-900"

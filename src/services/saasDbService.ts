@@ -179,7 +179,9 @@ export async function updateUserManagement(
   }
 }
 
-export async function createManualCustomer(user: Partial<User>): Promise<User> {
+export async function createManualCustomer(
+  user: Partial<User> & { password?: string }
+): Promise<User> {
   const cleanEmail = String(user.email || '').trim().toLowerCase();
   if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     throw new Error('Por favor, indique um endereço de e-mail válido.');
@@ -201,9 +203,16 @@ export async function createManualCustomer(user: Partial<User>): Promise<User> {
     notes: user.notes || 'Registado manualmente pela equipa administrativa'
   };
 
+  const apiPayload = {
+    ...createdUser,
+    ...(typeof user.password === 'string' && user.password.trim()
+      ? { password: user.password.trim() }
+      : {})
+  };
+
   const { ok, data } = await apiRequest<{ user?: User; error?: string }>('/api/admin/users', {
     method: 'POST',
-    body: JSON.stringify(createdUser)
+    body: JSON.stringify(apiPayload)
   });
 
   if (ok && data?.user) {
@@ -886,4 +895,57 @@ export async function deleteUserAccountRecord(userId: string, userEmail?: string
     throw new Error(data?.error || 'Não foi possível eliminar o utilizador.');
   }
 }
+
+export interface AdminUserResumeSummary {
+  id: string;
+  title: string;
+  targetJob: string;
+  updatedAt: string;
+}
+
+export async function fetchAdminUserResumes(userId: string): Promise<AdminUserResumeSummary[]> {
+  const byId = new Map<string, AdminUserResumeSummary>();
+  try {
+    const { ok, data } = await apiRequest<{ resumes?: any[] }>(
+      `/api/admin/users/${encodeURIComponent(userId)}/resumes`,
+      { method: 'GET' }
+    );
+    if (ok && Array.isArray(data?.resumes)) {
+      data.resumes.forEach((r) => {
+        if (!r?.id || r.id === 'resume-default') return;
+        byId.set(r.id, {
+          id: String(r.id),
+          title: String(r.title || 'Currículo sem título'),
+          targetJob: String(r.targetJob || r.data?.personalDetails?.title || ''),
+          updatedAt: String(r.updatedAt || '')
+        });
+      });
+    }
+  } catch {
+    // ignore transient backend error
+  }
+
+  if (auth.currentUser) {
+    try {
+      const snap = await getDocs(query(collection(db, 'users', userId, 'resumes'), limit(25)));
+      snap.docs.forEach((d) => {
+        if (d.id === 'resume-default') return;
+        const raw = d.data() || {};
+        if (!byId.has(d.id)) {
+          byId.set(d.id, {
+            id: d.id,
+            title: String(raw.title || 'Currículo sem título'),
+            targetJob: String(raw.targetJob || raw.data?.personalDetails?.title || ''),
+            updatedAt: String(raw.updatedAt || '')
+          });
+        }
+      });
+    } catch {
+      // ignore if Firebase doc path differs from backend ID
+    }
+  }
+
+  return Array.from(byId.values());
+}
+
 

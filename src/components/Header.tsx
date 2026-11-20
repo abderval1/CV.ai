@@ -28,7 +28,8 @@ import {
   CheckCheck,
   Settings,
   Sun,
-  Moon
+  Moon,
+  MessageCircle
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
@@ -71,6 +72,8 @@ interface HeaderProps {
   onOpenTemplateAdvisor?: () => void;
   onOpenUserProfile?: () => void;
   onOpenNotificationPreferences?: () => void;
+  onOpenSupportChat?: () => void;
+  supportChatUnreadCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -84,9 +87,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdminDashboard,
   onOpenTemplateAdvisor,
   onOpenUserProfile,
-  onOpenNotificationPreferences
+  onOpenNotificationPreferences,
+  onOpenSupportChat,
+  supportChatUnreadCount = 0
 }) => {
-  const { user, isAuthenticated, hasActivePlan, logout } = useAuth();
+  const { user, firebaseUser, isAuthenticated, hasActivePlan, logout } = useAuth();
   const { currency, setCurrency, config: currencyConfig } = useCurrency();
   const {
     siteLanguage,
@@ -107,6 +112,14 @@ export const Header: React.FC<HeaderProps> = ({
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<UserNotificationItem[]>([]);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
+
+  const userAvatarSrc = user?.avatarUrl || firebaseUser?.photoURL || '';
+  const userInitial = (user?.name || user?.email || 'U').trim().charAt(0).toUpperCase();
+
+  React.useEffect(() => {
+    setAvatarLoadError(false);
+  }, [userAvatarSrc]);
 
   React.useEffect(() => {
     if (!isAuthenticated || !user?.id) {
@@ -704,6 +717,31 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
+          {/* Direct Support Chat Icon (Registered Users) */}
+          {isAuthenticated && user && onOpenSupportChat && (
+            <button
+              type="button"
+              onClick={() => {
+                setNotifDropdownOpen(false);
+                setUserDropdownOpen(false);
+                setPrefsDropdownOpen(false);
+                setToolsDropdownOpen(false);
+                setShowcaseDropdownOpen(false);
+                onOpenSupportChat();
+              }}
+              className="relative min-w-[36px] min-h-[36px] flex items-center justify-center p-1.5 text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors"
+              title="Chat de Suporte (Admin / Moderador)"
+              aria-label="Chat de Suporte"
+            >
+              <MessageCircle className="w-4 h-4 text-slate-700" />
+              {supportChatUnreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-extrabold tabular-nums flex items-center justify-center leading-none border border-white dark:border-slate-900">
+                  {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Account Menu (Unified for Authenticated & Unauthenticated) */}
           {isAuthenticated && user ? (
             <div className="relative">
@@ -715,14 +753,22 @@ export const Header: React.FC<HeaderProps> = ({
                   setNotifDropdownOpen(false);
                   setToolsDropdownOpen(false);
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
-                title={h.myProfile}
+                className="flex items-center justify-center p-0.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 transition-colors shrink-0"
+                title={user.name || h.myProfile}
+                aria-label={user.name || h.myProfile}
               >
-                <span className="w-5 h-5 rounded-full bg-slate-900 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-                  {user.name.charAt(0).toUpperCase()}
-                </span>
-                <span className="max-w-[84px] truncate hidden md:inline font-semibold">{user.name}</span>
-                <ChevronDown className="w-3 h-3 text-slate-400" />
+                {userAvatarSrc && !avatarLoadError ? (
+                  <img
+                    src={userAvatarSrc}
+                    alt={user.name || h.myProfile}
+                    onError={() => setAvatarLoadError(true)}
+                    className="w-7 h-7 rounded-full object-cover shrink-0"
+                  />
+                ) : (
+                  <span className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    {userInitial}
+                  </span>
+                )}
               </button>
 
               {userDropdownOpen && (
@@ -1173,17 +1219,37 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {isAuthenticated && user ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onOpenUserProfile ? onOpenUserProfile() : setActiveTab('profile');
-                }}
-                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
-              >
-                <Receipt className="w-3.5 h-3.5 text-amber-400" />
-                <span>{h.mobileMyAccount}</span>
-              </button>
+              <>
+                {onOpenSupportChat && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenSupportChat();
+                    }}
+                    className="relative min-h-[44px] py-2 px-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Suporte</span>
+                    {supportChatUnreadCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
+                        {supportChatUnreadCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenUserProfile ? onOpenUserProfile() : setActiveTab('profile');
+                  }}
+                  className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
+                >
+                  <Receipt className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{h.mobileMyAccount}</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
