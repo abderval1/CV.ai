@@ -460,7 +460,7 @@ export function createApiApp() {
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       if (!payload?.uid) return {};
-      const record = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const record = resolveAuthenticatedUserRecord(payload);
       if (!record || record.status === 'suspended') {
         return {
           quotaExceeded: true,
@@ -827,7 +827,8 @@ export function createApiApp() {
 
       if (ext === '.pdf') {
         try {
-          const { PDFParse } = await import('pdf-parse');
+          const pdfPkg = 'pdf-parse';
+          const { PDFParse } = await import(/* @vite-ignore */ pdfPkg);
           const parser = new PDFParse({ data: buffer });
           const pdfResult = await parser.getText();
           await parser.destroy();
@@ -6021,7 +6022,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const list = authStore.ordersByUser?.[payload.uid] || [];
+      const userRec = resolveAuthenticatedUserRecord(payload);
+      const ownerUid = userRec?.id || payload.uid;
+      const list = authStore.ordersByUser?.[ownerUid] || [];
       return res.json({ orders: list });
     } catch (err: any) {
       console.error('Erro em GET /api/orders:', err);
@@ -6039,7 +6042,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRec = resolveAuthenticatedUserRecord(payload);
       const isAdmin =
         userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
 
@@ -6250,10 +6253,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!/^[a-zA-Z0-9_-]{3,80}$/.test(orderId)) {
         return res.status(400).json({ error: 'Identificador inválido.' });
       }
-      const callerRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const callerRec = resolveAuthenticatedUserRecord(payload);
       const isAdmin =
         callerRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
-      const ownsOrder = (authStore.ordersByUser?.[payload.uid] || []).some((o) => o?.id === orderId);
+      const ownsOrder = (authStore.ordersByUser?.[callerRec?.id || payload.uid] || []).some(
+        (o) => o?.id === orderId
+      );
       if (!isAdmin && !ownsOrder) {
         return res.status(403).json({ error: 'Acesso negado ao comprovante.' });
       }
@@ -6303,7 +6308,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       res.status(401).json({ error: 'Sessão administrativa não autenticada.' });
       return null;
     }
-    const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+    const userRec = resolveAuthenticatedUserRecord(payload);
     if (userRec?.status === 'suspended') {
       appendServerAuditLog(req, {
         actorUserId: payload.uid,
@@ -7053,7 +7058,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   }
 
   (app as any).__attachSupportChatWs = async (httpServer: http.Server) => {
-    const { WebSocketServer } = await import('ws');
+    const wsPkg = 'ws';
+    const { WebSocketServer } = await import(/* @vite-ignore */ wsPkg);
     const wss = new WebSocketServer({ noServer: true });
     httpServer.on('upgrade', (request, socket, head) => {
       try {
@@ -7082,7 +7088,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())
         );
         const clientUid = userRec?.id || payload.uid;
-        wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
           const clientObj: SupportWsClient = {
             ws,
             uid: clientUid,
@@ -7095,7 +7101,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           } catch {
             // ignore
           }
-          ws.on('message', (raw) => {
+          ws.on('message', (raw: unknown) => {
             try {
               const msg = JSON.parse(String(raw || ''));
               if (msg?.type === 'ping') {
@@ -8623,6 +8629,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=3600');
     return res.send(xml);
+  });
+
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Erro não tratado na API Express:', err);
+    if (!res.headersSent) {
+      return res.status(Number(err?.status) || 500).json({
+        error: 'Erro interno do servidor ao processar a solicitação.'
+      });
+    }
   });
 
   return app;

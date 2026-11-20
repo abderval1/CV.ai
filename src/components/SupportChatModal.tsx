@@ -19,6 +19,7 @@ import {
   markMySupportThreadRead,
   sendUserSupportMessage,
   subscribeMyFirestoreSupportMessages,
+  subscribeMyFirestoreSupportThread,
   subscribeSupportChatWebSocket,
   SupportWsStatus
 } from '../services/supportChatService';
@@ -180,24 +181,30 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     if (!isAuthenticated || !user?.id) {
       setThread(null);
       setMessages([]);
+      setErrorMsg(null);
       onUnreadCountChange?.(0);
       return;
     }
 
     let cancelled = false;
-    if (isOpen) setIsLoading(true);
+    if (isOpen) {
+      setIsLoading(true);
+      setErrorMsg(null);
+    }
 
     fetchMySupportThread()
       .then((th) => {
         if (cancelled) return;
-        setThread(th);
-        setMessages(th.messages || []);
+        setErrorMsg(null);
+        setMessages((prev) => mergeMessages(prev, th.messages || []));
         if (isOpenRef.current) {
+          setThread({ ...th, unreadByUser: 0 });
           onUnreadCountChange?.(0);
           if (th.unreadByUser > 0) {
             void markMySupportThreadRead();
           }
         } else {
+          setThread(th);
           onUnreadCountChange?.(th.unreadByUser || 0);
         }
       })
@@ -215,7 +222,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     };
   }, [isAuthenticated, user?.id, isOpen, onUnreadCountChange]);
 
-  // Real-time WebSocket subscription for authenticated user (stays active for unread badge even when modal is closed)
+  // Real-time WebSocket + Firestore subscriptions for authenticated user (stays active for unread badge even when modal is closed)
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
 
@@ -223,7 +230,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
       (evt) => {
         if (evt.type === 'support_chat_update' && evt.thread) {
           const updatedThread = evt.thread;
-          setThread(updatedThread);
+          setErrorMsg(null);
           if (Array.isArray(updatedThread.messages)) {
             setMessages((prev) => mergeMessages(prev, updatedThread.messages || []));
           } else if (evt.message) {
@@ -231,11 +238,13 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
           }
 
           if (isOpenRef.current) {
+            setThread({ ...updatedThread, unreadByUser: 0 });
             onUnreadCountChange?.(0);
             if ((updatedThread.unreadByUser || 0) > 0) {
               void markMySupportThreadRead();
             }
           } else {
+            setThread(updatedThread);
             onUnreadCountChange?.(updatedThread.unreadByUser || 0);
           }
         }
@@ -243,33 +252,58 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
       setWsStatus
     );
 
-    const unsubFs = subscribeMyFirestoreSupportMessages((fsMsgs) => {
+    const unsubFsMsgs = subscribeMyFirestoreSupportMessages((fsMsgs) => {
       setMessages((prev) => mergeMessages(prev, fsMsgs));
+    });
+
+    const unsubFsThread = subscribeMyFirestoreSupportThread((fsThread) => {
+      setThread((prev) => ({
+        ...(prev || {}),
+        ...fsThread,
+        messages: prev?.messages
+      }));
+      if (isOpenRef.current) {
+        onUnreadCountChange?.(0);
+        if ((fsThread.unreadByUser || 0) > 0) {
+          void markMySupportThreadRead();
+        }
+      } else {
+        onUnreadCountChange?.(Number(fsThread.unreadByUser) || 0);
+      }
     });
 
     return () => {
       unsubWs();
-      unsubFs();
+      unsubFsMsgs();
+      unsubFsThread();
     };
   }, [isAuthenticated, user?.id, onUnreadCountChange]);
 
-  // Fallback HTTP polling when WebSocket is unavailable (e.g. serverless deployment)
+  // Fallback HTTP polling when WebSocket is unavailable (e.g. Vercel serverless) — active both open (6s) and closed (15s) for unread notifications
   useEffect(() => {
-    if (!isOpen || !isAuthenticated || !user?.id || wsStatus !== 'disconnected') return;
+    if (!isAuthenticated || !user?.id || wsStatus !== 'disconnected') return;
+    const pollMs = isOpen ? 6000 : 15000;
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       fetchMySupportThread()
         .then((th) => {
-          setThread(th);
           setMessages((prev) => mergeMessages(prev, th.messages || []));
-          onUnreadCountChange?.(0);
-          if (th.unreadByUser > 0) {
-            void markMySupportThreadRead();
+          if (isOpenRef.current) {
+            setErrorMsg(null);
+            setThread({ ...th, unreadByUser: 0 });
+            onUnreadCountChange?.(0);
+            if (th.unreadByUser > 0) {
+              void markMySupportThreadRead();
+            }
+          } else {
+            setThread(th);
+            onUnreadCountChange?.(th.unreadByUser || 0);
           }
         })
         .catch(() => {
-          // ignore transient poll error
+          // ignore transient poll error silently
         });
-    }, 8000);
+    }, pollMs);
     return () => clearInterval(timer);
   }, [isOpen, isAuthenticated, user?.id, wsStatus, onUnreadCountChange]);
 

@@ -114,6 +114,18 @@ export async function markMySupportThreadRead(): Promise<void> {
   } catch {
     // non-critical read marker failure
   }
+  const fbUser = auth.currentUser;
+  if (fbUser?.uid && /^[a-zA-Z0-9_\-]{1,128}$/.test(fbUser.uid)) {
+    try {
+      await setDoc(
+        doc(db, 'supportThreads', fbUser.uid),
+        { unreadByUser: 0, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    } catch {
+      // ignore if thread doc does not exist yet or rules reject partial merge
+    }
+  }
 }
 
 export async function fetchAdminSupportThreads(): Promise<{
@@ -308,6 +320,38 @@ export function subscribeMyFirestoreSupportMessages(
       if (String(err?.code || '').includes('permission-denied')) {
         try {
           handleFirestoreError(err, OperationType.LIST, `supportThreads/${fbUser.uid}/messages`);
+        } catch {
+          // handled
+        }
+      }
+    }
+  );
+  return () => unsub();
+}
+
+/**
+ * Watches the user's supportThreads document in Firestore for instant unread badge / status updates
+ * when authenticated with Firebase Auth.
+ */
+export function subscribeMyFirestoreSupportThread(
+  onThread: (thread: SupportChatThread) => void
+): () => void {
+  const fbUser = auth.currentUser;
+  if (!fbUser?.uid || !/^[a-zA-Z0-9_\-]{1,128}$/.test(fbUser.uid)) return () => {};
+  const ref = doc(db, 'supportThreads', fbUser.uid);
+  const unsub: Unsubscribe = onSnapshot(
+    ref,
+    (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() as SupportChatThread;
+      if (data && data.id) {
+        onThread(data);
+      }
+    },
+    (err) => {
+      if (String(err?.code || '').includes('permission-denied')) {
+        try {
+          handleFirestoreError(err, OperationType.GET, `supportThreads/${fbUser.uid}`);
         } catch {
           // handled
         }

@@ -116,6 +116,19 @@ export const Header: React.FC<HeaderProps> = ({
 
   const userAvatarSrc = user?.avatarUrl || firebaseUser?.photoURL || '';
   const userInitial = (user?.name || user?.email || 'U').trim().charAt(0).toUpperCase();
+  const hasUnreadSupportMsg = supportChatUnreadCount > 0;
+  const newSupportMsgLabel =
+    siteLanguage === 'en'
+      ? 'New message'
+      : siteLanguage === 'es'
+      ? 'Nuevo mensaje'
+      : siteLanguage === 'fr'
+      ? 'Nouveau message'
+      : siteLanguage === 'de'
+      ? 'Neue Nachricht'
+      : siteLanguage === 'it'
+      ? 'Nuovo messaggio'
+      : 'Nova mensagem';
 
   React.useEffect(() => {
     setAvatarLoadError(false);
@@ -725,15 +738,50 @@ export const Header: React.FC<HeaderProps> = ({
                 setShowcaseDropdownOpen(false);
                 onOpenSupportChat();
               }}
-              className="relative min-w-[36px] min-h-[36px] flex items-center justify-center p-1.5 text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors"
-              title="Chat de Suporte (Admin / Moderador)"
-              aria-label="Chat de Suporte"
+              className={`relative min-w-[36px] min-h-[36px] flex items-center justify-center gap-1.5 rounded-lg border transition-all ${
+                hasUnreadSupportMsg
+                  ? 'px-2.5 bg-emerald-50 hover:bg-emerald-100/90 border-emerald-300 text-emerald-900 shadow-xs dark:bg-emerald-950/60 dark:hover:bg-emerald-950 dark:border-emerald-700/80 dark:text-emerald-200'
+                  : 'p-1.5 text-slate-700 bg-white hover:bg-slate-50 border-slate-200'
+              }`}
+              title={
+                hasUnreadSupportMsg
+                  ? `${newSupportMsgLabel} (${supportChatUnreadCount}) — Chat de Suporte`
+                  : 'Chat de Suporte (Admin / Moderador)'
+              }
+              aria-label={
+                hasUnreadSupportMsg
+                  ? `${newSupportMsgLabel}: ${supportChatUnreadCount} mensagem(ns) por ler`
+                  : 'Chat de Suporte'
+              }
             >
-              <MessageCircle className="w-4 h-4 text-slate-700" />
-              {supportChatUnreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-emerald-500 text-white text-[10px] font-extrabold tabular-nums flex items-center justify-center leading-none border border-white dark:border-slate-900">
-                  {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
-                </span>
+              <span className="relative inline-flex items-center justify-center shrink-0">
+                <MessageCircle
+                  className={`w-4 h-4 ${
+                    hasUnreadSupportMsg
+                      ? 'text-emerald-700 dark:text-emerald-300'
+                      : 'text-slate-700'
+                  }`}
+                />
+                {hasUnreadSupportMsg && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -top-1 -right-1 flex h-2 w-2"
+                  >
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                  </span>
+                )}
+              </span>
+
+              {hasUnreadSupportMsg && (
+                <>
+                  <span className="hidden sm:inline text-[11px] font-bold tracking-tight whitespace-nowrap">
+                    {newSupportMsgLabel}
+                  </span>
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold tabular-nums flex items-center justify-center leading-none">
+                    {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
+                  </span>
+                </>
               )}
             </button>
           )}
@@ -1223,13 +1271,30 @@ export const Header: React.FC<HeaderProps> = ({
                       setMobileMenuOpen(false);
                       onOpenSupportChat();
                     }}
-                    className="relative min-h-[44px] py-2 px-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
+                    className={`relative min-h-[44px] py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation border transition-colors ${
+                      hasUnreadSupportMsg
+                        ? 'bg-emerald-100 text-emerald-950 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-700'
+                        : 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800/60'
+                    }`}
                   >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Suporte</span>
-                    {supportChatUnreadCount > 0 && (
-                      <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px] font-bold">
-                        {supportChatUnreadCount}
+                    <span className="relative inline-flex items-center justify-center shrink-0">
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
+                      {hasUnreadSupportMsg && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute -top-0.5 -right-0.5 flex h-2 w-2"
+                        >
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="whitespace-nowrap">
+                      {hasUnreadSupportMsg ? newSupportMsgLabel : 'Suporte'}
+                    </span>
+                    {hasUnreadSupportMsg && (
+                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold tabular-nums flex items-center justify-center leading-none">
+                        {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
                       </span>
                     )}
                   </button>
