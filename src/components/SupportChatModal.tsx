@@ -253,6 +253,26 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     };
   }, [isAuthenticated, user?.id, onUnreadCountChange]);
 
+  // Fallback HTTP polling when WebSocket is unavailable (e.g. serverless deployment)
+  useEffect(() => {
+    if (!isOpen || !isAuthenticated || !user?.id || wsStatus !== 'disconnected') return;
+    const timer = setInterval(() => {
+      fetchMySupportThread()
+        .then((th) => {
+          setThread(th);
+          setMessages((prev) => mergeMessages(prev, th.messages || []));
+          onUnreadCountChange?.(0);
+          if (th.unreadByUser > 0) {
+            void markMySupportThreadRead();
+          }
+        })
+        .catch(() => {
+          // ignore transient poll error
+        });
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [isOpen, isAuthenticated, user?.id, wsStatus, onUnreadCountChange]);
+
   // Auto-scroll to bottom when messages change while open
   useEffect(() => {
     if (!isOpen) return;

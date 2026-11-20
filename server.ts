@@ -10,13 +10,27 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import Stripe from 'stripe';
 import mammoth from 'mammoth';
-import { PDFParse } from 'pdf-parse';
-import { WebSocketServer, WebSocket } from 'ws';
+import type { WebSocket } from 'ws';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const SERVER_ROOT_DIR = (() => {
+  try {
+    if (typeof __dirname === 'string' && __dirname) {
+      return __dirname;
+    }
+  } catch {
+    // ignore in strict ESM where __dirname is not defined
+  }
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // ignore if compiled without import.meta.url
+  }
+  return process.cwd();
+})();
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -813,6 +827,7 @@ export function createApiApp() {
 
       if (ext === '.pdf') {
         try {
+          const { PDFParse } = await import('pdf-parse');
           const parser = new PDFParse({ data: buffer });
           const pdfResult = await parser.getText();
           await parser.destroy();
@@ -3775,7 +3790,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   const isVercelEnv = Boolean(process.env.VERCEL || process.env.VERCEL_ENV || process.env.VERCEL_URL);
   const AUTH_DATA_DIR = isVercelEnv
     ? path.resolve('/tmp', '.data')
-    : path.resolve(__dirname, '.data');
+    : path.resolve(SERVER_ROOT_DIR, '.data');
   const AUTH_STORE_FILE = path.join(AUTH_DATA_DIR, 'auth-users.json');
   const AUTH_SECRET_FILE = path.join(AUTH_DATA_DIR, 'auth-secret.key');
 
@@ -3869,10 +3884,40 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     telemetry?: ServerTelemetryData;
   }
 
+  const FIREBASE_PROJECT_ID = (() => {
+    if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
+    try {
+      const candidatePaths = [
+        path.resolve(SERVER_ROOT_DIR, 'firebase-applet-config.json'),
+        path.resolve(SERVER_ROOT_DIR, '..', 'firebase-applet-config.json'),
+        path.resolve(process.cwd(), 'firebase-applet-config.json')
+      ];
+      for (const cfgPath of candidatePaths) {
+        if (fs.existsSync(cfgPath)) {
+          const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+          if (parsed?.projectId) return String(parsed.projectId);
+        }
+      }
+    } catch { /* ignore */ }
+    return 'gen-lang-client-0398048262';
+  })();
+
   let runtimeFallbackSecret: string | null = null;
   function ensureAuthSecret(): string {
     if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16) {
       return process.env.AUTH_SECRET;
+    }
+    if (isVercelEnv) {
+      const envSeed =
+        process.env.SESSION_SECRET ||
+        process.env.STRIPE_SECRET_KEY ||
+        process.env.GEMINI_API_KEY ||
+        process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+        FIREBASE_PROJECT_ID;
+      return crypto
+        .createHmac('sha256', String(envSeed || FIREBASE_PROJECT_ID))
+        .update(`cv-studio-vercel-auth-v1:${FIREBASE_PROJECT_ID}`)
+        .digest('hex');
     }
     try {
       if (!fs.existsSync(AUTH_DATA_DIR)) {
@@ -3894,18 +3939,6 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   }
 
   const AUTH_TOKEN_SECRET = ensureAuthSecret();
-
-  const FIREBASE_PROJECT_ID = (() => {
-    if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
-    try {
-      const cfgPath = path.resolve(__dirname, 'firebase-applet-config.json');
-      if (fs.existsSync(cfgPath)) {
-        const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-        if (parsed?.projectId) return String(parsed.projectId);
-      }
-    } catch { /* ignore */ }
-    return 'gen-lang-client-0398048262';
-  })();
 
   let cachedFirebaseCerts: { certs: Record<string, string>; expiresAt: number } | null = null;
   async function fetchFirebasePublicCerts(): Promise<Record<string, string>> {
@@ -4197,13 +4230,22 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   }
 
-  function signSessionToken(payload: { uid: string; email: string; role: string; exp: number }): string {
+  interface SessionTokenPayload {
+    uid: string;
+    email: string;
+    role: string;
+    exp: number;
+    name?: string;
+    plan?: 'free' | 'pro' | 'executive';
+  }
+
+  function signSessionToken(payload: SessionTokenPayload): string {
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
     const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(encoded).digest('base64url');
     return `${encoded}.${sig}`;
   }
 
-  function verifySessionToken(token: string): { uid: string; email: string; role: string; exp: number } | null {
+  function verifySessionToken(token: string): SessionTokenPayload | null {
     try {
       const parts = token.split('.');
       if (parts.length !== 2) return null;
@@ -4289,6 +4331,43 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   function findBackendUserByEmail(email: string): BackendUserRecord | undefined {
     const clean = email.trim().toLowerCase();
     return Object.values(authStore.users).find((u) => u.email.toLowerCase() === clean);
+  }
+
+  function resolveAuthenticatedUserRecord(payload: SessionTokenPayload): BackendUserRecord | undefined {
+    const existing =
+      authStore.users[payload.uid] ||
+      (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+    if (existing) return existing;
+    if (!isVercelEnv) return undefined;
+
+    const cleanEmail = String(payload.email || '').trim().toLowerCase();
+    const isAdmin =
+      payload.role === 'admin' || (cleanEmail ? ADMIN_EMAILS_BACKEND.has(cleanEmail) : false);
+    const validPlan: 'free' | 'pro' | 'executive' =
+      payload.plan && ['free', 'pro', 'executive'].includes(payload.plan)
+        ? payload.plan
+        : isAdmin
+        ? 'executive'
+        : 'free';
+    const nowIso = new Date().toISOString();
+    const hydrated: BackendUserRecord = {
+      id: payload.uid,
+      name: String(payload.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
+      email: cleanEmail,
+      role: isAdmin ? 'admin' : 'user',
+      status: 'active',
+      plan: validPlan,
+      creditsRemaining: isAdmin || validPlan !== 'free' ? 9999 : getFreePlanDefaultCredits(),
+      creditsUsed: 0,
+      totalCvGenerated: 0,
+      billingCycle: 'monthly',
+      authProviders: ['password'],
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+    authStore.users[payload.uid] = hydrated;
+    persistAuthStore();
+    return hydrated;
   }
 
   // Bounded per-IP rate limiter for auth endpoints
@@ -4385,27 +4464,45 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     );
   }
 
-  function signChallengeToken(challengeId: string, issuedAt: number): string {
-    const payload = `${challengeId}.${issuedAt}`;
+  const consumedChallengeIds = new Set<string>();
+
+  function hashChallengeAnswer(challengeId: string, answer: string): string {
+    return crypto
+      .createHmac('sha256', AUTH_TOKEN_SECRET)
+      .update(`${challengeId}:${answer.trim()}`)
+      .digest('base64url');
+  }
+
+  function signChallengeToken(challengeId: string, issuedAt: number, expectedAnswer: string): string {
+    const ansHash = hashChallengeAnswer(challengeId, expectedAnswer);
+    const payload = `${challengeId}.${issuedAt}.${ansHash}`;
     const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(payload).digest('base64url');
     return `${payload}.${sig}`;
   }
 
-  function verifyChallengeToken(token: string, expectedChallengeId: string): boolean {
+  function verifyChallengeToken(
+    token: string,
+    expectedChallengeId: string
+  ): { issuedAt: number; ansHash: string } | null {
     try {
       const parts = String(token || '').split('.');
-      if (parts.length !== 3) return false;
-      const [cid, issuedRaw, providedSig] = parts;
-      if (cid !== expectedChallengeId) return false;
+      if (parts.length !== 4) return null;
+      const [cid, issuedRaw, ansHash, providedSig] = parts;
+      if (cid !== expectedChallengeId) return null;
+      const issuedAt = Number(issuedRaw);
+      if (!Number.isFinite(issuedAt) || issuedAt <= 0 || Date.now() - issuedAt > 10 * 60_000) {
+        return null;
+      }
       const expectedSig = crypto
         .createHmac('sha256', AUTH_TOKEN_SECRET)
-        .update(`${cid}.${issuedRaw}`)
+        .update(`${cid}.${issuedRaw}.${ansHash}`)
         .digest('base64url');
       const a = Buffer.from(providedSig, 'utf8');
       const b = Buffer.from(expectedSig, 'utf8');
-      return a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+      return { issuedAt, ansHash };
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -4496,7 +4593,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
     return res.json({
       challengeId,
-      challengeToken: signChallengeToken(challengeId, issuedAt),
+      challengeToken: signChallengeToken(challengeId, issuedAt, String(answer)),
       imageUrl: svgDataUrl,
       minWaitMs: 2000,
       expiresInSeconds: 600,
@@ -4601,12 +4698,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
         }
 
-        // 4. Server-signed single-use Addition CAPTCHA + human minimum timing check
+        // 4. Server-signed single-use Addition CAPTCHA + human minimum timing check (stateless-capable for serverless)
         const cid = String(challengeId || '').trim();
         const ctok = String(challengeToken || '').trim();
         const cans = String(challengeAnswer ?? '').trim();
 
-        if (!cid || !ctok || !verifyChallengeToken(ctok, cid)) {
+        const verifiedChallenge = cid && ctok ? verifyChallengeToken(ctok, cid) : null;
+        if (!verifiedChallenge || consumedChallengeIds.has(cid)) {
           appendServerAuditLog(req, {
             actorEmail: cleanEmail || 'bot@no-token',
             actorRole: 'anonymous',
@@ -4615,7 +4713,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             severity: 'warning',
             status: 'blocked',
             targetResource: '/api/auth/register',
-            details: 'Tentativa de registo bloqueada: desafio de verificação humana ausente ou inválido.',
+            details: 'Tentativa de registo bloqueada: desafio de verificação humana ausente, expirado ou inválido.',
             metadata: { httpStatus: 400, botReason: 'missing_or_invalid_captcha_token' }
           });
           return res.status(400).json({
@@ -4625,16 +4723,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         }
 
         const entry = activeSignupChallenges.get(cid);
-        if (!entry || Date.now() > entry.expiresAt) {
-          if (entry) activeSignupChallenges.delete(cid);
+        if (entry && Date.now() > entry.expiresAt) {
+          activeSignupChallenges.delete(cid);
           return res.status(400).json({
             code: 'auth/captcha-expired',
             error: 'O código de verificação expirou. Resolva a nova soma exibida.'
           });
         }
 
-        if (Date.now() - entry.issuedAt < 1800) {
+        const issuedTimestamp = entry ? entry.issuedAt : verifiedChallenge.issuedAt;
+        if (Date.now() - issuedTimestamp < 1800) {
           activeSignupChallenges.delete(cid);
+          consumedChallengeIds.add(cid);
           appendServerAuditLog(req, {
             actorEmail: cleanEmail || 'bot@fast-submit',
             actorRole: 'anonymous',
@@ -4652,14 +4752,25 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
         }
 
-        if (!cans || cans !== entry.expectedAnswer) {
-          entry.attempts += 1;
-          if (entry.attempts >= 2) {
-            activeSignupChallenges.delete(cid);
-            return res.status(400).json({
-              code: 'auth/captcha-expired',
-              error: 'Resposta incorreta na verificação. Foi gerada uma nova soma.'
-            });
+        const submittedHash = cans ? hashChallengeAnswer(cid, cans) : '';
+        const answerMatches =
+          Boolean(cans) &&
+          (entry
+            ? cans === entry.expectedAnswer
+            : submittedHash.length === verifiedChallenge.ansHash.length &&
+              crypto.timingSafeEqual(Buffer.from(submittedHash), Buffer.from(verifiedChallenge.ansHash)));
+
+        if (!answerMatches) {
+          if (entry) {
+            entry.attempts += 1;
+            if (entry.attempts >= 2) {
+              activeSignupChallenges.delete(cid);
+              consumedChallengeIds.add(cid);
+              return res.status(400).json({
+                code: 'auth/captcha-expired',
+                error: 'Resposta incorreta na verificação. Foi gerada uma nova soma.'
+              });
+            }
           }
           return res.status(400).json({
             code: 'auth/captcha-invalid',
@@ -4669,6 +4780,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
         // Single-use: consume challenge immediately
         activeSignupChallenges.delete(cid);
+        if (consumedChallengeIds.size > 5000) consumedChallengeIds.clear();
+        consumedChallengeIds.add(cid);
       }
 
       if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
@@ -4777,6 +4890,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         uid: newUser.id,
         email: newUser.email,
         role: newUser.role,
+        name: newUser.name,
+        plan: newUser.plan,
         exp: Date.now() + ttlMs
       });
 
@@ -4903,6 +5018,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         uid: userRecord.id,
         email: userRecord.email,
         role: userRecord.role,
+        name: userRecord.name,
+        plan: userRecord.plan,
         exp: Date.now() + ttlMs
       });
 
@@ -5078,6 +5195,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         uid: record.id,
         email: record.email,
         role: record.role,
+        name: record.name,
+        plan: record.plan,
         exp: Date.now() + ttlMs
       });
 
@@ -5104,7 +5223,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload) {
         return res.json({ authenticated: false, user: null });
       }
-      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.json({ authenticated: false, user: null });
       }
@@ -5130,7 +5249,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(401).json({ error: 'Sessão expirada ou inválida. Inicie sessão novamente.' });
       }
 
-      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord) {
         return res.status(404).json({ error: 'Utilizador não encontrado.' });
       }
@@ -5246,7 +5365,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
       }
@@ -5301,7 +5420,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
       }
@@ -5464,7 +5583,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(401).json({ error: 'Sessão inválida.' });
       }
 
-      const userRecord = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(404).json({ error: 'Utilizador não encontrado ou suspenso.' });
       }
@@ -5756,9 +5875,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRecord =
-        authStore.users[payload.uid] ||
-        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
       }
@@ -5789,9 +5906,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRecord =
-        authStore.users[payload.uid] ||
-        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
       }
@@ -5864,9 +5979,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRecord =
-        authStore.users[payload.uid] ||
-        (payload.email ? findBackendUserByEmail(payload.email) : undefined);
+      const userRecord = resolveAuthenticatedUserRecord(payload);
       if (!userRecord || userRecord.status === 'suspended') {
         return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
       }
@@ -6922,13 +7035,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     isAdmin: boolean;
   }
 
+  const WS_OPEN_STATE = 1;
   const supportWsClients = new Set<SupportWsClient>();
 
   function broadcastSupportChatEvent(targetUserId: string, payloadObj: Record<string, any>) {
     const serialized = JSON.stringify(payloadObj);
     supportWsClients.forEach((client) => {
       try {
-        if (client.ws.readyState !== WebSocket.OPEN) return;
+        if (client.ws.readyState !== WS_OPEN_STATE) return;
         if (client.isAdmin || client.uid === targetUserId) {
           client.ws.send(serialized);
         }
@@ -6938,7 +7052,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     });
   }
 
-  (app as any).__attachSupportChatWs = (httpServer: http.Server) => {
+  (app as any).__attachSupportChatWs = async (httpServer: http.Server) => {
+    const { WebSocketServer } = await import('ws');
     const wss = new WebSocketServer({ noServer: true });
     httpServer.on('upgrade', (request, socket, head) => {
       try {
@@ -7072,7 +7187,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Apenas utilizadores registados podem aceder ao chat de suporte.' });
       }
-      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRec = resolveAuthenticatedUserRecord(payload);
       if (!userRec || userRec.status === 'suspended') {
         return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
       }
@@ -7094,7 +7209,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Apenas utilizadores registados podem enviar mensagens ao suporte.' });
       }
-      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRec = resolveAuthenticatedUserRecord(payload);
       if (!userRec || userRec.status === 'suspended') {
         return res.status(403).json({ error: 'Conta indisponível ou suspensa.' });
       }
@@ -7151,7 +7266,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
-      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRec = resolveAuthenticatedUserRecord(payload);
       if (!userRec) {
         return res.status(404).json({ error: 'Utilizador não encontrado.' });
       }
@@ -8517,15 +8632,16 @@ export async function startServer() {
   const app = createApiApp();
   const httpServer = http.createServer(app);
   if (typeof (app as any).__attachSupportChatWs === 'function') {
-    (app as any).__attachSupportChatWs(httpServer);
+    await (app as any).__attachSupportChatWs(httpServer);
   }
   let viteServer: { middlewares: any; close: () => Promise<void> } | null = null;
 
   // Vite middleware in dev or static files in production
   if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
+    const vitePkg = 'vite';
+    const { createServer: createViteServer } = await import(/* @vite-ignore */ vitePkg);
     const disableHmr = process.env.DISABLE_HMR === 'true';
-    viteServer = await createViteServer({
+    const createdVite = (await createViteServer({
       server: {
         middlewareMode: true,
         hmr: !disableHmr,
@@ -8533,12 +8649,13 @@ export async function startServer() {
         watch: disableHmr ? null : {}
       },
       appType: 'spa'
-    });
-    app.use(viteServer.middlewares);
+    })) as { middlewares: any; close: () => Promise<void> };
+    viteServer = createdVite;
+    app.use(createdVite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    app.use(express.static(path.resolve(SERVER_ROOT_DIR, 'dist')));
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(SERVER_ROOT_DIR, 'dist', 'index.html'));
     });
   }
 

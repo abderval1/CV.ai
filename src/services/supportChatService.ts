@@ -175,6 +175,8 @@ export function subscribeSupportChatWebSocket(
 
   let ws: WebSocket | null = null;
   let closedByCaller = false;
+  let hadSuccessfulOpen = false;
+  let preOpenFailures = 0;
   let reconnectAttempts = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -206,7 +208,12 @@ export function subscribeSupportChatWebSocket(
       return;
     }
 
+    let openedThisAttempt = false;
+
     ws.onopen = () => {
+      openedThisAttempt = true;
+      hadSuccessfulOpen = true;
+      preOpenFailures = 0;
       reconnectAttempts = 0;
       onStatusChange?.('connected');
       clearTimers();
@@ -240,6 +247,14 @@ export function subscribeSupportChatWebSocket(
       if (closedByCaller) {
         onStatusChange?.('disconnected');
         return;
+      }
+      if (!openedThisAttempt && !hadSuccessfulOpen) {
+        preOpenFailures += 1;
+        if (preOpenFailures >= 2) {
+          // Serverless hostings (e.g. Vercel) do not support WS upgrade; fall back cleanly to HTTP/Firestore sync
+          onStatusChange?.('disconnected');
+          return;
+        }
       }
       reconnectAttempts += 1;
       onStatusChange?.('reconnecting');

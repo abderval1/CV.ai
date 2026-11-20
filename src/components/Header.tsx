@@ -92,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
   supportChatUnreadCount = 0
 }) => {
   const { user, firebaseUser, isAuthenticated, hasActivePlan, logout } = useAuth();
-  const { currency, setCurrency, config: currencyConfig } = useCurrency();
+  const { currency, setCurrency } = useCurrency();
   const {
     siteLanguage,
     setSiteLanguage,
@@ -498,16 +498,12 @@ export const Header: React.FC<HeaderProps> = ({
                 setToolsDropdownOpen(false);
                 setUserDropdownOpen(false);
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
+              className="flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors whitespace-nowrap"
               title={`${h.siteLangLabel} · ${h.currencyLabel}`}
+              aria-label={`${h.siteLangLabel}: ${currentSiteLanguage.code.toUpperCase()}`}
             >
-              <span className="text-sm leading-none">{currentSiteLanguage.flag}</span>
-              <span className="font-mono text-[11px] font-semibold text-slate-800">
+              <span className="font-mono text-[11px] font-bold text-slate-800">
                 {currentSiteLanguage.code.toUpperCase()}
-              </span>
-              <span className="hidden sm:inline text-slate-300">·</span>
-              <span className="hidden sm:inline font-mono text-[11px] text-slate-500">
-                {currencyConfig.symbol}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
