@@ -24,9 +24,21 @@ export interface SupportChatRealtimeEvent {
 }
 
 async function parseJsonResponse<T>(res: Response): Promise<T> {
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  const text = await res.text().catch(() => '');
+  let data: (T & { error?: string }) | null = null;
+  if (text.trim().startsWith('{') || text.trim().startsWith('[') || contentType.includes('application/json')) {
+    try {
+      data = JSON.parse(text) as T & { error?: string };
+    } catch {
+      data = null;
+    }
+  }
   if (!res.ok) {
     throw new Error(data?.error || `Erro HTTP ${res.status}`);
+  }
+  if (!data || typeof data !== 'object') {
+    throw new Error('Servidor API indisponível ou resposta inválida (HTML recebido).');
   }
   return data;
 }
@@ -93,8 +105,14 @@ async function syncSupportToFirestore(
 
 export async function fetchMySupportThread(): Promise<SupportChatThread> {
   const res = await authorizedFetch('/api/support-chat/thread', { method: 'GET', cache: 'no-store' });
-  const data = await parseJsonResponse<{ thread: SupportChatThread }>(res);
-  return data.thread;
+  const data = await parseJsonResponse<{ thread?: SupportChatThread }>(res);
+  if (!data?.thread || !data.thread.id) {
+    throw new Error('Resposta de conversa de suporte inválida.');
+  }
+  return {
+    ...data.thread,
+    messages: Array.isArray(data.thread.messages) ? data.thread.messages : []
+  };
 }
 
 export async function sendUserSupportMessage(text: string): Promise<{
@@ -105,9 +123,16 @@ export async function sendUserSupportMessage(text: string): Promise<{
     method: 'POST',
     body: JSON.stringify({ text })
   });
-  const data = await parseJsonResponse<{ thread: SupportChatThread; message: SupportChatMessage }>(res);
-  void syncSupportToFirestore(data.thread, data.message, false);
-  return data;
+  const data = await parseJsonResponse<{ thread?: SupportChatThread; message?: SupportChatMessage }>(res);
+  if (!data?.thread || !data?.message) {
+    throw new Error('Não foi possível confirmar o envio da mensagem no servidor.');
+  }
+  const normalizedThread: SupportChatThread = {
+    ...data.thread,
+    messages: Array.isArray(data.thread.messages) ? data.thread.messages : [data.message]
+  };
+  void syncSupportToFirestore(normalizedThread, data.message, false);
+  return { thread: normalizedThread, message: data.message };
 }
 
 export async function markMySupportThreadRead(): Promise<void> {
@@ -135,7 +160,7 @@ function mergeSupportMessagesList(
   b: SupportChatMessage[] = []
 ): SupportChatMessage[] {
   const byId = new Map<string, SupportChatMessage>();
-  for (const m of [...a, ...b]) {
+  for (const m of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
     if (m?.id) byId.set(m.id, m);
   }
   return Array.from(byId.values()).sort(
@@ -148,11 +173,11 @@ function mergeSupportThreads(
   secondary: SupportChatThread[]
 ): SupportChatThread[] {
   const map = new Map<string, SupportChatThread>();
-  for (const th of [...primary, ...secondary]) {
+  for (const th of [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])]) {
     if (!th?.id) continue;
     const prev = map.get(th.id);
     if (!prev) {
-      map.set(th.id, th);
+      map.set(th.id, { ...th, messages: Array.isArray(th.messages) ? th.messages : [] });
     } else {
       const prevTs = new Date(prev.updatedAt || prev.lastMessageAt || 0).getTime();
       const curTs = new Date(th.updatedAt || th.lastMessageAt || 0).getTime();
@@ -161,7 +186,7 @@ function mergeSupportThreads(
       map.set(th.id, {
         ...older,
         ...newer,
-        messages: mergeSupportMessagesList(older.messages, newer.messages)
+        messages: mergeSupportMessagesList(older?.messages, newer?.messages)
       });
     }
   }
@@ -235,9 +260,16 @@ export async function sendAdminSupportReply(
       method: 'POST',
       body: JSON.stringify({ text, userMeta: threadHint })
     });
-    const data = await parseJsonResponse<{ thread: SupportChatThread; message: SupportChatMessage }>(res);
-    void syncSupportToFirestore(data.thread, data.message, true);
-    return data;
+    const data = await parseJsonResponse<{ thread?: SupportChatThread; message?: SupportChatMessage }>(res);
+    if (!data?.thread || !data?.message) {
+      throw new Error('Resposta inválida do servidor ao responder chat.');
+    }
+    const normalizedThread: SupportChatThread = {
+      ...data.thread,
+      messages: Array.isArray(data.thread.messages) ? data.thread.messages : [data.message]
+    };
+    void syncSupportToFirestore(normalizedThread, data.message, true);
+    return { thread: normalizedThread, message: data.message };
   } catch (err) {
     // Fallback direct Firestore reply if serverless backend instance is cold and user is Firebase Admin
     const fbAdmin = auth.currentUser;
@@ -319,9 +351,16 @@ export async function updateAdminSupportThreadStatus(
     method: 'PATCH',
     body: JSON.stringify({ status })
   });
-  const data = await parseJsonResponse<{ thread: SupportChatThread }>(res);
-  void syncSupportToFirestore(data.thread, undefined, true);
-  return data.thread;
+  const data = await parseJsonResponse<{ thread?: SupportChatThread }>(res);
+  if (!data?.thread || !data.thread.id) {
+    throw new Error('Resposta inválida ao atualizar estado da conversa.');
+  }
+  const normalizedThread: SupportChatThread = {
+    ...data.thread,
+    messages: Array.isArray(data.thread.messages) ? data.thread.messages : []
+  };
+  void syncSupportToFirestore(normalizedThread, undefined, true);
+  return normalizedThread;
 }
 
 /**

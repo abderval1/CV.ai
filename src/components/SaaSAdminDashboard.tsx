@@ -497,9 +497,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       setTelemetry(serverTelemetry);
       if (liveHealth) setAiLiveHealth(liveHealth);
       if (Array.isArray(chatResp?.threads)) {
-        setSupportThreads(chatResp.threads);
-        if (!selectedThreadId && chatResp.threads.length > 0) {
-          setSelectedThreadId(chatResp.threads[0].id);
+        const validThreads = chatResp.threads.filter((t): t is SupportChatThread => Boolean(t && t.id));
+        setSupportThreads(validThreads);
+        if (!selectedThreadId && validThreads.length > 0) {
+          setSelectedThreadId(validThreads[0].id);
         }
       }
       try {
@@ -653,18 +654,19 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         if (evt.type === 'support_chat_update' && evt.thread) {
           const incoming = evt.thread;
           setSupportThreads((prev) => {
-            const exists = prev.some((t) => t.id === incoming.id);
+            const safePrev = (prev || []).filter((t): t is SupportChatThread => Boolean(t && t.id));
+            const exists = safePrev.some((t) => t.id === incoming.id);
             const next = exists
-              ? prev.map((t) => (t.id === incoming.id ? incoming : t))
-              : [incoming, ...prev];
+              ? safePrev.map((t) => (t.id === incoming.id ? incoming : t))
+              : [incoming, ...safePrev];
             return [...next].sort(
-              (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+              (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
             );
           });
           if (
             activeChatStateRef.current.activeModule === 'support_chat' &&
             activeChatStateRef.current.selectedThreadId === incoming.id &&
-            incoming.unreadByAdmin > 0
+            (incoming.unreadByAdmin || 0) > 0
           ) {
             void markAdminSupportThreadRead(incoming.id);
           }
@@ -676,17 +678,20 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const unsubFsAdmin = subscribeAdminFirestoreSupportThreads((fsThreads) => {
       setSupportThreads((prev) => {
         const byId = new Map<string, SupportChatThread>();
-        for (const t of prev) {
+        for (const t of prev || []) {
           if (t?.id) byId.set(t.id, t);
         }
-        for (const t of fsThreads) {
+        for (const t of fsThreads || []) {
           if (!t?.id) continue;
           const prevTh = byId.get(t.id);
           if (!prevTh) {
-            byId.set(t.id, t);
+            byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
           } else {
             const msgMap = new Map<string, any>();
-            for (const m of [...(prevTh.messages || []), ...(t.messages || [])]) {
+            for (const m of [
+              ...(Array.isArray(prevTh?.messages) ? prevTh.messages : []),
+              ...(Array.isArray(t?.messages) ? t.messages : [])
+            ]) {
               if (m?.id) msgMap.set(m.id, m);
             }
             const mergedMsgs = Array.from(msgMap.values()).sort(
@@ -1924,15 +1929,18 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           : undefined
       );
       setAdminChatReply('');
-      setSupportThreads((prev) => {
-        const exists = prev.some((t) => t.id === res.thread.id);
-        const next = exists
-          ? prev.map((t) => (t.id === res.thread.id ? res.thread : t))
-          : [res.thread, ...prev];
-        return [...next].sort(
-          (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-        );
-      });
+      if (res?.thread?.id) {
+        setSupportThreads((prev) => {
+          const safePrev = (prev || []).filter((t): t is SupportChatThread => Boolean(t && t.id));
+          const exists = safePrev.some((t) => t.id === res.thread.id);
+          const next = exists
+            ? safePrev.map((t) => (t.id === res.thread.id ? res.thread : t))
+            : [res.thread, ...safePrev];
+          return [...next].sort(
+            (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+          );
+        });
+      }
       setTimeout(() => {
         adminChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 60);
@@ -1947,7 +1955,13 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const nextStatus = thread.status === 'resolved' ? 'open' : 'resolved';
     try {
       const updated = await updateAdminSupportThreadStatus(thread.id, nextStatus);
-      setSupportThreads((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      if (updated?.id) {
+        setSupportThreads((prev) =>
+          (prev || [])
+            .filter((t): t is SupportChatThread => Boolean(t && t.id))
+            .map((t) => (t.id === updated.id ? updated : t))
+        );
+      }
       showNotification(
         nextStatus === 'resolved'
           ? `Conversa com ${thread.userName} marcada como Resolvida.`
@@ -6166,25 +6180,26 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 {/* MÓDULO 7: CHAT DE SUPORTE & MODERAÇÃO EM TEMPO REAL */}
                 {/* ========================================================= */}
                 {activeModule === 'support_chat' && (() => {
-                  const filteredThreads = supportThreads.filter((th) => {
+                  const safeThreads = (supportThreads || []).filter((t): t is SupportChatThread => Boolean(t && t.id));
+                  const filteredThreads = safeThreads.filter((th) => {
                     if (chatFilter === 'unread' && !(th.unreadByAdmin > 0)) return false;
                     if (chatFilter === 'open' && th.status !== 'open') return false;
                     if (chatFilter === 'resolved' && th.status !== 'resolved') return false;
                     const q = chatSearch.trim().toLowerCase();
                     if (!q) return true;
                     return (
-                      th.userName.toLowerCase().includes(q) ||
-                      th.userEmail.toLowerCase().includes(q) ||
+                      (th.userName || '').toLowerCase().includes(q) ||
+                      (th.userEmail || '').toLowerCase().includes(q) ||
                       (th.lastMessageText || '').toLowerCase().includes(q)
                     );
                   });
                   const activeThread =
-                    supportThreads.find((t) => t.id === selectedThreadId) || filteredThreads[0] || null;
+                    safeThreads.find((t) => t.id === selectedThreadId) || filteredThreads[0] || null;
                   const crmUserForThread = activeThread
                     ? usersList.find(
                         (u) =>
                           u.id === activeThread.userId ||
-                          u.email.toLowerCase() === activeThread.userEmail.toLowerCase()
+                          (u.email || '').toLowerCase() === (activeThread.userEmail || '').toLowerCase()
                       )
                     : undefined;
 

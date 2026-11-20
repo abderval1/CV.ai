@@ -58,7 +58,20 @@ async function apiRequest<T = any>(url: string, options: RequestInit = {}): Prom
     credentials: 'include',
     headers
   });
-  const data = (await res.json().catch(() => ({}))) as T;
+  const rawText = await res.text().catch(() => '');
+  let data: T = {} as T;
+  let validJson = false;
+  if (rawText.trim().startsWith('{') || rawText.trim().startsWith('[')) {
+    try {
+      data = JSON.parse(rawText) as T;
+      validJson = true;
+    } catch {
+      validJson = false;
+    }
+  }
+  if (res.ok && !validJson) {
+    return { ok: false, status: 502, data: {} as T };
+  }
   return { ok: res.ok, status: res.status, data };
 }
 

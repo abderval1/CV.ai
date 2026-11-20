@@ -146,10 +146,17 @@ const CHAT_COPY: Record<
   }
 };
 
-function mergeMessages(base: SupportChatMessage[], incoming: SupportChatMessage[]): SupportChatMessage[] {
+function mergeMessages(
+  base: SupportChatMessage[] = [],
+  incoming: SupportChatMessage[] = []
+): SupportChatMessage[] {
   const byId = new Map<string, SupportChatMessage>();
-  base.forEach((m) => byId.set(m.id, m));
-  incoming.forEach((m) => byId.set(m.id, m));
+  for (const m of Array.isArray(base) ? base : []) {
+    if (m?.id) byId.set(m.id, m);
+  }
+  for (const m of Array.isArray(incoming) ? incoming : []) {
+    if (m?.id) byId.set(m.id, m);
+  }
   return Array.from(byId.values()).sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   );
@@ -194,13 +201,14 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
 
     fetchMySupportThread()
       .then((th) => {
-        if (cancelled) return;
+        if (cancelled || !th || typeof th !== 'object') return;
         setErrorMsg(null);
-        setMessages((prev) => mergeMessages(prev, th.messages || []));
+        const safeMsgs = Array.isArray(th.messages) ? th.messages : [];
+        setMessages((prev) => mergeMessages(prev, safeMsgs));
         if (isOpenRef.current) {
           setThread({ ...th, unreadByUser: 0 });
           onUnreadCountChange?.(0);
-          if (th.unreadByUser > 0) {
+          if ((th.unreadByUser || 0) > 0) {
             void markMySupportThreadRead();
           }
         } else {
@@ -228,7 +236,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
 
     const unsubWs = subscribeSupportChatWebSocket(
       (evt) => {
-        if (evt.type === 'support_chat_update' && evt.thread) {
+        if (evt?.type === 'support_chat_update' && evt.thread) {
           const updatedThread = evt.thread;
           setErrorMsg(null);
           if (Array.isArray(updatedThread.messages)) {
@@ -253,10 +261,13 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     );
 
     const unsubFsMsgs = subscribeMyFirestoreSupportMessages((fsMsgs) => {
-      setMessages((prev) => mergeMessages(prev, fsMsgs));
+      if (Array.isArray(fsMsgs)) {
+        setMessages((prev) => mergeMessages(prev, fsMsgs));
+      }
     });
 
     const unsubFsThread = subscribeMyFirestoreSupportThread((fsThread) => {
+      if (!fsThread || typeof fsThread !== 'object') return;
       setThread((prev) => ({
         ...(prev || {}),
         ...fsThread,
@@ -287,12 +298,14 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       fetchMySupportThread()
         .then((th) => {
-          setMessages((prev) => mergeMessages(prev, th.messages || []));
+          if (!th || typeof th !== 'object') return;
+          const safeMsgs = Array.isArray(th.messages) ? th.messages : [];
+          setMessages((prev) => mergeMessages(prev, safeMsgs));
           if (isOpenRef.current) {
             setErrorMsg(null);
             setThread({ ...th, unreadByUser: 0 });
             onUnreadCountChange?.(0);
-            if (th.unreadByUser > 0) {
+            if ((th.unreadByUser || 0) > 0) {
               void markMySupportThreadRead();
             }
           } else {
@@ -324,8 +337,15 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     try {
       const res = await sendUserSupportMessage(text);
       setDraft('');
-      setThread(res.thread);
-      setMessages((prev) => mergeMessages(prev, res.thread.messages || [res.message]));
+      if (res?.thread) {
+        setThread(res.thread);
+      }
+      const incomingMsgs = Array.isArray(res?.thread?.messages)
+        ? res.thread.messages
+        : res?.message
+        ? [res.message]
+        : [];
+      setMessages((prev) => mergeMessages(prev, incomingMsgs));
       onUnreadCountChange?.(0);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Erro ao enviar mensagem.');
