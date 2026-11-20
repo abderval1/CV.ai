@@ -7422,16 +7422,37 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!authStore.supportChats) authStore.supportChats = {};
       let thread = authStore.supportChats[threadId];
 
-      // Allow admin to initiate or reply to a registered user even if threadId is user.id
+      // Allow admin to initiate or reply to a registered user even if threadId is user.id or cold serverless Lambda
       if (!thread) {
         const targetUser =
           authStore.users[threadId] ||
           Object.values(authStore.users).find((u) => u.id === threadId || u.firebaseUid === threadId);
-        if (!targetUser) {
+        if (targetUser) {
+          thread = getOrBuildThreadForUser(targetUser);
+          authStore.supportChats[thread.id] = thread;
+        } else if (isVercelEnv && req.body?.userMeta && (req.body.userMeta.userEmail || req.body.userMeta.userName)) {
+          const meta = req.body.userMeta;
+          const nowInit = new Date().toISOString();
+          thread = {
+            id: threadId,
+            userId: String(meta.userId || threadId).slice(0, 128),
+            userName: String(meta.userName || meta.userEmail || 'Utilizador').slice(0, 120),
+            userEmail: String(meta.userEmail || '').slice(0, 180),
+            userAvatarUrl: typeof meta.userAvatarUrl === 'string' ? meta.userAvatarUrl.slice(0, 500) : undefined,
+            userPlan: ['free', 'pro', 'executive'].includes(meta.userPlan) ? meta.userPlan : 'free',
+            status: 'open',
+            lastMessageText: '',
+            lastMessageAt: nowInit,
+            unreadByUser: 0,
+            unreadByAdmin: 0,
+            createdAt: nowInit,
+            updatedAt: nowInit,
+            messages: []
+          };
+          authStore.supportChats[thread.id] = thread;
+        } else {
           return res.status(404).json({ error: 'Conversa ou utilizador não encontrado.' });
         }
-        thread = getOrBuildThreadForUser(targetUser);
-        authStore.supportChats[thread.id] = thread;
       }
 
       const rawText = String(req.body?.text || '').trim();

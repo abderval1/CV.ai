@@ -1,5 +1,7 @@
 import {
   doc,
+  getDoc,
+  getDocs,
   setDoc,
   onSnapshot,
   collection,
@@ -128,28 +130,164 @@ export async function markMySupportThreadRead(): Promise<void> {
   }
 }
 
+function mergeSupportMessagesList(
+  a: SupportChatMessage[] = [],
+  b: SupportChatMessage[] = []
+): SupportChatMessage[] {
+  const byId = new Map<string, SupportChatMessage>();
+  for (const m of [...a, ...b]) {
+    if (m?.id) byId.set(m.id, m);
+  }
+  return Array.from(byId.values()).sort(
+    (x, y) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime()
+  );
+}
+
+function mergeSupportThreads(
+  primary: SupportChatThread[],
+  secondary: SupportChatThread[]
+): SupportChatThread[] {
+  const map = new Map<string, SupportChatThread>();
+  for (const th of [...primary, ...secondary]) {
+    if (!th?.id) continue;
+    const prev = map.get(th.id);
+    if (!prev) {
+      map.set(th.id, th);
+    } else {
+      const prevTs = new Date(prev.updatedAt || prev.lastMessageAt || 0).getTime();
+      const curTs = new Date(th.updatedAt || th.lastMessageAt || 0).getTime();
+      const newer = curTs >= prevTs ? th : prev;
+      const older = curTs >= prevTs ? prev : th;
+      map.set(th.id, {
+        ...older,
+        ...newer,
+        messages: mergeSupportMessagesList(older.messages, newer.messages)
+      });
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+  );
+}
+
+async function fetchFirestoreAdminThreads(): Promise<SupportChatThread[]> {
+  if (!auth.currentUser) return [];
+  try {
+    const q = query(collection(db, 'supportThreads'), orderBy('lastMessageAt', 'desc'), limit(80));
+    const snap = await getDocs(q);
+    const items = await Promise.all(
+      snap.docs.map(async (d) => {
+        const th = d.data() as SupportChatThread;
+        let msgs: SupportChatMessage[] = [];
+        try {
+          const msgSnap = await getDocs(
+            query(collection(db, 'supportThreads', d.id, 'messages'), orderBy('createdAt', 'asc'), limit(150))
+          );
+          msgs = msgSnap.docs.map((m) => m.data() as SupportChatMessage);
+        } catch {
+          // ignore subcollection read errors
+        }
+        return {
+          ...th,
+          id: th.id || d.id,
+          messages: msgs
+        };
+      })
+    );
+    return items.filter((t) => t.messages && t.messages.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchAdminSupportThreads(): Promise<{
   threads: SupportChatThread[];
   unreadTotal: number;
 }> {
-  const res = await authorizedFetch('/api/admin/support-chat/threads', {
-    method: 'GET',
-    cache: 'no-store'
-  });
-  return parseJsonResponse<{ threads: SupportChatThread[]; unreadTotal: number }>(res);
+  const [backendResult, fsThreads] = await Promise.all([
+    authorizedFetch('/api/admin/support-chat/threads', {
+      method: 'GET',
+      cache: 'no-store'
+    })
+      .then((res) => parseJsonResponse<{ threads: SupportChatThread[]; unreadTotal: number }>(res))
+      .catch(() => ({ threads: [] as SupportChatThread[], unreadTotal: 0 })),
+    fetchFirestoreAdminThreads()
+  ]);
+
+  const merged = mergeSupportThreads(backendResult.threads || [], fsThreads);
+  const unreadTotal = merged.reduce((sum, t) => sum + (Number(t.unreadByAdmin) || 0), 0);
+  return { threads: merged, unreadTotal };
 }
 
 export async function sendAdminSupportReply(
   threadId: string,
-  text: string
+  text: string,
+  threadHint?: {
+    userId?: string;
+    userName?: string;
+    userEmail?: string;
+    userPlan?: 'free' | 'pro' | 'executive';
+    userAvatarUrl?: string;
+  }
 ): Promise<{ thread: SupportChatThread; message: SupportChatMessage }> {
-  const res = await authorizedFetch(`/api/admin/support-chat/${encodeURIComponent(threadId)}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ text })
-  });
-  const data = await parseJsonResponse<{ thread: SupportChatThread; message: SupportChatMessage }>(res);
-  void syncSupportToFirestore(data.thread, data.message, true);
-  return data;
+  try {
+    const res = await authorizedFetch(`/api/admin/support-chat/${encodeURIComponent(threadId)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ text, userMeta: threadHint })
+    });
+    const data = await parseJsonResponse<{ thread: SupportChatThread; message: SupportChatMessage }>(res);
+    void syncSupportToFirestore(data.thread, data.message, true);
+    return data;
+  } catch (err) {
+    // Fallback direct Firestore reply if serverless backend instance is cold and user is Firebase Admin
+    const fbAdmin = auth.currentUser;
+    if (!fbAdmin || !/^[a-zA-Z0-9_\-]{1,128}$/.test(threadId)) {
+      throw err;
+    }
+    const cleanText = text.trim().slice(0, 2000);
+    const nowIso = new Date().toISOString();
+    const threadRef = doc(db, 'supportThreads', threadId);
+    const existingSnap = await getDoc(threadRef);
+    const existingData = existingSnap.exists() ? (existingSnap.data() as SupportChatThread) : null;
+    const msg: SupportChatMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      threadId,
+      senderId: fbAdmin.uid,
+      senderName: fbAdmin.displayName ? `${fbAdmin.displayName} (Admin)` : 'Equipa de Suporte',
+      senderRole: 'admin',
+      text: cleanText,
+      createdAt: nowIso
+    };
+    const updatedThread: SupportChatThread = {
+      id: threadId,
+      userId: existingData?.userId || threadHint?.userId || threadId,
+      userName: existingData?.userName || threadHint?.userName || 'Utilizador',
+      userEmail: existingData?.userEmail || threadHint?.userEmail || '',
+      ...(existingData?.userAvatarUrl || threadHint?.userAvatarUrl
+        ? { userAvatarUrl: existingData?.userAvatarUrl || threadHint?.userAvatarUrl }
+        : {}),
+      userPlan: existingData?.userPlan || threadHint?.userPlan || 'free',
+      status: 'open',
+      lastMessageText: cleanText.slice(0, 500),
+      lastMessageSenderRole: 'admin',
+      lastMessageAt: nowIso,
+      unreadByUser: (Number(existingData?.unreadByUser) || 0) + 1,
+      unreadByAdmin: 0,
+      createdAt: existingData?.createdAt || nowIso,
+      updatedAt: nowIso
+    };
+    await syncSupportToFirestore(updatedThread, msg, true);
+    const msgsSnap = await getDocs(
+      query(collection(db, 'supportThreads', threadId, 'messages'), orderBy('createdAt', 'asc'), limit(150))
+    );
+    return {
+      thread: {
+        ...updatedThread,
+        messages: msgsSnap.docs.map((m) => m.data() as SupportChatMessage)
+      },
+      message: msg
+    };
+  }
 }
 
 export async function markAdminSupportThreadRead(threadId: string): Promise<void> {
@@ -159,6 +297,17 @@ export async function markAdminSupportThreadRead(threadId: string): Promise<void
     });
   } catch {
     // non-critical read marker failure
+  }
+  if (auth.currentUser && /^[a-zA-Z0-9_\-]{1,128}$/.test(threadId)) {
+    try {
+      await setDoc(
+        doc(db, 'supportThreads', threadId),
+        { unreadByAdmin: 0, updatedAt: new Date().toISOString() },
+        { merge: true }
+      );
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -356,6 +505,57 @@ export function subscribeMyFirestoreSupportThread(
           // handled
         }
       }
+    }
+  );
+  return () => unsub();
+}
+
+/**
+ * Watches all supportThreads in Firestore for Admin Dashboard real-time inbox sync on serverless hosts.
+ */
+export function subscribeAdminFirestoreSupportThreads(
+  onThreads: (threads: SupportChatThread[]) => void
+): () => void {
+  const fbUser = auth.currentUser;
+  if (!fbUser?.uid) return () => {};
+  const q = query(collection(db, 'supportThreads'), orderBy('lastMessageAt', 'desc'), limit(80));
+  const unsub: Unsubscribe = onSnapshot(
+    q,
+    async (snap) => {
+      try {
+        const items = await Promise.all(
+          snap.docs.map(async (d) => {
+            const th = d.data() as SupportChatThread;
+            let msgs: SupportChatMessage[] = [];
+            try {
+              const msgSnap = await getDocs(
+                query(
+                  collection(db, 'supportThreads', d.id, 'messages'),
+                  orderBy('createdAt', 'asc'),
+                  limit(150)
+                )
+              );
+              msgs = msgSnap.docs.map((m) => m.data() as SupportChatMessage);
+            } catch {
+              // ignore
+            }
+            return {
+              ...th,
+              id: th.id || d.id,
+              messages: msgs
+            };
+          })
+        );
+        const nonEmpty = items.filter((t) => t.messages && t.messages.length > 0);
+        if (nonEmpty.length > 0) {
+          onThreads(nonEmpty);
+        }
+      } catch {
+        // ignore transient errors
+      }
+    },
+    () => {
+      // ignore non-admin listener permissions if token refreshed
     }
   );
   return () => unsub();

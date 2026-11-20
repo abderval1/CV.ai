@@ -56,6 +56,7 @@ import {
   markAdminSupportThreadRead,
   updateAdminSupportThreadStatus,
   subscribeSupportChatWebSocket,
+  subscribeAdminFirestoreSupportThreads,
   SupportWsStatus
 } from '../services/supportChatService';
 import {
@@ -671,7 +672,42 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       },
       setSupportWsStatus
     );
-    return () => unsub();
+
+    const unsubFsAdmin = subscribeAdminFirestoreSupportThreads((fsThreads) => {
+      setSupportThreads((prev) => {
+        const byId = new Map<string, SupportChatThread>();
+        for (const t of prev) {
+          if (t?.id) byId.set(t.id, t);
+        }
+        for (const t of fsThreads) {
+          if (!t?.id) continue;
+          const prevTh = byId.get(t.id);
+          if (!prevTh) {
+            byId.set(t.id, t);
+          } else {
+            const msgMap = new Map<string, any>();
+            for (const m of [...(prevTh.messages || []), ...(t.messages || [])]) {
+              if (m?.id) msgMap.set(m.id, m);
+            }
+            const mergedMsgs = Array.from(msgMap.values()).sort(
+              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+            const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
+            const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
+            const newer = curTs >= prevTs ? t : prevTh;
+            byId.set(t.id, { ...prevTh, ...newer, messages: mergedMsgs });
+          }
+        }
+        return Array.from(byId.values()).sort(
+          (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+        );
+      });
+    });
+
+    return () => {
+      unsub();
+      unsubFsAdmin();
+    };
   }, [isOpen, isAdminAccess, isImpersonating]);
 
   // Open User 360° Drawer
@@ -1873,7 +1909,20 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!selectedThreadId || !adminChatReply.trim() || isSendingChatReply) return;
     setIsSendingChatReply(true);
     try {
-      const res = await sendAdminSupportReply(selectedThreadId, adminChatReply.trim());
+      const currentThread = supportThreads.find((t) => t.id === selectedThreadId);
+      const res = await sendAdminSupportReply(
+        selectedThreadId,
+        adminChatReply.trim(),
+        currentThread
+          ? {
+              userId: currentThread.userId,
+              userName: currentThread.userName,
+              userEmail: currentThread.userEmail,
+              userPlan: currentThread.userPlan,
+              userAvatarUrl: currentThread.userAvatarUrl
+            }
+          : undefined
+      );
       setAdminChatReply('');
       setSupportThreads((prev) => {
         const exists = prev.some((t) => t.id === res.thread.id);
