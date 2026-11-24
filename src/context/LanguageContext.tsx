@@ -635,7 +635,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch {
       // ignore storage errors
     }
-    return 'pt';
+    return 'en';
   });
 
   useEffect(() => {
@@ -656,10 +656,12 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const currentSiteLanguage =
-    SITE_LANGUAGES.find((l) => l.code === siteLanguage) || SITE_LANGUAGES[0];
+    SITE_LANGUAGES.find((l) => l.code === siteLanguage) ||
+    SITE_LANGUAGES.find((l) => l.code === 'en') ||
+    SITE_LANGUAGES[0];
 
-  const siteText = SITE_DICTIONARIES[siteLanguage] || SITE_DICTIONARIES.pt;
-  const studioText = STUDIO_TRANSLATIONS[siteLanguage] || STUDIO_TRANSLATIONS.pt;
+  const siteText = SITE_DICTIONARIES[siteLanguage] || SITE_DICTIONARIES.en;
+  const studioText = STUDIO_TRANSLATIONS[siteLanguage] || STUDIO_TRANSLATIONS.en;
 
   const [language, setLanguageState] = useState<LanguageCode>(() => {
     try {
@@ -670,7 +672,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch {
       // ignore storage errors
     }
-    return 'pt';
+    return 'en';
   });
 
   const setLanguage = (lang: LanguageCode) => {
@@ -683,7 +685,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const currentLanguage =
-    SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
+    SUPPORTED_LANGUAGES.find((l) => l.code === language) ||
+    SUPPORTED_LANGUAGES.find((l) => l.code === 'en') ||
+    SUPPORTED_LANGUAGES[0];
 
   const t = (key: string, defaultText?: string): string => {
     const uiBaseLang: LanguageCode = siteLanguage === 'it' ? 'en' : siteLanguage;

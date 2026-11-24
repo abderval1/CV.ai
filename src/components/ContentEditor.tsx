@@ -224,8 +224,8 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const { saveCurrentResume, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError } = useToast();
   const { siteLanguage } = useLanguage();
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).editor;
-  const guides = (STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.pt).editorGuides;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).editor;
+  const guides = (STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en).editorGuides;
 
   // Live readiness metrics
   const cvMetrics = useMemo(() => calculateCVMetrics(cv), [cv]);

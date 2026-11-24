@@ -101,8 +101,8 @@ export const Header: React.FC<HeaderProps> = ({
     siteText
   } = useLanguage();
   const { isDark, setTheme, toggleTheme } = useTheme();
-  const themeCopy = THEME_UI_COPY[siteLanguage] || THEME_UI_COPY.pt;
-  const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.pt;
+  const themeCopy = THEME_UI_COPY[siteLanguage] || THEME_UI_COPY.en;
+  const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en;
   const h = siteText.header;
 
   const [showcaseDropdownOpen, setShowcaseDropdownOpen] = useState(false);

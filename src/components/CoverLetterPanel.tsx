@@ -147,18 +147,18 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   onOpenPricingModal,
   onSelectLanguage,
   isTranslatingContent = false,
-  contentLanguage = 'pt'
+  contentLanguage = 'en'
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
   const { siteLanguage } = useLanguage();
-  const ui = COVER_PANEL_UI[siteLanguage] || COVER_PANEL_UI.pt;
-  const coverUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).coverPanel;
+  const ui = COVER_PANEL_UI[siteLanguage] || COVER_PANEL_UI.en;
+  const coverUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).coverPanel;
   const [recipient, setRecipient] = useState<string>(coverUi.defaultRecipient);
   const [targetOrg, setTargetOrg] = useState<string>(coverUi.defaultOrg);
   const [targetRole, setTargetRole] = useState<string>(
     cv.personalDetails.title || coverUi.defaultRole
   );
-  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>(contentLanguage || 'pt');
+  const [letterLanguage, setLetterLanguage] = useState<SupportedLanguage>(contentLanguage || 'en');
   const [letterTone] = useState<LetterTone>('executive');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);

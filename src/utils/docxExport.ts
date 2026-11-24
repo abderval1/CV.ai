@@ -418,13 +418,18 @@ function buildSingleColumnCVDoc(
   const isAcademic = style === 'academic_lattes';
   const isClassic = style === 'un_classic';
   const isModern = style === 'european_modern';
+  const isFinance = style === 'finance_wallstreet';
+  const isBoard = style === 'executive_board';
+  const isProduct = style === 'product_strategy';
+  const isEditorial = style === 'modern_editorial';
+  const isBlueprint = style === 'engineering_blueprint';
 
   const titles = getResolvedSectionTitles(lang, style);
   const m = getSpacingMetrics(density);
 
   // Fonts matching CSS: font-serif-cv / font-mono-code / font-jakarta
   const primaryFont =
-    isHarvard || isAcademic || isClassic
+    isHarvard || isAcademic || isClassic || isFinance || isBoard
       ? 'Times New Roman'
       : isAts
       ? 'Consolas'
@@ -434,7 +439,7 @@ function buildSingleColumnCVDoc(
 
   // Exact colors matching CVDocumentView.tsx
   const sectionHeadingColor =
-    isHarvard || isAts
+    isHarvard || isAts || isFinance
       ? '020617'
       : isTech
       ? '0F766E'
@@ -449,7 +454,7 @@ function buildSingleColumnCVDoc(
       : COLOR_PRIMARY;
 
   const sectionBorderColor =
-    isHarvard
+    isHarvard || isFinance
       ? '0F172A'
       : isAts
       ? '94A3B8'
@@ -461,14 +466,14 @@ function buildSingleColumnCVDoc(
       ? 'E2E8F0'
       : isAcademic
       ? '0F172A'
-      : isClassic
+      : isClassic || isBoard
       ? 'CBD5E1'
       : COLOR_PRIMARY;
 
-  const nameColor = isEuropass ? '003399' : isAts ? '0F172A' : COLOR_PRIMARY;
+  const nameColor = isEuropass ? '003399' : isAts || isFinance ? '0F172A' : COLOR_PRIMARY;
 
   const templateSupportsPhoto =
-    isEuropass || isMinimalist || isModern || isTech || isClassic || isAcademic;
+    isEuropass || isMinimalist || isModern || isTech || isClassic || isAcademic || isProduct || isEditorial;
   const effectivePhoto = templateSupportsPhoto ? photoBytes : null;
 
   const children: (Paragraph | Table)[] = [];
@@ -508,7 +513,7 @@ function buildSingleColumnCVDoc(
   }
 
   // Build Header Content
-  const headerAlign = isClassic ? AlignmentType.CENTER : AlignmentType.LEFT;
+  const headerAlign = isClassic || isBoard ? AlignmentType.CENTER : AlignmentType.LEFT;
   const headerTextParagraphs: Paragraph[] = [];
 
   if (isEuropass) {
@@ -550,6 +555,87 @@ function buildSingleColumnCVDoc(
         ]
       })
     );
+  } else if (isBlueprint) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 45 },
+        children: [
+          new TextRun({
+            text: 'SYSTEMS ARCHITECTURE · PRINCIPAL ENGINEERING',
+            bold: true,
+            size: 15.5,
+            font: monoFont,
+            color: COLOR_PRIMARY
+          })
+        ]
+      })
+    );
+  } else if (isFinance) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 40 },
+        children: [
+          new TextRun({
+            text: 'INSTITUTIONAL FINANCE & M&A STANDARD',
+            bold: true,
+            size: 15,
+            font: serifFont,
+            color: '64748B'
+          })
+        ]
+      })
+    );
+  } else if (isBoard) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 45 },
+        border: { top: { style: BorderStyle.SINGLE, size: 18, color: COLOR_PRIMARY, space: 6 } },
+        children: [
+          new TextRun({
+            text: 'BOARD OF DIRECTORS & C-SUITE GOVERNANCE',
+            bold: true,
+            size: 15.5,
+            font: serifFont,
+            color: '64748B'
+          })
+        ]
+      })
+    );
+  } else if (isProduct) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 40 },
+        children: [
+          new TextRun({
+            text: 'PRODUCT STRATEGY & GROWTH LEADERSHIP',
+            bold: true,
+            size: 15.5,
+            font: primaryFont,
+            color: COLOR_PRIMARY
+          })
+        ]
+      })
+    );
+  } else if (isEditorial) {
+    headerTextParagraphs.push(
+      new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { after: 40 },
+        children: [
+          new TextRun({
+            text: 'EXECUTIVE EDITORIAL PROFILE',
+            bold: true,
+            size: 15,
+            font: primaryFont,
+            color: 'E2E8F0'
+          })
+        ]
+      })
+    );
   } else if (isMinimalist) {
     headerTextParagraphs.push(
       new Paragraph({
@@ -557,7 +643,7 @@ function buildSingleColumnCVDoc(
         spacing: { after: 40 },
         children: [
           new TextRun({
-            text: 'CURRICULUM VITAE · PADRÃO NÓRDICO',
+            text: 'CURRICULUM VITAE · NORDIC EDITION',
             bold: true,
             size: 15.5,
             font: monoFont,
@@ -589,7 +675,7 @@ function buildSingleColumnCVDoc(
         spacing: { after: 50 },
         children: [
           new TextRun({
-            text: 'UNITED NATIONS & INTERNATIONAL COOPERATION STANDARD',
+            text: 'INTERNATIONAL GOVERNANCE & PROGRAMS STANDARD',
             bold: true,
             size: 16.5,
             font: serifFont,
@@ -607,11 +693,11 @@ function buildSingleColumnCVDoc(
       spacing: { after: 25 },
       children: [
         new TextRun({
-          text: (cv.personalDetails.name || 'SEU NOME COMPLETO').toUpperCase(),
+          text: (cv.personalDetails.name || 'YOUR FULL NAME').toUpperCase(),
           bold: true,
           size: m.fontSizeTitle,
           font: primaryFont,
-          color: nameColor
+          color: isEditorial ? 'FFFFFF' : nameColor
         })
       ]
     })
@@ -627,10 +713,10 @@ function buildSingleColumnCVDoc(
           new TextRun({
             text: cv.personalDetails.title,
             bold: true,
-            italics: isHarvard,
+            italics: isHarvard || isBoard,
             size: isTech ? m.fontSizeSubtitle - 1 : m.fontSizeSubtitle,
             font: isTech ? monoFont : primaryFont,
-            color: isTech ? '0F766E' : isHarvard ? '334155' : '1E293B'
+            color: isEditorial ? 'F1F5F9' : isTech ? '0F766E' : isHarvard || isBoard ? '334155' : '1E293B'
           })
         ]
       })
@@ -648,30 +734,76 @@ function buildSingleColumnCVDoc(
     .filter(Boolean)
     .join('  |  ');
 
-  const headerHasBottomBorder = isModern || isHarvard || isEuropass || isTech || isClassic;
-  const headerBorderSpec = isModern || isHarvard || isEuropass || isTech
+  const headerHasBottomBorder =
+    isModern || isHarvard || isEuropass || isTech || isClassic || isFinance || isBoard || isProduct || isBlueprint;
+  const headerBorderSpec = isFinance
+    ? { style: BorderStyle.DOUBLE, size: 12, color: '0F172A', space: 8 }
+    : isModern || isHarvard || isEuropass || isTech || isProduct || isBlueprint
     ? { style: BorderStyle.SINGLE, size: 12, color: isTech ? '0D9488' : isEuropass ? '003399' : isHarvard ? '0F172A' : COLOR_PRIMARY, space: 8 }
-    : isClassic
+    : isClassic || isBoard
     ? { style: BorderStyle.SINGLE, size: 6, color: 'E2E8F0', space: 8 }
     : undefined;
 
   headerTextParagraphs.push(
     new Paragraph({
       alignment: headerAlign,
-      spacing: { after: effectivePhoto ? 0 : m.headerAfter },
-      border: !effectivePhoto && headerHasBottomBorder ? { bottom: headerBorderSpec } : undefined,
+      spacing: { after: effectivePhoto || isEditorial ? 0 : m.headerAfter },
+      border: !effectivePhoto && !isEditorial && headerHasBottomBorder ? { bottom: headerBorderSpec } : undefined,
       children: [
         new TextRun({
           text: contactLineText,
           size: m.fontSizeSubtext,
           font: primaryFont,
-          color: '475569'
+          color: isEditorial ? 'E2E8F0' : '475569'
         })
       ]
     })
   );
 
-  if (effectivePhoto) {
+  if (isEditorial) {
+    const editorialCells: TableCell[] = [
+      new TableCell({
+        width: { size: effectivePhoto ? 78 : 100, type: WidthType.PERCENTAGE },
+        shading: { fill: COLOR_PRIMARY, type: ShadingType.CLEAR },
+        borders: NO_BORDERS,
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 180, bottom: 180, left: 200, right: 160 },
+        children: headerTextParagraphs
+      })
+    ];
+    if (effectivePhoto) {
+      editorialCells.push(
+        new TableCell({
+          width: { size: 22, type: WidthType.PERCENTAGE },
+          shading: { fill: COLOR_PRIMARY, type: ShadingType.CLEAR },
+          borders: NO_BORDERS,
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 180, bottom: 180, left: 60, right: 180 },
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.RIGHT,
+              spacing: { after: 0 },
+              children: [
+                new ImageRun({
+                  data: effectivePhoto.data,
+                  transformation: { width: 88, height: 88 },
+                  type: effectivePhoto.type
+                })
+              ]
+            })
+          ]
+        })
+      );
+    }
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: NO_BORDERS,
+        rows: [new TableRow({ children: editorialCells })]
+      })
+    );
+    children.push(new Paragraph({ spacing: { before: 0, after: m.headerAfter - 40 }, children: [] }));
+  } else if (effectivePhoto) {
     const photoParagraphs: Paragraph[] = [
       new Paragraph({
         alignment: AlignmentType.RIGHT,
@@ -756,6 +888,16 @@ function buildSingleColumnCVDoc(
           color: '14B8A6'
         })
       );
+    } else if (isBlueprint) {
+      runs.push(
+        new TextRun({
+          text: `0${idx + 1}. `,
+          bold: true,
+          size: m.fontSizeHeading - 1.5,
+          font: monoFont,
+          color: COLOR_PRIMARY
+        })
+      );
     } else if (isMinimalist) {
       runs.push(
         new TextRun({
@@ -799,7 +941,7 @@ function buildSingleColumnCVDoc(
       })
     );
 
-    const borderSize = isTech || isEuropass ? 12 : 6;
+    const borderSize = isTech || isEuropass || isProduct || isEditorial ? 12 : 6;
 
     return new Paragraph({
       spacing: { before: m.sectionBefore, after: m.sectionAfter },
@@ -835,8 +977,8 @@ function buildSingleColumnCVDoc(
 
       case 'competencies':
         if (!cv.competencies || cv.competencies.length === 0) return [];
-        if (isTech) {
-          // Tech Modern 2-column bordered card grid matching CVDocumentView lines 1562-1568
+        if (isTech || isProduct || isBlueprint) {
+          // 2-column bordered card grid matching CVDocumentView
           const heading = createSectionHeading(titles.competencies);
           const cardBorder = { style: BorderStyle.SINGLE, size: 4, color: 'E2E8F0' };
           const cardRows: TableRow[] = [];
@@ -858,8 +1000,8 @@ function buildSingleColumnCVDoc(
                             text: item.category,
                             bold: true,
                             size: m.fontSizeSubtext,
-                            font: monoFont,
-                            color: '115E59'
+                            font: isTech || isBlueprint ? monoFont : primaryFont,
+                            color: isTech ? '115E59' : COLOR_PRIMARY
                           })
                         ]
                       }),
@@ -935,8 +1077,8 @@ function buildSingleColumnCVDoc(
         if (!cv.experiences || cv.experiences.length === 0) return [];
         const expItems: (Paragraph | Table)[] = [createSectionHeading(titles.experiences)];
         cv.experiences.forEach((exp, expIdx) => {
-          if (isTech) {
-            // Tech Modern: Role @ Company (left) | [period] shaded badge (right)
+          if (isTech || isBlueprint) {
+            // Tech / Blueprint: Role @ Company (left) | [period] shaded badge (right)
             expItems.push(
               new Table({
                 width: { size: 100, type: WidthType.PERCENTAGE },
@@ -965,7 +1107,7 @@ function buildSingleColumnCVDoc(
                                 bold: true,
                                 size: m.fontSizeBody + 0.5,
                                 font: primaryFont,
-                                color: '0F766E'
+                                color: isTech ? '0F766E' : COLOR_PRIMARY
                               })
                             ]
                           })
@@ -1000,7 +1142,7 @@ function buildSingleColumnCVDoc(
           } else {
             // Standard 2-row header matching CVDocumentView lines 1611-1621:
             // Row 1: Company (left, bold) | Location (right, muted)
-            // Row 2: Role (left, semibold, italic for Harvard) | Period (right, mono)
+            // Row 2: Role (left, semibold, italic for Harvard/Board/Finance) | Period (right, mono)
             expItems.push(
               new Table({
                 width: { size: 100, type: WidthType.PERCENTAGE },
@@ -1063,7 +1205,7 @@ function buildSingleColumnCVDoc(
                               new TextRun({
                                 text: exp.role,
                                 bold: true,
-                                italics: isHarvard,
+                                italics: isHarvard || isBoard || isFinance,
                                 size: m.fontSizeBody,
                                 font: primaryFont,
                                 color: '1E293B'
@@ -1872,7 +2014,7 @@ export async function generateWordDocument(
   cv: CVData,
   hasActivePlan: boolean = true,
   density: 'compact' | 'normal' | 'relaxed' = 'normal',
-  lang: LanguageCode = 'pt'
+  lang: LanguageCode = 'en'
 ): Promise<Blob> {
   const COLOR_PRIMARY = cv.accentColor ? cv.accentColor.replace('#', '') : '0F172A';
 
@@ -1894,7 +2036,7 @@ export async function generateCoverLetterDocx(
   cv: CVData,
   letterBody: string,
   hasActivePlan: boolean = true,
-  lang: LanguageCode = 'pt'
+  lang: LanguageCode = 'en'
 ): Promise<Blob> {
   const COLOR_DARK = '020617';
   const COLOR_SLATE = '1E293B';
@@ -1904,9 +2046,9 @@ export async function generateCoverLetterDocx(
   const SANS_FONT = 'Calibri';
   const MONO_FONT = 'Consolas';
 
-  const chrome = COVER_CHROME_LABELS[lang] || COVER_CHROME_LABELS.pt;
-  const candidateName = cv.personalDetails.name || 'Seu Nome Completo';
-  const candidateTitle = cv.personalDetails.title || 'Título Profissional Executivo';
+  const chrome = COVER_CHROME_LABELS[lang] || COVER_CHROME_LABELS.en;
+  const candidateName = cv.personalDetails.name || 'Your Full Name';
+  const candidateTitle = cv.personalDetails.title || 'Executive Professional Title';
   const candidateContacts = [
     cv.personalDetails.location,
     cv.personalDetails.phone,

@@ -74,11 +74,8 @@ function resolveInitialTheme(): ThemeMode {
     if (saved === 'light' || saved === 'dark') {
       return saved;
     }
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
   } catch {
-    // ignore storage/matchMedia errors
+    // ignore storage errors
   }
   return 'light';
 }

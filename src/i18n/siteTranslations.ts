@@ -90,6 +90,7 @@ export interface SiteDictionary {
     heroSubtitle: string;
     ctaBuild: string;
     ctaExploreModels: string;
+    ctaMatchJobs: string;
     linkCvModels: string;
     linkRealExamples: string;
     linkCoverModels: string;
@@ -104,6 +105,33 @@ export interface SiteDictionary {
     archTitle: string;
     archDesc: string;
     archSteps: Array<{ num: string; title: string; desc: string }>;
+    jobMatch: {
+      kicker: string;
+      title: string;
+      subtitle: string;
+      profileLabel: string;
+      profiles: Array<{ id: 'coo' | 'tech' | 'finance'; label: string; headline: string; skills: string[] }>;
+      workplaceFilters: { all: string; remote: string; hybrid: string };
+      regionFilters: { all: string; us_global: string; europe: string };
+      matchSuffix: string;
+      keywordsMatchedLabel: string;
+      tailorCta: string;
+      browseJobsCta: string;
+      emptyState: string;
+      jobs: Array<{
+        id: string;
+        profile: 'coo' | 'tech' | 'finance';
+        title: string;
+        company: string;
+        workplace: 'remote' | 'hybrid';
+        workplaceLabel: string;
+        region: 'us_global' | 'europe';
+        regionLabel: string;
+        contract: string;
+        matchScore: number;
+        matchedKeywords: string[];
+      }>;
+    };
     atsHubKicker: string;
     atsHubTitle: string;
     tabHealth: string;
@@ -358,7 +386,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Planos',
       showcaseCvHeader: 'Currículos (Visualização Livre)',
       showcaseModelsCv: 'Modelos de CV',
-      showcaseModelsCvDesc: '9 layouts A4 ATS, Harvard, Tech e Europass',
+      showcaseModelsCvDesc: '14 layouts A4 ATS, Harvard, Finanças, Produto e Europass',
       showcaseExamplesCv: 'Exemplos de CV',
       showcaseExamplesCvDesc: 'Currículos preenchidos por profissão e setor',
       showcaseCoverHeader: 'Cartas de Apresentação',
@@ -370,7 +398,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Carta de Apresentação',
       toolCoverDesc: 'Editor A4 + geração e tradução em 5 idiomas',
       toolAdvisor: 'Modelos Internacionais',
-      toolAdvisorDesc: 'Harvard, ATS Estrito, Europass, Tech & Executivo',
+      toolAdvisorDesc: 'Harvard, ATS Estrito, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Análise & Otimização',
       toolRaw: 'Importar Dados & LinkedIn',
       toolRawDesc: 'Extraia estrutura de PDF, Word ou texto livre',
@@ -415,12 +443,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Entrar / Registar'
     },
     landing: {
-      heroKicker: 'Currículos ATS · Cartas de Apresentação A4 · 5 Idiomas',
-      heroTitle: 'Currículos executivos calibrados para triagem ATS e exportação fiel em Word e PDF.',
+      heroKicker: 'Estúdio ATS · Vagas Compatíveis por Perfil · Word & PDF',
+      heroTitle: 'Crie o seu CV ATS, descubra vagas compatíveis com o seu perfil e candidate-se em minutos.',
       heroSubtitle:
-        'Construa currículos e cartas de apresentação compatíveis com Workday, Taleo e Greenhouse, com tradução integral em 5 idiomas e compilação nativa OpenXML (.docx) em escala A4.',
+        'Construa currículos em 14 modelos internacionais (Harvard, Wall Street, Produto, Tech e Europass), filtre vagas ao vivo por regime e região com base no seu perfil e adapte cada candidatura em 1 clique.',
       ctaBuild: 'Construir Meu Currículo',
-      ctaExploreModels: 'Explorar Modelos A4',
+      ctaExploreModels: 'Explorar 14 Modelos',
+      ctaMatchJobs: 'Filtrar Vagas pelo CV',
       linkCvModels: 'Modelos de CV',
       linkRealExamples: 'Exemplos Reais',
       linkCoverModels: 'Modelos de Carta',
@@ -431,43 +460,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Editar este modelo',
       metrics: [
         { value: '98.7%', label: 'Leitura limpa em parsers ATS' },
-        { value: '+48.000', label: 'Candidaturas estruturadas' },
-        { value: '14 Dias', label: 'Prazo médio até primeira entrevista' },
-        { value: '5 Idiomas', label: 'PT · EN · ES · FR · DE em 1 clique' }
+        { value: '14 Modelos', label: 'Harvard, Finanças, Produto, Tech & UE' },
+        { value: 'Match Ao Vivo', label: 'Vagas filtradas direto do seu perfil' },
+        { value: '5 Idiomas', label: 'EN · PT · ES · FR · DE em 1 clique' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '9 modelos ATS & Executivos em escala real' },
-        { code: 'CARTA', text: 'Carta de apresentação alinhada à vaga' },
-        { code: '5x IDIOMA', text: 'Tradução integral automática sem perder layout' },
-        { code: 'VAGAS', text: 'Radar de oportunidades compatíveis ao vivo' },
+        { code: 'CV A4', text: '14 modelos ATS & Executivos em escala real' },
+        { code: 'MATCH', text: 'Vagas filtradas por perfil, país e remoto/híbrido' },
+        { code: 'ADAPTAR', text: 'Ajuste o CV à vaga selecionada em 1 clique' },
+        { code: '5x IDIOMA', text: 'Tradução integral sem perder layout' },
         { code: 'WORD 1:1', text: 'Download editável (.docx) e PDF sem marca' }
       ],
-      archKicker: 'Arquitetura do Estúdio',
-      archTitle: 'Do rascunho à entrevista em quatro camadas técnicas',
+      archKicker: 'Ciclo Completo de Candidatura',
+      archTitle: 'Do currículo à candidatura direcionada em quatro passos',
       archDesc:
-        'Desenhado para eliminar bloqueios de OCR em portais corporativos e substituir descrições vagas por provas numéricas.',
+        'Unimos criação de CV calibrado para ATS, radar de oportunidades compatíveis com o seu perfil, filtros inteligentes e adaptação automática para cada vaga.',
       archSteps: [
         {
           num: '01',
-          title: 'Leitura Linear ATS',
-          desc: 'Hierarquia semântica de coluna única compatível com Workday, Greenhouse, Taleo e Gupy sem quebra de texto.'
+          title: 'Crie ou Importe o CV ATS',
+          desc: 'Escolha entre 14 layouts internacionais em coluna única (Workday, Greenhouse, Taleo) ou importe PDF/LinkedIn.'
         },
         {
           num: '02',
-          title: 'Fórmula Google XYZ',
-          desc: 'Cada experiência é estruturada em impacto quantificável, métrica de negócio e ação executiva direta.'
+          title: 'Radar de Vagas por Perfil',
+          desc: 'O sistema lê o seu cargo, senioridade e competências para listar oportunidades reais com percentual de aderência.'
         },
         {
           num: '03',
-          title: 'Tradução Integral 5x',
-          desc: 'Alterna títulos de secções, resumo, cargos e carta de apresentação mantendo termos técnicos originais.'
+          title: 'Filtre & Adapte em 1 Clique',
+          desc: 'Filtre por remoto, híbrido, país ou contrato e aplique a Fórmula Google XYZ + palavras-chave da vaga no CV.'
         },
         {
           num: '04',
-          title: 'Word OpenXML (.docx)',
-          desc: 'Exportação nativa editável no Microsoft Word com margens A4, fontes e alinhamento fiéis ao painel.'
+          title: 'Exporte & Candidate-se',
+          desc: 'Gere Word (.docx) fiel, PDF limpo e carta de apresentação traduzida em 5 idiomas para enviar diretamente.'
         }
       ],
+      jobMatch: {
+        kicker: 'Descoberta & Filtro Inteligente de Vagas',
+        title: 'O seu CV encontra e filtra as vagas certas para o seu perfil',
+        subtitle:
+          'Selecione um perfil de currículo e experimente os filtros por regime e região: veja como extraímos palavras-chave do seu CV, calculamos aderência real e preparamos a candidatura.',
+        profileLabel: 'Perfil ativo do CV:',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Operações Globais',
+            headline: 'Alexander Mendes · 12+ anos · P&L $35M+ · Transformação Digital & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ anos · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finanças & M&A',
+            headline: 'Beatriz Fonseca · CFA · €140M M&A · IFRS / US GAAP & Tesouraria',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'Todos os Regimes', remote: 'Remoto', hybrid: 'Híbrido' },
+        regionFilters: { all: 'Todas as Regiões', us_global: 'EUA & Global', europe: 'Europa' },
+        matchSuffix: 'compatível',
+        keywordsMatchedLabel: 'Competências do CV reconhecidas:',
+        tailorCta: 'Adaptar CV para esta Vaga',
+        browseJobsCta: 'Abrir Radar de Vagas & Aplicar',
+        emptyState: 'Nenhuma vaga nesta combinação de filtros — experimente selecionar Todos.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'us_global',
+            regionLabel: 'Nova Iorque / Global',
+            contract: 'Tempo Integral',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Lisboa / União Europeia',
+            contract: 'Contrato Executivo',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto Global',
+            region: 'us_global',
+            regionLabel: 'EUA / Remoto Internacional',
+            contract: 'Tempo Integral',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'europe',
+            regionLabel: 'Berlim / Zurique',
+            contract: 'Tempo Integral',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'us_global',
+            regionLabel: 'Nova Iorque / Londres',
+            contract: 'Tempo Integral',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Madrid / Lisboa',
+            contract: 'Tempo Integral',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'Auditoria & Diagnóstico ATS',
       atsHubTitle: 'Auditoria & Simulador em Tempo Real',
       tabHealth: 'Diagnóstico do Currículo',
@@ -826,7 +969,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Pricing',
       showcaseCvHeader: 'Resumes (Free Preview)',
       showcaseModelsCv: 'CV Templates',
-      showcaseModelsCvDesc: '9 A4 ATS, Harvard, Tech & Europass layouts',
+      showcaseModelsCvDesc: '14 A4 ATS, Harvard, Finance, Product & Europass layouts',
       showcaseExamplesCv: 'CV Examples',
       showcaseExamplesCvDesc: 'Complete resumes by profession and industry',
       showcaseCoverHeader: 'Cover Letters',
@@ -838,7 +981,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Cover Letter',
       toolCoverDesc: 'A4 Editor + generation & 5-language translation',
       toolAdvisor: 'International Templates',
-      toolAdvisorDesc: 'Harvard, Strict ATS, Europass, Tech & Executive',
+      toolAdvisorDesc: 'Harvard, Strict ATS, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Analysis & Optimization',
       toolRaw: 'Import Data & LinkedIn',
       toolRawDesc: 'Extract structured data from PDF, Word, or text',
@@ -883,12 +1026,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Sign In / Register'
     },
     landing: {
-      heroKicker: 'ATS Resumes · A4 Cover Letters · 5 Languages',
-      heroTitle: 'Executive resumes engineered for ATS screening and pixel-true Word & PDF export.',
+      heroKicker: 'ATS Resume Studio · Profile-Matched Jobs · Word & PDF',
+      heroTitle: 'Build an ATS-ready resume, match live jobs to your profile, and apply in minutes.',
       heroSubtitle:
-        'Build resumes and cover letters compatible with Workday, Taleo, and Greenhouse, featuring 5-language document translation and native OpenXML (.docx) A4 formatting.',
+        'Create resumes across 14 international layouts (Harvard, Wall Street, Product, Tech & Europass), filter live openings by work mode, country, and role fit based on your CV, and tailor every application in 1 click.',
       ctaBuild: 'Build My Resume',
-      ctaExploreModels: 'Explore A4 Templates',
+      ctaExploreModels: 'Explore 14 Templates',
+      ctaMatchJobs: 'Match Jobs to My CV',
       linkCvModels: 'CV Templates',
       linkRealExamples: 'Real Examples',
       linkCoverModels: 'Cover Letter Models',
@@ -899,43 +1043,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Edit this template',
       metrics: [
         { value: '98.7%', label: 'Clean parsing across ATS readers' },
-        { value: '+48,000', label: 'Applications structured' },
-        { value: '14 Days', label: 'Average time to first interview' },
-        { value: '5 Languages', label: 'PT · EN · ES · FR · DE in 1 click' }
+        { value: '14 Layouts', label: 'Harvard, Finance, Product, Tech & EU' },
+        { value: 'Live Match', label: 'Jobs filtered directly from your CV' },
+        { value: '5 Languages', label: 'EN · PT · ES · FR · DE in 1 click' }
       ],
       deliverables: [
-        { code: 'A4 CV', text: '9 ATS & Executive layouts at real A4 scale' },
-        { code: 'LETTER', text: 'Targeted cover letter aligned to the role' },
+        { code: 'A4 CV', text: '14 ATS & Executive layouts at real A4 scale' },
+        { code: 'JOB MATCH', text: 'Filter live openings by CV profile, mode & region' },
+        { code: '1-CLICK FIT', text: 'Tailor CV keywords & apply directly to each role' },
         { code: '5x LANG', text: 'Full document translation keeping layout intact' },
-        { code: 'JOBS', text: 'Live job radar matched to your skills' },
         { code: 'WORD 1:1', text: 'Editable Word (.docx) & clean PDF export' }
       ],
-      archKicker: 'Studio Architecture',
-      archTitle: 'From rough draft to interview in four technical layers',
+      archKicker: 'End-to-End Application Engine',
+      archTitle: 'From resume creation to targeted job applications in four steps',
       archDesc:
-        'Engineered to eliminate OCR breakdowns on enterprise portals and replace vague descriptions with quantified outcomes.',
+        'Built as one connected pipeline: craft an ATS-safe resume, match and filter compatible jobs by your profile, tailor keywords in 1 click, and apply with clean Word & PDF files.',
       archSteps: [
         {
           num: '01',
-          title: 'Linear ATS Reading',
-          desc: 'Single-column semantic hierarchy compatible with Workday, Greenhouse, Taleo, and Gupy without layout breaks.'
+          title: 'Build or Import ATS CV',
+          desc: 'Pick from 14 single-column international formats (Workday, Greenhouse, Taleo) or extract data from PDF & LinkedIn.'
         },
         {
           num: '02',
-          title: 'Google XYZ Formula',
-          desc: 'Every role is structured around measurable impact, business KPIs, and clear executive ownership.'
+          title: 'Profile-to-Job Matching',
+          desc: 'Our radar scans your headline, seniority, and skills to surface compatible live openings ranked by CV fit.'
         },
         {
           num: '03',
-          title: '5x Full Translation',
-          desc: 'Translate section headers, summary, job titles, and cover letter while preserving technical acronyms.'
+          title: 'Smart Filters & 1-Click Tailor',
+          desc: 'Filter roles by Remote, Hybrid, Region, or Contract and inject missing ATS keywords using the Google XYZ formula.'
         },
         {
           num: '04',
-          title: 'Native Word (.docx)',
-          desc: 'Fully editable OpenXML Microsoft Word export preserving exact A4 margins, typography, and colors.'
+          title: 'Export & Apply Directly',
+          desc: 'Download 1:1 editable Word (.docx), clean PDF, and a tailored cover letter in 5 languages to submit immediately.'
         }
       ],
+      jobMatch: {
+        kicker: 'Profile-Based Job Discovery & Smart Filtering',
+        title: 'Your resume finds and filters compatible jobs automatically',
+        subtitle:
+          'Switch CV profiles and test live filters by work mode and region to see how skills from your resume unlock ranked openings ready for 1-click tailoring and application.',
+        profileLabel: 'Active CV Profile:',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Global Ops',
+            headline: 'Alexander Mendes · 12+ yrs · $35M+ P&L · Digital Transformation & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ yrs · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finance & M&A',
+            headline: 'Beatriz Fonseca · CFA · €140M M&A · IFRS / US GAAP & Treasury',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'All Work Modes', remote: 'Remote', hybrid: 'Hybrid' },
+        regionFilters: { all: 'All Regions', us_global: 'US & Global', europe: 'Europe' },
+        matchSuffix: 'match',
+        keywordsMatchedLabel: 'CV skills matched:',
+        tailorCta: 'Tailor CV for Role',
+        browseJobsCta: 'Open Live Job Radar & Apply',
+        emptyState: 'No matching roles for that filter combination — try selecting All.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'us_global',
+            regionLabel: 'New York / Global',
+            contract: 'Full-time',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Remote',
+            region: 'europe',
+            regionLabel: 'Lisbon / EU',
+            contract: 'Executive Mandate',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Global Remote',
+            region: 'us_global',
+            regionLabel: 'USA / Remote',
+            contract: 'Full-time',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'europe',
+            regionLabel: 'Berlin / Zurich',
+            contract: 'Full-time',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'us_global',
+            regionLabel: 'New York / London',
+            contract: 'Full-time',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Remote',
+            region: 'europe',
+            regionLabel: 'Madrid / Lisbon',
+            contract: 'Full-time',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'ATS Audit & Diagnostics',
       atsHubTitle: 'Real-Time ATS Audit & Simulator',
       tabHealth: 'Resume Diagnostics',
@@ -1294,7 +1552,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Planes',
       showcaseCvHeader: 'Currículums (Vista Libre)',
       showcaseModelsCv: 'Plantillas de CV',
-      showcaseModelsCvDesc: '9 diseños A4 ATS, Harvard, Tech y Europass',
+      showcaseModelsCvDesc: '14 diseños A4 ATS, Harvard, Finanzas, Producto y Europass',
       showcaseExamplesCv: 'Ejemplos de CV',
       showcaseExamplesCvDesc: 'Currículums completos por profesión y sector',
       showcaseCoverHeader: 'Cartas de Presentación',
@@ -1306,7 +1564,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Carta de Presentación',
       toolCoverDesc: 'Editor A4 + generación y traducción en 5 idiomas',
       toolAdvisor: 'Plantillas Internacionales',
-      toolAdvisorDesc: 'Harvard, ATS Estricto, Europass, Tech & Ejecutivo',
+      toolAdvisorDesc: 'Harvard, ATS Estricto, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Análisis & Optimización',
       toolRaw: 'Importar Datos & LinkedIn',
       toolRawDesc: 'Extrae estructura de PDF, Word o texto libre',
@@ -1350,12 +1608,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Entrar / Registro'
     },
     landing: {
-      heroKicker: 'Currículums ATS · Cartas de Presentación A4 · 5 Idiomas',
-      heroTitle: 'Currículums ejecutivos calibrados para filtros ATS y exportación fiel en Word y PDF.',
+      heroKicker: 'Estudio ATS · Ofertas Compatibles por Perfil · Word & PDF',
+      heroTitle: 'Crea tu CV ATS, descubre vacantes compatibles con tu perfil y postúlate en minutos.',
       heroSubtitle:
-        'Crea currículums y cartas compatibles con Workday, Taleo y Greenhouse, con traducción integral en 5 idiomas y compilación nativa OpenXML (.docx) a escala A4.',
+        'Diseña currículums en 14 plantillas internacionales (Harvard, Wall Street, Producto, Tech y Europass), filtra ofertas en vivo por modalidad y región según tu CV y adapta cada candidatura en 1 clic.',
       ctaBuild: 'Crear Mi Currículum',
-      ctaExploreModels: 'Explorar Plantillas A4',
+      ctaExploreModels: 'Explorar 14 Plantillas',
+      ctaMatchJobs: 'Filtrar Vacantes por CV',
       linkCvModels: 'Plantillas de CV',
       linkRealExamples: 'Ejemplos Reales',
       linkCoverModels: 'Plantillas de Carta',
@@ -1366,43 +1625,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Editar esta plantilla',
       metrics: [
         { value: '98.7%', label: 'Lectura limpia en parsers ATS' },
-        { value: '+48.000', label: 'Candidaturas estructuradas' },
-        { value: '14 Días', label: 'Plazo medio hasta la 1.ª entrevista' },
-        { value: '5 Idiomas', label: 'PT · EN · ES · FR · DE en 1 clic' }
+        { value: '14 Diseños', label: 'Harvard, Finanzas, Producto, Tech y UE' },
+        { value: 'Match en Vivo', label: 'Ofertas filtradas desde tu perfil' },
+        { value: '5 Idiomas', label: 'EN · PT · ES · FR · DE en 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '9 diseños ATS y Ejecutivos en formato real' },
-        { code: 'CARTA', text: 'Carta de presentación alineada a la oferta' },
+        { code: 'CV A4', text: '14 diseños ATS y Ejecutivos en formato real' },
+        { code: 'MATCH', text: 'Ofertas filtradas por perfil, país y remoto/híbrido' },
+        { code: 'ADAPTAR', text: 'Ajusta el CV a la oferta elegida en 1 clic' },
         { code: '5x IDIOMA', text: 'Traducción integral sin perder el diseño' },
-        { code: 'OFERTAS', text: 'Radar de empleos compatibles en vivo' },
         { code: 'WORD 1:1', text: 'Descarga editable (.docx) y PDF sin marca' }
       ],
-      archKicker: 'Arquitectura del Estudio',
-      archTitle: 'Del borrador a la entrevista en cuatro capas técnicas',
+      archKicker: 'Ciclo Completo de Candidatura',
+      archTitle: 'Del currículum a la postulación dirigida en cuatro pasos',
       archDesc:
-        'Diseñado para eliminar errores de OCR en portales corporativos y sustituir descripciones vagas por métricas cuantificables.',
+        'Unimos creación de CV compatible con ATS, radar de vacantes por perfil, filtros inteligentes y adaptación inmediata a cada oferta.',
       archSteps: [
         {
           num: '01',
-          title: 'Lectura Lineal ATS',
-          desc: 'Jerarquía semántica de una sola columna compatible con Workday, Greenhouse y Taleo.'
+          title: 'Crea o Importa tu CV ATS',
+          desc: 'Elige entre 14 diseños internacionales de una columna (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
         },
         {
           num: '02',
-          title: 'Fórmula Google XYZ',
-          desc: 'Cada experiencia se estructura en impacto medible, métrica de negocio y acción ejecutiva.'
+          title: 'Radar de Ofertas por Perfil',
+          desc: 'Analizamos tu cargo, nivel y habilidades para mostrarte vacantes compatibles con porcentaje real de ajuste.'
         },
         {
           num: '03',
-          title: 'Traducción Integral 5x',
-          desc: 'Traduce encabezados, resumen, cargos y carta manteniendo siglas técnicas.'
+          title: 'Filtra & Adapta en 1 Clic',
+          desc: 'Filtra por remoto, híbrido, país o contrato e incorpora palabras clave de la oferta con la Fórmula Google XYZ.'
         },
         {
           num: '04',
-          title: 'Word OpenXML (.docx)',
-          desc: 'Exportación nativa editable en Microsoft Word con márgenes A4 y tipografía fieles.'
+          title: 'Exporta y Postúlate',
+          desc: 'Descarga Word (.docx) fiel, PDF limpio y carta de presentación en 5 idiomas para aplicar de inmediato.'
         }
       ],
+      jobMatch: {
+        kicker: 'Búsqueda y Filtro Inteligente de Ofertas',
+        title: 'Tu CV encuentra y filtra las vacantes adecuadas a tu perfil',
+        subtitle:
+          'Cambia de perfil y prueba los filtros por modalidad y región para ver cómo extraemos competencias del CV, calculamos afinidad y preparamos tu postulación.',
+        profileLabel: 'Perfil activo del CV:',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Operaciones Globales',
+            headline: 'Alexander Mendes · 12+ años · P&L $35M+ · Transformación Digital & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ años · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finanzas & M&A',
+            headline: 'Beatriz Fonseca · CFA · €140M M&A · IFRS / US GAAP & Tesorería',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'Todas las Modalidades', remote: 'Remoto', hybrid: 'Híbrido' },
+        regionFilters: { all: 'Todas las Regiones', us_global: 'EE. UU. & Global', europe: 'Europa' },
+        matchSuffix: 'compatible',
+        keywordsMatchedLabel: 'Competencias del CV detectadas:',
+        tailorCta: 'Adaptar CV a esta Oferta',
+        browseJobsCta: 'Abrir Radar de Ofertas & Aplicar',
+        emptyState: 'Sin ofertas para esta combinación — prueba seleccionar Todas.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'us_global',
+            regionLabel: 'Nueva York / Global',
+            contract: 'Tiempo Completo',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Lisboa / UE',
+            contract: 'Contrato Ejecutivo',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto Global',
+            region: 'us_global',
+            regionLabel: 'EE. UU. / Remoto',
+            contract: 'Tiempo Completo',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'europe',
+            regionLabel: 'Berlín / Zúrich',
+            contract: 'Tiempo Completo',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Híbrido',
+            region: 'us_global',
+            regionLabel: 'Nueva York / Londres',
+            contract: 'Tiempo Completo',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Madrid / Lisboa',
+            contract: 'Tiempo Completo',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'Auditoría & Diagnóstico ATS',
       atsHubTitle: 'Auditoría y Simulador en Tiempo Real',
       tabHealth: 'Diagnóstico del CV',
@@ -1757,7 +2130,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Tarifs',
       showcaseCvHeader: 'CV (Aperçu Gratuit)',
       showcaseModelsCv: 'Modèles de CV',
-      showcaseModelsCvDesc: '9 mises en page A4 ATS, Harvard, Tech & Europass',
+      showcaseModelsCvDesc: '14 mises en page A4 ATS, Harvard, Finance, Produit & Europass',
       showcaseExamplesCv: 'Exemples de CV',
       showcaseExamplesCvDesc: 'CV complets par métier et secteur',
       showcaseCoverHeader: 'Lettres de Motivation',
@@ -1769,7 +2142,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Lettre de Motivation',
       toolCoverDesc: 'Éditeur A4 + rédaction et traduction en 5 langues',
       toolAdvisor: 'Modèles Internationaux',
-      toolAdvisorDesc: 'Harvard, ATS Strict, Europass, Tech & Exécutif',
+      toolAdvisorDesc: 'Harvard, ATS Strict, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Analyse & Optimisation',
       toolRaw: 'Importer Données & LinkedIn',
       toolRawDesc: 'Extrayez la structure depuis PDF, Word ou texte',
@@ -1813,12 +2186,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Connexion / Inscription'
     },
     landing: {
-      heroKicker: 'CV Compatibles ATS · Lettres A4 · 5 Langues',
-      heroTitle: 'Des CV exécutifs calibrés pour les filtres ATS et exportés fidèlement en Word et PDF.',
+      heroKicker: 'Studio ATS · Offres Ciblées par Profil · Word & PDF',
+      heroTitle: 'Créez votre CV ATS, filtrez les offres adaptées à votre profil et postulez en minutes.',
       heroSubtitle:
-        'Créez CV et lettres de motivation compatibles Workday, Taleo et Greenhouse, avec traduction intégrale en 5 langues et génération native OpenXML (.docx) au format A4.',
+        'Concevez votre CV parmi 14 formats internationaux (Harvard, Wall Street, Produit, Tech & Europass), filtrez les offres en direct par mode de travail et région selon votre profil et adaptez votre candidature en 1 clic.',
       ctaBuild: 'Créer Mon CV',
-      ctaExploreModels: 'Explorer les Modèles A4',
+      ctaExploreModels: 'Explorer les 14 Modèles',
+      ctaMatchJobs: 'Filtrer les Offres par CV',
       linkCvModels: 'Modèles de CV',
       linkRealExamples: 'Exemples Réels',
       linkCoverModels: 'Modèles de Lettre',
@@ -1829,43 +2203,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Modifier ce modèle',
       metrics: [
         { value: '98.7%', label: 'Lecture propre par les parseurs ATS' },
-        { value: '+48 000', label: 'Candidatures structurées' },
-        { value: '14 Jours', label: 'Délai moyen avant 1er entretien' },
-        { value: '5 Langues', label: 'PT · EN · ES · FR · DE en 1 clic' }
+        { value: '14 Formats', label: 'Harvard, Finance, Produit, Tech & UE' },
+        { value: 'Match Direct', label: 'Offres filtrées depuis votre CV' },
+        { value: '5 Langues', label: 'EN · PT · ES · FR · DE en 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '9 mises en page ATS & Exécutives A4' },
-        { code: 'LETTRE', text: 'Lettre de motivation alignée à l’offre' },
+        { code: 'CV A4', text: '14 mises en page ATS & Exécutives A4' },
+        { code: 'MATCH', text: 'Offres filtrées par profil, pays et télétravail' },
+        { code: 'ADAPTER', text: 'Ajustez votre CV à l’offre choisie en 1 clic' },
         { code: '5x LANGUES', text: 'Traduction complète sans casser le design' },
-        { code: 'OFFRES', text: 'Radar d’opportunités compatibles en direct' },
         { code: 'WORD 1:1', text: 'Téléchargement .docx éditable & PDF propre' }
       ],
-      archKicker: 'Architecture du Studio',
-      archTitle: 'Du brouillon à l’entretien en quatre couches techniques',
+      archKicker: 'Chaîne Complète de Candidature',
+      archTitle: 'Du CV ATS à la candidature ciblée en quatre étapes',
       archDesc:
-        'Conçu pour éliminer les erreurs OCR des portails RH et remplacer les descriptions vagues par des preuves chiffrées.',
+        'Création de CV optimisé ATS, détection d’offres compatibles avec votre profil, filtrage précis et adaptation automatique à chaque poste.',
       archSteps: [
         {
           num: '01',
-          title: 'Lecture Linéaire ATS',
-          desc: 'Hiérarchie sémantique en colonne unique compatible Workday, Greenhouse et Taleo.'
+          title: 'Créez ou Importez le CV ATS',
+          desc: 'Choisissez parmi 14 formats internationaux en colonne unique (Workday, Greenhouse, Taleo) ou importez PDF/LinkedIn.'
         },
         {
           num: '02',
-          title: 'Formule Google XYZ',
-          desc: 'Chaque expérience met en avant l’impact mesurable, l’indicateur clé et l’action.'
+          title: 'Offres Alignées au Profil',
+          desc: 'Notre radar analyse votre titre, séniorité et compétences pour classer les opportunités compatibles.'
         },
         {
           num: '03',
-          title: 'Traduction Intégrale 5x',
-          desc: 'Traduit titres, résumé, postes et lettre tout en conservant les sigles techniques.'
+          title: 'Filtrez & Adaptez en 1 Clic',
+          desc: 'Filtrez par télétravail, hybride, région ou contrat et injectez les mots-clés manquants avec la formule Google XYZ.'
         },
         {
           num: '04',
-          title: 'Word OpenXML (.docx)',
-          desc: 'Export natif éditable sous Microsoft Word avec marges A4 et polices exactes.'
+          title: 'Exportez & Postulez',
+          desc: 'Téléchargez Word (.docx) fidèle, PDF propre et lettre de motivation traduite en 5 langues pour postuler.'
         }
       ],
+      jobMatch: {
+        kicker: 'Détection & Filtrage Intelligent d’Offres',
+        title: 'Votre CV trouve et filtre les offres adaptées à votre profil',
+        subtitle:
+          'Changez de profil et testez les filtres par mode et région pour voir comment nous extrayons vos compétences et préparons la candidature.',
+        profileLabel: 'Profil CV actif :',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Opérations Globales',
+            headline: 'Alexander Mendes · 12+ ans · P&L 35M$+ · Transformation Digitale & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ ans · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finance & M&A',
+            headline: 'Beatriz Fonseca · CFA · 140M€ M&A · IFRS / US GAAP & Trésorerie',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'Tous les Modes', remote: 'Télétravail', hybrid: 'Hybride' },
+        regionFilters: { all: 'Toutes Régions', us_global: 'USA & Global', europe: 'Europe' },
+        matchSuffix: 'compatible',
+        keywordsMatchedLabel: 'Compétences du CV détectées :',
+        tailorCta: 'Adapter le CV à l’Offre',
+        browseJobsCta: 'Ouvrir le Radar d’Offres & Postuler',
+        emptyState: 'Aucune offre pour cette sélection — essayez Tous.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybride',
+            region: 'us_global',
+            regionLabel: 'New York / Global',
+            contract: 'CDI / Temps plein',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Télétravail',
+            region: 'europe',
+            regionLabel: 'Lisbonne / UE',
+            contract: 'Mandat Exécutif',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Full Remote',
+            region: 'us_global',
+            regionLabel: 'USA / Remote',
+            contract: 'Temps plein',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybride',
+            region: 'europe',
+            regionLabel: 'Berlin / Zurich',
+            contract: 'Temps plein',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybride',
+            region: 'us_global',
+            regionLabel: 'New York / Londres',
+            contract: 'Temps plein',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Télétravail',
+            region: 'europe',
+            regionLabel: 'Madrid / Lisbonne',
+            contract: 'Temps plein',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'Audit & Diagnostic ATS',
       atsHubTitle: 'Audit & Simulateur en Temps Réel',
       tabHealth: 'Diagnostic du CV',
@@ -2220,7 +2708,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Preise',
       showcaseCvHeader: 'Lebensläufe (Freie Vorschau)',
       showcaseModelsCv: 'CV-Vorlagen',
-      showcaseModelsCvDesc: '9 A4-Layouts: ATS, Harvard, Tech & Europass',
+      showcaseModelsCvDesc: '14 A4-Layouts: ATS, Harvard, Finance, Product & Europass',
       showcaseExamplesCv: 'CV-Beispiele',
       showcaseExamplesCvDesc: 'Vollständige Lebensläufe nach Beruf & Branche',
       showcaseCoverHeader: 'Anschreiben',
@@ -2232,7 +2720,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Anschreiben',
       toolCoverDesc: 'A4-Editor + Erstellung & 5-Sprachen-Übersetzung',
       toolAdvisor: 'Internationale Vorlagen',
-      toolAdvisorDesc: 'Harvard, Strikt-ATS, Europass, Tech & Executive',
+      toolAdvisorDesc: 'Harvard, Strikt-ATS, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Analyse & Optimierung',
       toolRaw: 'Daten & LinkedIn importieren',
       toolRawDesc: 'Struktur aus PDF, Word oder Text extrahieren',
@@ -2276,12 +2764,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Anmelden / Registrieren'
     },
     landing: {
-      heroKicker: 'ATS-Lebensläufe · A4-Anschreiben · 5 Sprachen',
-      heroTitle: 'Executive-Lebensläufe für ATS-Filter und originalgetreuen Word- & PDF-Export.',
+      heroKicker: 'ATS-Lebenslaufstudio · Passende Jobs nach Profil · Word & PDF',
+      heroTitle: 'ATS-Lebenslauf erstellen, passende Jobs nach Profil filtern & direkt bewerben.',
       heroSubtitle:
-        'Erstellen Sie Lebensläufe und Anschreiben für Workday, Taleo und Greenhouse – mit 5-Sprachen-Dokumentübersetzung und nativem OpenXML (.docx) A4-Export.',
+        'Erstellen Sie Ihren Lebenslauf in 14 internationalen Vorlagen (Harvard, Wall Street, Product, Tech & Europass), filtern Sie Live-Stellen nach Arbeitsmodell & Region und passen Sie jede Bewerbung per Klick an.',
       ctaBuild: 'Lebenslauf erstellen',
-      ctaExploreModels: 'A4-Vorlagen ansehen',
+      ctaExploreModels: '14 Vorlagen ansehen',
+      ctaMatchJobs: 'Jobs nach Profil filtern',
       linkCvModels: 'CV-Vorlagen',
       linkRealExamples: 'Praxisbeispiele',
       linkCoverModels: 'Anschreiben-Vorlagen',
@@ -2292,43 +2781,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Vorlage bearbeiten',
       metrics: [
         { value: '98.7%', label: 'Sauberes Parsing in ATS-Systemen' },
-        { value: '+48.000', label: 'Strukturierte Bewerbungen' },
-        { value: '14 Tage', label: 'Ø Zeit bis zum ersten Interview' },
-        { value: '5 Sprachen', label: 'PT · EN · ES · FR · DE per Klick' }
+        { value: '14 Vorlagen', label: 'Harvard, Finance, Product, Tech & EU' },
+        { value: 'Live-Match', label: 'Jobs direkt aus Ihrem CV gefiltert' },
+        { value: '5 Sprachen', label: 'EN · PT · ES · FR · DE per Klick' }
       ],
       deliverables: [
-        { code: 'A4 CV', text: '9 ATS- & Executive-Layouts im A4-Maßstab' },
-        { code: 'BRIEF', text: 'Auf die Stelle abgestimmtes Anschreiben' },
+        { code: 'A4 CV', text: '14 ATS- & Executive-Layouts im A4-Maßstab' },
+        { code: 'JOB MATCH', text: 'Stellen gefiltert nach Profil, Region & Remote' },
+        { code: '1-KLICK-FIT', text: 'Keywords im CV direkt auf die Stelle abstimmen' },
         { code: '5x SPRACHE', text: 'Komplettübersetzung ohne Layoutverlust' },
-        { code: 'JOBS', text: 'Live-Jobradar passend zu Ihrem Profil' },
         { code: 'WORD 1:1', text: 'Editierbare .docx- & saubere PDF-Datei' }
       ],
-      archKicker: 'Studio-Architektur',
-      archTitle: 'Vom Entwurf zum Vorstellungsgespräch in vier technischen Schritten',
+      archKicker: 'Durchgängiger Bewerbungsprozess',
+      archTitle: 'Vom Lebenslauf zur gezielten Bewerbung in vier Schritten',
       archDesc:
-        'Entwickelt gegen OCR-Fehler in Bewerberportalen und vage Formulierungen ohne Kennzahlen.',
+        'ATS-konforme Lebenslauferstellung, profilbasiertes Job-Matching, präzise Filter und sofortige Anpassung auf jede Stellenanzeige.',
       archSteps: [
         {
           num: '01',
-          title: 'Lineare ATS-Struktur',
-          desc: 'Einspaltige semantische Hierarchie für Workday, Greenhouse und Taleo ohne Zeilenbruchfehler.'
+          title: 'ATS-CV erstellen oder importieren',
+          desc: 'Wählen Sie aus 14 einspaltigen Formaten (Workday, Greenhouse, Taleo) oder importieren Sie PDF/LinkedIn.'
         },
         {
           num: '02',
-          title: 'Google-XYZ-Formel',
-          desc: 'Jede Position fokussiert auf messbare Wirkung, Geschäftskennzahl und konkrete Aktion.'
+          title: 'Job-Matching nach CV-Profil',
+          desc: 'Unser Radar gleicht Titel, Seniorität und Skills automatisch mit aktuellen Stellenangeboten ab.'
         },
         {
           num: '03',
-          title: '5-fach Übersetzung',
-          desc: 'Übersetzt Rubriken, Profil, Positionen und Anschreiben unter Erhalt von Fachkürzeln.'
+          title: 'Filtern & per Klick anpassen',
+          desc: 'Filtern Sie nach Remote, Hybrid, Region oder Vertragsart und ergänzen Sie fehlende Keywords per XYZ-Formel.'
         },
         {
           num: '04',
-          title: 'Word OpenXML (.docx)',
-          desc: 'Nativ in Microsoft Word editierbar – A4-Ränder, Schriften und Farben bleiben exakt.'
+          title: 'Exportieren & direkt bewerben',
+          desc: 'Laden Sie exakte Word (.docx), PDFs und übersetzte Anschreiben in 5 Sprachen direkt herunter.'
         }
       ],
+      jobMatch: {
+        kicker: 'Profilbasierte Jobsuche & Smarte Filter',
+        title: 'Ihr Lebenslauf findet und filtert passende Stellen automatisch',
+        subtitle:
+          'Wechseln Sie das CV-Profil und testen Sie Filter nach Arbeitsmodell und Region, um den Echtzeit-Abgleich Ihrer Skills zu sehen.',
+        profileLabel: 'Aktives CV-Profil:',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Global Ops',
+            headline: 'Alexander Mendes · 12+ Jahre · $35M+ P&L · Digitale Transformation & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ Jahre · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finance & M&A',
+            headline: 'Beatriz Fonseca · CFA · €140M M&A · IFRS / US GAAP & Treasury',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'Alle Arbeitsmodelle', remote: 'Remote', hybrid: 'Hybrid' },
+        regionFilters: { all: 'Alle Regionen', us_global: 'USA & Global', europe: 'Europa' },
+        matchSuffix: 'Match',
+        keywordsMatchedLabel: 'Erkannte CV-Kompetenzen:',
+        tailorCta: 'CV auf Stelle abstimmen',
+        browseJobsCta: 'Job-Radar öffnen & bewerben',
+        emptyState: 'Keine Treffer für diese Filterkombination — wählen Sie Alle.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'us_global',
+            regionLabel: 'New York / Global',
+            contract: 'Vollzeit',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Remote',
+            region: 'europe',
+            regionLabel: 'Lissabon / EU',
+            contract: 'Executive Mandat',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Global Remote',
+            region: 'us_global',
+            regionLabel: 'USA / Remote',
+            contract: 'Vollzeit',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'europe',
+            regionLabel: 'Berlin / Zürich',
+            contract: 'Vollzeit',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Hybrid',
+            region: 'us_global',
+            regionLabel: 'New York / London',
+            contract: 'Vollzeit',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Remote',
+            region: 'europe',
+            regionLabel: 'Madrid / Lissabon',
+            contract: 'Vollzeit',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'ATS-Audit & Diagnose',
       atsHubTitle: 'Echtzeit-ATS-Audit & Simulator',
       tabHealth: 'CV-Diagnose',
@@ -2683,7 +3286,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Piani',
       showcaseCvHeader: 'Curriculum (Anteprima Gratuita)',
       showcaseModelsCv: 'Modelli di CV',
-      showcaseModelsCvDesc: '9 layout A4 ATS, Harvard, Tech ed Europass',
+      showcaseModelsCvDesc: '14 layout A4 ATS, Harvard, Finanza, Prodotto ed Europass',
       showcaseExamplesCv: 'Esempi di CV',
       showcaseExamplesCvDesc: 'Curriculum completi per ruolo e settore',
       showcaseCoverHeader: 'Lettere di Presentazione',
@@ -2695,7 +3298,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       toolCover: 'Lettera di Presentazione',
       toolCoverDesc: 'Editor A4 + generazione e traduzione in 5 lingue',
       toolAdvisor: 'Modelli Internazionali',
-      toolAdvisorDesc: 'Harvard, ATS Rigoroso, Europass, Tech & Executive',
+      toolAdvisorDesc: 'Harvard, ATS Rigoroso, Wall Street, Europass & Tech',
       toolsAnalysisHeader: 'Analisi & Ottimizzazione',
       toolRaw: 'Importa Dati & LinkedIn',
       toolRawDesc: 'Estrai dati strutturati da PDF, Word o testo',
@@ -2739,12 +3342,13 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Accedi / Registrati'
     },
     landing: {
-      heroKicker: 'Curriculum ATS · Lettere A4 · 5 Lingue',
-      heroTitle: 'Curriculum esecutivi calibrati per i filtri ATS ed esportati fedelmente in Word e PDF.',
+      heroKicker: 'Studio ATS · Offerte Compatibili per Profilo · Word & PDF',
+      heroTitle: 'Crea il tuo CV ATS, filtra offerte compatibili col tuo profilo e candidati in pochi minuti.',
       heroSubtitle:
-        'Crea CV e lettere compatibili con Workday, Taleo e Greenhouse, con traduzione integrale in 5 lingue ed esportazione nativa OpenXML (.docx) in scala A4.',
+        'Progetta curriculum in 14 modelli internazionali (Harvard, Wall Street, Prodotto, Tech ed Europass), filtra posizioni dal vivo per modalità e area geografica dal tuo CV e adatta ogni candidatura in 1 clic.',
       ctaBuild: 'Crea il Mio CV',
-      ctaExploreModels: 'Esplora Modelli A4',
+      ctaExploreModels: 'Esplora 14 Modelli',
+      ctaMatchJobs: 'Filtra Offerte dal CV',
       linkCvModels: 'Modelli di CV',
       linkRealExamples: 'Esempi Reali',
       linkCoverModels: 'Modelli di Lettera',
@@ -2755,43 +3359,157 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Modifica modello',
       metrics: [
         { value: '98.7%', label: 'Lettura pulita dai parser ATS' },
-        { value: '+48.000', label: 'Candidature strutturate' },
-        { value: '14 Giorni', label: 'Tempo medio al primo colloquio' },
-        { value: '5 Lingue', label: 'PT · EN · ES · FR · DE in 1 clic' }
+        { value: '14 Modelli', label: 'Harvard, Finanza, Prodotto, Tech & UE' },
+        { value: 'Match Dal Vivo', label: 'Offerte filtrate dal tuo profilo CV' },
+        { value: '5 Lingue', label: 'EN · PT · ES · FR · DE in 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '9 layout ATS ed Executive in scala A4 reale' },
-        { code: 'LETTERA', text: 'Lettera di presentazione mirata al ruolo' },
+        { code: 'CV A4', text: '14 layout ATS ed Executive in scala A4 reale' },
+        { code: 'MATCH', text: 'Offerte filtrate per profilo, paese e remoto/ibrido' },
+        { code: 'ADATTA', text: 'Allinea parole chiave al ruolo scelto in 1 clic' },
         { code: '5x LINGUE', text: 'Traduzione integrale mantenendo il layout' },
-        { code: 'OFFERTE', text: 'Radar offerte compatibili in tempo reale' },
         { code: 'WORD 1:1', text: 'Download .docx modificabile & PDF pulito' }
       ],
-      archKicker: 'Architettura dello Studio',
-      archTitle: 'Dalla bozza al colloquio in quattro livelli tecnici',
+      archKicker: 'Flusso Completo di Candidatura',
+      archTitle: 'Dal curriculum alla candidatura mirata in quattro passaggi',
       archDesc:
-        'Progettato per evitare errori OCR nei portali aziendali e sostituire frasi generiche con risultati misurabili.',
+        'Uniamo creazione di CV per filtri ATS, radar offerte basato sul tuo profilo, filtri intelligenti e adattamento automatico per ogni annuncio.',
       archSteps: [
         {
           num: '01',
-          title: 'Lettura Lineare ATS',
-          desc: 'Gerarchia semantica a colonna singola compatibile con Workday, Greenhouse e Taleo.'
+          title: 'Crea o Importa il CV ATS',
+          desc: 'Scegli tra 14 formati internazionali a colonna singola (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
         },
         {
           num: '02',
-          title: 'Formula Google XYZ',
-          desc: 'Ogni esperienza evidenzia impatto misurabile, KPI di business e azione diretta.'
+          title: 'Radar Offerte per Profilo',
+          desc: 'Il sistema legge ruolo, seniority e competenze per mostrarti posizioni reali ordinate per compatibilità.'
         },
         {
           num: '03',
-          title: 'Traduzione Integrale 5x',
-          desc: 'Traduce intestazioni, profilo, ruoli e lettera preservando sigle tecniche.'
+          title: 'Filtra & Adatta in 1 Clic',
+          desc: 'Filtra per remoto, ibrido, area o contratto e integra le parole chiave richieste con la Formula Google XYZ.'
         },
         {
           num: '04',
-          title: 'Word OpenXML (.docx)',
-          desc: 'Esportazione nativa modificabile in Microsoft Word con margini A4 e font fedeli.'
+          title: 'Esporta & Candidati',
+          desc: 'Scarica Word (.docx) fedele, PDF pulito e lettera di presentazione tradotta in 5 lingue per inviare subito.'
         }
       ],
+      jobMatch: {
+        kicker: 'Ricerca & Filtri Intelligenti per Offerte',
+        title: 'Il tuo CV trova e filtra le posizioni adatte al tuo profilo',
+        subtitle:
+          'Cambia profilo CV e prova i filtri per modalità e regione per vedere le competenze riconosciute e la compatibilità in tempo reale.',
+        profileLabel: 'Profilo CV attivo:',
+        profiles: [
+          {
+            id: 'coo',
+            label: 'COO & Global Ops',
+            headline: 'Alexander Mendes · 12+ anni · P&L $35M+ · Trasformazione Digitale & M&A',
+            skills: ['P&L Governance', 'EBITDA', 'ERP Integration', 'OKRs', 'Lean Six Sigma']
+          },
+          {
+            id: 'tech',
+            label: 'Staff Cloud Architect',
+            headline: 'Lead Software Architect · 8+ anni · AWS/GCP · Kubernetes & FinTech',
+            skills: ['Kubernetes', 'TypeScript', 'gRPC', 'Terraform', 'DevSecOps']
+          },
+          {
+            id: 'finance',
+            label: 'VP Finanza & M&A',
+            headline: 'Beatriz Fonseca · CFA · €140M M&A · IFRS / US GAAP & Tesoreria',
+            skills: ['DCF Valuation', 'IFRS / US GAAP', 'M&A', 'FP&A', 'Treasury']
+          }
+        ],
+        workplaceFilters: { all: 'Tutte le Modalità', remote: 'Remoto', hybrid: 'Ibrido' },
+        regionFilters: { all: 'Tutte le Regioni', us_global: 'USA & Global', europe: 'Europa' },
+        matchSuffix: 'compatibile',
+        keywordsMatchedLabel: 'Competenze dal CV riconosciute:',
+        tailorCta: 'Adatta CV all’Offerta',
+        browseJobsCta: 'Apri Radar Offerte & Candidati',
+        emptyState: 'Nessuna offerta per questi filtri — prova a selezionare Tutte.',
+        jobs: [
+          {
+            id: 'jm-coo-1',
+            profile: 'coo',
+            title: 'VP of Global Operations & Strategy',
+            company: 'Horizon Enterprise Cloud',
+            workplace: 'hybrid',
+            workplaceLabel: 'Ibrido',
+            region: 'us_global',
+            regionLabel: 'New York / Global',
+            contract: 'Tempo Pieno',
+            matchScore: 96,
+            matchedKeywords: ['P&L Governance', 'OKRs', 'ERP Integration']
+          },
+          {
+            id: 'jm-coo-2',
+            profile: 'coo',
+            title: 'Chief Operating Officer (EMEA)',
+            company: 'Atlas Logistics & Automation',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Lisbona / UE',
+            contract: 'Contratto Executive',
+            matchScore: 93,
+            matchedKeywords: ['EBITDA', 'Lean Six Sigma', 'P&L Governance']
+          },
+          {
+            id: 'jm-tech-1',
+            profile: 'tech',
+            title: 'Principal Distributed Systems Architect',
+            company: 'Northstar Payments Corp',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto Globale',
+            region: 'us_global',
+            regionLabel: 'USA / Remoto',
+            contract: 'Tempo Pieno',
+            matchScore: 97,
+            matchedKeywords: ['Kubernetes', 'gRPC', 'DevSecOps']
+          },
+          {
+            id: 'jm-tech-2',
+            profile: 'tech',
+            title: 'Head of Platform Engineering (Cloud)',
+            company: 'EuroFin Core Systems',
+            workplace: 'hybrid',
+            workplaceLabel: 'Ibrido',
+            region: 'europe',
+            regionLabel: 'Berlino / Zurigo',
+            contract: 'Tempo Pieno',
+            matchScore: 91,
+            matchedKeywords: ['Terraform', 'TypeScript', 'Kubernetes']
+          },
+          {
+            id: 'jm-fin-1',
+            profile: 'finance',
+            title: 'VP Corporate Development & M&A',
+            company: 'Vanguard Capital Partners',
+            workplace: 'hybrid',
+            workplaceLabel: 'Ibrido',
+            region: 'us_global',
+            regionLabel: 'New York / Londra',
+            contract: 'Tempo Pieno',
+            matchScore: 95,
+            matchedKeywords: ['DCF Valuation', 'M&A', 'IFRS / US GAAP']
+          },
+          {
+            id: 'jm-fin-2',
+            profile: 'finance',
+            title: 'Director of FP&A & Treasury',
+            company: 'Iberia Industrial Group',
+            workplace: 'remote',
+            workplaceLabel: 'Remoto',
+            region: 'europe',
+            regionLabel: 'Madrid / Lisbona',
+            contract: 'Tempo Pieno',
+            matchScore: 92,
+            matchedKeywords: ['FP&A', 'Treasury', 'IFRS / US GAAP']
+          }
+        ]
+      },
       atsHubKicker: 'Audit & Diagnostica ATS',
       atsHubTitle: 'Audit e Simulatore in Tempo Reale',
       tabHealth: 'Diagnostica CV',

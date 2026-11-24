@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CVData, TemplateStyle } from '../types/cv';
 import { CV_TEMPLATES } from '../data/templateCatalog';
+import { TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
 import {
   COVER_LETTER_TEMPLATES,
   CV_EXAMPLES,
@@ -247,7 +248,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   const { siteText, siteLanguage } = useLanguage();
   const s = siteText.showcase;
   const l = siteText.landing;
-  const extra = SHOWCASE_EXTRA_COPY[siteLanguage] || SHOWCASE_EXTRA_COPY.pt;
+  const extra = SHOWCASE_EXTRA_COPY[siteLanguage] || SHOWCASE_EXTRA_COPY.en;
 
   const [cvFilter, setCvFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
@@ -281,21 +282,34 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
 
   const activeCvTemplates = useMemo(() => {
     const adminMap = new Map(adminTemplates.map((t) => [t.id, t]));
+    const i18nMap = siteLanguage === 'pt' ? undefined : TEMPLATE_CATALOG_I18N[siteLanguage];
     return CV_TEMPLATES.filter((t) => {
       const cfg = adminMap.get(t.id);
       return !cfg || cfg.isActive !== false;
     })
       .map((t) => {
         const cfg = adminMap.get(t.id);
+        const loc = i18nMap?.[t.id];
         return {
           ...t,
-          shortName: cfg?.shortName || t.shortName,
+          name: loc?.name || t.name,
+          shortName: loc?.shortName || (siteLanguage === 'pt' ? cfg?.shortName : undefined) || t.shortName,
+          badge: loc?.badge || t.badge,
+          photoRuleLabel: loc?.photoRuleLabel || t.photoRuleLabel,
+          tagline: loc?.tagline || t.tagline,
+          whenToUse: loc?.whenToUse || t.whenToUse,
+          whereToUse: loc?.whereToUse || t.whereToUse,
+          whyPhotoOrNot: loc?.whyPhotoOrNot || t.whyPhotoOrNot,
+          proTip: loc?.proTip || t.proTip,
+          atsRatingText: loc?.atsRatingText || t.atsRatingText,
+          regions: loc?.regions || t.regions,
+          bestForIndustries: loc?.bestForIndustries || t.bestForIndustries,
           atsScore: cfg?.atsScore ?? t.atsScore,
           displayOrder: cfg?.displayOrder ?? 99
         };
       })
       .sort((a, b) => a.displayOrder - b.displayOrder);
-  }, [adminTemplates]);
+  }, [adminTemplates, siteLanguage]);
 
   const filteredCvTemplates = activeCvTemplates.filter((tmpl) => {
     if (cvFilter === 'without_photo' && tmpl.hasPhoto) return false;

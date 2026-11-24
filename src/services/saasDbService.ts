@@ -91,11 +91,13 @@ function normalizeUserRecord(id: string, data: any): User {
     creditsUsed: data.creditsUsed ?? 0,
     totalCvGenerated: data.totalCvGenerated ?? 0,
     billingCycle: data.billingCycle || 'monthly',
-    subscriptionExpiresAt: data.subscriptionExpiresAt,
+    subscriptionExpiresAt: data.subscriptionExpiresAt || undefined,
     stripeCustomerId: data.stripeCustomerId,
     stripeSubscriptionId: data.stripeSubscriptionId,
-    stripeStatus: data.stripeStatus,
+    stripeStatus: data.stripeStatus || undefined,
     createdAt: data.createdAt || new Date().toISOString(),
+    updatedAt: data.updatedAt || undefined,
+    planUpdatedAt: typeof data.planUpdatedAt === 'number' ? data.planUpdatedAt : undefined,
     notes: data.notes || ''
   };
 }
@@ -108,7 +110,7 @@ function isManualCustomerId(id: string): boolean {
 }
 
 function getRecordTimestamp(raw: any): number {
-  const candidates = [raw?.updatedAt, raw?.lastLoginAt, raw?.createdAt];
+  const candidates = [raw?.updatedAt, raw?.createdAt, raw?.lastLoginAt];
   for (const val of candidates) {
     if (!val) continue;
     const ms = Date.parse(String(val));
@@ -121,6 +123,7 @@ export async function fetchAllUsers(): Promise<User[]> {
   const usersByEmail = new Map<string, User>();
   const usersById = new Map<string, User>();
   const recordTimestampById = new Map<string, number>();
+  const recordSourceById = new Map<string, 'server' | 'firestore'>();
 
   const upsertUserRecord = (incoming: User, incomingTs: number, source: 'server' | 'firestore') => {
     const emailKey = incoming.email.trim().toLowerCase();
@@ -129,19 +132,24 @@ export async function fetchAllUsers(): Promise<User[]> {
     if (!existing) {
       usersById.set(incoming.id, incoming);
       recordTimestampById.set(incoming.id, incomingTs);
+      recordSourceById.set(incoming.id, source);
       if (emailKey) usersByEmail.set(emailKey, incoming);
       return;
     }
 
     const existingTs = recordTimestampById.get(existing.id) || 0;
+    const existingSource = recordSourceById.get(existing.id) || 'server';
     const sameId = existing.id === incoming.id;
     const existingIsManual = isManualCustomerId(existing.id);
     const incomingIsManual = isManualCustomerId(incoming.id);
 
-    // Prefer Firebase UID over manual usr- IDs; if same ID class, prefer Firestore or newer timestamp
+    // Firestore is always authoritative over backend /tmp caches for identity/role/status.
+    // Between two records from the same source, prefer Firebase UID over manual usr- IDs and newer updatedAt.
     let preferIncoming = false;
-    if (sameId) {
-      preferIncoming = source === 'firestore' || incomingTs >= existingTs;
+    if (source !== existingSource) {
+      preferIncoming = source === 'firestore';
+    } else if (sameId) {
+      preferIncoming = incomingTs >= existingTs;
     } else if (existingIsManual !== incomingIsManual) {
       preferIncoming = !incomingIsManual;
     } else {
@@ -158,20 +166,30 @@ export async function fetchAllUsers(): Promise<User[]> {
       ? existing.id
       : primary.id;
 
-    // Preserve elevated permissions if duplicate records diverged and secondary is newer
-    const secondaryIsNewer =
-      (!sameId && (preferIncoming ? existingTs > incomingTs : incomingTs > existingTs));
+    // Only keep a server-side paid plan upgrade if it is strictly newer than the Firestore admin record
+    const serverSidePaidUpgradeIsNewer =
+      source === 'firestore' &&
+      existingSource === 'server' &&
+      existing.plan !== 'free' &&
+      existing.stripeStatus === 'active' &&
+      (existing.planUpdatedAt || existingTs) > incomingTs;
 
     const merged: User = {
       ...secondary,
       ...primary,
       id: canonicalId,
-      role:
-        secondaryIsNewer && secondary.role === 'admin'
-          ? 'admin'
-          : primary.role === 'admin' || secondary.role === 'admin'
-          ? primary.role
-          : primary.role,
+      // Role and status always come from the authoritative Firestore record (or newer Firestore doc)
+      role: primary.role,
+      status: primary.status,
+      ...(serverSidePaidUpgradeIsNewer
+        ? {
+            plan: existing.plan,
+            creditsRemaining: existing.creditsRemaining,
+            billingCycle: existing.billingCycle,
+            subscriptionExpiresAt: existing.subscriptionExpiresAt,
+            stripeStatus: existing.stripeStatus
+          }
+        : {}),
       totalCvGenerated: Math.max(existing.totalCvGenerated || 0, incoming.totalCvGenerated || 0),
       notes: primary.notes || secondary.notes
     };
@@ -179,9 +197,11 @@ export async function fetchAllUsers(): Promise<User[]> {
     if (existing.id !== merged.id) {
       usersById.delete(existing.id);
       recordTimestampById.delete(existing.id);
+      recordSourceById.delete(existing.id);
     }
     usersById.set(merged.id, merged);
-    recordTimestampById.set(merged.id, Math.max(existingTs, incomingTs));
+    recordTimestampById.set(merged.id, source === 'firestore' ? incomingTs : Math.max(existingTs, incomingTs));
+    recordSourceById.set(merged.id, source === 'firestore' || existingSource === 'firestore' ? 'firestore' : 'server');
     if (emailKey) usersByEmail.set(emailKey, merged);
   };
 
@@ -221,9 +241,16 @@ export async function fetchAllUsers(): Promise<User[]> {
   );
 }
 
+export type AdminUserUpdates = Omit<Partial<User>, 'subscriptionExpiresAt' | 'stripeStatus'> & {
+  email?: string;
+  name?: string;
+  subscriptionExpiresAt?: string | null;
+  stripeStatus?: User['stripeStatus'] | null;
+};
+
 export async function updateUserManagement(
   userId: string,
-  updates: Partial<User> & { email?: string; name?: string }
+  updates: AdminUserUpdates
 ): Promise<void> {
   const { ok, status, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
@@ -248,19 +275,32 @@ export async function updateUserManagement(
     let resolvedEmail = String(updates.email || '').trim();
     const targetDocIds = new Set<string>([userId]);
 
-    try {
-      const userDocRef = doc(db, 'users', userId);
-      if (!resolvedEmail) {
-        try {
-          const snap = await getDoc(userDocRef);
-          if (snap.exists()) {
-            resolvedEmail = String(snap.data()?.email || '').trim();
-          }
-        } catch {
-          // ignore read failure
-        }
+    const applySanitizedUpdate = async (docId: string, patchBase: Record<string, any>) => {
+      const ref = doc(db, 'users', docId);
+      const snap = await getDoc(ref).catch(() => null);
+      if (!snap || !snap.exists()) {
+        throw Object.assign(new Error('not-found'), { code: 'not-found' });
       }
-      await updateDoc(userDocRef, cleanPatch);
+      const existingData = snap.data() || {};
+      if (!resolvedEmail && existingData.email) {
+        resolvedEmail = String(existingData.email).trim();
+      }
+      const safePatch: Record<string, any> = { ...patchBase };
+      // Repair legacy invalid fields that could violate firestore.rules isValidUser() on update
+      if (existingData.billingCycle === null || (existingData.billingCycle !== undefined && !['monthly', 'quarterly', 'semiannual', 'yearly'].includes(existingData.billingCycle))) {
+        safePatch.billingCycle = 'monthly';
+      }
+      if (existingData.stripeStatus === '') {
+        safePatch.stripeStatus = null;
+      }
+      if (typeof existingData.notes === 'string' && existingData.notes.length > 1000 && safePatch.notes === undefined) {
+        safePatch.notes = existingData.notes.slice(0, 1000);
+      }
+      await updateDoc(ref, safePatch);
+    };
+
+    try {
+      await applySanitizedUpdate(userId, cleanPatch);
     } catch (error: any) {
       const code = String(error?.code || '');
       if (code === 'not-found') {
@@ -302,7 +342,7 @@ export async function updateUserManagement(
           for (const dupDoc of dupSnap.docs) {
             targetDocIds.add(dupDoc.id);
             if (dupDoc.id === userId) continue;
-            await updateDoc(doc(db, 'users', dupDoc.id), cleanPatch).catch(() => {});
+            await applySanitizedUpdate(dupDoc.id, cleanPatch).catch(() => {});
           }
         } catch {
           // non-blocking duplicate sync
@@ -326,6 +366,18 @@ export async function updateUserManagement(
           }
         } catch {
           // non-blocking for non-root admins
+        }
+      }
+      if (updates.role === 'user' && resolvedEmail && resolvedEmail.includes('@')) {
+        try {
+          const adminSnap = await getDocs(
+            query(collection(db, 'admins'), where('email', '==', resolvedEmail.toLowerCase()), limit(10))
+          );
+          for (const aDoc of adminSnap.docs) {
+            await deleteDoc(doc(db, 'admins', aDoc.id)).catch(() => {});
+          }
+        } catch {
+          // non-blocking cleanup
         }
       }
     }

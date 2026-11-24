@@ -59,9 +59,9 @@ export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const { siteText, studioText, siteLanguage } = useLanguage();
-  const appUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).app;
-  const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.pt;
-  const [contentLanguage, setContentLanguage] = useState<LanguageCode>('pt');
+  const appUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).app;
+  const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en;
+  const [contentLanguage, setContentLanguage] = useState<LanguageCode>('en');
 
   const getDraftKey = useCallback(
     (base: string, uid?: string | null) => `${base}_${uid || 'visitor'}`,
@@ -69,21 +69,21 @@ export default function App() {
   );
 
   const getDefaultLetterText = useCallback(
-    () => `Para: Comité de Seleção Executiva
-Diretoria de Liderança Corporativa
-Assunto: Candidatura para Posição de Liderança Executiva / Direção de Operações
+    () => `To: Executive Selection Committee
+Corporate Leadership Board
+Subject: Application for Chief Operating Officer (COO) / Global Operations Leadership
 
-Exmos. Senhores Membros do Comité de Seleção,
+Dear Members of the Selection Committee,
 
-É com elevado entusiasmo e sólido compromisso profissional que apresento a minha candidatura para esta posição executiva. Com trajetória progressiva na condução de excelência operacional, transformação digital e gestão estratégica de P&L, trago um histórico comprovado de resultados quantificáveis em mercados globais competitivos.
+It is with strong enthusiasm that I submit my candidacy for this executive leadership role. With over 12 years of progressive experience driving operational excellence, digital transformation, and P&L governance across multinational environments, I bring a proven track record of delivering measurable growth in competitive global markets.
 
-Nas minhas atribuições recentes de liderança, fui responsável por arquitetar fluxos de trabalho de nível corporativo, escalar equipas multifuncionais e entregar otimizações operacionais milionárias. O meu percurso combina rigor analítico aprofundado com domínio prático em Business Intelligence, governança automatizada e alinhamento estratégico com stakeholders.
+In my recent leadership mandates, I architected enterprise operating workflows across regional hubs, scaled cross-functional teams of 140+ specialists, and delivered $8.4M in audited OPEX savings. My background pairs rigorous financial discipline with hands-on execution in Business Intelligence, post-merger ERP integration, and executive stakeholder alignment.
 
-Adicionalmente, a minha abordagem está alinhada com os padrões internacionais de governança corporativa e metodologias modernas de gestão, capacitando conselhos de administração e lideranças executivas a tomarem decisões ágeis e orientadas por dados.
+Aligned with international corporate governance standards, I partner closely with Boards and functional VPs to accelerate time-to-market while strengthening service SLAs and EBITDA margins.
 
-Motivado pela visão estratégica e pelo crescimento contínuo da vossa organização, coloco-me à disposição para detalhar as minhas qualificações e demonstrar como posso gerar valor imediato numa entrevista estratégica.
+Thank you for your time and consideration. I welcome the opportunity to discuss how I can create immediate operational impact within your organization.
 
-Atenciosamente,
+Sincerely,
 
 ${GENERIC_DEFAULT_CV.personalDetails.name}
 ${GENERIC_DEFAULT_CV.personalDetails.title}
@@ -321,7 +321,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     } catch {
       // ignore
     }
-    return 'pt';
+    return 'en';
   })();
 
   const activeContentLangRef = useRef<LanguageCode>(initialContentLang);
@@ -370,7 +370,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       setJobDescription(SAMPLE_JOB_OFFERS[0].description);
       setLetterBodyState(getDefaultLetterText());
       translationCacheRef.current = {
-        pt: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
+        en: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
       };
       return;
     }
@@ -398,7 +398,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setJobDescription(SAMPLE_JOB_OFFERS[0].description);
         setLetterBodyState(getDefaultLetterText());
         translationCacheRef.current = {
-          pt: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
+          en: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
         };
       }
     } catch {

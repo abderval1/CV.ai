@@ -32,7 +32,7 @@ export type DocumentMiniPreviewProps = CVPreviewCardProps | CoverPreviewCardProp
 
 export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) => {
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).miniPreview;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).miniPreview;
   const isLarge = props.size === 'lg';
 
   if (props.kind === 'cover') {
@@ -189,7 +189,13 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
   const cv = props.cvData || GENERIC_DEFAULT_CV;
   const style = props.templateStyle;
   const accent = props.accentColor || cv.accentColor || '#0f172a';
-  const showPhoto = props.hasPhoto ?? (style === 'european_europass' || style === 'creative_split' || style === 'hybrid_minimalist');
+  const showPhoto =
+    props.hasPhoto ??
+    (style === 'european_europass' ||
+      style === 'creative_split' ||
+      style === 'hybrid_minimalist' ||
+      style === 'product_strategy' ||
+      style === 'modern_editorial');
   const photoSrc = cv.personalDetails.photoUrl || portraitWomanImg;
   const exp1 = cv.experiences[0];
   const exp2 = cv.experiences[1];
@@ -197,7 +203,12 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
   const comp1 = cv.competencies[0];
   const comp2 = cv.competencies[1];
 
-  const isSerif = style === 'executive_harvard' || style === 'academic_lattes' || style === 'un_classic';
+  const isSerif =
+    style === 'executive_harvard' ||
+    style === 'academic_lattes' ||
+    style === 'un_classic' ||
+    style === 'finance_wallstreet' ||
+    style === 'executive_board';
 
   if (style === 'creative_split') {
     return (
@@ -374,29 +385,105 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
     );
   }
 
-  // Linear / Classic / Harvard / ATS / Tech / Minimalist / Academic / Modern
-  const isCenteredHeader = style === 'executive_harvard' || style === 'academic_lattes';
-  const isTech = style === 'tech_modern';
-  const isMinimalist = style === 'hybrid_minimalist';
+  if (style === 'modern_editorial') {
+    return (
+      <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none font-sans">
+        <div
+          className={`${isLarge ? 'px-8 py-6 gap-5' : 'px-3 py-2.5 gap-2'} flex items-center justify-between text-white`}
+          style={{ backgroundColor: accent || '#334155' }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className={`${isLarge ? 'text-[9px]' : 'text-[4px]'} uppercase tracking-widest text-white/70 font-semibold`}>
+              Editorial Portfolio
+            </p>
+            <p className={`${isLarge ? 'text-xl mt-0.5' : 'text-[8px]'} font-black uppercase tracking-tight truncate`}>
+              {cv.personalDetails.name}
+            </p>
+            <p className={`${isLarge ? 'text-xs mt-0.5' : 'text-[5px]'} text-white/90 font-medium truncate`}>
+              {cv.personalDetails.title}
+            </p>
+            <p className={`${isLarge ? 'text-[10px] mt-1.5' : 'text-[4.2px] mt-0.5'} text-white/75 font-mono truncate`}>
+              {cv.personalDetails.location} · {cv.personalDetails.email}
+            </p>
+          </div>
+          {showPhoto && (
+            <div className={`${isLarge ? 'w-16 h-16' : 'w-7 h-7'} rounded-lg overflow-hidden border-2 border-white/40 shrink-0`}>
+              <img src={photoSrc} alt={cv.personalDetails.name} className="w-full h-full object-cover" />
+            </div>
+          )}
+        </div>
+
+        <div className={`flex-1 ${isLarge ? 'p-8 space-y-4' : 'p-3 space-y-1.5'} overflow-hidden`}>
+          <div>
+            <p className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b pb-0.5 mb-1`} style={{ color: accent, borderColor: '#e2e8f0' }}>
+              {ui.stdSummary}
+            </p>
+            <p className={`${isLarge ? 'text-xs leading-relaxed' : 'text-[4.6px] leading-[1.35] line-clamp-3'} text-slate-700`}>
+              {cv.summary}
+            </p>
+          </div>
+          {exp1 && (
+            <div>
+              <p className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b pb-0.5 mb-1`} style={{ color: accent, borderColor: '#e2e8f0' }}>
+                {ui.stdExp}
+              </p>
+              <div className={isLarge ? 'space-y-2.5' : 'space-y-1'}>
+                {[exp1, exp2].filter(Boolean).map((exp) => (
+                  <div key={exp!.id}>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className={`${isLarge ? 'text-xs' : 'text-[5px]'} font-bold text-slate-900 truncate`}>
+                        {exp!.role} · <span className="font-normal text-slate-600">{exp!.company}</span>
+                      </p>
+                      <span className={`${isLarge ? 'text-[10px]' : 'text-[4.2px]'} font-mono text-slate-500 shrink-0`}>{exp!.period}</span>
+                    </div>
+                    <p className={`${isLarge ? 'text-[11px] mt-0.5' : 'text-[4.4px] line-clamp-2'} text-slate-600`}>• {exp!.highlights[0]}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {edu1 && (
+            <div>
+              <p className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b pb-0.5 mb-1`} style={{ color: accent, borderColor: '#e2e8f0' }}>
+                {ui.stdEdu}
+              </p>
+              <p className={`${isLarge ? 'text-xs' : 'text-[4.8px]'} font-bold text-slate-900 truncate`}>{edu1.degree}</p>
+              <p className={`${isLarge ? 'text-[11px]' : 'text-[4.4px]'} text-slate-600 truncate`}>{edu1.institution} · {edu1.period}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Linear / Classic / Harvard / ATS / Tech / Minimalist / Academic / Modern / Finance / Board / Product / Blueprint
+  const isCenteredHeader = style === 'executive_harvard' || style === 'academic_lattes' || style === 'executive_board';
+  const isTech = style === 'tech_modern' || style === 'engineering_blueprint';
+  const isMinimalist = style === 'hybrid_minimalist' || style === 'engineering_blueprint';
   const isModern = style === 'european_modern';
+  const isFinance = style === 'finance_wallstreet';
+  const isBoard = style === 'executive_board';
+  const isProduct = style === 'product_strategy';
+  const isBlueprint = style === 'engineering_blueprint';
 
   return (
     <div
       className={`a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none ${
         isSerif ? 'font-serif' : 'font-sans'
-      } ${isLarge ? 'p-8 sm:p-10 space-y-4' : 'p-3 space-y-1.5'}`}
+      } ${isBoard ? 'border-t-4' : ''} ${isLarge ? 'p-8 sm:p-10 space-y-4' : 'p-3 space-y-1.5'}`}
+      style={isBoard ? { borderTopColor: accent || '#1e3a8a' } : undefined}
     >
       {/* Header */}
       <div
         className={`flex items-start justify-between gap-3 ${
           isCenteredHeader ? 'text-center flex-col items-center' : ''
-        } ${isLarge ? 'pb-3 border-b-2' : 'pb-1.5 border-b'}`}
-        style={{ borderColor: style === 'ats_compact' ? '#0f172a' : accent }}
+        } ${isLarge ? (isFinance ? 'pb-3 border-b-2' : 'pb-3 border-b-2') : 'pb-1.5 border-b'}`}
+        style={{ borderColor: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
       >
         <div className="min-w-0 flex-1">
           <p
             className={`${isLarge ? 'text-xl' : 'text-[8px]'} font-black uppercase tracking-tight truncate`}
-            style={{ color: style === 'ats_compact' || style === 'executive_harvard' ? '#0f172a' : accent }}
+            style={{ color: style === 'ats_compact' || style === 'executive_harvard' || isFinance ? '#0f172a' : accent }}
           >
             {cv.personalDetails.name}
           </p>
@@ -408,7 +495,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
           </p>
         </div>
         {showPhoto && !isCenteredHeader && (
-          <div className={`${isLarge ? 'w-14 h-14' : 'w-6 h-6'} rounded-full overflow-hidden border border-slate-200 shrink-0`}>
+          <div className={`${isLarge ? 'w-14 h-14' : 'w-6 h-6'} ${isProduct ? 'rounded-lg' : 'rounded-full'} overflow-hidden border border-slate-200 shrink-0`}>
             <img src={photoSrc} alt={cv.personalDetails.name} className="w-full h-full object-cover" />
           </div>
         )}
@@ -417,15 +504,19 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
       {/* Summary */}
       <div
         className={`${
-          isModern ? `border-l-2 ${isLarge ? 'pl-3' : 'pl-1.5'}` : ''
+          isModern
+            ? `border-l-2 ${isLarge ? 'pl-3' : 'pl-1.5'}`
+            : isProduct
+            ? `bg-slate-50 border border-slate-200 rounded ${isLarge ? 'p-3' : 'p-1.5'}`
+            : ''
         }`}
         style={isModern ? { borderColor: accent } : undefined}
       >
         <p
           className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider mb-0.5`}
-          style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
+          style={{ color: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
         >
-          {isTech ? ui.techSummary : isMinimalist ? ui.minSummary : ui.stdSummary}
+          {isBlueprint ? `01. ${ui.techSummary}` : isTech ? ui.techSummary : isMinimalist ? ui.minSummary : ui.stdSummary}
         </p>
         <p className={`${isLarge ? 'text-xs leading-relaxed' : 'text-[4.6px] leading-[1.35] line-clamp-3'} text-slate-700`}>
           {cv.summary}
@@ -437,13 +528,20 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div>
           <p
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
-            style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
+            style={{ color: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
           >
-            {isTech ? ui.techComp : isMinimalist ? ui.minComp : ui.stdComp}
+            {isBlueprint ? `02. ${ui.techComp}` : isTech ? ui.techComp : isMinimalist ? ui.minComp : ui.stdComp}
           </p>
-          <div className={isLarge ? 'space-y-1 text-xs' : 'space-y-0.5 text-[4.5px]'}>
+          <div className={isProduct || isBlueprint ? 'grid grid-cols-2 gap-1.5' : isLarge ? 'space-y-1 text-xs' : 'space-y-0.5 text-[4.5px]'}>
             {[comp1, comp2].filter(Boolean).map((c) => (
-              <p key={c!.id} className="text-slate-700 truncate">
+              <p
+                key={c!.id}
+                className={`text-slate-700 truncate ${
+                  isProduct || isBlueprint
+                    ? `bg-slate-50 border border-slate-200 rounded ${isLarge ? 'p-1.5 text-[10px]' : 'p-0.5 text-[4.2px]'}`
+                    : ''
+                }`}
+              >
                 <strong className="text-slate-900">{c!.category}:</strong> {c!.description}
               </p>
             ))}

@@ -62,8 +62,8 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   const exportRequiresPaidPlan = platformSettings.requirePaidPlanForExport !== false;
   const canExportClean = exportRequiresPaidPlan ? isAuthenticated && hasActivePlan : true;
 
-  const effectiveContentLang: LanguageCode = contentLanguage || 'pt';
-  const chrome = COVER_CHROME_LABELS[effectiveContentLang] || COVER_CHROME_LABELS.pt;
+  const effectiveContentLang: LanguageCode = contentLanguage || 'en';
+  const chrome = COVER_CHROME_LABELS[effectiveContentLang] || COVER_CHROME_LABELS.en;
 
   const handleCopy = () => {
     if (exportRequiresPaidPlan && !isAuthenticated) {

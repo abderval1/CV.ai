@@ -76,7 +76,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   onSelectLanguage,
   isTranslatingContent = false,
   translatingTargetLang = null,
-  contentLanguage = 'pt'
+  contentLanguage = 'en'
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
@@ -86,7 +86,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [jsonImportSuccess, setJsonImportSuccess] = useState<string | null>(null);
-  const [docLang, setDocLang] = useState<LanguageCode>(contentLanguage || 'pt');
+  const [docLang, setDocLang] = useState<LanguageCode>(contentLanguage || 'en');
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState<boolean>(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
@@ -131,6 +131,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const isMinimalist = cv.templateStyle === 'hybrid_minimalist';
   const isAcademic = cv.templateStyle === 'academic_lattes';
   const isModern = cv.templateStyle === 'european_modern';
+  const isFinance = cv.templateStyle === 'finance_wallstreet';
+  const isBoard = cv.templateStyle === 'executive_board';
+  const isProduct = cv.templateStyle === 'product_strategy';
+  const isEditorial = cv.templateStyle === 'modern_editorial';
+  const isBlueprint = cv.templateStyle === 'engineering_blueprint';
 
   const resolvedFontClass =
     cv.fontFamily === 'garamond'
@@ -141,7 +146,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       ? 'font-mono-code text-[13px] leading-relaxed'
       : cv.fontFamily === 'cinzel'
       ? 'font-cinzel'
-      : isClassic || isHarvard || isAcademic
+      : isClassic || isHarvard || isAcademic || isFinance || isBoard
       ? 'font-serif-cv'
       : isAts
       ? 'font-mono-code text-[13px] leading-relaxed'
@@ -188,11 +193,12 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   }, [exportRequiresPaidPlan, isAuthenticated, hasActivePlan, onOpenAuthModal, onOpenPricingModal, cv.templateStyle]);
 
   // Comprehensive 5-language section titles & template chrome labels (shared with Word export)
-  const currentTitles = SECTION_TITLES_BY_LANG[docLang] || SECTION_TITLES_BY_LANG.pt;
+  const currentTitles = SECTION_TITLES_BY_LANG[docLang] || SECTION_TITLES_BY_LANG.en;
   const sectionTitles = getResolvedSectionTitles(docLang, cv.templateStyle);
 
   const getSectionPrefix = (index: number) => {
     if (isTech) return <span className="text-teal-500 font-mono mr-1.5">&gt;</span>;
+    if (isBlueprint) return <span className="font-mono text-[11px] mr-2 opacity-70">0{index + 1}.</span>;
     if (isMinimalist) return <span className="text-slate-400 font-mono text-[10px] mr-2">0{index + 1} /</span>;
     if (isAcademic) {
       const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][index] || `${index + 1}`;
@@ -472,12 +478,24 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   // Photo Logic:
   // Show photo if user has configured a photo and showPhoto is not false, on all photo-supporting models
-  const templateSupportsPhoto = isEuropass || isCreative || isMinimalist || isModern || isTech || isClassic || isAcademic;
+  const templateSupportsPhoto =
+    isEuropass ||
+    isCreative ||
+    isMinimalist ||
+    isModern ||
+    isTech ||
+    isClassic ||
+    isAcademic ||
+    isProduct ||
+    isEditorial;
   const hasUserPhoto = Boolean(cv.personalDetails.photoUrl);
   const shouldRenderPhoto = templateSupportsPhoto && hasUserPhoto && cv.personalDetails.showPhoto !== false;
 
-  // Has photo configured but current template strictly bans it (strict US ATS / Harvard standard alert)
-  const isPhotoSuppressedForAts = hasUserPhoto && (isAts || isHarvard) && !templateSupportsPhoto;
+  // Has photo configured but current template strictly bans it (strict US ATS / Harvard / Wall Street / Board / Principal Systems alert)
+  const isPhotoSuppressedForAts =
+    hasUserPhoto &&
+    (isAts || isHarvard || isFinance || isBoard || isBlueprint) &&
+    !templateSupportsPhoto;
 
   const sectionOrder: CVSectionKey[] = cv.sectionOrder && cv.sectionOrder.length > 0
     ? cv.sectionOrder
@@ -1270,33 +1288,48 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             <article
               className={`cv-a4-sheet cv-single-column bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
                 density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
-              } ${resolvedFontClass}`}
+              } ${isBoard ? 'border-t-[6px]' : ''} ${resolvedFontClass}`}
+              style={isBoard ? { borderTopColor: currentAccent } : undefined}
             >
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Header Section */}
               <header
-                className={`cv-header pb-4 ${
-                  isHarvard
+                className={`cv-header ${
+                  isEditorial
+                    ? '-mx-5 sm:-mx-10 md:-mx-12 -mt-5 sm:-mt-10 md:-mt-12 px-5 sm:px-10 md:px-12 py-6 sm:py-8 mb-6 text-white'
+                    : isFinance
+                    ? 'border-b-4 border-double border-slate-900 pb-4 text-left'
+                    : isBoard
+                    ? 'text-center border-b border-slate-300 pb-5'
+                    : isHarvard
                     ? 'border-b-2 pb-4 text-left'
                     : isClassic
-                    ? 'text-center border-b border-slate-200'
+                    ? 'text-center border-b border-slate-200 pb-4'
                     : isEuropass
                     ? 'border-b-2 pb-5'
-                    : isModern || isTech
+                    : isModern || isTech || isProduct || isBlueprint
                     ? 'text-left border-b-2 pb-4'
                     : 'text-left pb-2'
                 }`}
-                style={{
-                  borderColor: isModern || isHarvard || isEuropass || isTech ? currentAccent : '#e2e8f0'
-                }}
+                style={
+                  isEditorial
+                    ? { backgroundColor: currentAccent, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }
+                    : {
+                        borderColor: isFinance
+                          ? '#0f172a'
+                          : isModern || isHarvard || isEuropass || isTech || isProduct || isBlueprint
+                          ? currentAccent
+                          : '#e2e8f0'
+                      }
+                }
               >
                 <div
                   className={`cv-header-content flex flex-col sm:flex-row items-center justify-between gap-4 ${
-                    isClassic ? 'sm:justify-center' : ''
+                    isClassic || isBoard ? 'sm:justify-center' : ''
                   }`}
                 >
                   {/* Left / Main text details */}
-                  <div className={`flex-1 ${isClassic ? 'text-center' : 'text-left'}`}>
+                  <div className={`flex-1 ${isClassic || isBoard ? 'text-center' : 'text-left'}`}>
                     {/* European flag/official indicator in Europass */}
                     {isEuropass && (
                       <div className="flex items-center gap-2 mb-2">
@@ -1317,10 +1350,45 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       </div>
                     )}
 
+                    {/* Principal Engineering Blueprint tag */}
+                    {isBlueprint && (
+                      <div className="text-[10px] font-mono tracking-widest uppercase mb-1.5 font-semibold" style={{ color: currentAccent }}>
+                        SYSTEMS ARCHITECTURE · PRINCIPAL ENGINEERING
+                      </div>
+                    )}
+
+                    {/* Wall Street Finance tag */}
+                    {isFinance && (
+                      <div className="text-[10px] font-serif tracking-[0.2em] uppercase text-slate-500 mb-1.5 font-semibold">
+                        INSTITUTIONAL FINANCE &amp; M&amp;A STANDARD
+                      </div>
+                    )}
+
+                    {/* Boardroom C-Suite tag */}
+                    {isBoard && (
+                      <div className="text-[10px] font-serif tracking-[0.2em] uppercase text-slate-500 mb-1.5 font-semibold">
+                        BOARD OF DIRECTORS &amp; C-SUITE GOVERNANCE
+                      </div>
+                    )}
+
+                    {/* Product & Growth tag */}
+                    {isProduct && (
+                      <div className="text-[10px] font-jakarta tracking-[0.16em] uppercase mb-1.5 font-bold" style={{ color: currentAccent }}>
+                        PRODUCT STRATEGY &amp; GROWTH LEADERSHIP
+                      </div>
+                    )}
+
+                    {/* Two-Tone Editorial tag */}
+                    {isEditorial && (
+                      <div className="text-[10px] font-jakarta tracking-[0.18em] uppercase text-white/75 mb-1.5 font-semibold">
+                        EXECUTIVE EDITORIAL PROFILE
+                      </div>
+                    )}
+
                     {/* Minimalist Nordic tag */}
                     {isMinimalist && (
                       <div className="text-[10px] font-mono tracking-widest uppercase text-slate-400 mb-1.5 font-semibold">
-                        CURRICULUM VITAE · PADRÃO NÓRDICO
+                        CURRICULUM VITAE · NORDIC EDITION
                       </div>
                     )}
 
@@ -1335,10 +1403,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     {isAcademic && (
                       <div className="mb-3 border-y border-slate-700/60 py-1.5 text-center font-serif">
                         <div className="text-[11px] font-bold tracking-wider uppercase text-slate-800">
-                          PLATAFORMA LATTES · CURRÍCULO DE CIÊNCIA E TECNOLOGIA
+                          SCIENTIFIC &amp; ACADEMIC CURRICULUM VITAE
                         </div>
                         <div className="text-[9.5px] text-slate-500 italic">
-                          Padrão Oficial de Investigação Científica & Docência Universitária
+                          Indexed Research, Grants &amp; University Faculty Standard
                         </div>
                       </div>
                     )}
@@ -1347,7 +1415,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     {isClassic && (
                       <div className="flex items-center justify-center gap-1.5 mb-2 font-serif text-[11px] text-blue-900 font-bold tracking-wider uppercase">
                         <Globe className="w-3.5 h-3.5 text-blue-800 shrink-0" />
-                        <span>UNITED NATIONS & INTERNATIONAL COOPERATION STANDARD</span>
+                        <span>INTERNATIONAL GOVERNANCE &amp; PROGRAMS STANDARD</span>
                       </div>
                     )}
 
@@ -1361,19 +1429,19 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         })
                       }
                       className={`font-bold tracking-tight uppercase ${
-                        isHarvard
+                        isHarvard || isFinance || isBoard
                           ? 'text-2xl sm:text-3xl tracking-wide font-serif-cv'
                           : isClassic
                           ? 'text-2xl sm:text-3xl font-serif-cv'
                           : isEuropass
                           ? 'text-2xl sm:text-3xl font-extrabold text-[#003399]'
-                          : isTech
+                          : isTech || isBlueprint || isProduct || isEditorial
                           ? 'text-2xl sm:text-3xl font-black font-jakarta tracking-tight'
                           : 'text-2xl sm:text-3xl tracking-tight'
                       }`}
-                      style={{ color: isEuropass ? '#003399' : currentAccent }}
+                      style={{ color: isEditorial ? '#ffffff' : isEuropass ? '#003399' : isFinance ? '#0f172a' : currentAccent }}
                     >
-                      {cv.personalDetails.name || 'SEU NOME COMPLETO'}
+                      {cv.personalDetails.name || 'YOUR FULL NAME'}
                     </h1>
 
                     <div
@@ -1386,48 +1454,54 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         })
                       }
                       className={`text-sm sm:text-base font-semibold mt-1 ${
-                        isHarvard ? 'text-slate-700 italic font-serif-cv' : isTech ? 'text-teal-700 font-mono text-xs sm:text-sm' : 'text-slate-800'
+                        isEditorial
+                          ? 'text-white/90'
+                          : isHarvard || isBoard
+                          ? 'text-slate-700 italic font-serif-cv'
+                          : isTech || isBlueprint
+                          ? 'text-teal-700 font-mono text-xs sm:text-sm'
+                          : 'text-slate-800'
                       }`}
                     >
                       {cv.personalDetails.title}
                     </div>
 
                     <div
-                      className={`text-xs sm:text-[13px] text-slate-600 mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 ${
-                        isClassic ? 'justify-center' : 'justify-start'
-                      }`}
+                      className={`text-xs sm:text-[13px] mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 ${
+                        isEditorial ? 'text-white/85' : 'text-slate-600'
+                      } ${isClassic || isBoard ? 'justify-center' : 'justify-start'}`}
                     >
                       <span>{cv.personalDetails.location}</span>
-                      <span aria-hidden="true" className="text-slate-400">|</span>
+                      <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
                       <span>{cv.personalDetails.phone}</span>
-                      <span aria-hidden="true" className="text-slate-400">|</span>
+                      <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
                       <a
                         href={`mailto:${cv.personalDetails.email}`}
-                        className="hover:underline text-slate-800"
+                        className={`hover:underline ${isEditorial ? 'text-white' : 'text-slate-800'}`}
                       >
                         {cv.personalDetails.email}
                       </a>
                       {cv.personalDetails.linkedin && (
                         <>
-                          <span aria-hidden="true" className="text-slate-400">|</span>
+                          <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
                           <span>{cv.personalDetails.linkedin}</span>
                         </>
                       )}
                       {cv.personalDetails.website && (
                         <>
-                          <span aria-hidden="true" className="text-slate-400">|</span>
+                          <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
                           {getSafeHttpUrl(cv.personalDetails.website) ? (
                             <a
                               href={getSafeHttpUrl(cv.personalDetails.website)!}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="hover:underline font-semibold"
-                              style={{ color: currentAccent }}
+                              style={{ color: isEditorial ? '#ffffff' : currentAccent }}
                             >
                               {cv.personalDetails.website}
                             </a>
                           ) : (
-                            <span className="font-semibold" style={{ color: currentAccent }}>
+                            <span className="font-semibold" style={{ color: isEditorial ? '#ffffff' : currentAccent }}>
                               {cv.personalDetails.website}
                             </span>
                           )}
@@ -1436,7 +1510,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Photo for European, Modern, Minimalist, Tech, Classic, etc. */}
+                  {/* Photo for European, Modern, Minimalist, Tech, Classic, Product, Editorial */}
                   {shouldRenderPhoto && (
                     <div className="cv-photo-container shrink-0 flex flex-col items-center">
                       <img
@@ -1445,6 +1519,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         className={`w-24 h-24 sm:w-28 sm:h-28 object-cover border-2 shadow-sm ${
                           isEuropass
                             ? 'rounded-xl border-blue-600/60 p-0.5'
+                            : isEditorial
+                            ? 'rounded-xl border-white/50'
+                            : isProduct
+                            ? 'rounded-xl border-slate-300'
                             : isModern
                             ? 'rounded-full border-slate-300'
                             : isTech
@@ -1468,11 +1546,20 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 if (!isSectionVisible(sectionKey)) return null;
 
                 const getSectionHeaderStyle = () => {
-                  if (isHarvard) {
+                  if (isHarvard || isFinance) {
                     return 'border-b border-slate-900 font-serif-cv tracking-wide text-slate-950';
+                  }
+                  if (isBoard) {
+                    return 'border-b border-slate-300 font-serif-cv tracking-wider text-slate-900';
                   }
                   if (isTech) {
                     return 'border-b-2 font-mono text-[13px] text-teal-800 tracking-normal';
+                  }
+                  if (isBlueprint) {
+                    return 'border-b font-jakarta tracking-wide text-slate-900';
+                  }
+                  if (isProduct || isEditorial) {
+                    return 'border-b-2 font-jakarta tracking-wide';
                   }
                   if (isMinimalist) {
                     return 'border-b border-slate-200 tracking-widest text-slate-900 font-medium';
@@ -1487,14 +1574,14 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 };
 
                 const getSectionHeaderColor = () => {
-                  if (isHarvard || isAts) return undefined;
+                  if (isHarvard || isAts || isFinance) return undefined;
                   if (isTech) return '#0d9488';
                   if (isEuropass) return '#003399';
                   return currentAccent;
                 };
 
                 const getSectionBorderColor = () => {
-                  if (isHarvard) return '#0f172a';
+                  if (isHarvard || isFinance) return '#0f172a';
                   if (isAts) return '#94a3b8';
                   if (isTech) return '#0d9488';
                   if (isEuropass) return '#003399';
@@ -1517,7 +1604,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
                         className={`text-[13.5px] sm:text-[14px] leading-relaxed text-slate-800 text-justify ${
                           isMinimalist ? 'font-light leading-relaxed' : ''
-                        }`}
+                        } ${isProduct ? 'bg-slate-50 border border-slate-200 rounded-lg p-3.5 text-left' : ''}`}
                       >
                         {cv.summary}
                       </p>
@@ -1536,11 +1623,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         <span>{sectionTitles.competencies}</span>
                       </h2>
 
-                      {isTech ? (
+                      {isTech || isProduct || isBlueprint ? (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                           {cv.competencies.map((comp, idx) => (
                             <div key={comp.id || idx} className="p-2.5 bg-slate-50/80 border border-slate-200 rounded-lg">
-                              <span className="font-mono font-bold text-teal-800 text-[11px] block">{comp.category}</span>
+                              <span
+                                className={`font-bold text-[11px] block ${isTech || isBlueprint ? 'font-mono' : 'font-jakarta'}`}
+                                style={{ color: isTech ? '#115e59' : currentAccent }}
+                              >
+                                {comp.category}
+                              </span>
                               <span className="text-slate-700 text-[11px] leading-relaxed">{comp.description}</span>
                             </div>
                           ))}
@@ -1576,10 +1668,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         <div className="space-y-5">
                           {cv.experiences.map((exp) => (
                             <div key={exp.id} className="cv-item space-y-1">
-                              {isTech ? (
+                              {isTech || isBlueprint ? (
                                 <div className="flex flex-wrap justify-between items-baseline gap-1">
                                   <span className="text-[14.5px] font-bold text-slate-950 font-jakarta">
-                                    {exp.role} <span className="text-teal-700 font-medium">@ {exp.company}</span>
+                                    {exp.role}{' '}
+                                    <span className="font-medium" style={{ color: isTech ? '#0f766e' : currentAccent }}>
+                                      @ {exp.company}
+                                    </span>
                                   </span>
                                   <span className="font-mono text-xs text-slate-500 font-semibold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                                     {exp.period}
@@ -1592,9 +1687,9 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                                 </div>
                               )}
 
-                              {!isTech && (
+                              {!(isTech || isBlueprint) && (
                                 <div className="text-[13.5px] font-semibold text-slate-800 flex flex-wrap justify-between items-center gap-1">
-                                  <span className={isHarvard ? 'italic font-serif-cv' : ''}>{exp.role}</span>
+                                  <span className={isHarvard || isBoard || isFinance ? 'italic font-serif-cv' : ''}>{exp.role}</span>
                                   <span className="font-normal text-slate-600 text-xs sm:text-[13px] font-mono">{exp.period}</span>
                                 </div>
                               )}

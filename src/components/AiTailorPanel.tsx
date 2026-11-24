@@ -26,10 +26,10 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 }) => {
   const { showWarning, showSuccess } = useToast();
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).aiTailor;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).aiTailor;
   const [panelMode, setPanelMode] = useState<'full' | 'xyz'>('full');
   const [targetStandard, setTargetStandard] = useState<string>(
-    'Liderança Executiva C-Level & Direção de Operações (Fórmula Google XYZ)'
+    'C-Level Executive Leadership & Operations Director (Google XYZ Formula)'
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -45,13 +45,13 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
 
   // Google XYZ Builder State
   const [xyzAccomplished, setXyzAccomplished] = useState<string>(
-    'Reduziu custos de infraestrutura e OPEX operacional'
+    'Reduced cloud infrastructure and operational OPEX costs'
   );
   const [xyzMeasured, setXyzMeasured] = useState<string>(
-    'em 32% (economia anual de €240K)'
+    'by 32% ($240K annual savings)'
   );
   const [xyzDoing, setXyzDoing] = useState<string>(
-    'renegociando contratos de fornecedores e consolidando instâncias cloud'
+    'by renegotiating vendor contracts and consolidating cloud workloads'
   );
   const [xyzCopied, setXyzCopied] = useState<boolean>(false);
   const [xyzInserted, setXyzInserted] = useState<boolean>(false);

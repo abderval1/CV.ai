@@ -2992,13 +2992,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     if (targetUser && ['pro', 'executive'].includes(order.plan)) {
       const normalizedCycle = normalizeServerCycle(order.billingCycle);
       const days = getServerCycleSpec(normalizedCycle).days;
+      const nowMs = Date.now();
       targetUser.plan = order.plan;
       targetUser.creditsRemaining = 9999;
       targetUser.billingCycle = normalizedCycle;
-      targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      targetUser.subscriptionExpiresAt = new Date(nowMs + days * 86400000).toISOString();
       targetUser.stripeStatus = 'active';
       targetUser.status = 'active';
-      targetUser.updatedAt = new Date().toISOString();
+      targetUser.planUpdatedAt = nowMs;
+      targetUser.updatedAt = new Date(nowMs).toISOString();
+      syncDuplicateBackendUsers(targetUser);
     }
     persistAuthStore();
     return targetUser || null;
@@ -3119,6 +3122,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         };
 
         if (sessionUser) {
+          const nowMs = now.getTime();
           sessionUser.plan = pricing.plan;
           sessionUser.billingCycle = pricing.billingCycle;
           sessionUser.creditsRemaining = 9999;
@@ -3126,7 +3130,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           sessionUser.stripeSubscriptionId = promoSubId;
           sessionUser.stripeStatus = 'active';
           sessionUser.status = 'active';
+          sessionUser.planUpdatedAt = nowMs;
           sessionUser.updatedAt = now.toISOString();
+          syncDuplicateBackendUsers(sessionUser);
         }
         if (!authStore.ordersByUser) authStore.ordersByUser = {};
         authStore.ordersByUser[verifiedUserId] = [promoOrder, ...(authStore.ordersByUser[verifiedUserId] || [])].slice(0, 50);
@@ -3339,6 +3345,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const receiptUrl = latestInv?.hosted_invoice_url || latestInv?.invoice_pdf || undefined;
 
       if (targetUser) {
+        const nowMs = Date.now();
         targetUser.plan = plan;
         targetUser.billingCycle = billingCycle;
         targetUser.creditsRemaining = 9999;
@@ -3347,7 +3354,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         targetUser.stripeSubscriptionId = subscription.id;
         targetUser.stripeStatus = 'active';
         targetUser.status = 'active';
-        targetUser.updatedAt = new Date().toISOString();
+        targetUser.planUpdatedAt = nowMs;
+        targetUser.updatedAt = new Date(nowMs).toISOString();
+        syncDuplicateBackendUsers(targetUser);
       }
 
       const now = new Date();
@@ -3855,11 +3864,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const token = extractTokenFromRequest(req);
       const payload = token ? verifySessionToken(token) : null;
       const userRec = payload ? (authStore.users[payload.uid] || findBackendUserByEmail(payload.email)) : undefined;
-      if (
-        !payload ||
-        userRec?.status === 'suspended' ||
-        (payload.role !== 'admin' && userRec?.role !== 'admin' && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase()))
-      ) {
+      const cleanCallerEmail = String(payload?.email || userRec?.email || '').trim().toLowerCase();
+      const isCallerAdmin = Boolean(
+        payload &&
+          userRec?.status !== 'suspended' &&
+          (ADMIN_EMAILS_BACKEND.has(cleanCallerEmail) ||
+            (userRec ? userRec.role === 'admin' : payload.role === 'admin'))
+      );
+      if (!isCallerAdmin) {
         return res.status(403).json({ error: 'Acesso restrito a administradores autenticados.' });
       }
 
@@ -3941,6 +3953,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     authProviders: Array<'password' | 'google'>;
     firebaseUid?: string;
     lastTokenIat?: number;
+    planUpdatedAt?: number;
     createdAt: string;
     updatedAt: string;
     lastLoginAt?: string;
@@ -3966,6 +3979,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   interface SupportChatThreadRecord {
     id: string;
     userId: string;
+    firebaseUid?: string;
     userName: string;
     userEmail: string;
     userAvatarUrl?: string;
@@ -4044,7 +4058,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIREBASE_DATABASE_ID)}/documents/users/${encodeURIComponent(uid)}`;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3500);
+      const timer = setTimeout(() => controller.abort(), 4500);
       const resp = await fetch(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${firebaseIdToken}` },
@@ -4495,6 +4509,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     plan?: 'free' | 'pro' | 'executive';
     creditsRemaining?: number;
     subscriptionExpiresAt?: string;
+    stripeStatus?: string;
+    planUpdatedAt?: number;
   }
 
   function signSessionToken(payload: SessionTokenPayload): string {
@@ -4586,13 +4602,47 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       stripeCustomerId: record.stripeCustomerId,
       stripeSubscriptionId: record.stripeSubscriptionId,
       stripeStatus: record.stripeStatus,
-      createdAt: record.createdAt
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      planUpdatedAt: record.planUpdatedAt
     };
   }
 
-  function findBackendUserByEmail(email: string): BackendUserRecord | undefined {
+  function findBackendUsersByEmail(email: string): BackendUserRecord[] {
     const clean = email.trim().toLowerCase();
-    return Object.values(authStore.users).find((u) => u.email.toLowerCase() === clean);
+    if (!clean) return [];
+    return Object.values(authStore.users).filter((u) => u.email.toLowerCase() === clean);
+  }
+
+  function findBackendUserByEmail(email: string): BackendUserRecord | undefined {
+    const matches = findBackendUsersByEmail(email);
+    if (matches.length <= 1) return matches[0];
+    return matches.sort((a, b) => (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0))[0];
+  }
+
+  function syncDuplicateBackendUsers(source: BackendUserRecord) {
+    const cleanEmail = String(source.email || '').trim().toLowerCase();
+    for (const rec of Object.values(authStore.users)) {
+      if (!rec || rec === source) continue;
+      const sameEmail = Boolean(cleanEmail && rec.email.toLowerCase() === cleanEmail);
+      const sameFirebase =
+        (source.firebaseUid && (rec.id === source.firebaseUid || rec.firebaseUid === source.firebaseUid)) ||
+        rec.firebaseUid === source.id;
+      if (!sameEmail && !sameFirebase) continue;
+      rec.role = source.role;
+      rec.status = source.status;
+      rec.plan = source.plan;
+      rec.creditsRemaining = source.creditsRemaining;
+      rec.billingCycle = source.billingCycle;
+      rec.subscriptionExpiresAt = source.subscriptionExpiresAt;
+      rec.stripeStatus = source.stripeStatus;
+      if (source.stripeCustomerId) rec.stripeCustomerId = source.stripeCustomerId;
+      if (source.stripeSubscriptionId) rec.stripeSubscriptionId = source.stripeSubscriptionId;
+      if (source.planUpdatedAt) rec.planUpdatedAt = source.planUpdatedAt;
+      if (source.lastTokenIat) rec.lastTokenIat = source.lastTokenIat;
+      if (source.updatedAt) rec.updatedAt = source.updatedAt;
+      if (source.firebaseUid) rec.firebaseUid = source.firebaseUid;
+    }
   }
 
   function resolveAuthenticatedUserRecord(payload: SessionTokenPayload): BackendUserRecord | undefined {
@@ -4601,8 +4651,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       (payload.email ? findBackendUserByEmail(payload.email) : undefined);
     const tokenIat = typeof payload.iat === 'number' ? payload.iat : 0;
     const cleanEmail = String(payload.email || '').trim().toLowerCase();
-    const tokenIsAdmin =
-      payload.role === 'admin' || (cleanEmail ? ADMIN_EMAILS_BACKEND.has(cleanEmail) : false);
+    const isRootEmail = Boolean(cleanEmail && ADMIN_EMAILS_BACKEND.has(cleanEmail));
+    const tokenIsAdmin = payload.role === 'admin' || isRootEmail;
     const tokenValidPlan: 'free' | 'pro' | 'executive' | undefined =
       payload.plan && ['free', 'pro', 'executive'].includes(payload.plan)
         ? payload.plan
@@ -4612,7 +4662,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const existingUpdatedMs = Date.parse(existing.updatedAt || '') || 0;
       const lastKnownIat = existing.lastTokenIat || 0;
       // If this request carries a verified JWT minted more recently than this Lambda's cached record,
-      // sync role/plan/credits so multi-instance warm Lambdas never serve stale 'free' permissions.
+      // sync role/plan/credits so multi-instance warm Lambdas never serve stale permissions.
       if (tokenIat > 0 && tokenIat > Math.max(lastKnownIat, existingUpdatedMs)) {
         let changed = false;
         if (tokenValidPlan && existing.plan !== tokenValidPlan) {
@@ -4628,10 +4678,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           existing.creditsRemaining = payload.creditsRemaining;
           changed = true;
         } else if (changed && (existing.role === 'admin' || existing.plan !== 'free')) {
-          existing.creditsRemaining = Math.max(existing.creditsRemaining || 0, existing.plan === 'executive' || existing.role === 'admin' ? 9999 : 100);
+          existing.creditsRemaining = Math.max(
+            existing.creditsRemaining || 0,
+            existing.plan === 'executive' || existing.role === 'admin' ? 9999 : 100
+          );
         }
         if (typeof payload.subscriptionExpiresAt === 'string') {
           existing.subscriptionExpiresAt = payload.subscriptionExpiresAt;
+        } else if (tokenValidPlan === 'free' && payload.stripeStatus === 'canceled') {
+          existing.subscriptionExpiresAt = undefined;
+        }
+        if (
+          typeof payload.stripeStatus === 'string' &&
+          ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(payload.stripeStatus)
+        ) {
+          existing.stripeStatus = payload.stripeStatus as BackendUserRecord['stripeStatus'];
+        }
+        if (typeof payload.planUpdatedAt === 'number' && Number.isFinite(payload.planUpdatedAt)) {
+          existing.planUpdatedAt = Math.max(existing.planUpdatedAt || 0, payload.planUpdatedAt);
         }
         if (payload.name && payload.name.trim() && existing.name !== payload.name.trim()) {
           existing.name = payload.name.trim().slice(0, 120);
@@ -4639,8 +4703,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         existing.lastTokenIat = tokenIat;
         if (changed) {
           existing.updatedAt = new Date(tokenIat).toISOString();
+          syncDuplicateBackendUsers(existing);
           persistAuthStore();
         }
+      } else if (isRootEmail && existing.role !== 'admin') {
+        existing.role = 'admin';
       }
       return existing;
     }
@@ -4668,6 +4735,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       ...(typeof payload.subscriptionExpiresAt === 'string'
         ? { subscriptionExpiresAt: payload.subscriptionExpiresAt }
         : {}),
+      ...(typeof payload.stripeStatus === 'string' &&
+      ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(payload.stripeStatus)
+        ? { stripeStatus: payload.stripeStatus as BackendUserRecord['stripeStatus'] }
+        : {}),
+      ...(typeof payload.planUpdatedAt === 'number' ? { planUpdatedAt: payload.planUpdatedAt } : {}),
       authProviders: ['password'],
       lastTokenIat: tokenIat || Date.now(),
       createdAt: nowIso,
@@ -5204,6 +5276,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         plan: newUser.plan,
         creditsRemaining: newUser.creditsRemaining,
         subscriptionExpiresAt: newUser.subscriptionExpiresAt,
+        stripeStatus: newUser.stripeStatus,
+        planUpdatedAt: newUser.planUpdatedAt,
         iat: issuedAt,
         exp: issuedAt + ttlMs
       });
@@ -5337,6 +5411,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         plan: userRecord.plan,
         creditsRemaining: userRecord.creditsRemaining,
         subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+        stripeStatus: userRecord.stripeStatus,
+        planUpdatedAt: userRecord.planUpdatedAt,
         iat: issuedAt,
         exp: issuedAt + ttlMs
       });
@@ -5400,8 +5476,27 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const isVerifiedAdmin = verified.email_verified && ADMIN_EMAILS_BACKEND.has(cleanEmail);
       const nowIso = new Date().toISOString();
 
+      // Check optional existing backend session JWT (e.g. from x-session-token or cookie)
+      const sessionHeaderRaw = String(req.headers['x-session-token'] || '').trim();
+      const cookies = parseCookies(req.headers.cookie);
+      const rawSessionCandidate =
+        sessionHeaderRaw ||
+        (headerToken && headerToken !== rawFirebaseToken ? headerToken : '') ||
+        cookies['ce_session'] ||
+        '';
+      const parsedSession = rawSessionCandidate ? verifySessionToken(rawSessionCandidate) : null;
+      const validSessionPayload =
+        parsedSession &&
+        (parsedSession.uid === cleanUid ||
+          (verified.email_verified && parsedSession.email.toLowerCase() === cleanEmail))
+          ? parsedSession
+          : null;
+
       // Fetch authoritative user record from Firestore (obeying firestore.rules via user's ID token)
       const firestoreUser = await fetchFirestoreUserDoc(cleanUid, rawFirebaseToken);
+      const fsUpdatedMs = firestoreUser
+        ? Date.parse(String(firestoreUser.updatedAt || firestoreUser.createdAt || '')) || 0
+        : 0;
 
       // Prevent account takeover via unverified email: only lookup by email if email_verified is true
       let record =
@@ -5425,6 +5520,30 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           ? firestoreUser.creditsRemaining
           : undefined;
 
+      // Determine whether a verified backend paid checkout / self-downgrade is newer than Firestore
+      const recordPlanMs = record?.planUpdatedAt || 0;
+      const sessionPlanMs = validSessionPayload?.planUpdatedAt || 0;
+      const backendPlanMs = Math.max(recordPlanMs, sessionPlanMs);
+      const useSessionPlan = Boolean(
+        validSessionPayload && sessionPlanMs > recordPlanMs && validSessionPayload.plan
+      );
+      const candidatePlan = useSessionPlan ? validSessionPayload?.plan : record?.plan;
+      const candidateStripeStatus = useSessionPlan
+        ? validSessionPayload?.stripeStatus
+        : record?.stripeStatus;
+      const candidateCredits = useSessionPlan
+        ? validSessionPayload?.creditsRemaining
+        : record?.creditsRemaining;
+      const candidateExpires = useSessionPlan
+        ? validSessionPayload?.subscriptionExpiresAt
+        : record?.subscriptionExpiresAt;
+      const backendPlanIsNewer = Boolean(
+        backendPlanMs > fsUpdatedMs &&
+          candidatePlan &&
+          ((candidatePlan !== 'free' && candidateStripeStatus === 'active') ||
+            (candidatePlan === 'free' && candidateStripeStatus === 'canceled'))
+      );
+
       if (!record) {
         const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
         if (gov.allowNewRegistrations === false && !isVerifiedAdmin && !firestoreUser) {
@@ -5436,9 +5555,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         const resolvedRole: 'admin' | 'user' = isVerifiedAdmin ? 'admin' : fsRole || 'user';
         const resolvedPlan: 'free' | 'pro' | 'executive' = isVerifiedAdmin
           ? 'executive'
+          : backendPlanIsNewer && candidatePlan
+          ? candidatePlan
           : fsPlan || 'free';
         const resolvedCredits =
-          fsCredits !== undefined
+          backendPlanIsNewer && typeof candidateCredits === 'number'
+            ? candidateCredits
+            : fsCredits !== undefined
             ? fsCredits
             : isVerifiedAdmin || resolvedPlan === 'executive'
             ? 9999
@@ -5475,15 +5598,20 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
               : isVerifiedAdmin
               ? 'yearly'
               : 'monthly',
-          subscriptionExpiresAt:
-            typeof firestoreUser?.subscriptionExpiresAt === 'string' ? firestoreUser.subscriptionExpiresAt : undefined,
+          subscriptionExpiresAt: backendPlanIsNewer
+            ? candidateExpires
+            : typeof firestoreUser?.subscriptionExpiresAt === 'string'
+            ? firestoreUser.subscriptionExpiresAt
+            : undefined,
           stripeCustomerId: typeof firestoreUser?.stripeCustomerId === 'string' ? firestoreUser.stripeCustomerId : undefined,
           stripeSubscriptionId: typeof firestoreUser?.stripeSubscriptionId === 'string' ? firestoreUser.stripeSubscriptionId : undefined,
-          stripeStatus:
-            typeof firestoreUser?.stripeStatus === 'string' &&
-            ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
-              ? (firestoreUser.stripeStatus as 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete')
-              : undefined,
+          stripeStatus: backendPlanIsNewer
+            ? (candidateStripeStatus as BackendUserRecord['stripeStatus'])
+            : typeof firestoreUser?.stripeStatus === 'string' &&
+              ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
+            ? (firestoreUser.stripeStatus as BackendUserRecord['stripeStatus'])
+            : undefined,
+          ...(backendPlanMs > 0 ? { planUpdatedAt: backendPlanMs } : {}),
           notes: typeof firestoreUser?.notes === 'string' ? firestoreUser.notes : undefined,
           authProviders: [
             verified.firebase?.sign_in_provider === 'password' || provider === 'password' ? 'password' : 'google'
@@ -5507,7 +5635,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           metadata: { provider: record.authProviders[0] || 'google' }
         });
       } else {
-        if (fsStatus === 'suspended' || record.status === 'suspended') {
+        if (fsStatus === 'suspended' || (!firestoreUser && record.status === 'suspended')) {
           appendServerAuditLog(req, {
             actorUserId: record.id,
             actorEmail: record.email,
@@ -5527,12 +5655,37 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         }
         record.firebaseUid = cleanUid;
         if (firestoreUser) {
-          if (fsPlan) record.plan = fsPlan;
-          if (fsRole) record.role = fsRole;
+          // Firestore is always authoritative for role & status (unless root allowlist)
+          record.role = isVerifiedAdmin ? 'admin' : fsRole || 'user';
           if (fsStatus) record.status = fsStatus;
-          if (fsCredits !== undefined) record.creditsRemaining = fsCredits;
-          if (typeof firestoreUser.subscriptionExpiresAt === 'string') {
-            record.subscriptionExpiresAt = firestoreUser.subscriptionExpiresAt;
+
+          if (backendPlanIsNewer && candidatePlan) {
+            record.plan = candidatePlan;
+            if (typeof candidateCredits === 'number' && Number.isFinite(candidateCredits)) {
+              record.creditsRemaining = candidateCredits;
+            }
+            record.subscriptionExpiresAt = candidateExpires;
+            record.stripeStatus = candidateStripeStatus as BackendUserRecord['stripeStatus'];
+            record.planUpdatedAt = backendPlanMs;
+          } else {
+            if (fsPlan) record.plan = fsPlan;
+            if (fsCredits !== undefined) record.creditsRemaining = fsCredits;
+            if (typeof firestoreUser.subscriptionExpiresAt === 'string') {
+              record.subscriptionExpiresAt = firestoreUser.subscriptionExpiresAt;
+            } else if (firestoreUser.subscriptionExpiresAt === null || fsPlan === 'free') {
+              record.subscriptionExpiresAt = undefined;
+            }
+            if (
+              typeof firestoreUser.stripeStatus === 'string' &&
+              ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
+            ) {
+              record.stripeStatus = firestoreUser.stripeStatus as BackendUserRecord['stripeStatus'];
+            } else if (firestoreUser.stripeStatus === null || fsPlan === 'free') {
+              record.stripeStatus = undefined;
+            }
+            if (fsUpdatedMs > (record.planUpdatedAt || 0)) {
+              record.planUpdatedAt = fsUpdatedMs;
+            }
           }
           if (
             firestoreUser.billingCycle &&
@@ -5541,15 +5694,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             record.billingCycle = firestoreUser.billingCycle;
           }
           if (typeof firestoreUser.notes === 'string') record.notes = firestoreUser.notes;
-          if (
-            typeof firestoreUser.stripeStatus === 'string' &&
-            ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
-          ) {
-            record.stripeStatus = firestoreUser.stripeStatus as 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
-          }
           if (typeof firestoreUser.name === 'string' && firestoreUser.name.trim()) {
             record.name = firestoreUser.name.trim().slice(0, 120);
           }
+        } else if (backendPlanIsNewer && candidatePlan) {
+          record.plan = candidatePlan;
+          if (typeof candidateCredits === 'number' && Number.isFinite(candidateCredits)) {
+            record.creditsRemaining = candidateCredits;
+          }
+          record.subscriptionExpiresAt = candidateExpires;
+          record.stripeStatus = candidateStripeStatus as BackendUserRecord['stripeStatus'];
+          record.planUpdatedAt = backendPlanMs;
         }
         if (name && (!record.name || record.name === 'Utilizador')) {
           record.name = String(name).trim().slice(0, 120);
@@ -5590,6 +5745,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const issuedAt = Date.now();
       record.lastTokenIat = issuedAt;
+      syncDuplicateBackendUsers(record);
       persistAuthStore();
 
       const token = signSessionToken({
@@ -5600,6 +5756,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         plan: record.plan,
         creditsRemaining: record.creditsRemaining,
         subscriptionExpiresAt: record.subscriptionExpiresAt,
+        stripeStatus: record.stripeStatus,
+        planUpdatedAt: record.planUpdatedAt,
         iat: issuedAt,
         exp: issuedAt + ttlMs
       });
@@ -5638,28 +5796,61 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (fbHeaderRaw && fbHeaderRaw.split('.').length === 3) {
         const verified = await verifyFirebaseIdToken(fbHeaderRaw);
         if (verified && (verified.sub === userRecord.id || verified.sub === userRecord.firebaseUid || (verified.email_verified && verified.email === userRecord.email.toLowerCase()))) {
+          const isVerifiedAdmin = verified.email_verified && ADMIN_EMAILS_BACKEND.has(verified.email);
           const fsUser = await fetchFirestoreUserDoc(verified.sub, fbHeaderRaw);
           if (fsUser) {
             if (fsUser.status === 'suspended') {
               userRecord.status = 'suspended';
+              syncDuplicateBackendUsers(userRecord);
               persistAuthStore();
               return res.json({ authenticated: false, user: null });
             }
-            const prevSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}`;
-            if (fsUser.plan && ['free', 'pro', 'executive'].includes(fsUser.plan)) userRecord.plan = fsUser.plan;
-            if (fsUser.role && ['admin', 'user'].includes(fsUser.role)) userRecord.role = fsUser.role;
-            if (fsUser.status && ['active', 'suspended'].includes(fsUser.status)) userRecord.status = fsUser.status;
-            if (typeof fsUser.creditsRemaining === 'number' && Number.isFinite(fsUser.creditsRemaining)) {
-              userRecord.creditsRemaining = fsUser.creditsRemaining;
+            const fsUpdatedMs = Date.parse(String(fsUser.updatedAt || fsUser.createdAt || '')) || 0;
+            const prevSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}|${userRecord.stripeStatus || ''}`;
+
+            // Role & status always follow Firestore (+ root allowlist)
+            userRecord.role = isVerifiedAdmin ? 'admin' : fsUser.role === 'admin' ? 'admin' : 'user';
+            if (fsUser.status && ['active', 'suspended'].includes(fsUser.status)) {
+              userRecord.status = fsUser.status;
             }
-            if (typeof fsUser.subscriptionExpiresAt === 'string') {
-              userRecord.subscriptionExpiresAt = fsUser.subscriptionExpiresAt;
+
+            // Plan/credits follow Firestore unless backend has a strictly newer verified checkout/cancellation
+            const backendPlanIsNewer = Boolean(
+              (userRecord.planUpdatedAt || 0) > fsUpdatedMs &&
+                ((userRecord.plan !== 'free' && userRecord.stripeStatus === 'active') ||
+                  (userRecord.plan === 'free' && userRecord.stripeStatus === 'canceled'))
+            );
+            if (!backendPlanIsNewer) {
+              if (fsUser.plan && ['free', 'pro', 'executive'].includes(fsUser.plan)) {
+                userRecord.plan = isVerifiedAdmin && fsUser.plan === 'free' ? 'executive' : fsUser.plan;
+              }
+              if (typeof fsUser.creditsRemaining === 'number' && Number.isFinite(fsUser.creditsRemaining)) {
+                userRecord.creditsRemaining = fsUser.creditsRemaining;
+              }
+              if (typeof fsUser.subscriptionExpiresAt === 'string') {
+                userRecord.subscriptionExpiresAt = fsUser.subscriptionExpiresAt;
+              } else if (fsUser.subscriptionExpiresAt === null || userRecord.plan === 'free') {
+                userRecord.subscriptionExpiresAt = undefined;
+              }
+              if (
+                typeof fsUser.stripeStatus === 'string' &&
+                ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(fsUser.stripeStatus)
+              ) {
+                userRecord.stripeStatus = fsUser.stripeStatus as BackendUserRecord['stripeStatus'];
+              } else if (fsUser.stripeStatus === null || userRecord.plan === 'free') {
+                userRecord.stripeStatus = undefined;
+              }
+              if (fsUpdatedMs > (userRecord.planUpdatedAt || 0)) {
+                userRecord.planUpdatedAt = fsUpdatedMs;
+              }
             }
-            const nextSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}`;
+
+            const nextSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}|${userRecord.stripeStatus || ''}`;
             if (nextSignature !== prevSignature) {
               const issuedAt = Date.now();
               userRecord.lastTokenIat = issuedAt;
               userRecord.updatedAt = new Date(issuedAt).toISOString();
+              syncDuplicateBackendUsers(userRecord);
               persistAuthStore();
               refreshedToken = signSessionToken({
                 uid: userRecord.id,
@@ -5669,6 +5860,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
                 plan: userRecord.plan,
                 creditsRemaining: userRecord.creditsRemaining,
                 subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+                stripeStatus: userRecord.stripeStatus,
+                planUpdatedAt: userRecord.planUpdatedAt,
                 iat: issuedAt,
                 exp: payload.exp > issuedAt ? payload.exp : issuedAt + 7 * 24 * 60 * 60 * 1000
               });
@@ -6060,19 +6253,57 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       // Self-downgrade or cancellation is always permitted for the account owner
       if (stripeStatus === 'canceled' && !plan) {
+        const issuedAt = Date.now();
         userRecord.stripeStatus = 'canceled';
-        userRecord.updatedAt = new Date().toISOString();
+        userRecord.planUpdatedAt = issuedAt;
+        userRecord.lastTokenIat = issuedAt;
+        userRecord.updatedAt = new Date(issuedAt).toISOString();
+        syncDuplicateBackendUsers(userRecord);
         persistAuthStore();
-        return res.json({ success: true, user: sanitizeUser(userRecord) });
+        const refreshedToken = signSessionToken({
+          uid: userRecord.id,
+          email: userRecord.email,
+          role: userRecord.role,
+          name: userRecord.name,
+          plan: userRecord.plan,
+          creditsRemaining: userRecord.creditsRemaining,
+          subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+          stripeStatus: userRecord.stripeStatus,
+          planUpdatedAt: userRecord.planUpdatedAt,
+          iat: issuedAt,
+          exp: payload.exp > issuedAt ? payload.exp : issuedAt + 30 * 24 * 60 * 60 * 1000
+        });
+        setSessionCookie(req, res, refreshedToken, true);
+        return res.json({ success: true, user: sanitizeUser(userRecord), token: refreshedToken });
       }
 
       if (plan === 'free') {
+        const issuedAt = Date.now();
+        const freeDefault = getFreePlanDefaultCredits();
         userRecord.plan = 'free';
-        userRecord.creditsRemaining = Math.min(userRecord.creditsRemaining ?? 5, 5);
+        userRecord.creditsRemaining = Math.min(userRecord.creditsRemaining ?? freeDefault, freeDefault);
         userRecord.stripeStatus = 'canceled';
-        userRecord.updatedAt = new Date().toISOString();
+        userRecord.subscriptionExpiresAt = undefined;
+        userRecord.planUpdatedAt = issuedAt;
+        userRecord.lastTokenIat = issuedAt;
+        userRecord.updatedAt = new Date(issuedAt).toISOString();
+        syncDuplicateBackendUsers(userRecord);
         persistAuthStore();
-        return res.json({ success: true, user: sanitizeUser(userRecord) });
+        const refreshedToken = signSessionToken({
+          uid: userRecord.id,
+          email: userRecord.email,
+          role: userRecord.role,
+          name: userRecord.name,
+          plan: userRecord.plan,
+          creditsRemaining: userRecord.creditsRemaining,
+          subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+          stripeStatus: userRecord.stripeStatus,
+          planUpdatedAt: userRecord.planUpdatedAt,
+          iat: issuedAt,
+          exp: payload.exp > issuedAt ? payload.exp : issuedAt + 30 * 24 * 60 * 60 * 1000
+        });
+        setSessionCookie(req, res, refreshedToken, true);
+        return res.json({ success: true, user: sanitizeUser(userRecord), token: refreshedToken });
       }
 
       // Paid upgrades MUST be verified server-side (Admin OR verified Promo/Order/Stripe Subscription)
@@ -6156,8 +6387,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const issuedAt = Date.now();
+      userRecord.planUpdatedAt = issuedAt;
       userRecord.lastTokenIat = issuedAt;
       userRecord.updatedAt = new Date(issuedAt).toISOString();
+      syncDuplicateBackendUsers(userRecord);
       persistAuthStore();
       const refreshedToken = signSessionToken({
         uid: userRecord.id,
@@ -6167,6 +6400,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         plan: userRecord.plan,
         creditsRemaining: userRecord.creditsRemaining,
         subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+        stripeStatus: userRecord.stripeStatus,
+        planUpdatedAt: userRecord.planUpdatedAt,
         iat: issuedAt,
         exp: payload.exp > issuedAt ? payload.exp : issuedAt + 30 * 24 * 60 * 60 * 1000
       });
@@ -6796,10 +7031,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       res.status(403).json({ error: 'Conta administrativa suspensa.' });
       return null;
     }
+    const cleanEmail = String(payload.email || userRec?.email || '').trim().toLowerCase();
+    const isRootAdmin = Boolean(cleanEmail && ADMIN_EMAILS_BACKEND.has(cleanEmail));
     const isAdm =
-      payload.role === 'admin' ||
-      userRec?.role === 'admin' ||
-      ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
+      isRootAdmin ||
+      (userRec ? userRec.role === 'admin' : payload.role === 'admin');
     if (!isAdm) {
       appendServerAuditLog(req, {
         actorUserId: payload.uid,
@@ -7187,22 +7423,38 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     if (!adminPayload) return;
     try {
       const userId = String(req.params.id || '');
-      let record: BackendUserRecord | undefined =
-        authStore.users[userId] ||
-        Object.values(authStore.users).find((u) => u.id === userId || u.firebaseUid === userId);
       const updates = req.body || {};
-      if (!record && updates.email) {
-        record = findBackendUserByEmail(String(updates.email));
+      const cleanEmailFromUpdates = typeof updates.email === 'string' ? updates.email.trim().toLowerCase() : '';
+
+      const directRecord =
+        authStore.users[userId] ||
+        Object.values(authStore.users).find((u) => u.id === userId || u.firebaseUid === userId) ||
+        (cleanEmailFromUpdates ? findBackendUserByEmail(cleanEmailFromUpdates) : undefined);
+
+      const resolvedEmail = String(cleanEmailFromUpdates || directRecord?.email || '').trim().toLowerCase();
+      const matchedSet = new Set<BackendUserRecord>();
+      if (directRecord) matchedSet.add(directRecord);
+      for (const u of Object.values(authStore.users)) {
+        if (!u) continue;
+        if (
+          u.id === userId ||
+          u.firebaseUid === userId ||
+          (resolvedEmail && u.email.toLowerCase() === resolvedEmail)
+        ) {
+          matchedSet.add(u);
+        }
       }
-      if (!record) {
-        const cleanEmail = typeof updates.email === 'string' ? updates.email.trim().toLowerCase() : '';
-        if (cleanEmail || isVercelEnv) {
-          const nowIso = new Date().toISOString();
-          record = {
+
+      if (matchedSet.size === 0) {
+        if (resolvedEmail || isVercelEnv) {
+          const nowMs = Date.now();
+          const nowIso = new Date(nowMs).toISOString();
+          const isRootAdmin = Boolean(resolvedEmail && ADMIN_EMAILS_BACKEND.has(resolvedEmail));
+          const created: BackendUserRecord = {
             id: userId,
-            name: String(updates.name || cleanEmail.split('@')[0] || 'Cliente').trim().slice(0, 120),
-            email: cleanEmail,
-            role: updates.role === 'admin' ? 'admin' : 'user',
+            name: String(updates.name || resolvedEmail.split('@')[0] || 'Cliente').trim().slice(0, 120),
+            email: resolvedEmail,
+            role: isRootAdmin || updates.role === 'admin' ? 'admin' : 'user',
             status: updates.status === 'suspended' ? 'suspended' : 'active',
             plan: ['free', 'pro', 'executive'].includes(updates.plan) ? updates.plan : 'free',
             phone: typeof updates.phone === 'string' ? updates.phone.trim() : '',
@@ -7217,37 +7469,76 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             creditsUsed: 0,
             totalCvGenerated: 0,
             billingCycle: 'monthly',
+            ...(typeof updates.subscriptionExpiresAt === 'string'
+              ? { subscriptionExpiresAt: updates.subscriptionExpiresAt }
+              : {}),
+            ...(typeof updates.stripeStatus === 'string' &&
+            ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(updates.stripeStatus)
+              ? { stripeStatus: updates.stripeStatus as BackendUserRecord['stripeStatus'] }
+              : {}),
             authProviders: ['google'],
             firebaseUid: userId,
+            planUpdatedAt: nowMs,
+            lastTokenIat: nowMs,
             createdAt: nowIso,
             updatedAt: nowIso,
             notes: typeof updates.notes === 'string' ? updates.notes : ''
           };
-          authStore.users[userId] = record;
+          authStore.users[userId] = created;
+          matchedSet.add(created);
         } else {
           return res.status(404).json({ error: 'Utilizador não encontrado no servidor.' });
         }
       }
-      const prevPlan = record.plan;
-      const prevRole = record.role;
-      const prevStatus = record.status;
-      if (typeof updates.name === 'string') record.name = updates.name.trim();
-      if (typeof updates.phone === 'string') record.phone = updates.phone.trim();
-      if (typeof updates.notes === 'string') record.notes = updates.notes;
-      if (updates.plan && ['free', 'pro', 'executive'].includes(updates.plan)) {
-        record.plan = updates.plan;
-        if (typeof updates.creditsRemaining !== 'number') {
-          if (updates.plan === 'executive') record.creditsRemaining = 9999;
-          else if (updates.plan === 'pro') record.creditsRemaining = Math.max(record.creditsRemaining || 0, 100);
-          else if (prevPlan !== 'free') record.creditsRemaining = getFreePlanDefaultCredits();
+
+      const records = Array.from(matchedSet);
+      const primaryRecord = records.find((r) => r.id === userId) || records[0];
+      const prevPlan = primaryRecord.plan;
+      const prevRole = primaryRecord.role;
+      const prevStatus = primaryRecord.status;
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const isRootEmail = Boolean(resolvedEmail && ADMIN_EMAILS_BACKEND.has(resolvedEmail));
+
+      for (const rec of records) {
+        const recPrevPlan = rec.plan;
+        if (typeof updates.name === 'string') rec.name = updates.name.trim();
+        if (typeof updates.phone === 'string') rec.phone = updates.phone.trim();
+        if (typeof updates.notes === 'string') rec.notes = updates.notes;
+        if (updates.plan && ['free', 'pro', 'executive'].includes(updates.plan)) {
+          rec.plan = updates.plan;
+          if (typeof updates.creditsRemaining !== 'number') {
+            if (updates.plan === 'executive') rec.creditsRemaining = 9999;
+            else if (updates.plan === 'pro') rec.creditsRemaining = Math.max(rec.creditsRemaining || 0, 100);
+            else if (recPrevPlan !== 'free') rec.creditsRemaining = getFreePlanDefaultCredits();
+          }
         }
+        if (updates.role && ['admin', 'user'].includes(updates.role)) {
+          rec.role = isRootEmail ? 'admin' : updates.role;
+        } else if (isRootEmail) {
+          rec.role = 'admin';
+        }
+        if (updates.status && ['active', 'suspended'].includes(updates.status)) rec.status = updates.status;
+        if (typeof updates.creditsRemaining === 'number') rec.creditsRemaining = updates.creditsRemaining;
+        if (typeof updates.creditsUsed === 'number') rec.creditsUsed = updates.creditsUsed;
+        if (updates.subscriptionExpiresAt === null) {
+          rec.subscriptionExpiresAt = undefined;
+        } else if (typeof updates.subscriptionExpiresAt === 'string') {
+          rec.subscriptionExpiresAt = updates.subscriptionExpiresAt;
+        }
+        if (updates.stripeStatus === null) {
+          rec.stripeStatus = undefined;
+        } else if (
+          typeof updates.stripeStatus === 'string' &&
+          ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(updates.stripeStatus)
+        ) {
+          rec.stripeStatus = updates.stripeStatus as BackendUserRecord['stripeStatus'];
+        }
+        rec.planUpdatedAt = nowMs;
+        rec.lastTokenIat = nowMs;
+        rec.updatedAt = nowIso;
       }
-      if (updates.role && ['admin', 'user'].includes(updates.role)) record.role = updates.role;
-      if (updates.status && ['active', 'suspended'].includes(updates.status)) record.status = updates.status;
-      if (typeof updates.creditsRemaining === 'number') record.creditsRemaining = updates.creditsRemaining;
-      if (typeof updates.creditsUsed === 'number') record.creditsUsed = updates.creditsUsed;
-      if (typeof updates.subscriptionExpiresAt === 'string') record.subscriptionExpiresAt = updates.subscriptionExpiresAt;
-      record.updatedAt = new Date().toISOString();
+
       persistAuthStore();
       appendServerAuditLog(req, {
         actorUserId: adminPayload.uid,
@@ -7255,13 +7546,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         actorRole: 'admin',
         action: 'admin_user_modified',
         category: 'admin',
-        severity: prevRole !== record.role || prevStatus !== record.status ? 'warning' : 'info',
+        severity: prevRole !== primaryRecord.role || prevStatus !== primaryRecord.status ? 'warning' : 'info',
         status: 'success',
-        targetResource: `users/${record.id}`,
-        details: `Administrador atualizou cliente ${record.email} (plano ${prevPlan}→${record.plan}, papel ${prevRole}→${record.role}, estado ${prevStatus}→${record.status}).`,
-        metadata: { targetEmail: record.email, plan: record.plan, role: record.role, status: record.status }
+        targetResource: `users/${primaryRecord.id}`,
+        details: `Administrador atualizou cliente ${primaryRecord.email} (plano ${prevPlan}→${primaryRecord.plan}, papel ${prevRole}→${primaryRecord.role}, estado ${prevStatus}→${primaryRecord.status}).`,
+        metadata: {
+          targetEmail: primaryRecord.email,
+          plan: primaryRecord.plan,
+          role: primaryRecord.role,
+          status: primaryRecord.status
+        }
       });
-      return res.json({ success: true, user: sanitizeUser(record) });
+      return res.json({ success: true, user: sanitizeUser(primaryRecord) });
     } catch (err: any) {
       return res.status(500).json({ error: err.message || 'Erro ao atualizar utilizador.' });
     }
@@ -7353,13 +7649,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     const normalizedCycle = normalizeServerCycle(order.billingCycle);
     if (targetUser && order.status === 'paid' && ['pro', 'executive'].includes(order.plan)) {
       const days = getServerCycleSpec(normalizedCycle).days;
+      const nowMs = Date.now();
       targetUser.plan = order.plan;
       targetUser.creditsRemaining = 9999;
       targetUser.billingCycle = normalizedCycle;
-      targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+      targetUser.subscriptionExpiresAt = new Date(nowMs + days * 86400000).toISOString();
       targetUser.stripeStatus = 'active';
       targetUser.status = 'active';
-      targetUser.updatedAt = new Date().toISOString();
+      targetUser.planUpdatedAt = nowMs;
+      targetUser.updatedAt = new Date(nowMs).toISOString();
+      syncDuplicateBackendUsers(targetUser);
     }
     persistAuthStore();
     appendServerAuditLog(req, {
@@ -7404,13 +7703,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (targetUser) {
         const normalizedCycle = normalizeServerCycle(matchedOrder.billingCycle);
         const days = getServerCycleSpec(normalizedCycle).days;
+        const nowMs = Date.now();
         targetUser.plan = matchedOrder.plan;
         targetUser.creditsRemaining = 9999;
         targetUser.billingCycle = normalizedCycle;
-        targetUser.subscriptionExpiresAt = new Date(Date.now() + days * 86400000).toISOString();
+        targetUser.subscriptionExpiresAt = new Date(nowMs + days * 86400000).toISOString();
         targetUser.stripeStatus = 'active';
         targetUser.status = 'active';
-        targetUser.updatedAt = new Date().toISOString();
+        targetUser.planUpdatedAt = nowMs;
+        targetUser.updatedAt = new Date(nowMs).toISOString();
+        syncDuplicateBackendUsers(targetUser);
       }
     }
 
@@ -7558,12 +7860,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   const WS_OPEN_STATE = 1;
   const supportWsClients = new Set<SupportWsClient>();
 
-  function broadcastSupportChatEvent(targetUserId: string, payloadObj: Record<string, any>) {
+  function broadcastSupportChatEvent(
+    targetUserId: string,
+    payloadObj: Record<string, any>,
+    targetEmail?: string
+  ) {
     const serialized = JSON.stringify(payloadObj);
+    const cleanTargetEmail = String(targetEmail || '').trim().toLowerCase();
     supportWsClients.forEach((client) => {
       try {
         if (client.ws.readyState !== WS_OPEN_STATE) return;
-        if (client.isAdmin || client.uid === targetUserId) {
+        const emailMatch = Boolean(cleanTargetEmail && client.email && client.email.toLowerCase() === cleanTargetEmail);
+        if (client.isAdmin || client.uid === targetUserId || emailMatch) {
           client.ws.send(serialized);
         }
       } catch {
@@ -7647,23 +7955,31 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     if (!authStore.supportChats) authStore.supportChats = {};
     const existing =
       authStore.supportChats[userRec.id] ||
+      (userRec.firebaseUid ? authStore.supportChats[userRec.firebaseUid] : undefined) ||
       Object.values(authStore.supportChats).find(
         (t) =>
           t.userId === userRec.id ||
+          (userRec.firebaseUid && (t.id === userRec.firebaseUid || t.userId === userRec.firebaseUid || t.firebaseUid === userRec.firebaseUid)) ||
           (userRec.email && t.userEmail.toLowerCase() === userRec.email.toLowerCase())
       );
     if (existing) {
       // Keep user metadata fresh
       existing.userName = userRec.name || existing.userName;
       existing.userEmail = userRec.email || existing.userEmail;
+      if (userRec.firebaseUid) existing.firebaseUid = userRec.firebaseUid;
       if (userRec.avatarUrl) existing.userAvatarUrl = userRec.avatarUrl;
       existing.userPlan = userRec.plan;
       return existing;
     }
     const nowIso = new Date().toISOString();
+    const canonicalId =
+      userRec.firebaseUid && /^[a-zA-Z0-9_\-]{1,128}$/.test(userRec.firebaseUid)
+        ? userRec.firebaseUid
+        : userRec.id;
     const starter: SupportChatThreadRecord = {
-      id: userRec.id,
-      userId: userRec.id,
+      id: canonicalId,
+      userId: canonicalId,
+      ...(userRec.firebaseUid ? { firebaseUid: userRec.firebaseUid } : {}),
       userName: userRec.name || userRec.email.split('@')[0] || 'Utilizador',
       userEmail: userRec.email,
       ...(userRec.avatarUrl ? { userAvatarUrl: userRec.avatarUrl } : {}),
@@ -7681,9 +7997,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   }
 
   function sanitizeSupportThreadSummary(t: SupportChatThreadRecord, includeMessages = false) {
+    const resolvedFbUid =
+      t.firebaseUid ||
+      authStore.users[t.userId]?.firebaseUid ||
+      (t.userEmail ? findBackendUserByEmail(t.userEmail)?.firebaseUid : undefined);
     return {
       id: t.id,
       userId: t.userId,
+      ...(resolvedFbUid ? { firebaseUid: resolvedFbUid } : {}),
       userName: t.userName,
       userEmail: t.userEmail,
       userAvatarUrl: t.userAvatarUrl,
@@ -7766,12 +8087,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       persistAuthStore();
 
       const fullThread = sanitizeSupportThreadSummary(thread, true);
-      broadcastSupportChatEvent(thread.userId, {
-        type: 'support_chat_update',
-        action: 'message_created',
-        thread: fullThread,
-        message: msg
-      });
+      broadcastSupportChatEvent(
+        thread.userId,
+        {
+          type: 'support_chat_update',
+          action: 'message_created',
+          thread: fullThread,
+          message: msg
+        },
+        thread.userEmail
+      );
 
       return res.status(201).json({ success: true, thread: fullThread, message: msg });
     } catch {
@@ -7796,11 +8121,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         authStore.supportChats[thread.id].unreadByUser = 0;
         authStore.supportChats[thread.id].updatedAt = new Date().toISOString();
         persistAuthStore();
-        broadcastSupportChatEvent(thread.userId, {
-          type: 'support_chat_update',
-          action: 'read_by_user',
-          thread: sanitizeSupportThreadSummary(authStore.supportChats[thread.id], true)
-        });
+        broadcastSupportChatEvent(
+          thread.userId,
+          {
+            type: 'support_chat_update',
+            action: 'read_by_user',
+            thread: sanitizeSupportThreadSummary(authStore.supportChats[thread.id], true)
+          },
+          thread.userEmail
+        );
       }
       return res.json({ success: true });
     } catch {
@@ -7827,18 +8156,32 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     try {
       const threadId = String(req.params.threadId || '').trim();
       if (!authStore.supportChats) authStore.supportChats = {};
-      let thread = authStore.supportChats[threadId];
+      const meta = req.body?.userMeta;
+      const metaEmail = typeof meta?.userEmail === 'string' ? meta.userEmail.trim().toLowerCase() : '';
+      let thread =
+        authStore.supportChats[threadId] ||
+        Object.values(authStore.supportChats).find(
+          (t) =>
+            t.id === threadId ||
+            t.userId === threadId ||
+            t.firebaseUid === threadId ||
+            (metaEmail && t.userEmail.toLowerCase() === metaEmail)
+        );
 
-      // Allow admin to initiate or reply to a registered user even if threadId is user.id or cold serverless Lambda
+      // Allow admin to initiate or reply to a registered user even if threadId is user.id or cold container/Firestore thread
       if (!thread) {
         const targetUser =
           authStore.users[threadId] ||
-          Object.values(authStore.users).find((u) => u.id === threadId || u.firebaseUid === threadId);
+          Object.values(authStore.users).find(
+            (u) =>
+              u.id === threadId ||
+              u.firebaseUid === threadId ||
+              (metaEmail && u.email.toLowerCase() === metaEmail)
+          );
         if (targetUser) {
           thread = getOrBuildThreadForUser(targetUser);
           authStore.supportChats[thread.id] = thread;
-        } else if (isVercelEnv && req.body?.userMeta && (req.body.userMeta.userEmail || req.body.userMeta.userName)) {
-          const meta = req.body.userMeta;
+        } else if (meta && (meta.userEmail || meta.userName || meta.userId)) {
           const nowInit = new Date().toISOString();
           thread = {
             id: threadId,
@@ -7912,12 +8255,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       persistAuthStore();
 
       const fullThread = sanitizeSupportThreadSummary(thread, true);
-      broadcastSupportChatEvent(thread.userId, {
-        type: 'support_chat_update',
-        action: 'admin_replied',
-        thread: fullThread,
-        message: msg
-      });
+      broadcastSupportChatEvent(
+        thread.userId,
+        {
+          type: 'support_chat_update',
+          action: 'admin_replied',
+          thread: fullThread,
+          message: msg
+        },
+        thread.userEmail
+      );
 
       return res.status(201).json({ success: true, thread: fullThread, message: msg });
     } catch {
@@ -7929,16 +8276,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   app.post('/api/admin/support-chat/:threadId/read', (req, res) => {
     if (!requireAdminSession(req, res)) return;
     const threadId = String(req.params.threadId || '').trim();
-    const thread = authStore.supportChats?.[threadId];
+    const thread =
+      authStore.supportChats?.[threadId] ||
+      Object.values(authStore.supportChats || {}).find(
+        (t) => t.id === threadId || t.userId === threadId || t.firebaseUid === threadId
+      );
     if (thread) {
       thread.unreadByAdmin = 0;
       thread.updatedAt = new Date().toISOString();
       persistAuthStore();
-      broadcastSupportChatEvent(thread.userId, {
-        type: 'support_chat_update',
-        action: 'read_by_admin',
-        thread: sanitizeSupportThreadSummary(thread, true)
-      });
+      broadcastSupportChatEvent(
+        thread.userId,
+        {
+          type: 'support_chat_update',
+          action: 'read_by_admin',
+          thread: sanitizeSupportThreadSummary(thread, true)
+        },
+        thread.userEmail
+      );
     }
     return res.json({ success: true });
   });
@@ -7947,7 +8302,38 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   app.patch('/api/admin/support-chat/:threadId', (req, res) => {
     if (!requireAdminSession(req, res)) return;
     const threadId = String(req.params.threadId || '').trim();
-    const thread = authStore.supportChats?.[threadId];
+    if (!authStore.supportChats) authStore.supportChats = {};
+    const meta = req.body?.userMeta;
+    const metaEmail = typeof meta?.userEmail === 'string' ? meta.userEmail.trim().toLowerCase() : '';
+    let thread =
+      authStore.supportChats[threadId] ||
+      Object.values(authStore.supportChats).find(
+        (t) =>
+          t.id === threadId ||
+          t.userId === threadId ||
+          t.firebaseUid === threadId ||
+          (metaEmail && t.userEmail.toLowerCase() === metaEmail)
+      );
+    if (!thread && meta && (meta.userEmail || meta.userName || meta.userId)) {
+      const nowInit = new Date().toISOString();
+      thread = {
+        id: threadId,
+        userId: String(meta.userId || threadId).slice(0, 128),
+        userName: String(meta.userName || meta.userEmail || 'Utilizador').slice(0, 120),
+        userEmail: String(meta.userEmail || '').slice(0, 180),
+        userAvatarUrl: typeof meta.userAvatarUrl === 'string' ? meta.userAvatarUrl.slice(0, 500) : undefined,
+        userPlan: ['free', 'pro', 'executive'].includes(meta.userPlan) ? meta.userPlan : 'free',
+        status: 'open',
+        lastMessageText: '',
+        lastMessageAt: nowInit,
+        unreadByUser: 0,
+        unreadByAdmin: 0,
+        createdAt: nowInit,
+        updatedAt: nowInit,
+        messages: []
+      };
+      authStore.supportChats[thread.id] = thread;
+    }
     if (!thread) {
       return res.status(404).json({ error: 'Conversa não encontrada.' });
     }
@@ -7957,11 +8343,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     thread.updatedAt = new Date().toISOString();
     persistAuthStore();
     const fullThread = sanitizeSupportThreadSummary(thread, true);
-    broadcastSupportChatEvent(thread.userId, {
-      type: 'support_chat_update',
-      action: 'status_changed',
-      thread: fullThread
-    });
+    broadcastSupportChatEvent(
+      thread.userId,
+      {
+        type: 'support_chat_update',
+        action: 'status_changed',
+        thread: fullThread
+      },
+      thread.userEmail
+    );
     return res.json({ success: true, thread: fullThread });
   });
 

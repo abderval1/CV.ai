@@ -67,7 +67,7 @@ function getSavedUiLang(): SiteLanguageCode {
   } catch {
     // ignore
   }
-  return 'pt';
+  return 'en';
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -106,7 +106,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
-      const ui = ERROR_BOUNDARY_TEXT[getSavedUiLang()] || ERROR_BOUNDARY_TEXT.pt;
+      const ui = ERROR_BOUNDARY_TEXT[getSavedUiLang()] || ERROR_BOUNDARY_TEXT.en;
       return (
         <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl text-center space-y-5">

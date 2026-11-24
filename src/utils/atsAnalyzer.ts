@@ -109,9 +109,9 @@ const WEAK_PASSIVE_PHRASES = [
 export function auditCVAgainstJob(
   cv: CVData,
   jobText: string,
-  lang: SiteLanguageCode = 'pt'
+  lang: SiteLanguageCode = 'en'
 ): AtsAuditResult {
-  const recText = (TOOLS_UI_TRANSLATIONS[lang] || TOOLS_UI_TRANSLATIONS.pt).atsRadar;
+  const recText = (TOOLS_UI_TRANSLATIONS[lang] || TOOLS_UI_TRANSLATIONS.en).atsRadar;
 
   // Aggregate CV text
   const cvCorpus = [

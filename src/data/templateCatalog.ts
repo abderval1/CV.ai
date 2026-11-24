@@ -368,6 +368,196 @@ export const CV_TEMPLATES: CVTemplateInfo[] = [
     proTip:
       'Ideal para quem busca um currículo contemporâneo sem correr riscos de rejeição por fotos em multinacionais.',
     accentColor: '#0f766e'
+  },
+  {
+    id: 'finance_wallstreet',
+    name: 'Modelo Banca & Wall Street M&A (Sem Foto)',
+    shortName: 'Wall Street M&A',
+    badge: '🏦 Wall Street & M&A',
+    category: 'without_photo',
+    hasPhoto: false,
+    photoRule: 'strictly_forbidden',
+    photoRuleLabel: 'Rigorosamente Sem Foto (Padrão Institucional)',
+    photoRuleDescription:
+      'Bancos de investimento, Private Equity e boutiques de M&A exigem layout compacto de página única em serifada institucional sem fotografias.',
+    tagline: 'Estética institucional com dupla linha tipográfica para Banca de Investimento, M&A e Private Equity.',
+    whenToUse:
+      'Candidaturas a Investment Banking, Venture Capital, Private Equity, Asset Management, FP&A Sênior e Equity Research.',
+    whereToUse:
+      'Wall Street (Nova Iorque), City de Londres, Frankfurt, Zurique, Singapura e centros financeiros internacionais.',
+    regions: ['Wall Street (EUA)', 'City de Londres', 'Zurique & Frankfurt', 'Singapura & Hong Kong'],
+    bestForIndustries: [
+      'Investment Banking & M&A',
+      'Private Equity & Venture Capital',
+      'Asset & Wealth Management',
+      'Corporate Finance & Tesouraria',
+      'Hedge Funds & Equity Research'
+    ],
+    atsScore: 99,
+    atsRatingText: '99% ATS Score - Padrão OCR institucional de Wall Street',
+    whyPhotoOrNot:
+      'Em finanças institucionais anglo-saxónicas, qualquer foto reduz a densidade de transações (Deal Sheet) e infringe normas de triagem neutra.',
+    keyFeatures: [
+      'Tipografia serifada clássica com linhas duplas institucionais de alto contraste',
+      'Leitura linear de 1 coluna com 99% de compatibilidade em Workday e Taleo',
+      'Alinhamento tabular preciso de períodos, mandatos e transações financeiras',
+      'Máxima densidade de métricas de ROI, IRR, múltiplos EV/EBITDA e volume de deals'
+    ],
+    proTip:
+      'Destaque o volume total de transações assessoradas e métricas de retorno auditadas logo nos dois primeiros bullets de cada cargo.',
+    accentColor: '#0f172a'
+  },
+  {
+    id: 'executive_board',
+    name: 'Modelo Conselho & C-Suite Editorial (Sem Foto)',
+    shortName: 'Conselho & C-Suite',
+    badge: '👔 Conselho & C-Suite',
+    category: 'without_photo',
+    hasPhoto: false,
+    photoRule: 'strictly_forbidden',
+    photoRuleLabel: 'Sem Foto (Governança Corporativa)',
+    photoRuleDescription:
+      'Projetado para membros de Conselhos de Administração, CEOs, VPs e conselheiros independentes que precisam transmitir autoridade serena.',
+    tagline: 'Cabeçalho editorial centrado com filete superior de autoridade para Conselhos e Alta Direção.',
+    whenToUse:
+      'Processos de headhunting executivo (Korn Ferry, Spencer Stuart, Egon Zehnder), assentos em Conselhos e posições VP/C-Level.',
+    whereToUse:
+      'Empresas listadas em bolsa, grupos familiares em profissionalização, fundos de investimento e diretorias globais.',
+    regions: ['Global C-Suite', 'EUA & Reino Unido', 'União Europeia', 'América Latina'],
+    bestForIndustries: [
+      'Conselhos de Administração & Advisory',
+      'Direção Geral (CEO / MD / GM)',
+      'Transformação Corporativa & Turnaround',
+      'Operações Globais & Supply Chain',
+      'Assuntos Corporativos & Relações Institucionais'
+    ],
+    atsScore: 97,
+    atsRatingText: '97% ATS Score - Autoridade executiva com parser limpo',
+    whyPhotoOrNot:
+      'Headhunters C-Level avaliam mandato, P&L gerido e governança em comitês, preferindo sobriedade editorial sem fotografias.',
+    keyFeatures: [
+      'Filete superior executivo e cabeçalho centralizado em tipografia de prestígio',
+      'Hierarquia clara para resumos de mandato, P&L e liderança multi-país',
+      'Estrutura linear compatível com portais executivos e arquivos PDF arquiváveis',
+      'Equilíbrio refinado entre autoridade visual e facilidade de leitura rápida'
+    ],
+    proTip:
+      'Inclua no resumo executivo a dimensão exata do seu mandato: receita sob gestão, número de países e equipa liderada.',
+    accentColor: '#1e3a8a'
+  },
+  {
+    id: 'product_strategy',
+    name: 'Modelo Produto, PM & Growth Lead (Foto Opcional)',
+    shortName: 'Produto & Growth',
+    badge: '🚀 Produto & Growth',
+    category: 'hybrid',
+    hasPhoto: true,
+    photoRule: 'optional',
+    photoRuleLabel: 'Foto Opcional / Versátil',
+    photoRuleDescription:
+      'Funciona com foto discreta para empresas europeias/LATAM ou sem foto para Big Techs dos EUA com apenas um clique.',
+    tagline: 'Layout moderno em grelha de competências orientado a métricas de produto, ARR e experimentação.',
+    whenToUse:
+      'Candidaturas a Product Manager, Head of Product, Growth Lead, Product Marketing, Strategy & Ops e Revenue Operations.',
+    whereToUse:
+      'Scale-ups SaaS, marketplaces digitais, Big Techs e equipas remotas internacionais de produto.',
+    regions: ['Global Remoto', 'EUA & Canadá', 'Europa Tech', 'Brasil & LATAM'],
+    bestForIndustries: [
+      'Product Management & Strategy',
+      'Growth, PLG & Monetização SaaS',
+      'Product Marketing (PMM)',
+      'Business Operations & Strategy',
+      'Marketplaces, Fintechs & Consumer Tech'
+    ],
+    atsScore: 94,
+    atsRatingText: '94% ATS Score - Clareza de métricas SaaS e produto',
+    whyPhotoOrNot:
+      'Por ser híbrido, permite exibir um retrato clean na Europa ou ocultá-lo instantaneamente para vagas nos EUA e Reino Unido.',
+    keyFeatures: [
+      'Bloco de resumo estratégico em destaque com fundo suave de alta legibilidade',
+      'Grelha de competências em 2 colunas para frameworks de produto, analytics e growth',
+      'Tipografia geométrica contemporânea otimizada para leitura em ecrã e PDF',
+      'Destaque natural para métricas de conversão, retenção, NRR e lançamento de features'
+    ],
+    proTip:
+      'Mencione sempre o impacto no funil ou na receita: ex. "Elevou ativação D7 em +22% e adicionou $3.4M em ARR via onboarding self-serve".',
+    accentColor: '#2563eb'
+  },
+  {
+    id: 'modern_editorial',
+    name: 'Modelo Editorial Dois-Tons (Foto Opcional)',
+    shortName: 'Editorial Dois-Tons',
+    badge: '📰 Editorial Premium',
+    category: 'hybrid',
+    hasPhoto: true,
+    photoRule: 'optional',
+    photoRuleLabel: 'Foto Opcional Integrada',
+    photoRuleDescription:
+      'Cabeçalho editorial em faixa sólida contrastante com corpo A4 em coluna única limpa — impacto visual sem sacrificar leitura ATS.',
+    tagline: 'Faixa superior editorial de alto contraste aliada a um corpo de leitura linear impecável.',
+    whenToUse:
+      'Candidaturas em Liderança Comercial, Comunicação Corporativa, Consultoria, Arquitetura, Gestão de Marca e Papéis Sênior.',
+    whereToUse:
+      'Europa Continental, Reino Unido (sem foto), América Latina e empresas inovadoras que valorizam apresentação diferenciada.',
+    regions: ['Europa Continental', 'Reino Unido', 'América Latina', 'Global'],
+    bestForIndustries: [
+      'Liderança Comercial & Parcerias',
+      'Consultoria & Gestão de Clientes',
+      'Comunicação Corporativa & Marca',
+      'Hospitalidade de Luxo & Varejo',
+      'Gestão de Projetos & Operações'
+    ],
+    atsScore: 91,
+    atsRatingText: '91% ATS Score - Faixa editorial + corpo linear A4',
+    whyPhotoOrNot:
+      'Combina presença executiva imediata na faixa superior com opção rápida de remover a foto quando exigido pelo país.',
+    keyFeatures: [
+      'Banner superior dois-tons personalizável com a cor executiva do seu setor',
+      'Corpo em coluna única garantindo leitura cronológica limpa por recrutadores e OCR',
+      'Equilíbrio elegante entre identidade visual marcante e formalidade corporativa',
+      'Exportação fiel para PDF e Word (.docx) mantendo o bloco de cabeçalho sombreado'
+    ],
+    proTip:
+      'Combine este modelo com tons grafite ou azul-marinho para consultoria e bordô ou verde-esmeralda para posições de liderança criativa.',
+    accentColor: '#334155'
+  },
+  {
+    id: 'engineering_blueprint',
+    name: 'Modelo Principal Engineer & Arquitetura (Sem Foto)',
+    shortName: 'Principal Systems',
+    badge: '⚙️ Principal & Arquitetura',
+    category: 'without_photo',
+    hasPhoto: false,
+    photoRule: 'strictly_forbidden',
+    photoRuleLabel: 'Sem Foto (Rigor Técnico)',
+    photoRuleDescription:
+      'Focado exclusivamente em sistemas distribuídos, arquitetura cloud, fiabilidade e impacto técnico em produção.',
+    tagline: 'Estética técnica precisa com numeração editorial e matriz de arquitetura para Staff & Principal Engineers.',
+    whenToUse:
+      'Vagas de Staff Engineer, Principal Architect, Platform Engineering Lead, SRE Principal e VP/Director of Engineering.',
+    whereToUse:
+      'Big Techs, empresas cloud-native, fintechs de alta escala e contratos remotos internacionais.',
+    regions: ['Vale do Silício (EUA)', 'Londres & Berlim', 'Amesterdão & Zurique', 'Remoto Global'],
+    bestForIndustries: [
+      'Arquitetura Cloud & Sistemas Distribuídos',
+      'Platform Engineering & SRE',
+      'Infraestrutura de IA & MLOps',
+      'Pagamentos & Core Banking',
+      'Engenharia de Alta Concorrência'
+    ],
+    atsScore: 96,
+    atsRatingText: '96% ATS Score - Indexação limpa de stack e escala',
+    whyPhotoOrNot:
+      'Em cargos de Principal e Staff Engineering, avalia-se apenas capacidade técnica, escala de sistemas, SLOs e liderança arquitetural.',
+    keyFeatures: [
+      'Numeração editorial limpa (01, 02, 03) combinada com acentos técnicos subtis',
+      'Matriz de capacidades técnicas em 2 colunas para Cloud, Linguagens, Dados e Observabilidade',
+      'Formato direto de Cargo @ Empresa com destaque tabular para prazos e impacto',
+      'Zero elementos supérfluos — otimizado para comités técnicos e sistemas Greenhouse/Lever'
+    ],
+    proTip:
+      'Especifique ordens de grandeza reais: QPS, latência p99, orçamento cloud otimizado e disponibilidade (ex: 99.995% SLA).',
+    accentColor: '#0369a1'
   }
 ];
 

@@ -19,7 +19,12 @@ export type TemplateStyle =
   | 'creative_split'
   | 'tech_modern'
   | 'academic_lattes'
-  | 'hybrid_minimalist';
+  | 'hybrid_minimalist'
+  | 'finance_wallstreet'
+  | 'executive_board'
+  | 'product_strategy'
+  | 'modern_editorial'
+  | 'engineering_blueprint';
 
 export interface Competency {
   id: string;
@@ -147,6 +152,8 @@ export interface User {
   stripeStatus?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
   stripeCurrentPeriodEnd?: string;
   createdAt: string;
+  updatedAt?: string;
+  planUpdatedAt?: number;
   notes?: string;
 }
 

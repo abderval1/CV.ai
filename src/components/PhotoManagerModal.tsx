@@ -65,7 +65,7 @@ export const PhotoManagerModal: React.FC<PhotoManagerModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showSuccess, showWarning, showError } = useToast();
   const { siteLanguage } = useLanguage();
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).photoModal;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).photoModal;
 
   if (!isOpen) return null;
 

@@ -38,7 +38,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   onOpenAiTailor
 }) => {
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).atsRadar;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).atsRadar;
   const [activeTab, setActiveTab] = useState<'audit' | 'bot_view' | 'checklist'>('audit');
   const [keywordDestination, setKeywordDestination] = useState<KeywordDestination>('competencies');
   const [copiedRawText, setCopiedRawText] = useState<boolean>(false);

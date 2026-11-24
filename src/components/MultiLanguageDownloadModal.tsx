@@ -43,7 +43,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
   density = 'normal'
 }) => {
   const { setLanguage, siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).multiLangModal;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).multiLangModal;
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError } = useToast();
 

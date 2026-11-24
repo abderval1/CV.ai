@@ -177,7 +177,9 @@ export const DEFAULT_ADMIN_TEMPLATES: TemplateAdminItem[] = CV_TEMPLATES.map((tm
   shortName: tmpl.shortName,
   category: tmpl.category,
   hasPhoto: tmpl.hasPhoto,
-  tierRequired: tmpl.id === 'executive_harvard' || tmpl.id === 'un_classic' ? 'executive' : 'pro',
+  tierRequired: ['executive_harvard', 'un_classic', 'finance_wallstreet', 'executive_board'].includes(tmpl.id)
+    ? 'executive'
+    : 'pro',
   isActive: true,
   displayOrder: idx + 1,
   atsScore: tmpl.atsScore,

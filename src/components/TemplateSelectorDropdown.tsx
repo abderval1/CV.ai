@@ -31,7 +31,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { siteLanguage } = useLanguage();
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).dropdown;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).dropdown;
   const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
   const getTplMeta = <T extends { id: TemplateStyle }>(tpl: T): T => {
     const loc = tplMetaMap?.[tpl.id];

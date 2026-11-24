@@ -167,9 +167,9 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
   onClose,
   onUnreadCountChange
 }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, firebaseUser, isAuthenticated } = useAuth();
   const { siteLanguage } = useLanguage();
-  const copy = CHAT_COPY[siteLanguage] || CHAT_COPY.pt;
+  const copy = CHAT_COPY[siteLanguage] || CHAT_COPY.en;
 
   const [thread, setThread] = useState<SupportChatThread | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
@@ -228,7 +228,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, user?.id, isOpen, onUnreadCountChange]);
+  }, [isAuthenticated, user?.id, firebaseUser?.uid, isOpen, onUnreadCountChange]);
 
   // Real-time WebSocket + Firestore subscriptions for authenticated user (stays active for unread badge even when modal is closed)
   useEffect(() => {
@@ -288,7 +288,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
       unsubFsMsgs();
       unsubFsThread();
     };
-  }, [isAuthenticated, user?.id, onUnreadCountChange]);
+  }, [isAuthenticated, user?.id, firebaseUser?.uid, onUnreadCountChange]);
 
   // Fallback HTTP polling when WebSocket is unavailable (e.g. Vercel serverless) — active both open (6s) and closed (15s) for unread notifications
   useEffect(() => {
@@ -335,7 +335,13 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     setErrorMsg(null);
     setIsSending(true);
     try {
-      const res = await sendUserSupportMessage(text);
+      const res = await sendUserSupportMessage(text, {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        plan: user.plan,
+        avatarUrl: user.avatarUrl
+      });
       setDraft('');
       if (res?.thread) {
         setThread(res.thread);
@@ -373,17 +379,17 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 <h2 className="text-sm font-bold truncate">{copy.title}</h2>
                 <span
                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
-                    wsStatus === 'connected' || wsStatus === 'disconnected'
+                    wsStatus === 'connected' || wsStatus === 'disconnected' || Boolean(firebaseUser)
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
                       : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
                   }`}
                 >
-                  {wsStatus === 'connected' || wsStatus === 'disconnected' ? (
+                  {wsStatus === 'connected' || wsStatus === 'disconnected' || Boolean(firebaseUser) ? (
                     <Wifi className="w-2.5 h-2.5" />
                   ) : (
                     <WifiOff className="w-2.5 h-2.5" />
                   )}
-                  {wsStatus === 'connected'
+                  {wsStatus === 'connected' || Boolean(firebaseUser)
                     ? copy.liveLabel
                     : wsStatus === 'disconnected'
                     ? 'HTTPS'

@@ -286,7 +286,7 @@ function getAdminLocaleOverride(lang: LanguageCode): Partial<Record<
 }
 
 export function getResolvedSectionTitles(lang: LanguageCode, templateStyle: TemplateStyle) {
-  const cur = SECTION_TITLES_BY_LANG[lang] || SECTION_TITLES_BY_LANG.pt;
+  const cur = SECTION_TITLES_BY_LANG[lang] || SECTION_TITLES_BY_LANG.en;
   const adminOverride = getAdminLocaleOverride(lang);
   const isAcademic = templateStyle === 'academic_lattes';
   const isClassic = templateStyle === 'un_classic';

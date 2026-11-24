@@ -34,7 +34,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
     de: { emptyTitle: 'Noch keine Lebensläufe gespeichert', emptyDesc: 'Benennen Sie die Version oben und klicken Sie auf Speichern.', open: 'Öffnen', del: 'Version löschen', updated: 'Geändert am' },
     it: { emptyTitle: 'Nessun curriculum salvato nel cloud', emptyDesc: 'Dai un nome sopra e clicca su Salva Versione.', open: 'Apri', del: 'Elimina versione', updated: 'Aggiornato il' }
   };
-  const extra = openLabels[siteLanguage] || openLabels.pt;
+  const extra = openLabels[siteLanguage] || openLabels.en;
   const [newTitle, setNewTitle] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);

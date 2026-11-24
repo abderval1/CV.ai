@@ -798,7 +798,7 @@ export interface ApplyPageSeoParams {
 export function applyPageSeo({ tab, language, faqs, brandName }: ApplyPageSeoParams): void {
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
 
-  const langData = SEO_LOCALIZED_DATA[language] || SEO_LOCALIZED_DATA.pt;
+  const langData = SEO_LOCALIZED_DATA[language] || SEO_LOCALIZED_DATA.en;
   const routeConfig = getRouteConfigForTab(tab);
   const routeMeta = langData.routes[tab] || langData.routes.home;
   const resolvedBrand = brandName || langData.brand;
@@ -825,7 +825,7 @@ export function applyPageSeo({ tab, language, faqs, brandName }: ApplyPageSeoPar
   upsertMetaTag('property', 'og:title', routeMeta.title);
   upsertMetaTag('property', 'og:description', routeMeta.description);
   upsertMetaTag('property', 'og:url', canonicalUrl);
-  upsertMetaTag('property', 'og:locale', OG_LOCALE_MAP[language] || 'pt_PT');
+  upsertMetaTag('property', 'og:locale', OG_LOCALE_MAP[language] || 'en_US');
   upsertMetaTag('property', 'og:image', ogImageUrl);
   upsertMetaTag('property', 'og:image:secure_url', ogImageUrl);
   upsertMetaTag('property', 'og:image:alt', routeMeta.title);
@@ -840,7 +840,7 @@ export function applyPageSeo({ tab, language, faqs, brandName }: ApplyPageSeoPar
   // Canonical & multilingual hreflang alternates
   upsertLinkTag('canonical', canonicalUrl);
   for (const langCode of ALL_SITE_LANGS) {
-    const langUrl = langCode === 'pt' ? `${origin}${canonicalPath}` : `${origin}${canonicalPath}?lang=${langCode}`;
+    const langUrl = langCode === 'en' ? `${origin}${canonicalPath}` : `${origin}${canonicalPath}?lang=${langCode}`;
     upsertLinkTag('alternate', langUrl, langCode);
   }
   upsertLinkTag('alternate', `${origin}${canonicalPath}`, 'x-default');

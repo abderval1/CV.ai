@@ -87,7 +87,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
   const { formatPrice } = useCurrency();
   const { language: appLang, siteLanguage } = useLanguage();
 
-  const billingDict = BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.pt;
+  const billingDict = BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.en;
   const ui = billingDict.profileView;
   const shortPlanNames = billingDict.plans.shortNames;
   const intlLocale = getIntlLocale(siteLanguage);

@@ -276,7 +276,7 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   onOpenPreview
 }) => {
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).rawGenerator;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).rawGenerator;
   const [generationMode, setGenerationMode] = useState<'standard' | 'tailored'>(() => {
     try {
       const savedJob = localStorage.getItem('curriculo_job_draft_v1');
@@ -297,7 +297,7 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   const [showPresets, setShowPresets] = useState<boolean>(false);
   const [isLinkedInConnecting, setIsLinkedInConnecting] = useState<boolean>(false);
   const [isLinkedInExtracting, setIsLinkedInExtracting] = useState<boolean>(false);
-  const lkUi = LINKEDIN_DEEP_COPY[siteLanguage] || LINKEDIN_DEEP_COPY.pt;
+  const lkUi = LINKEDIN_DEEP_COPY[siteLanguage] || LINKEDIN_DEEP_COPY.en;
   const [linkedInJobState, setLinkedInJobState] = useState<{
     jobId: string;
     step: number;

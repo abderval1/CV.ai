@@ -20,7 +20,7 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
   USD: {
     code: 'USD',
     symbol: '$',
-    name: 'Dólar Americano (USD)',
+    name: 'US Dollar (USD)',
     flag: '🇺🇸',
     exchangeRateToUSD: 1,
     format: (amt) => `$${formatDecimal(amt)}`
@@ -28,7 +28,7 @@ export const CURRENCIES: Record<SupportedCurrency, CurrencyConfig> = {
   BRL: {
     code: 'BRL',
     symbol: 'R$',
-    name: 'Real Brasileiro (BRL)',
+    name: 'Brazilian Real (BRL)',
     flag: '🇧🇷',
     exchangeRateToUSD: 5.4,
     format: (amt) => `R$ ${formatDecimal(amt * 5.4)}`

@@ -41,7 +41,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   onOpenPricing
 }) => {
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).interviewSim;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).interviewSim;
   const [activeJobDesc, setActiveJobDesc] = useState<string>(
     jobDescription || SAMPLE_JOB_OFFERS[0].description
   );

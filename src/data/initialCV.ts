@@ -2,8 +2,147 @@ import { CVData, PricingPlan } from '../types/cv';
 import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
 import portraitWomanImg from '../assets/images/portrait_executive_woman_1794571428995.jpg';
 
-// High-Converting Modern Default Executive Profile
+// High-Converting Modern Default Executive Profile (English Default)
 export const GENERIC_DEFAULT_CV: CVData = {
+  personalDetails: {
+    name: 'ALEXANDER MENDES',
+    title: 'Chief Operating Officer (COO) | Global Operations & Digital Transformation',
+    location: 'New York, NY / Lisbon (Global Mobility)',
+    phone: '+1 (212) 555-0194',
+    email: 'alexander.mendes@globalexec.com',
+    linkedin: 'linkedin.com/in/alexander-mendes-coo',
+    website: 'https://alexandermendes.com',
+    photoUrl: portraitManImg,
+    showPhoto: false
+  },
+  summary:
+    'Senior operations and corporate strategy executive with 12+ years of experience leading organizational turnarounds, scaling digital products, and driving data-governed P&L performance across multinational enterprises. Proven track record managing $35M+ operating budgets, cutting operational expenses by up to 32%, and leading cross-functional teams of 120+ professionals across North America, Europe, and LATAM.',
+  competencies: [
+    {
+      id: 'comp-1',
+      category: 'Strategic Leadership & P&L Governance',
+      description:
+        'Long-range strategic planning, full P&L accountability, capital allocation, EBITDA margin expansion, and enterprise risk governance.'
+    },
+    {
+      id: 'comp-2',
+      category: 'Digital Transformation & Process Automation',
+      description:
+        'Enterprise data architecture, cloud ERP migrations, AI-assisted workflow automation, and agile delivery at scale.'
+    },
+    {
+      id: 'comp-3',
+      category: 'Business Intelligence & Executive KPIs',
+      description:
+        'Board-level OKRs and KPIs, predictive revenue modeling, and real-time operational dashboards for C-suite decision making.'
+    },
+    {
+      id: 'comp-4',
+      category: 'M&A Integration & Global Partnerships',
+      description:
+        'Operational due diligence, post-merger ERP and team integration, and global enterprise vendor negotiations.'
+    },
+    {
+      id: 'comp-5',
+      category: 'Executive Talent & High-Performance Culture',
+      description:
+        'Leadership coaching, cross-border organizational alignment, and retention-focused incentive architecture.'
+    }
+  ],
+  experiences: [
+    {
+      id: 'exp-1',
+      company: 'OmniVanguard Holdings & Technologies',
+      role: 'Chief Operating Officer (COO) & VP of Global Operations',
+      period: '2021 – Present',
+      location: 'New York & Global Operations',
+      highlights: [
+        'Directed global operations across 4 regional hubs and 140+ employees, achieving 48% compound annual revenue growth.',
+        'Redesigned supply chain and operating workflows, delivering $8.4M in audited OPEX savings within 18 months.',
+        'Deployed BI-driven decision governance, compressing new enterprise service launch cycles from 9 months to 11 weeks.',
+        'Led post-merger integration of two acquired technology firms, unifying ERP platforms with zero enterprise client downtime.',
+        'Lifted corporate Net Promoter Score (NPS) from 54 to 81 through SLA automation and customer success excellence.'
+      ]
+    },
+    {
+      id: 'exp-2',
+      company: 'Apex Global Strategic Partners',
+      role: 'Director of Operational Efficiency & Special Projects',
+      period: '2017 – 2021',
+      location: 'London / Lisbon',
+      highlights: [
+        'Managed a portfolio of 16 transformation and automation engagements across financial services, logistics, and telecom.',
+        'Built stress-tested cost optimization models delivering an average 320% ROI across multi-site client portfolios.',
+        'Established corporate governance and ISO compliance center of excellence with 100% pass rate on external audits.',
+        'Coordinated 35 change-management specialists, driving enterprise software adoption above 95% within 90 days.'
+      ]
+    },
+    {
+      id: 'exp-3',
+      company: 'Continental Business Advisory',
+      role: 'Senior Management Consulting Manager',
+      period: '2013 – 2017',
+      location: 'New York, NY',
+      highlights: [
+        'Delivered operational diagnostics and process re-engineering programs for publicly traded enterprises.',
+        'Authored strategic recommendations and board-ready performance reviews for executive audit committees.'
+      ]
+    }
+  ],
+  educations: [
+    {
+      id: 'edu-1',
+      degree: 'Executive MBA (Global Leadership & Corporate Finance)',
+      institution: 'INSEAD / Wharton Executive Program',
+      period: '2018 – 2020',
+      gpaOrHonors: 'With Academic Distinction'
+    },
+    {
+      id: 'edu-2',
+      degree: 'B.S. in Industrial Engineering & Operations Management',
+      institution: 'Columbia University / USP Exchange',
+      period: '2008 – 2013'
+    }
+  ],
+  trainings: [
+    'Executive Certificate in AI for Business Strategy – MIT Sloan',
+    'Corporate Governance & Board Readiness – NACD / IBGC',
+    'Lean Six Sigma Black Belt – Global Operational Excellence',
+    'Enterprise Crisis & Business Continuity Management (ISO 22301)'
+  ],
+  languages: [
+    {
+      language: 'English',
+      level: 'Native / Full Bilingual Proficiency'
+    },
+    {
+      language: 'Portuguese',
+      level: 'Native / Full Professional Proficiency'
+    },
+    {
+      language: 'Spanish',
+      level: 'Business Fluency'
+    }
+  ],
+  references: [
+    {
+      id: 'ref-1',
+      name: 'Dr. Robert Silveira',
+      institutionAndPosition: 'OmniVanguard Holdings\nChairman of the Board',
+      contact: 'robert.silveira@omnivanguard.com'
+    },
+    {
+      id: 'ref-2',
+      name: 'Mariana Costa, MBA',
+      institutionAndPosition: 'Apex Global Partners\nManaging Partner & CEO',
+      contact: 'mariana.costa@apexglobal.com'
+    }
+  ],
+  templateStyle: 'executive_harvard'
+};
+
+// Portuguese Executive Profile for interactive PT/EN Hero preview toggle
+export const GENERIC_DEFAULT_CV_PT: CVData = {
   personalDetails: {
     name: 'ALEXANDRE MENDES',
     title: 'Chief Operating Officer (COO) | Head de Operações & Transformação Digital',
@@ -16,128 +155,58 @@ export const GENERIC_DEFAULT_CV: CVData = {
     showPhoto: false
   },
   summary:
-    'Executivo sênior de operações e estratégia corporativa com mais de 12 anos de experiência liderando reestruturações organizacionais, escalabilidade de produtos digitais e governança orientada a dados em corporações multinacionais e empresas de alto crescimento. Histórico comprovado de gestão de orçamentos superiores a US$ 35M, redução de despesas operacionais em até 32% e liderança de equipas multifuncionais de mais de 120 profissionais em mercados competitivos.',
+    'Executivo sênior de operações e estratégia corporativa com mais de 12 anos de experiência liderando reestruturações organizacionais, escalabilidade de produtos digitais e governança orientada a dados em corporações multinacionais e empresas de alto crescimento. Histórico comprovado de gestão de orçamentos superiores a US$ 35M, redução de despesas operacionais em até 32% e liderança de equipas multifuncionais de mais de 120 profissionais.',
   competencies: [
     {
-      id: 'comp-1',
+      id: 'comp-pt-1',
       category: 'Liderança Estratégica & Gestão P&L',
       description:
-        'Planeamento estratégico de longo prazo, gestão integral de demonstrações financeiras (P&L), alocação de capital e governança de risco corporativo.'
+        'Planeamento estratégico de longo prazo, gestão integral de demonstrações financeiras (P&L), alocação de capital e governança de risco.'
     },
     {
-      id: 'comp-2',
-      category: 'Transformação Digital & Automação de Processos',
+      id: 'comp-pt-2',
+      category: 'Transformação Digital & Automação',
       description:
-        'Implementação de arquiteturas de dados empresariais, migração para sistemas em nuvem, otimização de fluxos com IA e metodologias ágeis em escala.'
-    },
-    {
-      id: 'comp-3',
-      category: 'Business Intelligence & Métricas Executivas',
-      description:
-        'Definição de OKRs e KPIs estratégicos, modelagem de painéis executivos de tomada de decisão e análise preditiva de receita e rentabilidade.'
-    },
-    {
-      id: 'comp-4',
-      category: 'Fusões, Aquisições & Parcerias Globais',
-      description:
-        'Due diligence operacional em processos de M&A, integração pós-fusão de plataformas e negociação de contratos de fornecimento global.'
-    },
-    {
-      id: 'comp-5',
-      category: 'Desenvolvimento de Lideranças & Cultura de Alta Performance',
-      description:
-        'Formação e retenção de executivos, alinhamento cultural entre departamentos e estruturação de planos de incentivos e retenção de talentos chave.'
+        'Arquiteturas de dados empresariais, migração cloud ERP, fluxos com IA e metodologias ágeis em escala.'
     }
   ],
   experiences: [
     {
-      id: 'exp-1',
+      id: 'exp-pt-1',
       company: 'OmniVanguard Holdings & Technologies',
       role: 'Chief Operating Officer (COO) & Vice-Presidente de Operações',
       period: '2021 – Presente',
       location: 'São Paulo & Operações Globais',
       highlights: [
-        'Liderou a operação global abrangendo 4 centros regionais e mais de 140 colaboradores, alcançando crescimento de 48% na receita anual composta.',
-        'Redesenhou a cadeia de valor e processos internos, gerando poupança operacional auditada de US$ 8.4M em 18 meses.',
-        'Implantou cultura de tomada de decisão baseada em inteligência de dados, reduzindo o ciclo de lançamento de novos serviços de 9 meses para 11 semanas.',
-        'Conduziu a integração operacional de duas empresas adquiridas via M&A, unificando sistemas ERP e equipas sem qualquer interrupção de serviço aos clientes enterprise.',
-        'Aumentou o Net Promoter Score (NPS) corporativo de 54 para 81 pontos através de programas de excelência operacional e customer success.'
+        'Liderou a operação global abrangendo 4 centros regionais e 140 colaboradores, alcançando crescimento de 48% na receita anual.',
+        'Redesenhou a cadeia de valor e processos internos, gerando poupança operacional auditada de US$ 8.4M em 18 meses.'
       ]
     },
     {
-      id: 'exp-2',
+      id: 'exp-pt-2',
       company: 'Apex Global Strategic Partners',
       role: 'Diretor de Eficiência Operacional & Projetos Especiais',
       period: '2017 – 2021',
       location: 'São Paulo / Lisboa',
       highlights: [
-        'Geriu portfólio de 16 projetos estratégicos de inovação e automação para clientes dos setores financeiro, logística e telecomunicações.',
-        'Desenvolveu modelos de simulação financeira e cenários de stress para otimização de custos fixos, com retorno sobre investimento (ROI) médio de 320%.',
-        'Estruturou o centro de excelência em governança corporativa e compliance, assegurando 100% de aprovação em auditorias externas independentes.',
-        'Coordenou equipa multidisciplinar de 35 especialistas em gestão de mudança, assegurando adoção tecnológica com taxa de adesão superior a 95%.'
-      ]
-    },
-    {
-      id: 'exp-3',
-      company: 'Continental Business Advisory',
-      role: 'Gerente Sénior de Consultoria de Gestão',
-      period: '2013 – 2017',
-      location: 'São Paulo, Brasil',
-      highlights: [
-        'Conduziu diagnósticos operacionais e reengenharia de processos para empresas listadas em bolsa.',
-        'Elaborou relatórios de recomendação estratégica e apresentações para Conselhos de Administração e comités de auditoria.'
+        'Geriu portfólio de 16 projetos estratégicos de automação e eficiência financeira com ROI médio de 320%.'
       ]
     }
   ],
   educations: [
     {
-      id: 'edu-1',
+      id: 'edu-pt-1',
       degree: 'Executive MBA (Liderança Global & Finanças Corporativas)',
-      institution: 'Insead / Fundação Getulio Vargas (FGV)',
-      period: '2018 – 2020',
-      gpaOrHonors: 'Com Louvor Académico'
-    },
-    {
-      id: 'edu-2',
-      degree: 'Licenciatura em Engenharia de Produção & Gestão Industrial',
-      institution: 'Universidade de São Paulo (USP)',
-      period: '2008 – 2013'
+      institution: 'INSEAD / Fundação Getulio Vargas (FGV)',
+      period: '2018 – 2020'
     }
   ],
-  trainings: [
-    'Certificação Executiva em Inteligência Artificial para Negócios – MIT Sloan',
-    'Governança Corporativa e Papel do Conselho de Administração – IBGC',
-    'Lean Six Sigma Black Belt – Certificação Internacional de Excelência Operacional',
-    'Gestão Estratégica de Crises & Continuidade de Negócios (ISO 22301)'
-  ],
+  trainings: ['Lean Six Sigma Black Belt', 'Governança Corporativa – IBGC'],
   languages: [
-    {
-      language: 'Português',
-      level: 'Língua Materna / Fluente'
-    },
-    {
-      language: 'Inglês',
-      level: 'Proficiência Profissional Plena (C-Level & Negociações Internacionais)'
-    },
-    {
-      language: 'Espanhol',
-      level: 'Fluência de Negócios'
-    }
+    { language: 'Português', level: 'Língua Materna' },
+    { language: 'Inglês', level: 'Fluência Plena (C-Level)' }
   ],
-  references: [
-    {
-      id: 'ref-1',
-      name: 'Dr. Roberto Silveira',
-      institutionAndPosition: 'OmniVanguard Holdings\nPresidente do Conselho de Administração (Chairman)',
-      contact: 'roberto.silveira@omnivanguard.com'
-    },
-    {
-      id: 'ref-2',
-      name: 'Dra. Mariana Costa',
-      institutionAndPosition: 'Apex Global Partners\nManaging Partner & CEO',
-      contact: 'mariana.costa@apexglobal.com'
-    }
-  ],
+  references: [],
   templateStyle: 'executive_harvard'
 };
 
@@ -394,10 +463,10 @@ export const BLANK_CV: CVData = {
 export const SAAS_PLANS: PricingPlan[] = [
   {
     id: 'pro',
-    name: 'Profissional Pro',
-    tagline: 'O plano ideal para profissionais que querem acelerar convites de entrevista com ATS.',
-    priceMonthly: '$8 / Mês',
-    priceYearly: '$72 / Ano (Poupe 25%)',
+    name: 'Professional Pro',
+    tagline: 'Ideal for professionals aiming to pass ATS filters and accelerate interview callbacks.',
+    priceMonthly: '$8 / Month',
+    priceYearly: '$72 / Year (Save 25%)',
     priceMonthlyValue: 8,
     priceQuarterlyValue: 21.6,
     priceSemiannualValue: 39.36,
@@ -405,24 +474,24 @@ export const SAAS_PLANS: PricingPlan[] = [
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
-      'Desbloqueio Imediato de Download Oficial (PDF & Word .docx)',
-      'Documentos 100% Limpos e sem Marca de Água',
-      'Criação & Edição de Currículos e Cartas Ilimitadas',
-      'Otimização com Inteligência Artificial Ilimitada',
-      'Radar ATS 95%+ com Análise Semântica de Vagas',
-      'Cartas de Apresentação Estratégicas com IA',
-      'Tradução Integral para 5 Idiomas (PT, EN, ES, FR, DE)',
-      'Sincronização na Nuvem em Tempo Real'
+      'Instant Clean Download Unlock (PDF & Word .docx)',
+      '100% Watermark-Free Executive Documents',
+      'Unlimited Resumes, Tailored Versions & Cover Letters',
+      'Unlimited AI Impact & XYZ Optimization',
+      '95%+ ATS Radar with Semantic Job Matching',
+      'Profile-Matched Live Job Radar & Direct Apply Links',
+      'Full 5-Language Translation (EN, PT, ES, FR, DE)',
+      'Real-Time Cloud Sync Across Devices'
     ],
     isPopular: true,
-    ctaText: 'Subscrever Plano Pro'
+    ctaText: 'Subscribe to Pro'
   },
   {
     id: 'executive',
-    name: 'Executivo VIP',
-    tagline: 'Para líderes, diretores e consultores que disputam posições de topo no mercado global.',
-    priceMonthly: '$12 / Mês',
-    priceYearly: '$108 / Ano (Poupe 25%)',
+    name: 'Executive VIP',
+    tagline: 'Built for leaders, directors, and global consultants competing for top-tier roles.',
+    priceMonthly: '$12 / Month',
+    priceYearly: '$108 / Year (Save 25%)',
     priceMonthlyValue: 12,
     priceQuarterlyValue: 32.4,
     priceSemiannualValue: 59.04,
@@ -430,39 +499,39 @@ export const SAAS_PLANS: PricingPlan[] = [
     currency: 'USD',
     creditsMonthly: 9999,
     features: [
-      'Tudo incluído no Plano Profissional Pro',
-      'Downloads Ilimitados Oficiais em PDF e Word (.docx)',
-      'Simulador de Entrevista STAR com Ditado por Voz & Scoring',
-      'Todos os Modelos Executivos C-Level, Harvard, Europass e Big Tech',
-      'Auditoria Avançada de Perfil LinkedIn',
-      'Consultoria & Suporte Executivo Prioritário'
+      'Everything included in Professional Pro',
+      'Unlimited Official PDF & Word (.docx) Exports',
+      'Voice/Text STAR Interview Simulator & Scoring',
+      'All C-Level, Harvard, Wall Street, UN & Big Tech Layouts',
+      'Advanced LinkedIn Profile Audit',
+      'Priority Executive Support & Advisory'
     ],
     isPopular: false,
-    ctaText: 'Subscrever Executivo VIP'
+    ctaText: 'Subscribe to Executive VIP'
   }
 ];
 
 export const SAMPLE_JOB_OFFERS = [
   {
     id: 'job-1',
-    title: 'Chief Operating Officer (COO) & Diretor de Operações Globais',
-    organization: 'Multinacional de Tecnologia & Serviços Corporativos',
-    description: `Cargo: Chief Operating Officer (COO)
-Localização: Modelo Híbrido / Internacional
-Regime: Contrato Executivo Sénior
+    title: 'Chief Operating Officer (COO) & VP of Global Operations',
+    organization: 'Global Enterprise Technology & Services Group',
+    description: `Role: Chief Operating Officer (COO)
+Location: Hybrid / International
+Type: Full-Time Executive Mandate
 
-Responsabilidades Principais:
-- Liderar as operações globais da companhia, supervisionando processos de escalabilidade, eficiência operacional e gestão de P&L multissetorial.
-- Conceber e executar a estratégia de transformação digital e automação de fluxos corporativos com inteligência analítica.
-- Gerir orçamentos anuais consolidados superiores a US$ 30M, garantindo rigorosa governança, compliance e retorno sobre capital investido.
-- Coordenar processos de due diligence em operações de M&A e liderar a integração pós-fusão de plataformas e equipas internacionais.
-- Liderar, mentorar e desenvolver diretores funcionais (Tecnologia, Finanças, Operações e Produto), promovendo uma cultura de alta performance e excelência.
+Key Responsibilities:
+- Lead global operations across multi-region hubs, overseeing operational scalability, SLA efficiency, and multi-unit P&L governance.
+- Design and execute digital transformation and workflow automation roadmaps backed by real-time analytics.
+- Manage consolidated annual operating budgets exceeding $30M with strict governance, compliance, and ROI discipline.
+- Lead operational due diligence in M&A transactions and direct post-merger ERP and cross-border team integration.
+- Mentor functional VPs across Technology, Finance, Operations, and Product to sustain a high-performance culture.
 
-Requisitos:
-- Formação superior em Engenharia, Administração ou Economia; MBA Executivo de escola de referência internacional altamente valorizado.
-- Mínimo de 8 a 10 anos de experiência comprovada em liderança de operações de grande escala.
-- Domínio de gestão financeira corporativa (P&L, EBITDA, CAPEX/OPEX) e governança baseada em dados (BI e OKRs).
-- Fluência oral e escrita em Português e Inglês (capacidade comprovada de negociação internacional).`
+Requirements:
+- Bachelor's in Engineering, Business, or Economics; Executive MBA strongly preferred.
+- 8–10+ years of proven leadership scaling complex international operations.
+- Mastery of corporate financial management (P&L, EBITDA, CAPEX/OPEX) and data-driven governance (BI, OKRs).
+- Full professional proficiency in English (international stakeholder negotiation experience).`
   },
   {
     id: 'job-2',

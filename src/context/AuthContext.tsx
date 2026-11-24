@@ -379,6 +379,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const authSyncLockRef = useRef<boolean>(false);
   const sessionEpochRef = useRef<number>(0);
   const lastSyncedClaimsRef = useRef<string>('');
+  const localPlanSyncRef = useRef<{
+    userId: string;
+    plan: SubscriptionPlan;
+    at: number;
+    creditsRemaining: number;
+    billingCycle?: BillingCycle;
+    subscriptionExpiresAt?: string;
+    stripeStatus?: User['stripeStatus'];
+    stripeSubscriptionId?: string;
+    stripeCustomerId?: string;
+  } | null>(null);
+
+  const reconcileFirestoreWithBackend = (
+    fsUser: User,
+    fsUpdatedMs: number,
+    backendUser?: User | null
+  ): User => {
+    const localSync =
+      localPlanSyncRef.current && localPlanSyncRef.current.userId === fsUser.id
+        ? localPlanSyncRef.current
+        : null;
+    const backendAt = backendUser?.planUpdatedAt || 0;
+    const localAt = localSync?.at || 0;
+
+    const candidate =
+      localAt >= backendAt && localSync
+        ? {
+            plan: localSync.plan,
+            at: localSync.at,
+            creditsRemaining: localSync.creditsRemaining,
+            billingCycle: localSync.billingCycle,
+            subscriptionExpiresAt: localSync.subscriptionExpiresAt,
+            stripeStatus: localSync.stripeStatus,
+            stripeSubscriptionId: localSync.stripeSubscriptionId,
+            stripeCustomerId: localSync.stripeCustomerId
+          }
+        : backendUser
+        ? {
+            plan: backendUser.plan,
+            at: backendAt,
+            creditsRemaining: backendUser.creditsRemaining,
+            billingCycle: backendUser.billingCycle,
+            subscriptionExpiresAt: backendUser.subscriptionExpiresAt,
+            stripeStatus: backendUser.stripeStatus,
+            stripeSubscriptionId: backendUser.stripeSubscriptionId,
+            stripeCustomerId: backendUser.stripeCustomerId
+          }
+        : null;
+
+    const candidateIsVerifiedPlanMutation = Boolean(
+      candidate &&
+        candidate.at > fsUpdatedMs &&
+        ((candidate.plan !== 'free' && candidate.stripeStatus === 'active') ||
+          (candidate.plan === 'free' && candidate.stripeStatus === 'canceled'))
+    );
+
+    if (!candidateIsVerifiedPlanMutation || !candidate) {
+      return fsUser;
+    }
+
+    return {
+      ...fsUser,
+      plan: candidate.plan,
+      creditsRemaining: candidate.creditsRemaining,
+      billingCycle: candidate.billingCycle || fsUser.billingCycle,
+      subscriptionExpiresAt: candidate.subscriptionExpiresAt,
+      stripeStatus: candidate.stripeStatus,
+      stripeSubscriptionId: candidate.stripeSubscriptionId || fsUser.stripeSubscriptionId,
+      stripeCustomerId: candidate.stripeCustomerId || fsUser.stripeCustomerId,
+      planUpdatedAt: candidate.at
+    };
+  };
 
   const resetResumesForUserSwitch = (nextUid: string | null) => {
     if (resumesUnsubRef.current) {
@@ -659,11 +731,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 creditsUsed: data.creditsUsed ?? 0,
                 totalCvGenerated: data.totalCvGenerated ?? 0,
                 billingCycle: data.billingCycle || 'monthly',
-                subscriptionExpiresAt: data.subscriptionExpiresAt,
+                subscriptionExpiresAt: data.subscriptionExpiresAt || undefined,
                 stripeCustomerId: data.stripeCustomerId,
                 stripeSubscriptionId: data.stripeSubscriptionId,
-                stripeStatus: data.stripeStatus,
+                stripeStatus: data.stripeStatus || undefined,
                 createdAt: data.createdAt || new Date().toISOString(),
+                updatedAt: data.updatedAt || data.createdAt || undefined,
                 notes: data.notes || undefined
               };
             } else {
@@ -696,10 +769,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Sync verified Firebase ID token with backend so API cookies/tokens are always in sync
           try {
             const fbIdToken = await currentFbUser.getIdToken();
+            const existingJwt = getStoredAuthToken();
             const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${fbIdToken}`
+                Authorization: `Bearer ${fbIdToken}`,
+                ...(existingJwt && existingJwt !== fbIdToken
+                  ? { 'x-session-token': existingJwt }
+                  : {})
               },
               body: JSON.stringify({
                 idToken: fbIdToken,
@@ -720,13 +797,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setStoredAuthToken(data.token, true);
               if (data.user) {
                 const backendUser = data.user as User;
-                // Never allow a cold/stale serverless backend record to downgrade an Admin-authorized Firestore profile
+                const fsUpdatedMs = Date.parse(hydratedUser.updatedAt || hydratedUser.createdAt || '') || 0;
                 hydratedUser = hasAuthoritativeFirestoreProfile
-                  ? {
-                      ...backendUser,
-                      ...hydratedUser,
-                      id: hydratedUser.id
-                    }
+                  ? reconcileFirestoreWithBackend(
+                      {
+                        ...backendUser,
+                        ...hydratedUser,
+                        id: hydratedUser.id
+                      },
+                      fsUpdatedMs,
+                      backendUser
+                    )
                   : {
                       ...hydratedUser,
                       ...backendUser,
@@ -768,10 +849,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const nextRole: 'admin' | 'user' = liveIsAdmin ? 'admin' : 'user';
                 const nextStatus = d.status || 'active';
                 const nextCredits = d.creditsRemaining ?? (liveIsAdmin ? 9999 : 5);
-                const nextExpires = d.subscriptionExpiresAt;
-                const claimSig = `${uid}|${nextPlan}|${nextRole}|${nextStatus}|${nextCredits}|${nextExpires || ''}`;
+                const nextExpires = d.subscriptionExpiresAt || undefined;
+                const fsUpdatedMs = Date.parse(d.updatedAt || d.createdAt || '') || 0;
 
-                let updatedProfileForSync: User | null = null;
+                let reconciledForSync: User | null = null;
                 setUser((prev) => {
                   const base: User =
                     prev && prev.id === uid
@@ -780,7 +861,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           ...hydratedUser,
                           id: uid
                         };
-                  const nextUser: User = {
+                  const fsNextUser: User = {
                     ...base,
                     name: d.name || base.name,
                     role: nextRole,
@@ -790,32 +871,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     creditsUsed: d.creditsUsed ?? base.creditsUsed,
                     totalCvGenerated: d.totalCvGenerated ?? base.totalCvGenerated,
                     billingCycle: d.billingCycle || base.billingCycle,
-                    subscriptionExpiresAt: nextExpires ?? base.subscriptionExpiresAt,
-                    stripeStatus: d.stripeStatus ?? base.stripeStatus,
-                    notes: d.notes ?? base.notes
+                    subscriptionExpiresAt: nextExpires,
+                    stripeStatus: d.stripeStatus || undefined,
+                    notes: d.notes ?? base.notes,
+                    updatedAt: d.updatedAt || d.createdAt || base.updatedAt
                   };
-                  updatedProfileForSync = nextUser;
+                  const nextUser = reconcileFirestoreWithBackend(fsNextUser, fsUpdatedMs, base);
+                  reconciledForSync = nextUser;
                   return nextUser;
                 });
 
+                const targetProfile = reconciledForSync || {
+                  ...hydratedUser,
+                  name: d.name || hydratedUser.name,
+                  role: nextRole,
+                  status: nextStatus,
+                  plan: nextPlan,
+                  creditsRemaining: nextCredits,
+                  subscriptionExpiresAt: nextExpires,
+                  stripeStatus: d.stripeStatus || undefined,
+                  updatedAt: d.updatedAt || d.createdAt || hydratedUser.updatedAt
+                };
+                const claimSig = `${uid}|${targetProfile.plan}|${targetProfile.role}|${targetProfile.status}|${targetProfile.creditsRemaining}|${targetProfile.subscriptionExpiresAt || ''}`;
+
                 if (lastSyncedClaimsRef.current !== claimSig) {
                   lastSyncedClaimsRef.current = claimSig;
-                  const syncTarget: User = updatedProfileForSync || {
-                    ...hydratedUser,
-                    name: d.name || hydratedUser.name,
-                    role: nextRole,
-                    status: nextStatus,
-                    plan: nextPlan,
-                    creditsRemaining: nextCredits,
-                    subscriptionExpiresAt: nextExpires ?? hydratedUser.subscriptionExpiresAt
-                  };
                   void syncFirebaseUserToBackend(
                     currentFbUser,
-                    syncTarget,
+                    targetProfile,
                     currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
                     true,
                     true
-                  );
+                  ).then((syncedUser) => {
+                    if (
+                      activeSessionEpoch === sessionEpochRef.current &&
+                      syncedUser &&
+                      syncedUser.id === uid
+                    ) {
+                      setUser((curr) =>
+                        curr && curr.id === uid ? { ...curr, ...syncedUser } : curr
+                      );
+                    }
+                  });
                 }
               },
               () => {
@@ -884,10 +981,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     try {
       const fbIdToken = await fbUser.getIdToken();
+      const existingJwt = getStoredAuthToken();
       const { response, data } = await apiAuthFetch('/api/auth/sync-firebase', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${fbIdToken}`
+          Authorization: `Bearer ${fbIdToken}`,
+          ...(existingJwt && existingJwt !== fbIdToken
+            ? { 'x-session-token': existingJwt }
+            : {})
         },
         body: JSON.stringify({
           idToken: fbIdToken,
@@ -908,7 +1009,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.user) {
           const bUser = data.user as User;
           if (profileIsAuthoritative) {
-            return { ...bUser, ...profile, id: profile.id };
+            const fsUpdatedMs = Date.parse(profile.updatedAt || profile.createdAt || '') || 0;
+            return reconcileFirestoreWithBackend(
+              { ...bUser, ...profile, id: profile.id },
+              fsUpdatedMs,
+              bUser
+            );
           }
           return { ...profile, ...bUser, id: profile.id };
         }
@@ -960,8 +1066,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 creditsUsed: d.creditsUsed ?? 0,
                 totalCvGenerated: d.totalCvGenerated ?? 0,
                 billingCycle: d.billingCycle || 'monthly',
-                subscriptionExpiresAt: d.subscriptionExpiresAt,
-                stripeStatus: d.stripeStatus,
+                subscriptionExpiresAt: d.subscriptionExpiresAt || undefined,
+                stripeStatus: d.stripeStatus || undefined,
+                updatedAt: d.updatedAt || d.createdAt || profile.createdAt,
                 notes: d.notes || undefined
               };
             }
@@ -1384,14 +1491,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const durationDays = getCycleDurationDays(cycle);
     const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
 
+    if (!getStoredAuthToken() && auth.currentUser && user) {
+      await syncFirebaseUserToBackend(
+        auth.currentUser,
+        user,
+        auth.currentUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
+        true,
+        false
+      ).catch(() => user);
+    }
+
     let verifiedBackendUser: User | null = null;
     if (getStoredAuthToken()) {
+      const extraHeaders: Record<string, string> = {};
+      if (auth.currentUser) {
+        try {
+          const fbIdToken = await auth.currentUser.getIdToken();
+          if (fbIdToken) extraHeaders['x-firebase-id-token'] = fbIdToken;
+        } catch {
+          // ignore
+        }
+      }
       const { response, data } = await apiAuthFetch('/api/auth/sync-plan', {
         method: 'POST',
+        headers: extraHeaders,
         body: JSON.stringify({
           plan,
           billingCycle: cycle,
-          subscriptionExpiresAt: expiresAt,
+          subscriptionExpiresAt: plan === 'free' ? null : expiresAt,
           stripeSubscriptionId: meta?.stripeSubscriptionId,
           stripeCustomerId: meta?.stripeCustomerId,
           stripeStatus: plan === 'free' ? 'canceled' : 'active'
@@ -1445,6 +1572,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    const planTimestamp = verifiedBackendUser?.planUpdatedAt || Date.now();
+    const resolvedCredits =
+      verifiedBackendUser?.creditsRemaining ?? (plan === 'free' ? 5 : 9999);
+    const resolvedExpires =
+      plan === 'free'
+        ? undefined
+        : verifiedBackendUser?.subscriptionExpiresAt || expiresAt;
+    const resolvedStripeStatus: User['stripeStatus'] =
+      verifiedBackendUser?.stripeStatus || (plan === 'free' ? 'canceled' : 'active');
+
+    localPlanSyncRef.current = {
+      userId: user.id,
+      plan,
+      at: planTimestamp,
+      creditsRemaining: resolvedCredits,
+      billingCycle: cycle,
+      subscriptionExpiresAt: resolvedExpires,
+      stripeStatus: resolvedStripeStatus,
+      stripeSubscriptionId: meta?.stripeSubscriptionId || verifiedBackendUser?.stripeSubscriptionId,
+      stripeCustomerId: meta?.stripeCustomerId || verifiedBackendUser?.stripeCustomerId
+    };
+
     void recordAuditLog({
       actorUserId: user.id,
       actorEmail: user.email,
@@ -1465,34 +1614,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    setUser(
-      verifiedBackendUser
-        ? { ...user, ...verifiedBackendUser }
-        : {
-            ...user,
-            plan,
-            creditsRemaining: plan === 'free' ? 5 : 9999,
-            billingCycle: cycle,
-            stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
-            stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
-            stripeStatus: plan === 'free' ? 'canceled' : 'active',
-            subscriptionExpiresAt: expiresAt
-          }
-    );
+    const nextUser: User = verifiedBackendUser
+      ? { ...user, ...verifiedBackendUser }
+      : {
+          ...user,
+          plan,
+          creditsRemaining: resolvedCredits,
+          billingCycle: cycle,
+          stripeSubscriptionId: meta?.stripeSubscriptionId || user.stripeSubscriptionId,
+          stripeCustomerId: meta?.stripeCustomerId || user.stripeCustomerId,
+          stripeStatus: resolvedStripeStatus,
+          subscriptionExpiresAt: resolvedExpires,
+          planUpdatedAt: planTimestamp
+        };
+    lastSyncedClaimsRef.current = `${nextUser.id}|${nextUser.plan}|${nextUser.role}|${nextUser.status}|${nextUser.creditsRemaining}|${nextUser.subscriptionExpiresAt || ''}`;
+    setUser(nextUser);
   };
 
   const refreshUser = async (): Promise<User | null> => {
     let nextUser: User | null = user;
-    let firestoreOk = false;
     if (auth.currentUser) {
       const fbUser = auth.currentUser;
       try {
         const docSnap = await getDoc(doc(db, 'users', fbUser.uid));
         if (docSnap.exists()) {
-          firestoreOk = true;
           const d = docSnap.data();
           const fsAdmin = isAdminAuthorized(d.email || fbUser.email, fbUser.emailVerified, d.role);
-          nextUser = {
+          const fsUpdatedMs = Date.parse(d.updatedAt || d.createdAt || '') || 0;
+          const fsProfile: User = {
             ...(user || ({ id: fbUser.uid, email: fbUser.email || '', name: 'Utilizador', createdAt: new Date().toISOString() } as User)),
             name: d.name || user?.name || 'Utilizador',
             role: fsAdmin ? 'admin' : 'user',
@@ -1500,10 +1649,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             plan: (d.plan as SubscriptionPlan) || user?.plan || 'free',
             billingCycle: normalizeBillingCycle(d.billingCycle || user?.billingCycle),
             creditsRemaining: d.creditsRemaining ?? user?.creditsRemaining ?? 5,
-            subscriptionExpiresAt: d.subscriptionExpiresAt || user?.subscriptionExpiresAt,
-            stripeStatus: d.stripeStatus || user?.stripeStatus,
+            subscriptionExpiresAt: d.subscriptionExpiresAt || undefined,
+            stripeStatus: d.stripeStatus || undefined,
+            updatedAt: d.updatedAt || d.createdAt || user?.updatedAt,
             notes: d.notes ?? user?.notes
           };
+          nextUser = reconcileFirestoreWithBackend(fsProfile, fsUpdatedMs, user);
           const claimSig = `${fbUser.uid}|${nextUser.plan}|${nextUser.role}|${nextUser.status}|${nextUser.creditsRemaining}|${nextUser.subscriptionExpiresAt || ''}`;
           if (lastSyncedClaimsRef.current !== claimSig) {
             lastSyncedClaimsRef.current = claimSig;
@@ -1514,6 +1665,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               true,
               true
             );
+          } else {
+            // Still query /api/auth/me in case backend received an approved Pix payment or admin server update
+            try {
+              const fbIdToken = await fbUser.getIdToken();
+              const { response, data } = await apiAuthFetch('/api/auth/me', {
+                method: 'GET',
+                headers: fbIdToken ? { 'x-firebase-id-token': fbIdToken } : undefined
+              });
+              if (response.ok && data?.authenticated && data.user) {
+                if (data.token) setStoredAuthToken(data.token, true);
+                nextUser = reconcileFirestoreWithBackend(fsProfile, fsUpdatedMs, data.user as User);
+              }
+            } catch {
+              // ignore transient /api/auth/me error
+            }
           }
           setUser(nextUser);
           return nextUser;
@@ -1541,12 +1707,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setStoredAuthToken(data.token, true);
         }
         const bUser = data.user as User;
-        const merged =
-          user && auth.currentUser && !firestoreOk && user.plan !== 'free' && bUser.plan === 'free'
-            ? { ...bUser, plan: user.plan, role: user.role, creditsRemaining: user.creditsRemaining, id: user.id }
-            : user
-            ? { ...user, ...bUser }
-            : bUser;
+        const merged = user
+          ? reconcileFirestoreWithBackend(
+              {
+                ...user,
+                ...bUser,
+                id: user.id
+              },
+              Date.parse(user.updatedAt || user.createdAt || '') || 0,
+              bUser
+            )
+          : bUser;
         setUser(merged);
         return merged;
       }

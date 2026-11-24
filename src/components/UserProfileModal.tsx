@@ -59,7 +59,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const { siteLanguage } = useLanguage();
   const { showSuccess, showError, showInfo } = useToast();
 
-  const billingDict = BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.pt;
+  const billingDict = BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.en;
   const ui = billingDict.profileModal;
   const shortPlanNames = billingDict.plans.shortNames;
   const intlLocale = getIntlLocale(siteLanguage);

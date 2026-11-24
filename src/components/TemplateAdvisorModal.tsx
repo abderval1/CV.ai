@@ -44,7 +44,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
 }) => {
   const { isAuthenticated, hasActivePlan } = useAuth();
   const { siteLanguage } = useLanguage();
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).advisor;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).advisor;
   const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
   const getTplMeta = (tpl: CVTemplateInfo) => {
     const loc = tplMetaMap?.[tpl.id];
@@ -64,6 +64,10 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
     if (filter === 'executive')
       return (
         tpl.id === 'executive_harvard' ||
+        tpl.id === 'finance_wallstreet' ||
+        tpl.id === 'executive_board' ||
+        tpl.id === 'product_strategy' ||
+        tpl.id === 'engineering_blueprint' ||
         tpl.id === 'un_classic' ||
         tpl.id === 'tech_modern' ||
         tpl.id === 'academic_lattes'

@@ -19,7 +19,7 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
   compact = false
 }) => {
   const { siteLanguage } = useLanguage();
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).expertTip;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).expertTip;
   const [isOpen, setIsOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number; placeAbove: boolean }>({
     top: 0,

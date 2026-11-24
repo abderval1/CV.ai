@@ -188,7 +188,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   onApplyJobToTailor
 }) => {
   const { siteLanguage } = useLanguage();
-  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.pt).jobMatches;
+  const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).jobMatches;
   const intlLocale = getIntlLocale(siteLanguage);
   const [data, setData] = useState<JobMatchResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);

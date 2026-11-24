@@ -355,7 +355,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         humanCheckLoadErr: 'Impossibile caricare la sfida. Riprova.'
       }
     };
-    return map[siteLanguage] || map.pt;
+    return map[siteLanguage] || map.en;
   }, [siteLanguage]);
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>(defaultMode);

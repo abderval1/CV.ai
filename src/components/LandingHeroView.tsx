@@ -9,10 +9,12 @@ import {
   Activity,
   Target,
   SlidersHorizontal,
-  Minus
+  Minus,
+  Briefcase
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
-import { GENERIC_DEFAULT_CV } from '../data/initialCV';
+import { GENERIC_DEFAULT_CV, GENERIC_DEFAULT_CV_PT } from '../data/initialCV';
+import { TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
 import { useCurrency } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
 import { BillingCycle, CVData, SubscriptionPlan, TemplateStyle } from '../types/cv';
@@ -39,7 +41,7 @@ interface LandingHeroViewProps {
   onOpenTemplateAdvisor: () => void;
   onOpenShowcase: (mode: ShowcaseMode) => void;
   currentCV?: CVData;
-  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview') => void;
+  onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview' | 'jobs') => void;
 }
 
 const HERO_PREVIEW_MODELS: Array<{
@@ -54,23 +56,31 @@ const HERO_PREVIEW_MODELS: Array<{
     id: 'executive_harvard',
     label: 'Harvard ATS',
     atsLabel: '96% ATS',
-    ruleLabel: 'Sem Foto · C-Level / EUA',
+    ruleLabel: 'No Photo · C-Level / USA',
     accentColor: '#1e293b',
     hasPhoto: false
   },
   {
-    id: 'ats_compact',
-    label: 'ATS Estrito',
-    atsLabel: '100% ATS',
-    ruleLabel: 'Sem Foto · Workday / Taleo',
+    id: 'finance_wallstreet',
+    label: 'Wall Street',
+    atsLabel: '99% ATS',
+    ruleLabel: 'No Photo · Finance / M&A',
     accentColor: '#0f172a',
     hasPhoto: false
   },
   {
+    id: 'modern_editorial',
+    label: 'Editorial',
+    atsLabel: '91% ATS',
+    ruleLabel: 'Photo Optional · Global',
+    accentColor: '#334155',
+    hasPhoto: true
+  },
+  {
     id: 'european_europass',
-    label: 'Europass UE',
+    label: 'Europass EU',
     atsLabel: '88% ATS',
-    ruleLabel: 'Com Foto · União Europeia',
+    ruleLabel: 'With Photo · European Union',
     accentColor: '#1d4ed8',
     hasPhoto: true
   }
@@ -86,12 +96,15 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   currentCV,
   onNavigateTab
 }) => {
-  const { formatPrice, convertFromUSD } = useCurrency();
+  const { currency, formatPrice, convertFromUSD } = useCurrency();
   const { siteText, siteLanguage } = useLanguage();
   const l = siteText.landing;
   const cycles = siteText.billingCycles;
   const [heroModelIdx, setHeroModelIdx] = useState<number>(0);
-  const [heroPreviewLang, setHeroPreviewLang] = useState<'pt' | 'en'>('pt');
+  const [heroPreviewLang, setHeroPreviewLang] = useState<'en' | 'pt'>('en');
+  const [jobMatchProfile, setJobMatchProfile] = useState<'coo' | 'tech' | 'finance'>('coo');
+  const [jobMatchWorkplace, setJobMatchWorkplace] = useState<'all' | 'remote' | 'hybrid'>('all');
+  const [jobMatchRegion, setJobMatchRegion] = useState<'all' | 'us_global' | 'europe'>('all');
   const [atsHubTab, setAtsHubTab] = useState<'health' | 'simulator'>('health');
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
@@ -120,32 +133,38 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const heroRuleLabelMap: Record<'pt' | 'en' | 'es' | 'fr' | 'de' | 'it', Record<string, string>> = {
     pt: {
       executive_harvard: 'Sem Foto · C-Level / EUA',
-      ats_compact: 'Sem Foto · Workday / Taleo',
+      finance_wallstreet: 'Sem Foto · Finanças & M&A',
+      modern_editorial: 'Foto Opcional · Editorial',
       european_europass: 'Com Foto · União Europeia'
     },
     en: {
       executive_harvard: 'No Photo · C-Level / USA',
-      ats_compact: 'No Photo · Workday / Taleo',
+      finance_wallstreet: 'No Photo · Finance & M&A',
+      modern_editorial: 'Photo Optional · Editorial',
       european_europass: 'With Photo · European Union'
     },
     es: {
       executive_harvard: 'Sin Foto · C-Level / EE. UU.',
-      ats_compact: 'Sin Foto · Workday / Taleo',
+      finance_wallstreet: 'Sin Foto · Finanzas & M&A',
+      modern_editorial: 'Foto Opcional · Editorial',
       european_europass: 'Con Foto · Unión Europea'
     },
     fr: {
       executive_harvard: 'Sans Photo · C-Level / USA',
-      ats_compact: 'Sans Photo · Workday / Taleo',
+      finance_wallstreet: 'Sans Photo · Finance & M&A',
+      modern_editorial: 'Photo Optionnelle · Éditorial',
       european_europass: 'Avec Photo · Union Européenne'
     },
     de: {
       executive_harvard: 'Ohne Foto · C-Level / USA',
-      ats_compact: 'Ohne Foto · Workday / Taleo',
+      finance_wallstreet: 'Ohne Foto · Finance & M&A',
+      modern_editorial: 'Foto Optional · Editorial',
       european_europass: 'Mit Foto · Europäische Union'
     },
     it: {
       executive_harvard: 'Senza Foto · C-Level / USA',
-      ats_compact: 'Senza Foto · Workday / Taleo',
+      finance_wallstreet: 'Senza Foto · Finanza & M&A',
+      modern_editorial: 'Foto Opzionale · Editoriale',
       european_europass: 'Con Foto · Unione Europea'
     }
   };
@@ -153,51 +172,15 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     heroRuleLabelMap[siteLanguage]?.[activeHeroModel.id] || activeHeroModel.ruleLabel;
 
   const heroPreviewCVData = useMemo<CVData>(() => {
-    const base = GENERIC_DEFAULT_CV;
-    if (heroPreviewLang === 'pt') {
-      return {
-        ...base,
-        templateStyle: activeHeroModel.id,
-        accentColor: activeHeroModel.accentColor,
-        personalDetails: {
-          ...base.personalDetails,
-          showPhoto: activeHeroModel.hasPhoto
-        }
-      };
-    }
-
+    const base = heroPreviewLang === 'pt' ? GENERIC_DEFAULT_CV_PT : GENERIC_DEFAULT_CV;
     return {
       ...base,
       templateStyle: activeHeroModel.id,
       accentColor: activeHeroModel.accentColor,
       personalDetails: {
         ...base.personalDetails,
-        title: 'Director of Operations & Corporate Strategy',
-        location: 'Lisbon, Portugal (Global Mobility)',
         showPhoto: activeHeroModel.hasPhoto
-      },
-      summary:
-        'Operations executive with 12+ years leading multi-site P&L turnarounds across Europe and LATAM. Reduced logistics OPEX by 32% and scaled recurring operational EBITDA by $4.8M/year.',
-      experiences: base.experiences.slice(0, 2).map((exp, idx) =>
-        idx === 0
-          ? {
-              ...exp,
-              role: 'Chief Operating Officer (COO)',
-              period: '2021 – Present',
-              highlights: [
-                'Restructured 4 European fulfillment hubs (140 staff), cutting operating cost by 32% YoY.',
-                'Delivered 99.4% on-time SLA across $62M annual volume while improving EBITDA margin by 8.4 pts.'
-              ]
-            }
-          : {
-              ...exp,
-              role: 'Senior Supply Chain Manager',
-              period: '2017 – 2021',
-              highlights: [
-                'Automated SAP ERP procurement pipelines, reducing vendor lead times from 18 to 6 days.'
-              ]
-            }
-      )
+      }
     };
   }, [activeHeroModel, heroPreviewLang]);
 
@@ -360,7 +343,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
         }
       }
     };
-    return localized[siteLanguage] || localized.pt;
+    return localized[siteLanguage] || localized.en;
   }, [siteLanguage, l.simRoles]);
 
   // Interactive Live ATS Quick-Checker State
@@ -425,23 +408,42 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
 
   const activeMergedTemplates = useMemo(() => {
     const adminMap = new Map(adminTemplates.map((t) => [t.id, t]));
+    const i18nMap = siteLanguage === 'pt' ? undefined : TEMPLATE_CATALOG_I18N[siteLanguage];
     return CV_TEMPLATES.filter((tmpl) => {
       const cfg = adminMap.get(tmpl.id);
       return !cfg || cfg.isActive !== false;
     })
       .map((tmpl) => {
         const cfg = adminMap.get(tmpl.id);
+        const loc = i18nMap?.[tmpl.id];
         return {
           ...tmpl,
-          shortName: cfg?.shortName || tmpl.shortName,
-          badge: cfg?.badge || tmpl.badge,
+          shortName: loc?.shortName || (siteLanguage === 'pt' ? cfg?.shortName : undefined) || tmpl.shortName,
+          tagline: loc?.tagline || tmpl.tagline,
+          badge: loc?.badge || cfg?.badge || tmpl.badge,
           atsScore: cfg?.atsScore ?? tmpl.atsScore,
           tierRequired: cfg?.tierRequired || 'pro',
           displayOrder: cfg?.displayOrder ?? 99
         };
       })
       .sort((a, b) => a.displayOrder - b.displayOrder);
-  }, [adminTemplates]);
+  }, [adminTemplates, siteLanguage]);
+
+  const activeJobProfileMeta = useMemo(
+    () => l.jobMatch.profiles.find((p) => p.id === jobMatchProfile) || l.jobMatch.profiles[0],
+    [l.jobMatch.profiles, jobMatchProfile]
+  );
+
+  const filteredMatchJobs = useMemo(
+    () =>
+      l.jobMatch.jobs.filter((job) => {
+        if (job.profile !== jobMatchProfile) return false;
+        if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
+        if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
+        return true;
+      }),
+    [l.jobMatch.jobs, jobMatchProfile, jobMatchWorkplace, jobMatchRegion]
+  );
 
   const filteredTemplates = activeMergedTemplates.filter((tmpl) => {
     if (templateFilter === 'without_photo') return !tmpl.hasPhoto;
@@ -535,6 +537,14 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                 <button
                   type="button"
+                  onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
+                  className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4 font-medium text-slate-700 dark:text-slate-300"
+                >
+                  {l.ctaMatchJobs}
+                </button>
+                <span aria-hidden="true">·</span>
+                <button
+                  type="button"
                   onClick={() => onOpenShowcase('models-cv')}
                   className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4"
                 >
@@ -572,13 +582,13 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <div className="bg-slate-50 dark:bg-[#111724] border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 shadow-sm dark:shadow-none">
                 {/* Interactive Studio Controls Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
-                  <div className="flex items-center gap-1 p-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px]">
+                  <div className="flex flex-wrap items-center gap-1 p-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px]">
                     {HERO_PREVIEW_MODELS.map((m, idx) => (
                       <button
                         key={m.id}
                         type="button"
                         onClick={() => setHeroModelIdx(idx)}
-                        className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                        className={`px-2 py-1 rounded-md font-semibold transition-colors whitespace-nowrap shrink-0 ${
                           heroModelIdx === idx
                             ? 'bg-amber-400 text-slate-950'
                             : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
@@ -590,7 +600,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 p-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px] font-mono">
-                    {(['pt', 'en'] as const).map((lng) => (
+                    {(['en', 'pt'] as const).map((lng) => (
                       <button
                         key={lng}
                         type="button"
@@ -696,6 +706,164 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{step.desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 2B. PROFILE-BASED JOB DISCOVERY & SMART FILTER SHOWCASE */}
+      <section className="py-12 lg:py-14 bg-white dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800/80">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+            <div className="space-y-1 max-w-2xl">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">
+                {l.jobMatch.kicker}
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                {l.jobMatch.title}
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                {l.jobMatch.subtitle}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
+              className="px-4 py-2.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-2 self-start lg:self-auto whitespace-nowrap shrink-0"
+            >
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>{l.jobMatch.browseJobsCta}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 space-y-5 shadow-xs dark:shadow-none">
+            {/* CV Profile Switcher + Live Work-Mode & Region Filters */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                  {l.jobMatch.profileLabel}
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {l.jobMatch.profiles.map((prof) => (
+                    <button
+                      key={prof.id}
+                      type="button"
+                      onClick={() => setJobMatchProfile(prof.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                        jobMatchProfile === prof.id
+                          ? 'bg-amber-400 text-slate-950'
+                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:text-slate-950 dark:hover:text-white'
+                      }`}
+                    >
+                      {prof.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                  {(['all', 'remote', 'hybrid'] as const).map((wp) => (
+                    <button
+                      key={wp}
+                      type="button"
+                      onClick={() => setJobMatchWorkplace(wp)}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap shrink-0 ${
+                        jobMatchWorkplace === wp
+                          ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                      }`}
+                    >
+                      {l.jobMatch.workplaceFilters[wp]}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+                  {(['all', 'us_global', 'europe'] as const).map((rg) => (
+                    <button
+                      key={rg}
+                      type="button"
+                      onClick={() => setJobMatchRegion(rg)}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap shrink-0 ${
+                        jobMatchRegion === rg
+                          ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                      }`}
+                    >
+                      {l.jobMatch.regionFilters[rg]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Active CV Extracted Profile Strip */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
+              <p className="font-medium text-slate-800 dark:text-slate-200">{activeJobProfileMeta.headline}</p>
+              <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                {activeJobProfileMeta.skills.join(' · ')}
+              </p>
+            </div>
+
+            {/* Matched Openings Grid */}
+            {filteredMatchJobs.length === 0 ? (
+              <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-lg p-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                {l.jobMatch.emptyState}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredMatchJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
+                            {job.title}
+                          </h3>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                            {job.company} · {job.workplaceLabel} · {job.regionLabel} · {job.contract}
+                          </p>
+                        </div>
+                        <span className="font-mono text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
+                          {job.matchScore}% {l.jobMatch.matchSuffix}
+                        </span>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          {l.jobMatch.keywordsMatchedLabel}{' '}
+                        </span>
+                        <span className="font-mono">{job.matchedKeywords.join(' · ')}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => (onNavigateTab ? onNavigateTab('ai') : onStartCreating())}
+                        className="font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 inline-flex items-center gap-1 whitespace-nowrap"
+                      >
+                        <span>{l.jobMatch.tailorCta}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold rounded-md transition-colors whitespace-nowrap"
+                      >
+                        {l.jobMatch.browseJobsCta}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -1228,7 +1396,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ {cycleText.shortUnit}</span>
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      {l.equivalentPrefix} ${proCycleUsd} USD · R$ {convertFromUSD(proCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL
+                      {currency === 'USD'
+                        ? `$${proCycleUsd} USD · ${l.cardAndPix}`
+                        : `${l.equivalentPrefix} $${proCycleUsd} USD · R$ ${convertFromUSD(proCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL`}
                     </p>
                     <p className="text-xs text-emerald-600 dark:text-emerald-400 tabular-nums">
                       {proMonthlyEq
@@ -1273,7 +1443,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ {cycleText.shortUnit}</span>
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      {l.equivalentPrefix} ${execCycleUsd} USD · R$ {convertFromUSD(execCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL
+                      {currency === 'USD'
+                        ? `$${execCycleUsd} USD · ${l.cardAndPix}`
+                        : `${l.equivalentPrefix} $${execCycleUsd} USD · R$ ${convertFromUSD(execCycleUsd, 'BRL').toFixed(2).replace('.', ',')} BRL`}
                     </p>
                     <p className="text-xs text-slate-600 dark:text-slate-300 tabular-nums">
                       {execMonthlyEq

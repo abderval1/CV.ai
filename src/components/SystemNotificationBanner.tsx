@@ -17,7 +17,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
 }) => {
   const { user, isPro, isExecutive } = useAuth();
   const { siteLanguage } = useLanguage();
-  const closeTitle = (BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.pt).pricingModal.closeAria;
+  const closeTitle = (BILLING_UI_TRANSLATIONS[siteLanguage] || BILLING_UI_TRANSLATIONS.en).pricingModal.closeAria;
   const [banners, setBanners] = useState<SystemAnnouncementBanner[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {

@@ -67,19 +67,19 @@ export function getCycleDurationDays(cycle?: BillingCycle | string | null): numb
 
 export function formatCycleLabel(
   cycle?: BillingCycle | string | null,
-  lang: SiteLanguageCode = 'pt'
+  lang: SiteLanguageCode = 'en'
 ): string {
   const normalized = normalizeBillingCycle(cycle);
-  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.en;
   return dict.cycles[normalized]?.label || BILLING_CYCLE_META[normalized].label;
 }
 
 export function formatCycleWithDiscount(
   cycle?: BillingCycle | string | null,
-  lang: SiteLanguageCode = 'pt'
+  lang: SiteLanguageCode = 'en'
 ): string {
   const normalized = normalizeBillingCycle(cycle);
-  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.en;
   const localized = dict.cycles[normalized];
   const meta = BILLING_CYCLE_META[normalized];
   const label = localized?.label || meta.label;
@@ -144,9 +144,9 @@ export function detectPixKeyType(key: string): PixKeyType {
 
 export function getPixKeyTypeLabel(
   type?: PixKeyType | string,
-  lang: SiteLanguageCode = 'pt'
+  lang: SiteLanguageCode = 'en'
 ): string {
-  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.pt;
+  const dict = BILLING_UI_TRANSLATIONS[lang] || BILLING_UI_TRANSLATIONS.en;
   const labels = dict.pixKeyTypes;
   switch (type) {
     case 'cpf':

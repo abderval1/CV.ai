@@ -57,6 +57,8 @@ import {
   updateAdminSupportThreadStatus,
   subscribeSupportChatWebSocket,
   subscribeAdminFirestoreSupportThreads,
+  subscribeAdminFirestoreThreadMessages,
+  mergeSupportMessagesList,
   SupportWsStatus
 } from '../services/supportChatService';
 import {
@@ -649,54 +651,19 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
 
   useEffect(() => {
     if (!isOpen || (!isAdminAccess && !isImpersonating)) return;
-    const unsub = subscribeSupportChatWebSocket(
-      (evt) => {
-        if (evt.type === 'support_chat_update' && evt.thread) {
-          const incoming = evt.thread;
-          setSupportThreads((prev) => {
-            const safePrev = (prev || []).filter((t): t is SupportChatThread => Boolean(t && t.id));
-            const exists = safePrev.some((t) => t.id === incoming.id);
-            const next = exists
-              ? safePrev.map((t) => (t.id === incoming.id ? incoming : t))
-              : [incoming, ...safePrev];
-            return [...next].sort(
-              (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-            );
-          });
-          if (
-            activeChatStateRef.current.activeModule === 'support_chat' &&
-            activeChatStateRef.current.selectedThreadId === incoming.id &&
-            (incoming.unreadByAdmin || 0) > 0
-          ) {
-            void markAdminSupportThreadRead(incoming.id);
-          }
-        }
-      },
-      setSupportWsStatus
-    );
-
-    const unsubFsAdmin = subscribeAdminFirestoreSupportThreads((fsThreads) => {
+    const mergeIncomingThreads = (incomingList: SupportChatThread[]) => {
       setSupportThreads((prev) => {
         const byId = new Map<string, SupportChatThread>();
         for (const t of prev || []) {
           if (t?.id) byId.set(t.id, t);
         }
-        for (const t of fsThreads || []) {
+        for (const t of incomingList || []) {
           if (!t?.id) continue;
           const prevTh = byId.get(t.id);
           if (!prevTh) {
             byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
           } else {
-            const msgMap = new Map<string, any>();
-            for (const m of [
-              ...(Array.isArray(prevTh?.messages) ? prevTh.messages : []),
-              ...(Array.isArray(t?.messages) ? t.messages : [])
-            ]) {
-              if (m?.id) msgMap.set(m.id, m);
-            }
-            const mergedMsgs = Array.from(msgMap.values()).sort(
-              (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-            );
+            const mergedMsgs = mergeSupportMessagesList(prevTh?.messages, t?.messages);
             const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
             const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
             const newer = curTs >= prevTs ? t : prevTh;
@@ -707,19 +674,76 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
         );
       });
+    };
+
+    const unsub = subscribeSupportChatWebSocket(
+      (evt) => {
+        if (evt.type === 'support_chat_update' && evt.thread) {
+          const incoming = evt.thread;
+          mergeIncomingThreads([incoming]);
+          if (
+            activeChatStateRef.current.activeModule === 'support_chat' &&
+            (activeChatStateRef.current.selectedThreadId === incoming.id ||
+              !activeChatStateRef.current.selectedThreadId) &&
+            (incoming.unreadByAdmin || 0) > 0
+          ) {
+            void markAdminSupportThreadRead(incoming.id);
+          }
+        }
+      },
+      setSupportWsStatus
+    );
+
+    const unsubFsAdmin = subscribeAdminFirestoreSupportThreads((fsThreads) => {
+      mergeIncomingThreads(fsThreads);
     });
 
     return () => {
       unsub();
       unsubFsAdmin();
     };
-  }, [isOpen, isAdminAccess, isImpersonating]);
+  }, [isOpen, isAdminAccess, isImpersonating, firebaseUser?.uid]);
 
-  // Fallback HTTP polling for Admin Support Chat when WebSocket is unavailable (e.g. Vercel serverless)
+  // Auto-select first conversation when opening Support Chat if none is explicitly selected
   useEffect(() => {
-    if (!isOpen || (!isAdminAccess && !isImpersonating) || supportWsStatus === 'connected') return;
-    const pollMs = activeModule === 'support_chat' ? 6000 : 20000;
-    const timer = setInterval(() => {
+    if (!isOpen || activeModule !== 'support_chat') return;
+    if (supportThreads.length > 0 && (!selectedThreadId || !supportThreads.some((t) => t.id === selectedThreadId))) {
+      setSelectedThreadId(supportThreads[0].id);
+    }
+  }, [isOpen, activeModule, supportThreads, selectedThreadId]);
+
+  // Live subcollection listener for the currently open thread so new messages appear instantaneously
+  useEffect(() => {
+    if (!isOpen || (!isAdminAccess && !isImpersonating) || activeModule !== 'support_chat') return;
+    const activeId = selectedThreadId || supportThreads[0]?.id;
+    if (!activeId) return;
+    const unsubMsgs = subscribeAdminFirestoreThreadMessages(activeId, (fsMsgs) => {
+      setSupportThreads((prev) =>
+        (prev || []).map((t) => {
+          if (t.id !== activeId) return t;
+          const mergedMsgs = mergeSupportMessagesList(t.messages, fsMsgs);
+          const lastMsg = mergedMsgs[mergedMsgs.length - 1];
+          return {
+            ...t,
+            messages: mergedMsgs,
+            ...(lastMsg
+              ? {
+                  lastMessageText: lastMsg.text.slice(0, 500),
+                  lastMessageSenderRole: lastMsg.senderRole,
+                  lastMessageAt: lastMsg.createdAt
+                }
+              : {})
+          };
+        })
+      );
+    });
+    return () => unsubMsgs();
+  }, [isOpen, isAdminAccess, isImpersonating, activeModule, selectedThreadId, firebaseUser?.uid]);
+
+  // Fallback HTTP + Firestore sync when WebSocket is unavailable (e.g. Vercel serverless)
+  useEffect(() => {
+    if (!isOpen || (!isAdminAccess && !isImpersonating)) return;
+    const runRefresh = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       fetchAdminSupportThreads()
         .then((resp) => {
@@ -735,16 +759,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
               if (!prevTh) {
                 byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
               } else {
-                const msgMap = new Map<string, any>();
-                for (const m of [
-                  ...(Array.isArray(prevTh?.messages) ? prevTh.messages : []),
-                  ...(Array.isArray(t?.messages) ? t.messages : [])
-                ]) {
-                  if (m?.id) msgMap.set(m.id, m);
-                }
-                const mergedMsgs = Array.from(msgMap.values()).sort(
-                  (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-                );
+                const mergedMsgs = mergeSupportMessagesList(prevTh?.messages, t?.messages);
                 const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
                 const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
                 const newer = curTs >= prevTs ? t : prevTh;
@@ -759,9 +774,17 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         .catch(() => {
           // ignore transient poll error
         });
-    }, pollMs);
+    };
+
+    if (activeModule === 'support_chat') {
+      runRefresh();
+    }
+    if (supportWsStatus === 'connected') return;
+
+    const pollMs = activeModule === 'support_chat' ? 6000 : 20000;
+    const timer = setInterval(runRefresh, pollMs);
     return () => clearInterval(timer);
-  }, [isOpen, isAdminAccess, isImpersonating, supportWsStatus, activeModule]);
+  }, [isOpen, isAdminAccess, isImpersonating, supportWsStatus, activeModule, firebaseUser?.uid]);
 
   // Open User 360° Drawer
   const openUserDrawer = (target: User) => {
@@ -818,45 +841,72 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!inspectedUser) return;
     setIsSavingDrawer(true);
     try {
+      const cleanEmail = (inspectedUser.email || '').trim().toLowerCase();
+      const isRootAllowlisted = ADMIN_EMAILS.some((adm) => adm.toLowerCase() === cleanEmail);
+      const effectiveRole: UserRole = isRootAllowlisted ? 'admin' : drawerRole;
       const planChanged = drawerPlan !== inspectedUser.plan;
-      const roleChanged = drawerRole !== inspectedUser.role;
+      const roleChanged = effectiveRole !== (inspectedUser.role || 'user');
       let nextCredits = inspectedUser.creditsRemaining ?? 5;
 
-      if (drawerPlan === 'executive' || drawerRole === 'admin') {
+      const freeQuota = planQuotas.find((q) => q.planId === 'free');
+      const proQuota = planQuotas.find((q) => q.planId === 'pro');
+      const freeDefaultCredits = freeQuota?.unlimited ? 9999 : (freeQuota?.monthlyCredits ?? 5);
+      const proDefaultCredits = proQuota?.unlimited ? 9999 : (proQuota?.monthlyCredits ?? 100);
+
+      if (drawerPlan === 'executive' || effectiveRole === 'admin') {
         if (planChanged || roleChanged || nextCredits <= 5) {
           nextCredits = Math.max(nextCredits, 9999);
         }
       } else if (drawerPlan === 'pro') {
-        if (planChanged || nextCredits <= 5) {
-          nextCredits = Math.max(nextCredits, 100);
+        if (planChanged || roleChanged) {
+          nextCredits = proDefaultCredits;
+        } else if (nextCredits <= 5) {
+          nextCredits = proDefaultCredits;
         }
-      } else if (planChanged && drawerPlan === 'free') {
-        nextCredits = Math.min(nextCredits, 5);
+      } else if (drawerPlan === 'free') {
+        if (planChanged || roleChanged) {
+          nextCredits = freeDefaultCredits;
+        }
       }
 
       const hasValidExpiry =
         Boolean(inspectedUser.subscriptionExpiresAt) &&
         new Date(inspectedUser.subscriptionExpiresAt as string).getTime() > Date.now();
-      const nextExpiresAt =
-        (drawerPlan === 'pro' || drawerPlan === 'executive') && (planChanged || !hasValidExpiry)
-          ? hasValidExpiry
-            ? inspectedUser.subscriptionExpiresAt
-            : new Date(Date.now() + 30 * 86400000).toISOString()
-          : inspectedUser.subscriptionExpiresAt;
+      const isPaidPlan = drawerPlan === 'pro' || drawerPlan === 'executive';
+      const nextExpiresAt: string | null = isPaidPlan
+        ? hasValidExpiry
+          ? (inspectedUser.subscriptionExpiresAt as string)
+          : new Date(Date.now() + 30 * 86400000).toISOString()
+        : null;
+      const nextStripeStatus: User['stripeStatus'] | null = isPaidPlan
+        ? inspectedUser.stripeStatus || 'active'
+        : null;
 
-      const updates: Partial<User> & { email?: string; name?: string } = {
+      await updateUserManagement(inspectedUser.id, {
         email: inspectedUser.email,
         name: inspectedUser.name,
         notes: drawerNotes,
         plan: drawerPlan,
-        role: drawerRole,
+        role: effectiveRole,
         status: drawerStatus,
         creditsRemaining: nextCredits,
-        ...(nextExpiresAt ? { subscriptionExpiresAt: nextExpiresAt } : {})
+        subscriptionExpiresAt: nextExpiresAt,
+        stripeStatus: nextStripeStatus
+      });
+
+      const uiUpdates: Partial<User> = {
+        notes: drawerNotes,
+        plan: drawerPlan,
+        role: effectiveRole,
+        status: drawerStatus,
+        creditsRemaining: nextCredits,
+        subscriptionExpiresAt: nextExpiresAt || undefined,
+        stripeStatus: nextStripeStatus || undefined,
+        updatedAt: new Date().toISOString()
       };
-      await updateUserManagement(inspectedUser.id, updates);
-      setUsersList((prev) => prev.map((u) => (u.id === inspectedUser.id ? { ...u, ...updates } : u)));
-      setInspectedUser((prev) => (prev ? { ...prev, ...updates } : null));
+      setUsersList((prev) => prev.map((u) => (u.id === inspectedUser.id ? { ...u, ...uiUpdates } : u)));
+      setInspectedUser((prev) => (prev ? { ...prev, ...uiUpdates } : null));
+      setDrawerRole(effectiveRole);
       const isSelf =
         inspectedUser.id === user?.id ||
         Boolean(
@@ -870,16 +920,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       void recordAuditLog({
         action: 'admin_user_modified',
         category: 'admin',
-        severity: drawerRole === 'admin' || drawerStatus === 'suspended' ? 'warning' : 'info',
+        severity: effectiveRole === 'admin' || drawerStatus === 'suspended' ? 'warning' : 'info',
         status: 'success',
         targetResource: `users/${inspectedUser.id}`,
-        details: `Ficha CRM atualizada pelo admin: plano=${drawerPlan}, role=${drawerRole}, status=${drawerStatus}.`,
+        details: `Ficha CRM atualizada pelo admin: plano=${drawerPlan}, role=${effectiveRole}, status=${drawerStatus}.`,
         actorUserId: user?.id,
         actorEmail: user?.email,
         actorRole: 'admin',
-        metadata: { targetEmail: inspectedUser.email, plan: drawerPlan, role: drawerRole, status: drawerStatus }
+        metadata: { targetEmail: inspectedUser.email, plan: drawerPlan, role: effectiveRole, status: drawerStatus }
       });
-      showNotification(`Perfil de ${inspectedUser.name} atualizado na base de dados!`);
+      if (isRootAllowlisted && drawerRole === 'user') {
+        showNotification(
+          `Plano/notas de ${inspectedUser.name} atualizados. Nota: este e-mail é administrador raiz na allowlist do sistema.`
+        );
+      } else {
+        showNotification(`Perfil de ${inspectedUser.name} atualizado na base de dados!`);
+      }
     } catch (e) {
       console.error(e);
       showNotification('Erro ao salvar alterações do utilizador.');
@@ -2041,14 +2097,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
   };
 
-  const handleSendAdminChatReply = async (e?: React.FormEvent) => {
+  const handleSendAdminChatReply = async (e?: React.FormEvent, explicitThread?: SupportChatThread) => {
     e?.preventDefault();
-    if (!selectedThreadId || !adminChatReply.trim() || isSendingChatReply) return;
+    const currentThread =
+      explicitThread ||
+      supportThreads.find((t) => t.id === selectedThreadId) ||
+      supportThreads[0];
+    const targetThreadId = currentThread?.id || selectedThreadId;
+    if (!targetThreadId || !adminChatReply.trim() || isSendingChatReply) return;
+    if (selectedThreadId !== targetThreadId) {
+      setSelectedThreadId(targetThreadId);
+    }
     setIsSendingChatReply(true);
     try {
-      const currentThread = supportThreads.find((t) => t.id === selectedThreadId);
       const res = await sendAdminSupportReply(
-        selectedThreadId,
+        targetThreadId,
         adminChatReply.trim(),
         currentThread
           ? {
@@ -2066,7 +2129,15 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           const safePrev = (prev || []).filter((t): t is SupportChatThread => Boolean(t && t.id));
           const exists = safePrev.some((t) => t.id === res.thread.id);
           const next = exists
-            ? safePrev.map((t) => (t.id === res.thread.id ? res.thread : t))
+            ? safePrev.map((t) =>
+                t.id === res.thread.id
+                  ? {
+                      ...t,
+                      ...res.thread,
+                      messages: mergeSupportMessagesList(t.messages, res.thread.messages)
+                    }
+                  : t
+              )
             : [res.thread, ...safePrev];
           return [...next].sort(
             (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
@@ -2086,12 +2157,26 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const handleToggleSupportThreadStatus = async (thread: SupportChatThread) => {
     const nextStatus = thread.status === 'resolved' ? 'open' : 'resolved';
     try {
-      const updated = await updateAdminSupportThreadStatus(thread.id, nextStatus);
+      const updated = await updateAdminSupportThreadStatus(thread.id, nextStatus, {
+        userId: thread.userId,
+        userName: thread.userName,
+        userEmail: thread.userEmail,
+        userPlan: thread.userPlan,
+        userAvatarUrl: thread.userAvatarUrl
+      });
       if (updated?.id) {
         setSupportThreads((prev) =>
           (prev || [])
             .filter((t): t is SupportChatThread => Boolean(t && t.id))
-            .map((t) => (t.id === updated.id ? updated : t))
+            .map((t) =>
+              t.id === updated.id
+                ? {
+                    ...t,
+                    ...updated,
+                    messages: mergeSupportMessagesList(t.messages, updated.messages)
+                  }
+                : t
+            )
         );
       }
       showNotification(
@@ -6347,17 +6432,17 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             </span>
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                supportWsStatus === 'connected' || supportWsStatus === 'disconnected'
+                                supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser)
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : 'bg-amber-100 text-amber-800'
                               }`}
                             >
-                              {supportWsStatus === 'connected' || supportWsStatus === 'disconnected' ? (
+                              {supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser) ? (
                                 <Wifi className="w-3 h-3" />
                               ) : (
                                 <WifiOff className="w-3 h-3" />
                               )}
-                              {supportWsStatus === 'connected'
+                              {supportWsStatus === 'connected' || Boolean(firebaseUser)
                                 ? 'Tempo Real'
                                 : supportWsStatus === 'disconnected'
                                 ? 'HTTPS / Cloud'
@@ -6589,7 +6674,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             </div>
 
                             <form
-                              onSubmit={handleSendAdminChatReply}
+                              onSubmit={(e) => handleSendAdminChatReply(e, activeThread)}
                               className="p-3 bg-white border-t border-slate-200 flex items-end gap-2"
                             >
                               <textarea
@@ -6600,7 +6685,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
-                                    void handleSendAdminChatReply();
+                                    void handleSendAdminChatReply(undefined, activeThread);
                                   }
                                 }}
                                 placeholder={`Responder para ${activeThread.userName}...`}

@@ -10,7 +10,7 @@ export const CVWatermarkOverlay: React.FC<CVWatermarkOverlayProps> = ({ isVisibl
   const { siteLanguage } = useLanguage();
   if (!isVisible) return null;
 
-  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.pt).watermark;
+  const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).watermark;
 
   return (
     <div
