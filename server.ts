@@ -11,6 +11,7 @@ import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import Stripe from 'stripe';
 import mammoth from 'mammoth';
 import type { WebSocket } from 'ws';
+import firebaseAppletConfig from './firebase-applet-config.json';
 
 dotenv.config();
 
@@ -201,6 +202,16 @@ export function createApiApp() {
       return uploadJsonParser(req, res, next);
     }
     return defaultJsonParser(req, res, next);
+  });
+
+  let publicConfigHydrateFn: ((force?: boolean) => Promise<void>) | null = null;
+  app.use('/api', (req, _res, next) => {
+    if (req.path === '/health' || req.path === '/public/config' || !publicConfigHydrateFn) {
+      return next();
+    }
+    void publicConfigHydrateFn(false)
+      .catch(() => {})
+      .finally(() => next());
   });
 
   // -------------------------------------------------------------
@@ -3929,6 +3940,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     stripeStatus?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
     authProviders: Array<'password' | 'google'>;
     firebaseUid?: string;
+    lastTokenIat?: number;
     createdAt: string;
     updatedAt: string;
     lastLoginAt?: string;
@@ -3987,29 +3999,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     telemetry?: ServerTelemetryData;
   }
 
-  const { projectId: FIREBASE_PROJECT_ID, firestoreDatabaseId: FIREBASE_DATABASE_ID } = (() => {
-    let projectId = process.env.FIREBASE_PROJECT_ID || '';
-    let firestoreDatabaseId = process.env.FIREBASE_DATABASE_ID || '(default)';
-    try {
-      const candidatePaths = [
-        path.resolve(SERVER_ROOT_DIR, 'firebase-applet-config.json'),
-        path.resolve(SERVER_ROOT_DIR, '..', 'firebase-applet-config.json'),
-        path.resolve(process.cwd(), 'firebase-applet-config.json')
-      ];
-      for (const cfgPath of candidatePaths) {
-        if (fs.existsSync(cfgPath)) {
-          const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-          if (!projectId && parsed?.projectId) projectId = String(parsed.projectId);
-          if (parsed?.firestoreDatabaseId) firestoreDatabaseId = String(parsed.firestoreDatabaseId);
-          break;
-        }
-      }
-    } catch { /* ignore */ }
-    return {
-      projectId: projectId || 'gen-lang-client-0398048262',
-      firestoreDatabaseId
-    };
-  })();
+  const FIREBASE_PROJECT_ID =
+    process.env.FIREBASE_PROJECT_ID ||
+    firebaseAppletConfig?.projectId ||
+    'gen-lang-client-0398048262';
+  const FIREBASE_DATABASE_ID =
+    process.env.FIREBASE_DATABASE_ID ||
+    firebaseAppletConfig?.firestoreDatabaseId ||
+    '(default)';
 
   function decodeFirestoreValue(val: any): any {
     if (!val || typeof val !== 'object') return undefined;
@@ -4033,6 +4030,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return undefined;
   }
 
+  function decodeFirestoreDocFields(fields: Record<string, any> | undefined): Record<string, any> | null {
+    if (!fields || typeof fields !== 'object') return null;
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      out[k] = decodeFirestoreValue(v);
+    }
+    return out;
+  }
+
   async function fetchFirestoreUserDoc(uid: string, firebaseIdToken: string): Promise<Record<string, any> | null> {
     if (!uid || !firebaseIdToken || !/^[a-zA-Z0-9_\-]{1,128}$/.test(uid)) return null;
     try {
@@ -4046,16 +4052,110 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }).finally(() => clearTimeout(timer));
       if (!resp.ok) return null;
       const json = (await resp.json().catch(() => null)) as { fields?: Record<string, any> } | null;
-      if (!json?.fields) return null;
-      const out: Record<string, any> = {};
-      for (const [k, v] of Object.entries(json.fields)) {
-        out[k] = decodeFirestoreValue(v);
-      }
-      return out;
+      return decodeFirestoreDocFields(json?.fields);
     } catch {
       return null;
     }
   }
+
+  async function fetchPublicFirestoreCollection(collectionName: string): Promise<Record<string, any>[]> {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIREBASE_DATABASE_ID)}/documents:runQuery`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2200);
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: collectionName }],
+            limit: 50
+          }
+        }),
+        signal: controller.signal
+      }).finally(() => clearTimeout(timer));
+      if (!resp.ok) return [];
+      const json = (await resp.json().catch(() => null)) as Array<{ document?: { fields?: Record<string, any> } }> | null;
+      if (!Array.isArray(json)) return [];
+      return json
+        .map((row) => decodeFirestoreDocFields(row?.document?.fields))
+        .filter((item): item is Record<string, any> => Boolean(item));
+    } catch {
+      return [];
+    }
+  }
+
+  async function fetchPublicFirestoreDoc(docPath: string): Promise<Record<string, any> | null> {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIREBASE_DATABASE_ID)}/documents/${docPath}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 2200);
+      const resp = await fetch(url, { method: 'GET', signal: controller.signal }).finally(() => clearTimeout(timer));
+      if (!resp.ok) return null;
+      const json = (await resp.json().catch(() => null)) as { fields?: Record<string, any> } | null;
+      return decodeFirestoreDocFields(json?.fields);
+    } catch {
+      return null;
+    }
+  }
+
+  let lastPublicConfigSyncAt = 0;
+  let publicConfigSyncPromise: Promise<void> | null = null;
+  async function syncPublicConfigFromFirestore(force = false): Promise<void> {
+    const now = Date.now();
+    if (!force && now - lastPublicConfigSyncAt < 25_000) {
+      return;
+    }
+    if (publicConfigSyncPromise) {
+      return publicConfigSyncPromise;
+    }
+    publicConfigSyncPromise = (async () => {
+      try {
+        const [quotasDocs, govDoc, plansDoc] = await Promise.all([
+          fetchPublicFirestoreCollection('planQuotas'),
+          fetchPublicFirestoreDoc('systemSettings/platformGovernance'),
+          fetchPublicFirestoreDoc('systemSettings/editablePlans')
+        ]);
+        if (!authStore.adminConfig) authStore.adminConfig = {};
+        let changed = false;
+        const mergedByPlan = new Map<string, any>(DEFAULT_SERVER_PLAN_QUOTAS.map((q) => [q.planId, { ...q }]));
+        for (const q of quotasDocs) {
+          if (q?.planId && ['free', 'pro', 'executive'].includes(String(q.planId))) {
+            mergedByPlan.set(String(q.planId), {
+              ...(mergedByPlan.get(String(q.planId)) || {}),
+              ...q
+            });
+          }
+        }
+        const nextQuotas = Array.from(mergedByPlan.values());
+        if (JSON.stringify(authStore.adminConfig.planQuotas || null) !== JSON.stringify(nextQuotas)) {
+          authStore.adminConfig.planQuotas = nextQuotas;
+          changed = true;
+        }
+        if (govDoc && typeof govDoc === 'object') {
+          authStore.adminConfig.platformGovernance = {
+            ...(authStore.adminConfig.platformGovernance || {}),
+            ...govDoc
+          };
+          changed = true;
+        }
+        if (plansDoc && Array.isArray(plansDoc.plans)) {
+          authStore.adminConfig.editablePlans = plansDoc.plans;
+          changed = true;
+        }
+        lastPublicConfigSyncAt = Date.now();
+        if (changed) {
+          persistAuthStore();
+        }
+      } catch {
+        lastPublicConfigSyncAt = Date.now();
+      } finally {
+        publicConfigSyncPromise = null;
+      }
+    })();
+    return publicConfigSyncPromise;
+  }
+  publicConfigHydrateFn = syncPublicConfigFromFirestore;
 
   let runtimeFallbackSecret: string | null = null;
   function ensureAuthSecret(): string {
@@ -4390,12 +4490,19 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     email: string;
     role: string;
     exp: number;
+    iat?: number;
     name?: string;
     plan?: 'free' | 'pro' | 'executive';
+    creditsRemaining?: number;
+    subscriptionExpiresAt?: string;
   }
 
   function signSessionToken(payload: SessionTokenPayload): string {
-    const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const withIat: SessionTokenPayload = {
+      ...payload,
+      iat: typeof payload.iat === 'number' ? payload.iat : Date.now()
+    };
+    const encoded = Buffer.from(JSON.stringify(withIat), 'utf8').toString('base64url');
     const sig = crypto.createHmac('sha256', AUTH_TOKEN_SECRET).update(encoded).digest('base64url');
     return `${encoded}.${sig}`;
   }
@@ -4492,31 +4599,77 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     const existing =
       authStore.users[payload.uid] ||
       (payload.email ? findBackendUserByEmail(payload.email) : undefined);
-    if (existing) return existing;
-    if (!isVercelEnv) return undefined;
-
+    const tokenIat = typeof payload.iat === 'number' ? payload.iat : 0;
     const cleanEmail = String(payload.email || '').trim().toLowerCase();
-    const isAdmin =
+    const tokenIsAdmin =
       payload.role === 'admin' || (cleanEmail ? ADMIN_EMAILS_BACKEND.has(cleanEmail) : false);
-    const validPlan: 'free' | 'pro' | 'executive' =
+    const tokenValidPlan: 'free' | 'pro' | 'executive' | undefined =
       payload.plan && ['free', 'pro', 'executive'].includes(payload.plan)
         ? payload.plan
-        : isAdmin
-        ? 'executive'
-        : 'free';
+        : undefined;
+
+    if (existing) {
+      const existingUpdatedMs = Date.parse(existing.updatedAt || '') || 0;
+      const lastKnownIat = existing.lastTokenIat || 0;
+      // If this request carries a verified JWT minted more recently than this Lambda's cached record,
+      // sync role/plan/credits so multi-instance warm Lambdas never serve stale 'free' permissions.
+      if (tokenIat > 0 && tokenIat > Math.max(lastKnownIat, existingUpdatedMs)) {
+        let changed = false;
+        if (tokenValidPlan && existing.plan !== tokenValidPlan) {
+          existing.plan = tokenValidPlan;
+          changed = true;
+        }
+        const resolvedRole: 'admin' | 'user' = tokenIsAdmin ? 'admin' : 'user';
+        if (existing.role !== resolvedRole) {
+          existing.role = resolvedRole;
+          changed = true;
+        }
+        if (typeof payload.creditsRemaining === 'number' && Number.isFinite(payload.creditsRemaining)) {
+          existing.creditsRemaining = payload.creditsRemaining;
+          changed = true;
+        } else if (changed && (existing.role === 'admin' || existing.plan !== 'free')) {
+          existing.creditsRemaining = Math.max(existing.creditsRemaining || 0, existing.plan === 'executive' || existing.role === 'admin' ? 9999 : 100);
+        }
+        if (typeof payload.subscriptionExpiresAt === 'string') {
+          existing.subscriptionExpiresAt = payload.subscriptionExpiresAt;
+        }
+        if (payload.name && payload.name.trim() && existing.name !== payload.name.trim()) {
+          existing.name = payload.name.trim().slice(0, 120);
+        }
+        existing.lastTokenIat = tokenIat;
+        if (changed) {
+          existing.updatedAt = new Date(tokenIat).toISOString();
+          persistAuthStore();
+        }
+      }
+      return existing;
+    }
+    if (!isVercelEnv) return undefined;
+
+    const validPlan: 'free' | 'pro' | 'executive' =
+      tokenValidPlan || (tokenIsAdmin ? 'executive' : 'free');
     const nowIso = new Date().toISOString();
     const hydrated: BackendUserRecord = {
       id: payload.uid,
       name: String(payload.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
       email: cleanEmail,
-      role: isAdmin ? 'admin' : 'user',
+      role: tokenIsAdmin ? 'admin' : 'user',
       status: 'active',
       plan: validPlan,
-      creditsRemaining: isAdmin || validPlan !== 'free' ? 9999 : getFreePlanDefaultCredits(),
+      creditsRemaining:
+        typeof payload.creditsRemaining === 'number' && Number.isFinite(payload.creditsRemaining)
+          ? payload.creditsRemaining
+          : tokenIsAdmin || validPlan !== 'free'
+          ? 9999
+          : getFreePlanDefaultCredits(),
       creditsUsed: 0,
       totalCvGenerated: 0,
       billingCycle: 'monthly',
+      ...(typeof payload.subscriptionExpiresAt === 'string'
+        ? { subscriptionExpiresAt: payload.subscriptionExpiresAt }
+        : {}),
       authProviders: ['password'],
+      lastTokenIat: tokenIat || Date.now(),
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -5041,13 +5194,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       });
 
       const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const issuedAt = Date.now();
+      newUser.lastTokenIat = issuedAt;
       const token = signSessionToken({
         uid: newUser.id,
         email: newUser.email,
         role: newUser.role,
         name: newUser.name,
         plan: newUser.plan,
-        exp: Date.now() + ttlMs
+        creditsRemaining: newUser.creditsRemaining,
+        subscriptionExpiresAt: newUser.subscriptionExpiresAt,
+        iat: issuedAt,
+        exp: issuedAt + ttlMs
       });
 
       setSessionCookie(req, res, token, Boolean(rememberMe));
@@ -5169,13 +5327,18 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       });
 
       const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const issuedAt = Date.now();
+      userRecord.lastTokenIat = issuedAt;
       const token = signSessionToken({
         uid: userRecord.id,
         email: userRecord.email,
         role: userRecord.role,
         name: userRecord.name,
         plan: userRecord.plan,
-        exp: Date.now() + ttlMs
+        creditsRemaining: userRecord.creditsRemaining,
+        subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+        iat: issuedAt,
+        exp: issuedAt + ttlMs
       });
 
       setSessionCookie(req, res, token, Boolean(rememberMe));
@@ -5378,6 +5541,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             record.billingCycle = firestoreUser.billingCycle;
           }
           if (typeof firestoreUser.notes === 'string') record.notes = firestoreUser.notes;
+          if (
+            typeof firestoreUser.stripeStatus === 'string' &&
+            ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
+          ) {
+            record.stripeStatus = firestoreUser.stripeStatus as 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
+          }
           if (typeof firestoreUser.name === 'string' && firestoreUser.name.trim()) {
             record.name = firestoreUser.name.trim().slice(0, 120);
           }
@@ -5418,16 +5587,21 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
+      const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const issuedAt = Date.now();
+      record.lastTokenIat = issuedAt;
       persistAuthStore();
 
-      const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const token = signSessionToken({
         uid: record.id,
         email: record.email,
         role: record.role,
         name: record.name,
         plan: record.plan,
-        exp: Date.now() + ttlMs
+        creditsRemaining: record.creditsRemaining,
+        subscriptionExpiresAt: record.subscriptionExpiresAt,
+        iat: issuedAt,
+        exp: issuedAt + ttlMs
       });
 
       setSessionCookie(req, res, token, Boolean(rememberMe));
@@ -5443,7 +5617,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  app.get('/api/auth/me', (req, res) => {
+  app.get('/api/auth/me', async (req, res) => {
     try {
       const token = extractTokenFromRequest(req);
       if (!token) {
@@ -5457,9 +5631,57 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!userRecord || userRecord.status === 'suspended') {
         return res.json({ authenticated: false, user: null });
       }
+
+      // If caller also provides a Firebase ID token, reconcile against authoritative Firestore doc
+      const fbHeaderRaw = String(req.headers['x-firebase-id-token'] || '').trim();
+      let refreshedToken: string | undefined;
+      if (fbHeaderRaw && fbHeaderRaw.split('.').length === 3) {
+        const verified = await verifyFirebaseIdToken(fbHeaderRaw);
+        if (verified && (verified.sub === userRecord.id || verified.sub === userRecord.firebaseUid || (verified.email_verified && verified.email === userRecord.email.toLowerCase()))) {
+          const fsUser = await fetchFirestoreUserDoc(verified.sub, fbHeaderRaw);
+          if (fsUser) {
+            if (fsUser.status === 'suspended') {
+              userRecord.status = 'suspended';
+              persistAuthStore();
+              return res.json({ authenticated: false, user: null });
+            }
+            const prevSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}`;
+            if (fsUser.plan && ['free', 'pro', 'executive'].includes(fsUser.plan)) userRecord.plan = fsUser.plan;
+            if (fsUser.role && ['admin', 'user'].includes(fsUser.role)) userRecord.role = fsUser.role;
+            if (fsUser.status && ['active', 'suspended'].includes(fsUser.status)) userRecord.status = fsUser.status;
+            if (typeof fsUser.creditsRemaining === 'number' && Number.isFinite(fsUser.creditsRemaining)) {
+              userRecord.creditsRemaining = fsUser.creditsRemaining;
+            }
+            if (typeof fsUser.subscriptionExpiresAt === 'string') {
+              userRecord.subscriptionExpiresAt = fsUser.subscriptionExpiresAt;
+            }
+            const nextSignature = `${userRecord.plan}|${userRecord.role}|${userRecord.creditsRemaining}|${userRecord.status}`;
+            if (nextSignature !== prevSignature) {
+              const issuedAt = Date.now();
+              userRecord.lastTokenIat = issuedAt;
+              userRecord.updatedAt = new Date(issuedAt).toISOString();
+              persistAuthStore();
+              refreshedToken = signSessionToken({
+                uid: userRecord.id,
+                email: userRecord.email,
+                role: userRecord.role,
+                name: userRecord.name,
+                plan: userRecord.plan,
+                creditsRemaining: userRecord.creditsRemaining,
+                subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+                iat: issuedAt,
+                exp: payload.exp > issuedAt ? payload.exp : issuedAt + 7 * 24 * 60 * 60 * 1000
+              });
+              setSessionCookie(req, res, refreshedToken, true);
+            }
+          }
+        }
+      }
+
       return res.json({
         authenticated: true,
-        user: sanitizeUser(userRecord)
+        user: sanitizeUser(userRecord),
+        ...(refreshedToken ? { token: refreshedToken } : {})
       });
     } catch {
       return res.json({ authenticated: false, user: null });
@@ -5933,9 +6155,23 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
-      userRecord.updatedAt = new Date().toISOString();
+      const issuedAt = Date.now();
+      userRecord.lastTokenIat = issuedAt;
+      userRecord.updatedAt = new Date(issuedAt).toISOString();
       persistAuthStore();
-      return res.json({ success: true, user: sanitizeUser(userRecord) });
+      const refreshedToken = signSessionToken({
+        uid: userRecord.id,
+        email: userRecord.email,
+        role: userRecord.role,
+        name: userRecord.name,
+        plan: userRecord.plan,
+        creditsRemaining: userRecord.creditsRemaining,
+        subscriptionExpiresAt: userRecord.subscriptionExpiresAt,
+        iat: issuedAt,
+        exp: payload.exp > issuedAt ? payload.exp : issuedAt + 30 * 24 * 60 * 60 * 1000
+      });
+      setSessionCookie(req, res, refreshedToken, true);
+      return res.json({ success: true, user: sanitizeUser(userRecord), token: refreshedToken });
     } catch {
       return res.status(500).json({ error: 'Falha ao sincronizar estado da assinatura.' });
     }
@@ -6584,7 +6820,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   }
 
   // Public runtime config (non-sensitive frontend settings, plans, banners, templates, snippets, locales)
-  app.get('/api/public/config', (_req, res) => {
+  app.get('/api/public/config', async (_req, res) => {
+    await syncPublicConfigFromFirestore(false).catch(() => {});
     const cfg = authStore.adminConfig || {};
     return res.json({
       editablePlans: cfg.editablePlans || null,
@@ -7248,6 +7485,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
     if (!authStore.adminConfig) authStore.adminConfig = {};
     authStore.adminConfig[scope] = req.body?.data ?? req.body;
+    if (scope === 'planQuotas' || scope === 'platformGovernance') {
+      lastPublicConfigSyncAt = Date.now();
+    }
     persistAuthStore();
     return res.json({ success: true, scope });
   });

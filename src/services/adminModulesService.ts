@@ -538,6 +538,25 @@ async function saveAdminConfigScope(scope: string, payload: any): Promise<void> 
 // -------------------------------------------------------------
 
 export async function fetchPromptsConfig(): Promise<PromptTemplateConfig[]> {
+  if (auth.currentUser) {
+    try {
+      const colRef = collection(db, 'promptsConfig');
+      const snap = await getDocs(colRef);
+      if (!snap.empty) {
+        const byId = new Map<string, PromptTemplateConfig>(DEFAULT_PROMPT_CONFIGS.map((p) => [p.id, p]));
+        snap.docs.forEach((d) => {
+          const item = d.data() as PromptTemplateConfig;
+          if (item?.id) byId.set(item.id, { ...(byId.get(item.id) || {}), ...item });
+        });
+        const list = Array.from(byId.values());
+        setStored('curriculopro_prompts_config', list);
+        return list;
+      }
+    } catch (e) {
+      console.warn('Usando configuração local de prompts:', e);
+    }
+  }
+
   try {
     const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
     const list = overview?.config?.promptsConfig || overview?.adminConfig?.promptsConfig;
@@ -549,19 +568,6 @@ export async function fetchPromptsConfig(): Promise<PromptTemplateConfig[]> {
     // fall through
   }
 
-  if (auth.currentUser) {
-    try {
-      const colRef = collection(db, 'promptsConfig');
-      const snap = await getDocs(colRef);
-      if (!snap.empty) {
-        const list = snap.docs.map((d) => d.data() as PromptTemplateConfig);
-        setStored('curriculopro_prompts_config', list);
-        return list;
-      }
-    } catch (e) {
-      console.warn('Usando configuração local de prompts:', e);
-    }
-  }
   return getStored('curriculopro_prompts_config', DEFAULT_PROMPT_CONFIGS);
 }
 
@@ -632,23 +638,36 @@ export async function saveAiRoutingConfig(config: AiModelRoutingConfig): Promise
 }
 
 export async function fetchPlanQuotas(): Promise<PlanCreditQuota[]> {
-  const pub = await fetchPublicAdminConfig();
-  if (Array.isArray(pub?.planQuotas) && pub.planQuotas.length > 0) {
-    setStored('curriculopro_plan_quotas', pub.planQuotas);
-    return pub.planQuotas;
-  }
-
   try {
     const colRef = collection(db, 'planQuotas');
     const snap = await getDocs(colRef);
     if (!snap.empty) {
-      const list = snap.docs.map((d) => d.data() as PlanCreditQuota);
+      const byPlan = new Map<string, PlanCreditQuota>(DEFAULT_PLAN_QUOTAS.map((q) => [q.planId, q]));
+      snap.docs.forEach((d) => {
+        const q = d.data() as PlanCreditQuota;
+        if (q?.planId) {
+          byPlan.set(q.planId, { ...(byPlan.get(q.planId) || {}), ...q });
+        }
+      });
+      const list = Array.from(byPlan.values());
       setStored('curriculopro_plan_quotas', list);
       return list;
     }
   } catch (e) {
-    console.warn('Usando quotas locais de planos:', e);
+    console.warn('Usando fallback para quotas de planos:', e);
   }
+
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.planQuotas) && pub.planQuotas.length > 0) {
+    const byPlan = new Map<string, PlanCreditQuota>(DEFAULT_PLAN_QUOTAS.map((q) => [q.planId, q]));
+    (pub.planQuotas as PlanCreditQuota[]).forEach((q) => {
+      if (q?.planId) byPlan.set(q.planId, { ...(byPlan.get(q.planId) || {}), ...q });
+    });
+    const list = Array.from(byPlan.values());
+    setStored('curriculopro_plan_quotas', list);
+    return list;
+  }
+
   return getStored('curriculopro_plan_quotas', DEFAULT_PLAN_QUOTAS);
 }
 
@@ -672,6 +691,23 @@ export async function savePlanQuota(quota: PlanCreditQuota): Promise<void> {
 }
 
 export async function fetchAdminTemplates(): Promise<TemplateAdminItem[]> {
+  try {
+    const colRef = collection(db, 'templateCatalogConfig');
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      const byId = new Map<string, TemplateAdminItem>(DEFAULT_ADMIN_TEMPLATES.map((t) => [t.id, t]));
+      snap.docs.forEach((d) => {
+        const item = d.data() as TemplateAdminItem;
+        if (item?.id) byId.set(item.id, { ...(byId.get(item.id) || {}), ...item });
+      });
+      const list = Array.from(byId.values()).sort((a, b) => a.displayOrder - b.displayOrder);
+      setStored('curriculopro_admin_templates', list);
+      return list;
+    }
+  } catch (e) {
+    console.warn('Usando fallback para catálogo de templates:', e);
+  }
+
   const pub = await fetchPublicAdminConfig();
   if (Array.isArray(pub?.adminTemplates) && pub.adminTemplates.length > 0) {
     const sorted = [...pub.adminTemplates].sort((a, b) => a.displayOrder - b.displayOrder);
@@ -679,19 +715,6 @@ export async function fetchAdminTemplates(): Promise<TemplateAdminItem[]> {
     return sorted;
   }
 
-  try {
-    const colRef = collection(db, 'templateCatalogConfig');
-    const snap = await getDocs(colRef);
-    if (!snap.empty) {
-      const list = (snap.docs.map((d) => d.data() as TemplateAdminItem)).sort(
-        (a, b) => a.displayOrder - b.displayOrder
-      );
-      setStored('curriculopro_admin_templates', list);
-      return list;
-    }
-  } catch (e) {
-    console.warn('Usando catálogo local de templates:', e);
-  }
   return getStored('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES);
 }
 
@@ -715,12 +738,6 @@ export async function saveAdminTemplate(tmpl: TemplateAdminItem): Promise<void> 
 }
 
 export async function fetchProfessionSnippets(): Promise<ProfessionSnippetExample[]> {
-  const pub = await fetchPublicAdminConfig();
-  if (Array.isArray(pub?.professionSnippets) && pub.professionSnippets.length > 0) {
-    setStored('curriculopro_snippets', pub.professionSnippets);
-    return pub.professionSnippets;
-  }
-
   try {
     const colRef = collection(db, 'professionSnippets');
     const snap = await getDocs(colRef);
@@ -730,8 +747,15 @@ export async function fetchProfessionSnippets(): Promise<ProfessionSnippetExampl
       return list;
     }
   } catch (e) {
-    console.warn('Usando biblioteca local de profissões:', e);
+    console.warn('Usando fallback para biblioteca de profissões:', e);
   }
+
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.professionSnippets) && pub.professionSnippets.length > 0) {
+    setStored('curriculopro_snippets', pub.professionSnippets);
+    return pub.professionSnippets;
+  }
+
   return getStored('curriculopro_snippets', DEFAULT_PROFESSION_SNIPPETS);
 }
 
@@ -802,23 +826,29 @@ export function getStoredPromptSync(id: string): PromptTemplateConfig | undefine
 }
 
 export async function fetchSystemLocales(): Promise<SystemLocaleTranslation[]> {
+  try {
+    const colRef = collection(db, 'systemLocales');
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      const byLang = new Map<string, SystemLocaleTranslation>(DEFAULT_LOCALES.map((l) => [l.languageCode, l]));
+      snap.docs.forEach((d) => {
+        const item = d.data() as SystemLocaleTranslation;
+        if (item?.languageCode) byLang.set(item.languageCode, { ...(byLang.get(item.languageCode) || {}), ...item });
+      });
+      const list = Array.from(byLang.values());
+      setStored('curriculopro_locales', list);
+      return list;
+    }
+  } catch (e) {
+    console.warn('Usando fallback para idiomas padrão:', e);
+  }
+
   const pub = await fetchPublicAdminConfig();
   if (Array.isArray(pub?.systemLocales) && pub.systemLocales.length > 0) {
     setStored('curriculopro_locales', pub.systemLocales);
     return pub.systemLocales;
   }
 
-  try {
-    const colRef = collection(db, 'systemLocales');
-    const snap = await getDocs(colRef);
-    if (!snap.empty) {
-      const list = snap.docs.map((d) => d.data() as SystemLocaleTranslation);
-      setStored('curriculopro_locales', list);
-      return list;
-    }
-  } catch (e) {
-    console.warn('Usando idiomas padrão:', e);
-  }
   return getStored('curriculopro_locales', DEFAULT_LOCALES);
 }
 
@@ -843,12 +873,6 @@ export async function saveSystemLocale(locale: SystemLocaleTranslation): Promise
 }
 
 export async function fetchSystemBanners(): Promise<SystemAnnouncementBanner[]> {
-  const pub = await fetchPublicAdminConfig();
-  if (Array.isArray(pub?.systemBanners)) {
-    setStored('curriculopro_banners', pub.systemBanners);
-    return pub.systemBanners;
-  }
-
   try {
     const colRef = collection(db, 'systemBanners');
     const snap = await getDocs(colRef);
@@ -858,8 +882,15 @@ export async function fetchSystemBanners(): Promise<SystemAnnouncementBanner[]> 
       return list;
     }
   } catch (e) {
-    console.warn('Usando banners locais:', e);
+    console.warn('Usando fallback para banners locais:', e);
   }
+
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.systemBanners)) {
+    setStored('curriculopro_banners', pub.systemBanners);
+    return pub.systemBanners;
+  }
+
   return getStored('curriculopro_banners', DEFAULT_BANNERS);
 }
 
@@ -1234,13 +1265,6 @@ export function getStoredPlansSync(): EditablePlanConfig[] {
 }
 
 export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
-  const pub = await fetchPublicAdminConfig();
-  if (Array.isArray(pub?.editablePlans) && pub.editablePlans.length > 0) {
-    const { list } = migrateLegacyPlanPricing(pub.editablePlans as EditablePlanConfig[]);
-    setStored('curriculopro_editable_plans', list);
-    return list;
-  }
-
   try {
     const docRef = doc(db, 'systemSettings', 'editablePlans');
     const snap = await getDoc(docRef);
@@ -1253,8 +1277,16 @@ export async function fetchEditablePlans(): Promise<EditablePlanConfig[]> {
       return list;
     }
   } catch (e) {
-    console.warn('Usando planos locais:', e);
+    console.warn('Usando fallback para planos locais:', e);
   }
+
+  const pub = await fetchPublicAdminConfig();
+  if (Array.isArray(pub?.editablePlans) && pub.editablePlans.length > 0) {
+    const { list } = migrateLegacyPlanPricing(pub.editablePlans as EditablePlanConfig[]);
+    setStored('curriculopro_editable_plans', list);
+    return list;
+  }
+
   return getStoredPlansSync();
 }
 
@@ -1319,13 +1351,6 @@ export function getStoredPlatformSettingsSync(): PlatformSettingsConfig {
 }
 
 export async function fetchPlatformSettings(): Promise<PlatformSettingsConfig> {
-  const pub = await fetchPublicAdminConfig();
-  if (pub?.platformGovernance && typeof pub.platformGovernance === 'object') {
-    const merged = mergePlatformSettings(pub.platformGovernance);
-    setStored('curriculopro_platform_settings', merged);
-    return merged;
-  }
-
   try {
     const docRef = doc(db, 'systemSettings', 'platformGovernance');
     const snap = await getDoc(docRef);
@@ -1335,8 +1360,16 @@ export async function fetchPlatformSettings(): Promise<PlatformSettingsConfig> {
       return merged;
     }
   } catch (e) {
-    console.warn('Usando configurações globais locais:', e);
+    console.warn('Usando fallback para configurações globais locais:', e);
   }
+
+  const pub = await fetchPublicAdminConfig();
+  if (pub?.platformGovernance && typeof pub.platformGovernance === 'object') {
+    const merged = mergePlatformSettings(pub.platformGovernance);
+    setStored('curriculopro_platform_settings', merged);
+    return merged;
+  }
+
   return getStoredPlatformSettingsSync();
 }
 

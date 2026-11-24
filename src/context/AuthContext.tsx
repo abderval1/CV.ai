@@ -308,6 +308,11 @@ const FIREBASE_EMAIL_UNAVAILABLE_CODES = new Set([
   'auth/internal-error'
 ]);
 
+function isAdminAuthorized(email?: string | null, emailVerified?: boolean, role?: string | null): boolean {
+  if (role === 'admin') return true;
+  return Boolean(emailVerified) && isUserAdmin(email);
+}
+
 const getScopedResumesStorageKey = (uid?: string | null) =>
   uid ? `${LOCAL_STORAGE_RESUMES_KEY}_${uid}` : `${LOCAL_STORAGE_RESUMES_KEY}_visitor`;
 
@@ -373,6 +378,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const userDocUnsubRef = useRef<Unsubscribe | null>(null);
   const authSyncLockRef = useRef<boolean>(false);
   const sessionEpochRef = useRef<number>(0);
+  const lastSyncedClaimsRef = useRef<string>('');
 
   const resetResumesForUserSwitch = (nextUid: string | null) => {
     if (resumesUnsubRef.current) {
@@ -497,8 +503,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sessionEpochRef.current += 1;
           const epoch = sessionEpochRef.current;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
-          const isVerifiedAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
-          const profile: User = {
+          const isVerifiedAdmin = isAdminAuthorized(cleanEmail, result.user.emailVerified);
+          let profile: User = {
             id: result.user.uid,
             name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
             email: cleanEmail,
@@ -509,11 +515,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             creditsRemaining: isVerifiedAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
-          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
+          let hasFirestoreDoc = false;
+          try {
+            const snap = await withTimeout(getDoc(doc(db, 'users', result.user.uid)), 4500, `users/${result.user.uid}`);
+            if (snap.exists()) {
+              hasFirestoreDoc = true;
+              const d = snap.data();
+              const fsAdmin = isAdminAuthorized(d.email || cleanEmail, result.user.emailVerified, d.role);
+              profile = {
+                ...profile,
+                name: d.name || profile.name,
+                role: fsAdmin ? 'admin' : 'user',
+                status: d.status || 'active',
+                plan: (d.plan as SubscriptionPlan) || profile.plan,
+                creditsRemaining: d.creditsRemaining ?? profile.creditsRemaining,
+                creditsUsed: d.creditsUsed ?? 0,
+                totalCvGenerated: d.totalCvGenerated ?? 0,
+                billingCycle: d.billingCycle || 'monthly',
+                subscriptionExpiresAt: d.subscriptionExpiresAt,
+                stripeStatus: d.stripeStatus,
+                notes: d.notes || undefined
+              };
+            }
+          } catch {
+            // fallback to backend sync
+          }
+          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true, hasFirestoreDoc);
           if (!cancelled) {
             if (activeResumesOwnerRef.current !== synced.id) {
               resetResumesForUserSwitch(synced.id);
             }
+            lastSyncedClaimsRef.current = hasFirestoreDoc
+              ? `${synced.id}|${synced.plan}|${synced.role}|${synced.status}|${synced.creditsRemaining}|${synced.subscriptionExpiresAt || ''}`
+              : '';
             setUser(synced);
             attachFirestoreResumesListener(result.user.uid, synced.id, epoch);
             setAuthRedirectError(null);
@@ -597,7 +631,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const docSnap = await withTimeout(
               getDoc(userDocRef),
-              4500,
+              6000,
               `users/${uid}`
             );
             if (docSnap.exists()) {
@@ -609,7 +643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(null);
                 return;
               }
-              const isAdmin = isUserAdmin(data.email || cleanEmail, data.role) && Boolean(currentFbUser.emailVerified);
+              const isAdmin = isAdminAuthorized(data.email || cleanEmail, currentFbUser.emailVerified, data.role);
               hydratedUser = {
                 id: uid,
                 name: data.name || currentFbUser.displayName || 'Utilizador',
@@ -650,6 +684,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 4500,
                 `setDoc users/${uid}`
               );
+              hasAuthoritativeFirestoreProfile = true;
             }
             setIsFirebaseConnected(true);
           } catch (err) {
@@ -685,7 +720,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setStoredAuthToken(data.token, true);
               if (data.user) {
                 const backendUser = data.user as User;
-                // Never allow a cold serverless backend default ('free') to downgrade an Admin-authorized Firestore profile
+                // Never allow a cold/stale serverless backend record to downgrade an Admin-authorized Firestore profile
                 hydratedUser = hasAuthoritativeFirestoreProfile
                   ? {
                       ...backendUser,
@@ -708,6 +743,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (activeResumesOwnerRef.current !== hydratedUser.id) {
             resetResumesForUserSwitch(hydratedUser.id);
           }
+          lastSyncedClaimsRef.current = hasAuthoritativeFirestoreProfile
+            ? `${hydratedUser.id}|${hydratedUser.plan}|${hydratedUser.role}|${hydratedUser.status}|${hydratedUser.creditsRemaining}|${hydratedUser.subscriptionExpiresAt || ''}`
+            : '';
           setUser(hydratedUser);
           setAuthRedirectError(null);
           void loadNotificationPreferences(hydratedUser.id).catch(() => {});
@@ -725,38 +763,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   setUser(null);
                   return;
                 }
-                const liveIsAdmin = isUserAdmin(d.email || cleanEmail, d.role) && Boolean(currentFbUser.emailVerified);
+                const liveIsAdmin = isAdminAuthorized(d.email || cleanEmail, currentFbUser.emailVerified, d.role);
+                const nextPlan = (d.plan as SubscriptionPlan) || 'free';
+                const nextRole: 'admin' | 'user' = liveIsAdmin ? 'admin' : 'user';
+                const nextStatus = d.status || 'active';
+                const nextCredits = d.creditsRemaining ?? (liveIsAdmin ? 9999 : 5);
+                const nextExpires = d.subscriptionExpiresAt;
+                const claimSig = `${uid}|${nextPlan}|${nextRole}|${nextStatus}|${nextCredits}|${nextExpires || ''}`;
+
+                let updatedProfileForSync: User | null = null;
                 setUser((prev) => {
-                  if (!prev || prev.id !== uid) return prev;
-                  const nextPlan = (d.plan as SubscriptionPlan) || prev.plan;
-                  const nextRole = liveIsAdmin ? 'admin' : 'user';
-                  const nextCredits = d.creditsRemaining ?? prev.creditsRemaining;
-                  const nextExpires = d.subscriptionExpiresAt ?? prev.subscriptionExpiresAt;
-                  const planOrRoleChanged = prev.plan !== nextPlan || prev.role !== nextRole;
+                  const base: User =
+                    prev && prev.id === uid
+                      ? prev
+                      : {
+                          ...hydratedUser,
+                          id: uid
+                        };
                   const nextUser: User = {
-                    ...prev,
-                    name: d.name || prev.name,
+                    ...base,
+                    name: d.name || base.name,
                     role: nextRole,
-                    status: d.status || prev.status,
+                    status: nextStatus,
                     plan: nextPlan,
                     creditsRemaining: nextCredits,
-                    creditsUsed: d.creditsUsed ?? prev.creditsUsed,
-                    totalCvGenerated: d.totalCvGenerated ?? prev.totalCvGenerated,
-                    billingCycle: d.billingCycle || prev.billingCycle,
-                    subscriptionExpiresAt: nextExpires,
-                    stripeStatus: d.stripeStatus ?? prev.stripeStatus,
-                    notes: d.notes ?? prev.notes
+                    creditsUsed: d.creditsUsed ?? base.creditsUsed,
+                    totalCvGenerated: d.totalCvGenerated ?? base.totalCvGenerated,
+                    billingCycle: d.billingCycle || base.billingCycle,
+                    subscriptionExpiresAt: nextExpires ?? base.subscriptionExpiresAt,
+                    stripeStatus: d.stripeStatus ?? base.stripeStatus,
+                    notes: d.notes ?? base.notes
                   };
-                  if (planOrRoleChanged) {
-                    void syncFirebaseUserToBackend(
-                      currentFbUser,
-                      nextUser,
-                      currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
-                      true
-                    );
-                  }
+                  updatedProfileForSync = nextUser;
                   return nextUser;
                 });
+
+                if (lastSyncedClaimsRef.current !== claimSig) {
+                  lastSyncedClaimsRef.current = claimSig;
+                  const syncTarget: User = updatedProfileForSync || {
+                    ...hydratedUser,
+                    name: d.name || hydratedUser.name,
+                    role: nextRole,
+                    status: nextStatus,
+                    plan: nextPlan,
+                    creditsRemaining: nextCredits,
+                    subscriptionExpiresAt: nextExpires ?? hydratedUser.subscriptionExpiresAt
+                  };
+                  void syncFirebaseUserToBackend(
+                    currentFbUser,
+                    syncTarget,
+                    currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
+                    true,
+                    true
+                  );
+                }
               },
               () => {
                 // ignore transient listener errors
@@ -778,6 +838,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
             if (response.ok && data?.authenticated && data.user) {
+              if (data.token) {
+                setStoredAuthToken(data.token, true);
+              }
               if (activeResumesOwnerRef.current !== data.user.id) {
                 resetResumesForUserSwitch(data.user.id);
               }
@@ -816,7 +879,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fbUser: FirebaseUser,
     profile: User,
     provider: 'google' | 'password',
-    rememberMe = true
+    rememberMe = true,
+    profileIsAuthoritative = false
   ) => {
     try {
       const fbIdToken = await fbUser.getIdToken();
@@ -843,11 +907,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStoredAuthToken(data.token, rememberMe);
         if (data.user) {
           const bUser = data.user as User;
-          const keepAuthoritativePlan =
-            profile.plan !== 'free' && bUser.plan === 'free'
-              ? { plan: profile.plan, creditsRemaining: profile.creditsRemaining, role: profile.role }
-              : {};
-          return { ...profile, ...bUser, ...keepAuthoritativePlan, id: profile.id };
+          if (profileIsAuthoritative) {
+            return { ...bUser, ...profile, id: profile.id };
+          }
+          return { ...profile, ...bUser, id: profile.id };
         }
       }
     } catch (e: any) {
@@ -868,7 +931,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sessionEpochRef.current += 1;
           const epoch = sessionEpochRef.current;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
-          const isAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
+          const isAdmin = isAdminAuthorized(cleanEmail, result.user.emailVerified);
           let profile: User = {
             id: result.user.uid,
             name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
@@ -880,11 +943,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             creditsRemaining: isAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
+          let hasFirestoreDoc = false;
           try {
-            const snap = await withTimeout(getDoc(doc(db, 'users', result.user.uid)), 3500, `users/${result.user.uid}`);
+            const snap = await withTimeout(getDoc(doc(db, 'users', result.user.uid)), 4500, `users/${result.user.uid}`);
             if (snap.exists()) {
+              hasFirestoreDoc = true;
               const d = snap.data();
-              const fsAdmin = isUserAdmin(d.email || cleanEmail, d.role) && Boolean(result.user.emailVerified);
+              const fsAdmin = isAdminAuthorized(d.email || cleanEmail, result.user.emailVerified, d.role);
               profile = {
                 ...profile,
                 name: d.name || profile.name,
@@ -892,17 +957,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 status: d.status || 'active',
                 plan: (d.plan as SubscriptionPlan) || profile.plan,
                 creditsRemaining: d.creditsRemaining ?? profile.creditsRemaining,
+                creditsUsed: d.creditsUsed ?? 0,
+                totalCvGenerated: d.totalCvGenerated ?? 0,
                 billingCycle: d.billingCycle || 'monthly',
-                subscriptionExpiresAt: d.subscriptionExpiresAt
+                subscriptionExpiresAt: d.subscriptionExpiresAt,
+                stripeStatus: d.stripeStatus,
+                notes: d.notes || undefined
               };
             }
           } catch {
             // fallback to backend sync
           }
-          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
+          const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true, hasFirestoreDoc);
           if (activeResumesOwnerRef.current !== synced.id) {
             resetResumesForUserSwitch(synced.id);
           }
+          lastSyncedClaimsRef.current = hasFirestoreDoc
+            ? `${synced.id}|${synced.plan}|${synced.role}|${synced.status}|${synced.creditsRemaining}|${synced.subscriptionExpiresAt || ''}`
+            : '';
           setUser(synced);
           attachFirestoreResumesListener(result.user.uid, synced.id, epoch);
           setAuthRedirectError(null);
@@ -1342,6 +1414,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         throw new Error(data?.error || 'Atualização de plano bloqueada pelo servidor de pagamentos.');
       }
+      if (data?.token) {
+        setStoredAuthToken(data.token, true);
+      }
       if (data?.user) {
         verifiedBackendUser = data.user as User;
       }
@@ -1408,14 +1483,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshUser = async (): Promise<User | null> => {
     let nextUser: User | null = user;
+    let firestoreOk = false;
     if (auth.currentUser) {
+      const fbUser = auth.currentUser;
       try {
-        const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const docSnap = await getDoc(doc(db, 'users', fbUser.uid));
         if (docSnap.exists()) {
+          firestoreOk = true;
           const d = docSnap.data();
-          const fsAdmin = isUserAdmin(d.email || auth.currentUser.email, d.role) && Boolean(auth.currentUser.emailVerified);
+          const fsAdmin = isAdminAuthorized(d.email || fbUser.email, fbUser.emailVerified, d.role);
           nextUser = {
-            ...(user || ({ id: auth.currentUser.uid, email: auth.currentUser.email || '', name: 'Utilizador', createdAt: new Date().toISOString() } as User)),
+            ...(user || ({ id: fbUser.uid, email: fbUser.email || '', name: 'Utilizador', createdAt: new Date().toISOString() } as User)),
             name: d.name || user?.name || 'Utilizador',
             role: fsAdmin ? 'admin' : 'user',
             status: d.status || user?.status || 'active',
@@ -1423,8 +1501,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             billingCycle: normalizeBillingCycle(d.billingCycle || user?.billingCycle),
             creditsRemaining: d.creditsRemaining ?? user?.creditsRemaining ?? 5,
             subscriptionExpiresAt: d.subscriptionExpiresAt || user?.subscriptionExpiresAt,
-            stripeStatus: d.stripeStatus || user?.stripeStatus
+            stripeStatus: d.stripeStatus || user?.stripeStatus,
+            notes: d.notes ?? user?.notes
           };
+          const claimSig = `${fbUser.uid}|${nextUser.plan}|${nextUser.role}|${nextUser.status}|${nextUser.creditsRemaining}|${nextUser.subscriptionExpiresAt || ''}`;
+          if (lastSyncedClaimsRef.current !== claimSig) {
+            lastSyncedClaimsRef.current = claimSig;
+            nextUser = await syncFirebaseUserToBackend(
+              fbUser,
+              nextUser,
+              fbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
+              true,
+              true
+            );
+          }
           setUser(nextUser);
           return nextUser;
         }
@@ -1433,9 +1523,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     try {
-      const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
+      const extraHeaders: Record<string, string> = {};
+      if (auth.currentUser) {
+        try {
+          const fbIdToken = await auth.currentUser.getIdToken();
+          if (fbIdToken) extraHeaders['x-firebase-id-token'] = fbIdToken;
+        } catch {
+          // ignore
+        }
+      }
+      const { response, data } = await apiAuthFetch('/api/auth/me', {
+        method: 'GET',
+        headers: extraHeaders
+      });
       if (response.ok && data?.authenticated && data.user) {
-        const merged = user ? { ...user, ...data.user } : (data.user as User);
+        if (data.token) {
+          setStoredAuthToken(data.token, true);
+        }
+        const bUser = data.user as User;
+        const merged =
+          user && auth.currentUser && !firestoreOk && user.plan !== 'free' && bUser.plan === 'free'
+            ? { ...bUser, plan: user.plan, role: user.role, creditsRemaining: user.creditsRemaining, id: user.id }
+            : user
+            ? { ...user, ...bUser }
+            : bUser;
         setUser(merged);
         return merged;
       }
@@ -1679,12 +1790,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const isPro = Boolean(user && (user.plan === 'pro' || user.plan === 'executive'));
-  const isExecutive = Boolean(user && user.plan === 'executive');
+  const isActiveAdmin = Boolean(user && user.status !== 'suspended' && isUserAdmin(user.email, user.role));
+  const isPro = Boolean(user && user.status !== 'suspended' && (isActiveAdmin || user.plan === 'pro' || user.plan === 'executive'));
+  const isExecutive = Boolean(user && user.status !== 'suspended' && (isActiveAdmin || user.plan === 'executive'));
   const hasActivePlan = Boolean(
     user &&
-    (user.plan === 'pro' || user.plan === 'executive') &&
-    user.status !== 'suspended'
+    user.status !== 'suspended' &&
+    (isActiveAdmin || user.plan === 'pro' || user.plan === 'executive')
   );
 
   return (

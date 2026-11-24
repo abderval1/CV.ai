@@ -249,7 +249,7 @@ const ADMIN_AUDIT_CATEGORY_LABELS: Record<AuditLogCategory, string> = {
 };
 
 export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, onClose }) => {
-  const { user, firebaseUser, impersonateUser, isImpersonating } = useAuth();
+  const { user, firebaseUser, impersonateUser, isImpersonating, refreshUser } = useAuth();
   const [activeModule, setActiveModule] = useState<AdminActiveModule>('financial');
   const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('30d');
@@ -819,15 +819,27 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     setIsSavingDrawer(true);
     try {
       const planChanged = drawerPlan !== inspectedUser.plan;
+      const roleChanged = drawerRole !== inspectedUser.role;
       let nextCredits = inspectedUser.creditsRemaining ?? 5;
-      if (planChanged) {
-        if (drawerPlan === 'executive') nextCredits = 9999;
-        else if (drawerPlan === 'pro') nextCredits = Math.max(nextCredits, 100);
-        else nextCredits = Math.min(nextCredits, 5);
+
+      if (drawerPlan === 'executive' || drawerRole === 'admin') {
+        if (planChanged || roleChanged || nextCredits <= 5) {
+          nextCredits = Math.max(nextCredits, 9999);
+        }
+      } else if (drawerPlan === 'pro') {
+        if (planChanged || nextCredits <= 5) {
+          nextCredits = Math.max(nextCredits, 100);
+        }
+      } else if (planChanged && drawerPlan === 'free') {
+        nextCredits = Math.min(nextCredits, 5);
       }
+
+      const hasValidExpiry =
+        Boolean(inspectedUser.subscriptionExpiresAt) &&
+        new Date(inspectedUser.subscriptionExpiresAt as string).getTime() > Date.now();
       const nextExpiresAt =
-        planChanged && (drawerPlan === 'pro' || drawerPlan === 'executive')
-          ? inspectedUser.subscriptionExpiresAt && new Date(inspectedUser.subscriptionExpiresAt).getTime() > Date.now()
+        (drawerPlan === 'pro' || drawerPlan === 'executive') && (planChanged || !hasValidExpiry)
+          ? hasValidExpiry
             ? inspectedUser.subscriptionExpiresAt
             : new Date(Date.now() + 30 * 86400000).toISOString()
           : inspectedUser.subscriptionExpiresAt;
@@ -845,6 +857,16 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       await updateUserManagement(inspectedUser.id, updates);
       setUsersList((prev) => prev.map((u) => (u.id === inspectedUser.id ? { ...u, ...updates } : u)));
       setInspectedUser((prev) => (prev ? { ...prev, ...updates } : null));
+      const isSelf =
+        inspectedUser.id === user?.id ||
+        Boolean(
+          inspectedUser.email &&
+            user?.email &&
+            inspectedUser.email.trim().toLowerCase() === user.email.trim().toLowerCase()
+        );
+      if (isSelf) {
+        void refreshUser();
+      }
       void recordAuditLog({
         action: 'admin_user_modified',
         category: 'admin',
@@ -1536,12 +1558,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!target) return;
     const nextCredits = (target.creditsRemaining || 0) + addedCredits;
     try {
-      await updateUserManagement(userId, { creditsRemaining: nextCredits });
+      await updateUserManagement(userId, {
+        email: target.email,
+        name: target.name,
+        creditsRemaining: nextCredits
+      });
       setUsersList((prev) =>
         prev.map((u) => (u.id === userId ? { ...u, creditsRemaining: nextCredits } : u))
       );
       if (inspectedUser?.id === userId) {
         setInspectedUser((prev) => (prev ? { ...prev, creditsRemaining: nextCredits } : null));
+      }
+      if (
+        userId === user?.id ||
+        (target.email && user?.email && target.email.trim().toLowerCase() === user.email.trim().toLowerCase())
+      ) {
+        void refreshUser();
       }
       showNotification(`Adicionados +${addedCredits} créditos a ${target.name}.`);
     } catch (e) {
@@ -1633,13 +1665,23 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const handleToggleSuspendUser = async (target: User) => {
     const nextStatus: UserStatus = target.status === 'suspended' ? 'active' : 'suspended';
     try {
-      await updateUserManagement(target.id, { status: nextStatus });
+      await updateUserManagement(target.id, {
+        email: target.email,
+        name: target.name,
+        status: nextStatus
+      });
       setUsersList((prev) =>
         prev.map((u) => (u.id === target.id ? { ...u, status: nextStatus } : u))
       );
       if (inspectedUser?.id === target.id) {
         setInspectedUser((prev) => (prev ? { ...prev, status: nextStatus } : null));
         setDrawerStatus(nextStatus);
+      }
+      if (
+        target.id === user?.id ||
+        (target.email && user?.email && target.email.trim().toLowerCase() === user.email.trim().toLowerCase())
+      ) {
+        void refreshUser();
       }
       showNotification(
         `Conta de ${target.name} ${nextStatus === 'suspended' ? 'SUSPENSA' : 'REATIVADA'}.`

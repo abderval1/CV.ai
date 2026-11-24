@@ -103,9 +103,87 @@ function normalizeUserRecord(id: string, data: any): User {
 // -------------------------------------------------------------
 // USERS MANAGEMENT
 // -------------------------------------------------------------
+function isManualCustomerId(id: string): boolean {
+  return id.startsWith('usr-') || id.startsWith('usr_');
+}
+
+function getRecordTimestamp(raw: any): number {
+  const candidates = [raw?.updatedAt, raw?.lastLoginAt, raw?.createdAt];
+  for (const val of candidates) {
+    if (!val) continue;
+    const ms = Date.parse(String(val));
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  return 0;
+}
+
 export async function fetchAllUsers(): Promise<User[]> {
   const usersByEmail = new Map<string, User>();
   const usersById = new Map<string, User>();
+  const recordTimestampById = new Map<string, number>();
+
+  const upsertUserRecord = (incoming: User, incomingTs: number, source: 'server' | 'firestore') => {
+    const emailKey = incoming.email.trim().toLowerCase();
+    const existing = usersById.get(incoming.id) || (emailKey ? usersByEmail.get(emailKey) : undefined);
+
+    if (!existing) {
+      usersById.set(incoming.id, incoming);
+      recordTimestampById.set(incoming.id, incomingTs);
+      if (emailKey) usersByEmail.set(emailKey, incoming);
+      return;
+    }
+
+    const existingTs = recordTimestampById.get(existing.id) || 0;
+    const sameId = existing.id === incoming.id;
+    const existingIsManual = isManualCustomerId(existing.id);
+    const incomingIsManual = isManualCustomerId(incoming.id);
+
+    // Prefer Firebase UID over manual usr- IDs; if same ID class, prefer Firestore or newer timestamp
+    let preferIncoming = false;
+    if (sameId) {
+      preferIncoming = source === 'firestore' || incomingTs >= existingTs;
+    } else if (existingIsManual !== incomingIsManual) {
+      preferIncoming = !incomingIsManual;
+    } else {
+      preferIncoming = incomingTs >= existingTs;
+    }
+
+    const primary = preferIncoming ? incoming : existing;
+    const secondary = preferIncoming ? existing : incoming;
+    const canonicalId = sameId
+      ? incoming.id
+      : existingIsManual && !incomingIsManual
+      ? incoming.id
+      : !existingIsManual && incomingIsManual
+      ? existing.id
+      : primary.id;
+
+    // Preserve elevated permissions if duplicate records diverged and secondary is newer
+    const secondaryIsNewer =
+      (!sameId && (preferIncoming ? existingTs > incomingTs : incomingTs > existingTs));
+
+    const merged: User = {
+      ...secondary,
+      ...primary,
+      id: canonicalId,
+      role:
+        secondaryIsNewer && secondary.role === 'admin'
+          ? 'admin'
+          : primary.role === 'admin' || secondary.role === 'admin'
+          ? primary.role
+          : primary.role,
+      totalCvGenerated: Math.max(existing.totalCvGenerated || 0, incoming.totalCvGenerated || 0),
+      notes: primary.notes || secondary.notes
+    };
+
+    if (existing.id !== merged.id) {
+      usersById.delete(existing.id);
+      recordTimestampById.delete(existing.id);
+    }
+    usersById.set(merged.id, merged);
+    recordTimestampById.set(merged.id, Math.max(existingTs, incomingTs));
+    if (emailKey) usersByEmail.set(emailKey, merged);
+  };
 
   try {
     const { ok, data } = await apiRequest<{ users?: any[] }>('/api/admin/overview', { method: 'GET' });
@@ -113,8 +191,7 @@ export async function fetchAllUsers(): Promise<User[]> {
       for (const u of data.users) {
         if (!u?.id) continue;
         const normalized = normalizeUserRecord(u.id, u);
-        usersById.set(normalized.id, normalized);
-        if (normalized.email) usersByEmail.set(normalized.email.toLowerCase(), normalized);
+        upsertUserRecord(normalized, getRecordTimestamp(u), 'server');
       }
     }
   } catch (e) {
@@ -126,22 +203,9 @@ export async function fetchAllUsers(): Promise<User[]> {
       const usersCol = collection(db, 'users');
       const snapshot = await getDocs(usersCol);
       snapshot.docs.forEach((d) => {
-        const normalized = normalizeUserRecord(d.id, d.data());
-        const emailKey = normalized.email.toLowerCase();
-        const existing = usersById.get(normalized.id) || (emailKey ? usersByEmail.get(emailKey) : undefined);
-        const merged = existing
-          ? {
-              ...existing,
-              ...normalized,
-              totalCvGenerated: Math.max(existing.totalCvGenerated || 0, normalized.totalCvGenerated || 0),
-              notes: normalized.notes || existing.notes
-            }
-          : normalized;
-        if (existing && existing.id !== merged.id) {
-          usersById.delete(existing.id);
-        }
-        usersById.set(merged.id, merged);
-        if (emailKey) usersByEmail.set(emailKey, merged);
+        const raw = d.data();
+        const normalized = normalizeUserRecord(d.id, raw);
+        upsertUserRecord(normalized, getRecordTimestamp(raw), 'firestore');
       });
     } catch (error: any) {
       if (String(error?.code || '').includes('permission-denied')) {
@@ -181,8 +245,21 @@ export async function updateUserManagement(
       }
     }
 
+    let resolvedEmail = String(updates.email || '').trim();
+    const targetDocIds = new Set<string>([userId]);
+
     try {
       const userDocRef = doc(db, 'users', userId);
+      if (!resolvedEmail) {
+        try {
+          const snap = await getDoc(userDocRef);
+          if (snap.exists()) {
+            resolvedEmail = String(snap.data()?.email || '').trim();
+          }
+        } catch {
+          // ignore read failure
+        }
+      }
       await updateDoc(userDocRef, cleanPatch);
     } catch (error: any) {
       const code = String(error?.code || '');
@@ -191,8 +268,8 @@ export async function updateUserManagement(
           const userDocRef = doc(db, 'users', userId);
           await setDoc(userDocRef, {
             id: userId,
-            name: updates.name || updates.email?.split('@')[0] || 'Utilizador',
-            email: updates.email || '',
+            name: updates.name || resolvedEmail.split('@')[0] || 'Utilizador',
+            email: resolvedEmail,
             role: updates.role || 'user',
             status: updates.status || 'active',
             plan: updates.plan || 'free',
@@ -214,21 +291,42 @@ export async function updateUserManagement(
       }
     }
 
+    // Propagate updates to any duplicate Firestore user docs sharing the same email
+    if (resolvedEmail && resolvedEmail.includes('@')) {
+      const emailCandidates = Array.from(new Set([resolvedEmail, resolvedEmail.toLowerCase()]));
+      for (const candidateEmail of emailCandidates) {
+        try {
+          const dupSnap = await getDocs(
+            query(collection(db, 'users'), where('email', '==', candidateEmail), limit(10))
+          );
+          for (const dupDoc of dupSnap.docs) {
+            targetDocIds.add(dupDoc.id);
+            if (dupDoc.id === userId) continue;
+            await updateDoc(doc(db, 'users', dupDoc.id), cleanPatch).catch(() => {});
+          }
+        } catch {
+          // non-blocking duplicate sync
+        }
+      }
+    }
+
     // Sync Firestore /admins registry when admin grants or revokes admin/moderator access
     if (updates.role === 'admin' || updates.role === 'user') {
-      try {
-        const adminDocRef = doc(db, 'admins', userId);
-        if (updates.role === 'admin') {
-          await setDoc(adminDocRef, {
-            id: userId,
-            email: updates.email || '',
-            grantedAt: nowIso
-          });
-        } else {
-          await deleteDoc(adminDocRef).catch(() => {});
+      for (const targetId of targetDocIds) {
+        try {
+          const adminDocRef = doc(db, 'admins', targetId);
+          if (updates.role === 'admin') {
+            await setDoc(adminDocRef, {
+              id: targetId,
+              email: resolvedEmail,
+              grantedAt: nowIso
+            });
+          } else {
+            await deleteDoc(adminDocRef).catch(() => {});
+          }
+        } catch {
+          // non-blocking for non-root admins
         }
-      } catch {
-        // non-blocking for non-root admins
       }
     }
     return;
