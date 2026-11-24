@@ -159,7 +159,7 @@ export async function fetchAllUsers(): Promise<User[]> {
 
 export async function updateUserManagement(
   userId: string,
-  updates: Partial<User> & { email?: string }
+  updates: Partial<User> & { email?: string; name?: string }
 ): Promise<void> {
   const { ok, status, data } = await apiRequest<{ error?: string }>(`/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
@@ -167,24 +167,71 @@ export async function updateUserManagement(
   });
 
   if (auth.currentUser) {
+    const nowIso = new Date().toISOString();
+    const allowedFirestoreKeys = new Set([
+      'name', 'email', 'role', 'status', 'plan', 'targetRole', 'phone', 'company',
+      'avatarUrl', 'creditsRemaining', 'creditsUsed', 'totalCvGenerated', 'billingCycle',
+      'subscriptionExpiresAt', 'stripeCustomerId', 'stripeSubscriptionId', 'stripeStatus',
+      'notes', 'lastLoginAt'
+    ]);
+    const cleanPatch: Record<string, any> = { updatedAt: nowIso };
+    for (const [k, v] of Object.entries(updates)) {
+      if (allowedFirestoreKeys.has(k) && v !== undefined) {
+        cleanPatch[k] = v;
+      }
+    }
+
     try {
       const userDocRef = doc(db, 'users', userId);
-      await updateDoc(userDocRef, {
-        ...updates,
-        updatedAt: new Date().toISOString()
-      });
-      return;
+      await updateDoc(userDocRef, cleanPatch);
     } catch (error: any) {
       const code = String(error?.code || '');
-      if (code === 'not-found' && ok) {
-        return;
-      }
-      if (code.includes('permission-denied')) {
+      if (code === 'not-found') {
+        try {
+          const userDocRef = doc(db, 'users', userId);
+          await setDoc(userDocRef, {
+            id: userId,
+            name: updates.name || updates.email?.split('@')[0] || 'Utilizador',
+            email: updates.email || '',
+            role: updates.role || 'user',
+            status: updates.status || 'active',
+            plan: updates.plan || 'free',
+            creditsRemaining: updates.creditsRemaining ?? (updates.plan === 'executive' ? 9999 : updates.plan === 'pro' ? 100 : 5),
+            createdAt: nowIso,
+            ...cleanPatch
+          });
+        } catch (createErr: any) {
+          if (String(createErr?.code || '').includes('permission-denied')) {
+            handleFirestoreError(createErr, OperationType.CREATE, `users/${userId}`);
+          } else if (!ok) {
+            throw createErr;
+          }
+        }
+      } else if (code.includes('permission-denied')) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
       } else if (!ok) {
         throw error;
       }
     }
+
+    // Sync Firestore /admins registry when admin grants or revokes admin/moderator access
+    if (updates.role === 'admin' || updates.role === 'user') {
+      try {
+        const adminDocRef = doc(db, 'admins', userId);
+        if (updates.role === 'admin') {
+          await setDoc(adminDocRef, {
+            id: userId,
+            email: updates.email || '',
+            grantedAt: nowIso
+          });
+        } else {
+          await deleteDoc(adminDocRef).catch(() => {});
+        }
+      } catch {
+        // non-blocking for non-root admins
+      }
+    }
+    return;
   }
 
   if (!ok && status !== 404) {

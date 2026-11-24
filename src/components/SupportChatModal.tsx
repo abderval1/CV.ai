@@ -373,17 +373,21 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
                 <h2 className="text-sm font-bold truncate">{copy.title}</h2>
                 <span
                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
-                    wsStatus === 'connected'
+                    wsStatus === 'connected' || wsStatus === 'disconnected'
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
                       : 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
                   }`}
                 >
-                  {wsStatus === 'connected' ? (
+                  {wsStatus === 'connected' || wsStatus === 'disconnected' ? (
                     <Wifi className="w-2.5 h-2.5" />
                   ) : (
                     <WifiOff className="w-2.5 h-2.5" />
                   )}
-                  {wsStatus === 'connected' ? copy.liveLabel : copy.reconnectingLabel}
+                  {wsStatus === 'connected'
+                    ? copy.liveLabel
+                    : wsStatus === 'disconnected'
+                    ? 'HTTPS'
+                    : copy.reconnectingLabel}
                 </span>
               </div>
               <p className="text-[11px] text-slate-300 truncate">{copy.subtitle}</p>

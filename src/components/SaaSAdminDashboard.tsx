@@ -715,6 +715,54 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     };
   }, [isOpen, isAdminAccess, isImpersonating]);
 
+  // Fallback HTTP polling for Admin Support Chat when WebSocket is unavailable (e.g. Vercel serverless)
+  useEffect(() => {
+    if (!isOpen || (!isAdminAccess && !isImpersonating) || supportWsStatus === 'connected') return;
+    const pollMs = activeModule === 'support_chat' ? 6000 : 20000;
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      fetchAdminSupportThreads()
+        .then((resp) => {
+          if (!Array.isArray(resp?.threads)) return;
+          setSupportThreads((prev) => {
+            const byId = new Map<string, SupportChatThread>();
+            for (const t of prev || []) {
+              if (t?.id) byId.set(t.id, t);
+            }
+            for (const t of resp.threads) {
+              if (!t?.id) continue;
+              const prevTh = byId.get(t.id);
+              if (!prevTh) {
+                byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
+              } else {
+                const msgMap = new Map<string, any>();
+                for (const m of [
+                  ...(Array.isArray(prevTh?.messages) ? prevTh.messages : []),
+                  ...(Array.isArray(t?.messages) ? t.messages : [])
+                ]) {
+                  if (m?.id) msgMap.set(m.id, m);
+                }
+                const mergedMsgs = Array.from(msgMap.values()).sort(
+                  (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+                );
+                const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
+                const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
+                const newer = curTs >= prevTs ? t : prevTh;
+                byId.set(t.id, { ...prevTh, ...newer, messages: mergedMsgs });
+              }
+            }
+            return Array.from(byId.values()).sort(
+              (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+            );
+          });
+        })
+        .catch(() => {
+          // ignore transient poll error
+        });
+    }, pollMs);
+    return () => clearInterval(timer);
+  }, [isOpen, isAdminAccess, isImpersonating, supportWsStatus, activeModule]);
+
   // Open User 360° Drawer
   const openUserDrawer = (target: User) => {
     setInspectedUser(target);
@@ -770,11 +818,29 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!inspectedUser) return;
     setIsSavingDrawer(true);
     try {
-      const updates: Partial<User> = {
+      const planChanged = drawerPlan !== inspectedUser.plan;
+      let nextCredits = inspectedUser.creditsRemaining ?? 5;
+      if (planChanged) {
+        if (drawerPlan === 'executive') nextCredits = 9999;
+        else if (drawerPlan === 'pro') nextCredits = Math.max(nextCredits, 100);
+        else nextCredits = Math.min(nextCredits, 5);
+      }
+      const nextExpiresAt =
+        planChanged && (drawerPlan === 'pro' || drawerPlan === 'executive')
+          ? inspectedUser.subscriptionExpiresAt && new Date(inspectedUser.subscriptionExpiresAt).getTime() > Date.now()
+            ? inspectedUser.subscriptionExpiresAt
+            : new Date(Date.now() + 30 * 86400000).toISOString()
+          : inspectedUser.subscriptionExpiresAt;
+
+      const updates: Partial<User> & { email?: string; name?: string } = {
+        email: inspectedUser.email,
+        name: inspectedUser.name,
         notes: drawerNotes,
         plan: drawerPlan,
         role: drawerRole,
-        status: drawerStatus
+        status: drawerStatus,
+        creditsRemaining: nextCredits,
+        ...(nextExpiresAt ? { subscriptionExpiresAt: nextExpiresAt } : {})
       };
       await updateUserManagement(inspectedUser.id, updates);
       setUsersList((prev) => prev.map((u) => (u.id === inspectedUser.id ? { ...u, ...updates } : u)));
@@ -1488,7 +1554,12 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const target = usersList.find((u) => u.id === userId);
     if (!target) return;
     try {
-      await updateUserManagement(userId, { creditsRemaining: newQuota, creditsUsed: 0 });
+      await updateUserManagement(userId, {
+        email: target.email,
+        name: target.name,
+        creditsRemaining: newQuota,
+        creditsUsed: 0
+      });
       setUsersList((prev) =>
         prev.map((u) =>
           u.id === userId ? { ...u, creditsRemaining: newQuota, creditsUsed: 0 } : u
@@ -1512,23 +1583,42 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const baseDate = target.subscriptionExpiresAt ? new Date(target.subscriptionExpiresAt) : new Date();
     const newExpiresAt = new Date(baseDate.getTime() + extraDays * 86400000).toISOString();
     const nextPlan: SubscriptionPlan = target.plan === 'free' ? 'pro' : target.plan;
+    const nextCredits =
+      nextPlan === 'executive' ? 9999 : Math.max(target.creditsRemaining || 0, 100);
 
     try {
       await updateUserManagement(userId, {
+        email: target.email,
+        name: target.name,
         plan: nextPlan,
+        creditsRemaining: nextCredits,
         subscriptionExpiresAt: newExpiresAt,
         status: 'active'
       });
       setUsersList((prev) =>
         prev.map((u) =>
           u.id === userId
-            ? { ...u, plan: nextPlan, subscriptionExpiresAt: newExpiresAt, status: 'active' }
+            ? {
+                ...u,
+                plan: nextPlan,
+                creditsRemaining: nextCredits,
+                subscriptionExpiresAt: newExpiresAt,
+                status: 'active'
+              }
             : u
         )
       );
       if (inspectedUser?.id === userId) {
         setInspectedUser((prev) =>
-          prev ? { ...prev, plan: nextPlan, subscriptionExpiresAt: newExpiresAt, status: 'active' } : null
+          prev
+            ? {
+                ...prev,
+                plan: nextPlan,
+                creditsRemaining: nextCredits,
+                subscriptionExpiresAt: newExpiresAt,
+                status: 'active'
+              }
+            : null
         );
         setDrawerPlan(nextPlan);
         setDrawerStatus('active');
@@ -6215,17 +6305,21 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                             </span>
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                supportWsStatus === 'connected'
+                                supportWsStatus === 'connected' || supportWsStatus === 'disconnected'
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : 'bg-amber-100 text-amber-800'
                               }`}
                             >
-                              {supportWsStatus === 'connected' ? (
+                              {supportWsStatus === 'connected' || supportWsStatus === 'disconnected' ? (
                                 <Wifi className="w-3 h-3" />
                               ) : (
                                 <WifiOff className="w-3 h-3" />
                               )}
-                              {supportWsStatus === 'connected' ? 'Tempo Real' : 'A sincronizar'}
+                              {supportWsStatus === 'connected'
+                                ? 'Tempo Real'
+                                : supportWsStatus === 'disconnected'
+                                ? 'HTTPS / Cloud'
+                                : 'A sincronizar'}
                             </span>
                           </div>
 

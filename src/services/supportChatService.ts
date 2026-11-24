@@ -59,31 +59,48 @@ async function syncSupportToFirestore(
   if (!targetThreadId || !/^[a-zA-Z0-9_\-]{1,128}$/.test(targetThreadId)) return;
 
   try {
+    const threadRef = doc(db, 'supportThreads', targetThreadId);
+    const existingSnap = await getDoc(threadRef).catch(() => null);
+    const existingData = existingSnap && existingSnap.exists() ? (existingSnap.data() as Partial<SupportChatThread>) : null;
+
+    // Preserve immutable createdAt/userId on existing Firestore docs so rules validation (incoming().createdAt == existing().createdAt) always passes across cold Lambdas
+    const resolvedCreatedAt = existingData?.createdAt || thread.createdAt || new Date().toISOString();
+    const resolvedUserId = existingData?.userId || (isAdminAction ? thread.userId : fbUser.uid);
+    const resolvedUnreadByAdmin = isAdminAction
+      ? Number(thread.unreadByAdmin) || 0
+      : Math.max(Number(thread.unreadByAdmin) || 1, (Number(existingData?.unreadByAdmin) || 0) + (message ? 1 : 0));
+
     const threadDocData = sanitizeForFirestore({
       id: targetThreadId,
-      userId: isAdminAction ? thread.userId : fbUser.uid,
-      userName: thread.userName || 'Utilizador',
-      userEmail: thread.userEmail || fbUser.email || '',
-      ...(thread.userAvatarUrl ? { userAvatarUrl: thread.userAvatarUrl } : {}),
-      userPlan: thread.userPlan || 'free',
-      status: thread.status,
-      lastMessageText: (thread.lastMessageText || '').slice(0, 500),
-      ...(thread.lastMessageSenderRole ? { lastMessageSenderRole: thread.lastMessageSenderRole } : {}),
-      lastMessageAt: thread.lastMessageAt,
+      userId: resolvedUserId,
+      userName: thread.userName || existingData?.userName || 'Utilizador',
+      userEmail: thread.userEmail || existingData?.userEmail || fbUser.email || '',
+      ...(thread.userAvatarUrl || existingData?.userAvatarUrl
+        ? { userAvatarUrl: thread.userAvatarUrl || existingData?.userAvatarUrl }
+        : {}),
+      userPlan: thread.userPlan || existingData?.userPlan || 'free',
+      status: thread.status || 'open',
+      lastMessageText: (thread.lastMessageText || existingData?.lastMessageText || '').slice(0, 500),
+      ...(thread.lastMessageSenderRole
+        ? { lastMessageSenderRole: thread.lastMessageSenderRole }
+        : existingData?.lastMessageSenderRole
+        ? { lastMessageSenderRole: existingData.lastMessageSenderRole }
+        : {}),
+      lastMessageAt: thread.lastMessageAt || new Date().toISOString(),
       unreadByUser: Number(thread.unreadByUser) || 0,
-      unreadByAdmin: Number(thread.unreadByAdmin) || 0,
-      createdAt: thread.createdAt,
-      updatedAt: thread.updatedAt
+      unreadByAdmin: resolvedUnreadByAdmin,
+      createdAt: resolvedCreatedAt,
+      updatedAt: thread.updatedAt || new Date().toISOString()
     });
 
-    await setDoc(doc(db, 'supportThreads', targetThreadId), threadDocData, { merge: true });
+    await setDoc(threadRef, threadDocData, { merge: true });
 
     if (message && /^[a-zA-Z0-9_\-]{1,128}$/.test(message.id)) {
       const msgDocData = sanitizeForFirestore({
         id: message.id,
         threadId: targetThreadId,
         senderId: isAdminAction ? message.senderId : fbUser.uid,
-        senderName: message.senderName,
+        senderName: message.senderName || 'Utilizador',
         senderRole: message.senderRole,
         text: message.text,
         createdAt: message.createdAt
@@ -144,13 +161,17 @@ export async function markMySupportThreadRead(): Promise<void> {
   const fbUser = auth.currentUser;
   if (fbUser?.uid && /^[a-zA-Z0-9_\-]{1,128}$/.test(fbUser.uid)) {
     try {
-      await setDoc(
-        doc(db, 'supportThreads', fbUser.uid),
-        { unreadByUser: 0, updatedAt: new Date().toISOString() },
-        { merge: true }
-      );
+      const threadRef = doc(db, 'supportThreads', fbUser.uid);
+      const snap = await getDoc(threadRef);
+      if (snap.exists()) {
+        await setDoc(
+          threadRef,
+          { unreadByUser: 0, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      }
     } catch {
-      // ignore if thread doc does not exist yet or rules reject partial merge
+      // ignore if rules reject or offline
     }
   }
 }
@@ -219,7 +240,7 @@ async function fetchFirestoreAdminThreads(): Promise<SupportChatThread[]> {
         };
       })
     );
-    return items.filter((t) => t.messages && t.messages.length > 0);
+    return items.filter((t) => (t.messages && t.messages.length > 0) || Boolean(t.lastMessageText));
   } catch {
     return [];
   }
@@ -332,11 +353,15 @@ export async function markAdminSupportThreadRead(threadId: string): Promise<void
   }
   if (auth.currentUser && /^[a-zA-Z0-9_\-]{1,128}$/.test(threadId)) {
     try {
-      await setDoc(
-        doc(db, 'supportThreads', threadId),
-        { unreadByAdmin: 0, updatedAt: new Date().toISOString() },
-        { merge: true }
-      );
+      const threadRef = doc(db, 'supportThreads', threadId);
+      const snap = await getDoc(threadRef);
+      if (snap.exists()) {
+        await setDoc(
+          threadRef,
+          { unreadByAdmin: 0, updatedAt: new Date().toISOString() },
+          { merge: true }
+        );
+      }
     } catch {
       // ignore
     }
@@ -585,7 +610,7 @@ export function subscribeAdminFirestoreSupportThreads(
             };
           })
         );
-        const nonEmpty = items.filter((t) => t.messages && t.messages.length > 0);
+        const nonEmpty = items.filter((t) => (t.messages && t.messages.length > 0) || Boolean(t.lastMessageText));
         if (nonEmpty.length > 0) {
           onThreads(nonEmpty);
         }

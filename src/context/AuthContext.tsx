@@ -370,6 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const resumesUnsubRef = useRef<Unsubscribe | null>(null);
+  const userDocUnsubRef = useRef<Unsubscribe | null>(null);
   const authSyncLockRef = useRef<boolean>(false);
   const sessionEpochRef = useRef<number>(0);
 
@@ -377,6 +378,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (resumesUnsubRef.current) {
       resumesUnsubRef.current();
       resumesUnsubRef.current = null;
+    }
+    if (userDocUnsubRef.current) {
+      userDocUnsubRef.current();
+      userDocUnsubRef.current = null;
     }
     clearLegacyUnscopedResumeCaches();
     activeResumesOwnerRef.current = nextUid;
@@ -553,10 +558,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentFbUser) => {
       setFirebaseUser(currentFbUser);
 
-      // Clean up previous Firestore resume listeners
+      // Clean up previous Firestore resume & profile listeners
       if (resumesUnsubRef.current) {
         resumesUnsubRef.current();
         resumesUnsubRef.current = null;
+      }
+      if (userDocUnsubRef.current) {
+        userDocUnsubRef.current();
+        userDocUnsubRef.current = null;
       }
 
       try {
@@ -584,6 +593,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
 
+          let hasAuthoritativeFirestoreProfile = false;
           try {
             const docSnap = await withTimeout(
               getDoc(userDocRef),
@@ -591,6 +601,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               `users/${uid}`
             );
             if (docSnap.exists()) {
+              hasAuthoritativeFirestoreProfile = true;
               const data = docSnap.data();
               if (data.status === 'suspended') {
                 await signOut(auth).catch(() => {});
@@ -673,11 +684,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (response.ok && data?.token) {
               setStoredAuthToken(data.token, true);
               if (data.user) {
-                hydratedUser = {
-                  ...hydratedUser,
-                  ...data.user,
-                  id: hydratedUser.id
-                };
+                const backendUser = data.user as User;
+                // Never allow a cold serverless backend default ('free') to downgrade an Admin-authorized Firestore profile
+                hydratedUser = hasAuthoritativeFirestoreProfile
+                  ? {
+                      ...backendUser,
+                      ...hydratedUser,
+                      id: hydratedUser.id
+                    }
+                  : {
+                      ...hydratedUser,
+                      ...backendUser,
+                      id: hydratedUser.id
+                    };
               }
             }
           } catch (backendErr) {
@@ -692,6 +711,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(hydratedUser);
           setAuthRedirectError(null);
           void loadNotificationPreferences(hydratedUser.id).catch(() => {});
+
+          // Real-time Firestore listener on user profile so Admin plan/role/credits updates apply immediately
+          try {
+            userDocUnsubRef.current = onSnapshot(
+              userDocRef,
+              (snap) => {
+                if (activeSessionEpoch !== sessionEpochRef.current || !snap.exists()) return;
+                const d = snap.data();
+                if (d.status === 'suspended') {
+                  void signOut(auth).catch(() => {});
+                  setStoredAuthToken(null);
+                  setUser(null);
+                  return;
+                }
+                const liveIsAdmin = isUserAdmin(d.email || cleanEmail, d.role) && Boolean(currentFbUser.emailVerified);
+                setUser((prev) => {
+                  if (!prev || prev.id !== uid) return prev;
+                  const nextPlan = (d.plan as SubscriptionPlan) || prev.plan;
+                  const nextRole = liveIsAdmin ? 'admin' : 'user';
+                  const nextCredits = d.creditsRemaining ?? prev.creditsRemaining;
+                  const nextExpires = d.subscriptionExpiresAt ?? prev.subscriptionExpiresAt;
+                  const planOrRoleChanged = prev.plan !== nextPlan || prev.role !== nextRole;
+                  const nextUser: User = {
+                    ...prev,
+                    name: d.name || prev.name,
+                    role: nextRole,
+                    status: d.status || prev.status,
+                    plan: nextPlan,
+                    creditsRemaining: nextCredits,
+                    creditsUsed: d.creditsUsed ?? prev.creditsUsed,
+                    totalCvGenerated: d.totalCvGenerated ?? prev.totalCvGenerated,
+                    billingCycle: d.billingCycle || prev.billingCycle,
+                    subscriptionExpiresAt: nextExpires,
+                    stripeStatus: d.stripeStatus ?? prev.stripeStatus,
+                    notes: d.notes ?? prev.notes
+                  };
+                  if (planOrRoleChanged) {
+                    void syncFirebaseUserToBackend(
+                      currentFbUser,
+                      nextUser,
+                      currentFbUser.providerData?.[0]?.providerId === 'password' ? 'password' : 'google',
+                      true
+                    );
+                  }
+                  return nextUser;
+                });
+              },
+              () => {
+                // ignore transient listener errors
+              }
+            );
+          } catch {
+            // ignore listener attachment errors
+          }
 
           // Attach listener strictly for this authenticated user's resumes subcollection
           attachFirestoreResumesListener(uid, hydratedUser.id, activeSessionEpoch);
@@ -769,7 +842,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok && data?.token) {
         setStoredAuthToken(data.token, rememberMe);
         if (data.user) {
-          return { ...profile, ...data.user, id: profile.id };
+          const bUser = data.user as User;
+          const keepAuthoritativePlan =
+            profile.plan !== 'free' && bUser.plan === 'free'
+              ? { plan: profile.plan, creditsRemaining: profile.creditsRemaining, role: profile.role }
+              : {};
+          return { ...profile, ...bUser, ...keepAuthoritativePlan, id: profile.id };
         }
       }
     } catch (e: any) {
@@ -791,7 +869,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const epoch = sessionEpochRef.current;
           const cleanEmail = (result.user.email || '').trim().toLowerCase();
           const isAdmin = isUserAdmin(cleanEmail) && Boolean(result.user.emailVerified);
-          const profile: User = {
+          let profile: User = {
             id: result.user.uid,
             name: result.user.displayName || cleanEmail.split('@')[0] || 'Utilizador',
             email: cleanEmail,
@@ -802,6 +880,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             creditsRemaining: isAdmin ? 9999 : 5,
             createdAt: new Date().toISOString()
           };
+          try {
+            const snap = await withTimeout(getDoc(doc(db, 'users', result.user.uid)), 3500, `users/${result.user.uid}`);
+            if (snap.exists()) {
+              const d = snap.data();
+              const fsAdmin = isUserAdmin(d.email || cleanEmail, d.role) && Boolean(result.user.emailVerified);
+              profile = {
+                ...profile,
+                name: d.name || profile.name,
+                role: fsAdmin ? 'admin' : 'user',
+                status: d.status || 'active',
+                plan: (d.plan as SubscriptionPlan) || profile.plan,
+                creditsRemaining: d.creditsRemaining ?? profile.creditsRemaining,
+                billingCycle: d.billingCycle || 'monthly',
+                subscriptionExpiresAt: d.subscriptionExpiresAt
+              };
+            }
+          } catch {
+            // fallback to backend sync
+          }
           const synced = await syncFirebaseUserToBackend(result.user, profile, 'google', true);
           if (activeResumesOwnerRef.current !== synced.id) {
             resetResumesForUserSwitch(synced.id);
@@ -1310,6 +1407,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshUser = async (): Promise<User | null> => {
+    let nextUser: User | null = user;
+    if (auth.currentUser) {
+      try {
+        const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          const fsAdmin = isUserAdmin(d.email || auth.currentUser.email, d.role) && Boolean(auth.currentUser.emailVerified);
+          nextUser = {
+            ...(user || ({ id: auth.currentUser.uid, email: auth.currentUser.email || '', name: 'Utilizador', createdAt: new Date().toISOString() } as User)),
+            name: d.name || user?.name || 'Utilizador',
+            role: fsAdmin ? 'admin' : 'user',
+            status: d.status || user?.status || 'active',
+            plan: (d.plan as SubscriptionPlan) || user?.plan || 'free',
+            billingCycle: normalizeBillingCycle(d.billingCycle || user?.billingCycle),
+            creditsRemaining: d.creditsRemaining ?? user?.creditsRemaining ?? 5,
+            subscriptionExpiresAt: d.subscriptionExpiresAt || user?.subscriptionExpiresAt,
+            stripeStatus: d.stripeStatus || user?.stripeStatus
+          };
+          setUser(nextUser);
+          return nextUser;
+        }
+      } catch {
+        // ignore firestore error and fallback to backend
+      }
+    }
     try {
       const { response, data } = await apiAuthFetch('/api/auth/me', { method: 'GET' });
       if (response.ok && data?.authenticated && data.user) {
@@ -1320,31 +1442,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // ignore network error
     }
-    if (auth.currentUser) {
-      try {
-        const docSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (docSnap.exists()) {
-          const d = docSnap.data();
-          const refreshed = user
-            ? {
-                ...user,
-                plan: (d.plan as SubscriptionPlan) || user.plan,
-                billingCycle: normalizeBillingCycle(d.billingCycle || user.billingCycle),
-                creditsRemaining: d.creditsRemaining ?? user.creditsRemaining,
-                subscriptionExpiresAt: d.subscriptionExpiresAt || user.subscriptionExpiresAt,
-                stripeStatus: d.stripeStatus || user.stripeStatus
-              }
-            : null;
-          if (refreshed) {
-            setUser(refreshed);
-            return refreshed;
-          }
-        }
-      } catch {
-        // ignore firestore error
-      }
-    }
-    return user;
+    return nextUser;
   };
 
   const saveCurrentResume = async (

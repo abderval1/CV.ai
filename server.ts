@@ -3987,8 +3987,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     telemetry?: ServerTelemetryData;
   }
 
-  const FIREBASE_PROJECT_ID = (() => {
-    if (process.env.FIREBASE_PROJECT_ID) return process.env.FIREBASE_PROJECT_ID;
+  const { projectId: FIREBASE_PROJECT_ID, firestoreDatabaseId: FIREBASE_DATABASE_ID } = (() => {
+    let projectId = process.env.FIREBASE_PROJECT_ID || '';
+    let firestoreDatabaseId = process.env.FIREBASE_DATABASE_ID || '(default)';
     try {
       const candidatePaths = [
         path.resolve(SERVER_ROOT_DIR, 'firebase-applet-config.json'),
@@ -3998,12 +3999,63 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       for (const cfgPath of candidatePaths) {
         if (fs.existsSync(cfgPath)) {
           const parsed = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-          if (parsed?.projectId) return String(parsed.projectId);
+          if (!projectId && parsed?.projectId) projectId = String(parsed.projectId);
+          if (parsed?.firestoreDatabaseId) firestoreDatabaseId = String(parsed.firestoreDatabaseId);
+          break;
         }
       }
     } catch { /* ignore */ }
-    return 'gen-lang-client-0398048262';
+    return {
+      projectId: projectId || 'gen-lang-client-0398048262',
+      firestoreDatabaseId
+    };
   })();
+
+  function decodeFirestoreValue(val: any): any {
+    if (!val || typeof val !== 'object') return undefined;
+    if ('stringValue' in val) return String(val.stringValue);
+    if ('integerValue' in val) return Number(val.integerValue);
+    if ('doubleValue' in val) return Number(val.doubleValue);
+    if ('booleanValue' in val) return Boolean(val.booleanValue);
+    if ('nullValue' in val) return null;
+    if ('timestampValue' in val) return String(val.timestampValue);
+    if ('arrayValue' in val) {
+      return Array.isArray(val.arrayValue?.values) ? val.arrayValue.values.map(decodeFirestoreValue) : [];
+    }
+    if ('mapValue' in val) {
+      const obj: Record<string, any> = {};
+      const fields = val.mapValue?.fields || {};
+      for (const [k, v] of Object.entries(fields)) {
+        obj[k] = decodeFirestoreValue(v);
+      }
+      return obj;
+    }
+    return undefined;
+  }
+
+  async function fetchFirestoreUserDoc(uid: string, firebaseIdToken: string): Promise<Record<string, any> | null> {
+    if (!uid || !firebaseIdToken || !/^[a-zA-Z0-9_\-]{1,128}$/.test(uid)) return null;
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(FIREBASE_PROJECT_ID)}/databases/${encodeURIComponent(FIREBASE_DATABASE_ID)}/documents/users/${encodeURIComponent(uid)}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3500);
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${firebaseIdToken}` },
+        signal: controller.signal
+      }).finally(() => clearTimeout(timer));
+      if (!resp.ok) return null;
+      const json = (await resp.json().catch(() => null)) as { fields?: Record<string, any> } | null;
+      if (!json?.fields) return null;
+      const out: Record<string, any> = {};
+      for (const [k, v] of Object.entries(json.fields)) {
+        out[k] = decodeFirestoreValue(v);
+      }
+      return out;
+    } catch {
+      return null;
+    }
+  }
 
   let runtimeFallbackSecret: string | null = null;
   function ensureAuthSecret(): string {
@@ -5185,41 +5237,96 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const isVerifiedAdmin = verified.email_verified && ADMIN_EMAILS_BACKEND.has(cleanEmail);
       const nowIso = new Date().toISOString();
 
+      // Fetch authoritative user record from Firestore (obeying firestore.rules via user's ID token)
+      const firestoreUser = await fetchFirestoreUserDoc(cleanUid, rawFirebaseToken);
+
       // Prevent account takeover via unverified email: only lookup by email if email_verified is true
       let record =
         authStore.users[cleanUid] ||
         (verified.email_verified ? findBackendUserByEmail(cleanEmail) : undefined);
 
+      const fsPlan =
+        firestoreUser?.plan && ['free', 'pro', 'executive'].includes(firestoreUser.plan)
+          ? (firestoreUser.plan as 'free' | 'pro' | 'executive')
+          : undefined;
+      const fsRole =
+        firestoreUser?.role && ['admin', 'user'].includes(firestoreUser.role)
+          ? (firestoreUser.role as 'admin' | 'user')
+          : undefined;
+      const fsStatus =
+        firestoreUser?.status && ['active', 'suspended'].includes(firestoreUser.status)
+          ? (firestoreUser.status as 'active' | 'suspended')
+          : undefined;
+      const fsCredits =
+        typeof firestoreUser?.creditsRemaining === 'number' && Number.isFinite(firestoreUser.creditsRemaining)
+          ? firestoreUser.creditsRemaining
+          : undefined;
+
       if (!record) {
         const gov = (authStore.adminConfig?.platformGovernance || {}) as Record<string, any>;
-        if (gov.allowNewRegistrations === false && !isVerifiedAdmin) {
+        if (gov.allowNewRegistrations === false && !isVerifiedAdmin && !firestoreUser) {
           return res.status(403).json({
             code: 'auth/registrations-paused',
             error: 'Novos registos estão temporariamente pausados pelo administrador.'
           });
         }
+        const resolvedRole: 'admin' | 'user' = isVerifiedAdmin ? 'admin' : fsRole || 'user';
+        const resolvedPlan: 'free' | 'pro' | 'executive' = isVerifiedAdmin
+          ? 'executive'
+          : fsPlan || 'free';
+        const resolvedCredits =
+          fsCredits !== undefined
+            ? fsCredits
+            : isVerifiedAdmin || resolvedPlan === 'executive'
+            ? 9999
+            : resolvedPlan === 'pro'
+            ? 100
+            : getFreePlanDefaultCredits();
+
         record = {
           id: cleanUid,
-          name: String(name || verified.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
+          name: String(firestoreUser?.name || name || verified.name || cleanEmail.split('@')[0] || 'Utilizador').trim().slice(0, 120),
           email: cleanEmail,
-          role: isVerifiedAdmin ? 'admin' : 'user',
-          status: 'active',
-          plan: isVerifiedAdmin ? 'executive' : 'free',
-          targetRole: typeof targetRole === 'string' && targetRole.trim()
-            ? targetRole.trim().slice(0, 150)
-            : 'Profissional Executivo',
+          role: resolvedRole,
+          status: fsStatus || 'active',
+          plan: resolvedPlan,
+          targetRole:
+            typeof firestoreUser?.targetRole === 'string' && firestoreUser.targetRole.trim()
+              ? firestoreUser.targetRole.trim().slice(0, 150)
+              : typeof targetRole === 'string' && targetRole.trim()
+              ? targetRole.trim().slice(0, 150)
+              : 'Profissional Executivo',
+          phone: typeof firestoreUser?.phone === 'string' ? firestoreUser.phone.slice(0, 50) : undefined,
+          company: typeof firestoreUser?.company === 'string' ? firestoreUser.company.slice(0, 120) : undefined,
           avatarUrl: typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')
             ? avatarUrl.slice(0, 500)
+            : typeof firestoreUser?.avatarUrl === 'string' && firestoreUser.avatarUrl.startsWith('https://')
+            ? firestoreUser.avatarUrl.slice(0, 500)
             : verified.picture || undefined,
-          creditsRemaining: isVerifiedAdmin ? 9999 : getFreePlanDefaultCredits(),
-          creditsUsed: 0,
-          totalCvGenerated: 0,
-          billingCycle: isVerifiedAdmin ? 'yearly' : 'monthly',
+          creditsRemaining: resolvedCredits,
+          creditsUsed: typeof firestoreUser?.creditsUsed === 'number' ? firestoreUser.creditsUsed : 0,
+          totalCvGenerated: typeof firestoreUser?.totalCvGenerated === 'number' ? firestoreUser.totalCvGenerated : 0,
+          billingCycle:
+            firestoreUser?.billingCycle && ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(firestoreUser.billingCycle)
+              ? firestoreUser.billingCycle
+              : isVerifiedAdmin
+              ? 'yearly'
+              : 'monthly',
+          subscriptionExpiresAt:
+            typeof firestoreUser?.subscriptionExpiresAt === 'string' ? firestoreUser.subscriptionExpiresAt : undefined,
+          stripeCustomerId: typeof firestoreUser?.stripeCustomerId === 'string' ? firestoreUser.stripeCustomerId : undefined,
+          stripeSubscriptionId: typeof firestoreUser?.stripeSubscriptionId === 'string' ? firestoreUser.stripeSubscriptionId : undefined,
+          stripeStatus:
+            typeof firestoreUser?.stripeStatus === 'string' &&
+            ['active', 'trialing', 'past_due', 'canceled', 'incomplete'].includes(firestoreUser.stripeStatus)
+              ? (firestoreUser.stripeStatus as 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete')
+              : undefined,
+          notes: typeof firestoreUser?.notes === 'string' ? firestoreUser.notes : undefined,
           authProviders: [
             verified.firebase?.sign_in_provider === 'password' || provider === 'password' ? 'password' : 'google'
           ],
           firebaseUid: cleanUid,
-          createdAt: nowIso,
+          createdAt: typeof firestoreUser?.createdAt === 'string' ? firestoreUser.createdAt : nowIso,
           updatedAt: nowIso,
           lastLoginAt: nowIso
         };
@@ -5237,7 +5344,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           metadata: { provider: record.authProviders[0] || 'google' }
         });
       } else {
-        if (record.status === 'suspended') {
+        if (fsStatus === 'suspended' || record.status === 'suspended') {
           appendServerAuditLog(req, {
             actorUserId: record.id,
             actorEmail: record.email,
@@ -5256,6 +5363,25 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
         }
         record.firebaseUid = cleanUid;
+        if (firestoreUser) {
+          if (fsPlan) record.plan = fsPlan;
+          if (fsRole) record.role = fsRole;
+          if (fsStatus) record.status = fsStatus;
+          if (fsCredits !== undefined) record.creditsRemaining = fsCredits;
+          if (typeof firestoreUser.subscriptionExpiresAt === 'string') {
+            record.subscriptionExpiresAt = firestoreUser.subscriptionExpiresAt;
+          }
+          if (
+            firestoreUser.billingCycle &&
+            ['monthly', 'quarterly', 'semiannual', 'yearly'].includes(firestoreUser.billingCycle)
+          ) {
+            record.billingCycle = firestoreUser.billingCycle;
+          }
+          if (typeof firestoreUser.notes === 'string') record.notes = firestoreUser.notes;
+          if (typeof firestoreUser.name === 'string' && firestoreUser.name.trim()) {
+            record.name = firestoreUser.name.trim().slice(0, 120);
+          }
+        }
         if (name && (!record.name || record.name === 'Utilizador')) {
           record.name = String(name).trim().slice(0, 120);
         }
@@ -5269,6 +5395,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         }
         if (isVerifiedAdmin) {
           record.role = 'admin';
+          if (record.plan === 'free') record.plan = 'executive';
         }
         const provKey =
           verified.firebase?.sign_in_provider === 'password' || provider === 'password' ? 'password' : 'google';
@@ -6823,13 +6950,46 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     if (!adminPayload) return;
     try {
       const userId = String(req.params.id || '');
-      let record: BackendUserRecord | undefined = authStore.users[userId];
+      let record: BackendUserRecord | undefined =
+        authStore.users[userId] ||
+        Object.values(authStore.users).find((u) => u.id === userId || u.firebaseUid === userId);
       const updates = req.body || {};
       if (!record && updates.email) {
         record = findBackendUserByEmail(String(updates.email));
       }
       if (!record) {
-        return res.status(404).json({ error: 'Utilizador não encontrado no servidor.' });
+        const cleanEmail = typeof updates.email === 'string' ? updates.email.trim().toLowerCase() : '';
+        if (cleanEmail || isVercelEnv) {
+          const nowIso = new Date().toISOString();
+          record = {
+            id: userId,
+            name: String(updates.name || cleanEmail.split('@')[0] || 'Cliente').trim().slice(0, 120),
+            email: cleanEmail,
+            role: updates.role === 'admin' ? 'admin' : 'user',
+            status: updates.status === 'suspended' ? 'suspended' : 'active',
+            plan: ['free', 'pro', 'executive'].includes(updates.plan) ? updates.plan : 'free',
+            phone: typeof updates.phone === 'string' ? updates.phone.trim() : '',
+            creditsRemaining:
+              typeof updates.creditsRemaining === 'number'
+                ? updates.creditsRemaining
+                : updates.plan === 'executive'
+                ? 9999
+                : updates.plan === 'pro'
+                ? 100
+                : getFreePlanDefaultCredits(),
+            creditsUsed: 0,
+            totalCvGenerated: 0,
+            billingCycle: 'monthly',
+            authProviders: ['google'],
+            firebaseUid: userId,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+            notes: typeof updates.notes === 'string' ? updates.notes : ''
+          };
+          authStore.users[userId] = record;
+        } else {
+          return res.status(404).json({ error: 'Utilizador não encontrado no servidor.' });
+        }
       }
       const prevPlan = record.plan;
       const prevRole = record.role;
@@ -6837,7 +6997,14 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (typeof updates.name === 'string') record.name = updates.name.trim();
       if (typeof updates.phone === 'string') record.phone = updates.phone.trim();
       if (typeof updates.notes === 'string') record.notes = updates.notes;
-      if (updates.plan && ['free', 'pro', 'executive'].includes(updates.plan)) record.plan = updates.plan;
+      if (updates.plan && ['free', 'pro', 'executive'].includes(updates.plan)) {
+        record.plan = updates.plan;
+        if (typeof updates.creditsRemaining !== 'number') {
+          if (updates.plan === 'executive') record.creditsRemaining = 9999;
+          else if (updates.plan === 'pro') record.creditsRemaining = Math.max(record.creditsRemaining || 0, 100);
+          else if (prevPlan !== 'free') record.creditsRemaining = getFreePlanDefaultCredits();
+        }
+      }
       if (updates.role && ['admin', 'user'].includes(updates.role)) record.role = updates.role;
       if (updates.status && ['active', 'suspended'].includes(updates.status)) record.status = updates.status;
       if (typeof updates.creditsRemaining === 'number') record.creditsRemaining = updates.creditsRemaining;
