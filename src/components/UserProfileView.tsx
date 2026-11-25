@@ -48,7 +48,6 @@ import {
   subscribeToUserNotifications
 } from '../services/notificationService';
 import { generateWordDocument, triggerDownload } from '../utils/docxExport';
-import { OFFICIAL_PIX_KEY } from './PricingModal';
 import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
 import { formatCycleLabel, formatCycleWithDiscount, getPixKeyTypeLabel } from '../utils/billingCycles';
 import { BILLING_UI_TRANSLATIONS } from '../i18n/billingUiTranslations';
@@ -82,7 +81,8 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     changePassword,
     savedResumes,
     saveCurrentResume,
-    deleteResume
+    deleteResume,
+    incrementCvGenerated
   } = useAuth();
   const { formatPrice } = useCurrency();
   const { language: appLang, siteLanguage } = useLanguage();
@@ -174,7 +174,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     }
   }, [activeSubTab, isAuthenticated, user?.id, loadPersonalAuditLogs]);
 
-  const livePixKey = platformSettings.pixKey || OFFICIAL_PIX_KEY;
+  const livePixKey = (platformSettings.pixKey || '').trim();
   const livePixKeyLabel = getPixKeyTypeLabel(platformSettings.pixKeyType, siteLanguage);
 
   if (!isAuthenticated || !user) {
@@ -254,6 +254,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
     try {
       const blob = await generateWordDocument(resume.data, true, 'normal', appLang);
       triggerDownload(blob, `Curriculo_${resume.title.replace(/\s+/g, '_')}.docx`);
+      void incrementCvGenerated(1, { eventType: 'word_exported', templateStyle: resume.data.templateStyle });
       void recordAuditLog({
         action: 'cv_exported_docx',
         category: 'cv_export',
@@ -603,7 +604,7 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
                     {hasActivePlan ? ui.aiCreditsUnlimited : `${user.creditsRemaining ?? 5}${ui.creditsSuffix}`}
                   </span>
                   <span className="text-[11px] text-slate-500 mt-1 block">
-                    {hasActivePlan ? ui.fullAccessLabel : ui.starterPlanLabel}
+                    {hasActivePlan ? ui.fullAccessLabel : ui.starterPlanLabel} · {Math.max(user.totalCvGenerated || 0, savedResumes.length)} CVs
                   </span>
                 </div>
 
@@ -758,27 +759,29 @@ export const UserProfileView: React.FC<UserProfileViewProps> = ({
             </div>
 
             {/* Pix Reference for Instant Upgrade */}
-            <div className="bg-amber-50/70 rounded-3xl border border-amber-200 p-6 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  <QrCode className="w-4 h-4 text-amber-700" />
-                  {ui.pixTitle}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyPix}
-                  className="text-[11px] font-bold text-amber-900 underline"
-                >
-                  {copiedPix ? ui.copiedBtn : ui.copyBtn}
-                </button>
+            {livePixKey && (
+              <div className="bg-amber-50/70 rounded-3xl border border-amber-200 p-6 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <QrCode className="w-4 h-4 text-amber-700" />
+                    {ui.pixTitle}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyPix}
+                    className="text-[11px] font-bold text-amber-900 underline"
+                  >
+                    {copiedPix ? ui.copiedBtn : ui.copyBtn}
+                  </button>
+                </div>
+                <p className="text-[11px] text-amber-900/80 leading-relaxed">
+                  {ui.pixDescPrefix}{livePixKeyLabel}{ui.pixDescSuffix}
+                </p>
+                <div className="p-2.5 bg-white rounded-xl border border-amber-200 font-mono text-[11px] text-slate-800 break-all select-all">
+                  {livePixKey}
+                </div>
               </div>
-              <p className="text-[11px] text-amber-900/80 leading-relaxed">
-                {ui.pixDescPrefix}{livePixKeyLabel}{ui.pixDescSuffix}
-              </p>
-              <div className="p-2.5 bg-white rounded-xl border border-amber-200 font-mono text-[11px] text-slate-800 break-all select-all">
-                {livePixKey}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

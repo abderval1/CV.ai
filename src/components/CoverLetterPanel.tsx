@@ -149,7 +149,7 @@ export const CoverLetterPanel: React.FC<CoverLetterPanelProps> = ({
   isTranslatingContent = false,
   contentLanguage = 'en'
 }) => {
-  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { isAuthenticated, hasActivePlan, incrementCvGenerated } = useAuth();
   const { siteLanguage } = useLanguage();
   const ui = COVER_PANEL_UI[siteLanguage] || COVER_PANEL_UI.en;
   const coverUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).coverPanel;
@@ -370,6 +370,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         setLetterBody(data.letterBody);
         setStatusMessage(coverUi.generatedAi);
         trackFrontendTelemetry({ type: 'ai_called', feature: 'coverLetter', tokens: 1200 });
+        void incrementCvGenerated(1, { skipServerIncrement: true });
       } else {
         throw new Error(coverUi.invalidFormat);
       }
@@ -398,6 +399,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
       );
       setLetterBody(generated);
       setStatusMessage(coverUi.generatedFallback);
+      void incrementCvGenerated(1, { skipServerIncrement: false });
     } finally {
       setIsGenerating(false);
       setTimeout(() => setStatusMessage(null), 3500);
@@ -422,6 +424,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         const blob = await generateCoverLetterDocx(cv, letterBody, true, letterLanguage);
         const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta';
         triggerDownload(blob, `Carta_Apresentacao_${nameClean}.docx`);
+        void incrementCvGenerated(1, { eventType: 'word_exported' });
       } catch (err) {
         console.error('Erro ao exportar carta:', err);
       }

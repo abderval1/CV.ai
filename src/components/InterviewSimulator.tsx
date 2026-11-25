@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CVData, InterviewQuestion, InterviewAnswerEvaluation } from '../types/cv';
-import { SAMPLE_JOB_OFFERS } from '../data/initialCV';
 import { useLanguage } from '../context/LanguageContext';
 import { TOOLS_UI_TRANSLATIONS, getIntlLocale } from '../i18n/toolsUiTranslations';
 import { authorizedFetch } from '../utils/authHeaders';
@@ -43,7 +42,7 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
   const { siteLanguage } = useLanguage();
   const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).interviewSim;
   const [activeJobDesc, setActiveJobDesc] = useState<string>(
-    jobDescription || SAMPLE_JOB_OFFERS[0].description
+    jobDescription || ''
   );
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);

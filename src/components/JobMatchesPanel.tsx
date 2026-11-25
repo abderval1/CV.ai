@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { CVData } from '../types/cv';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
 import { TOOLS_UI_TRANSLATIONS, ToolsUiDictionary, getIntlLocale } from '../i18n/toolsUiTranslations';
+import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
 import {
   Briefcase,
   ExternalLink,
@@ -16,7 +17,11 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  RotateCcw
+  RotateCcw,
+  Lightbulb,
+  Check,
+  ArrowRight,
+  Wand2
 } from 'lucide-react';
 
 export interface MatchedRadarJob {
@@ -77,9 +82,221 @@ export interface JobPreferences {
 interface JobMatchesPanelProps {
   cv: CVData;
   onApplyJobToTailor: (jobDescriptionText: string, targetTab: 'ats' | 'ai') => void;
+  guideMode?: StudioCreationMode;
+}
+
+interface AppliedJobRecord {
+  id: string;
+  title: string;
+  company: string;
+  sourceName: string;
+  applyUrl: string;
+  appliedAt: string;
+  matchScore: number;
 }
 
 const PREFS_STORAGE_KEY = 'cv_job_preferences_v1';
+const APPLIED_JOBS_STORAGE_KEY = 'cv_applied_jobs_v1';
+
+const APPLY_FLOW_COPY: Record<
+  SiteLanguageCode,
+  {
+    guide1: string;
+    guide2: string;
+    guide3: string;
+    tabMatches: string;
+    tabApplied: string;
+    applyNowBtn: string;
+    appliedBadge: string;
+    openPortalBtn: string;
+    removeAppliedBtn: string;
+    emptyAppliedTitle: string;
+    emptyAppliedDesc: string;
+    modalTitle: string;
+    step1Heading: string;
+    step1Desc: string;
+    tailorWithAiBtn: string;
+    useCurrentCvBtn: string;
+    step2Heading: string;
+    step2Desc: string;
+    openOfficialLinkBtn: string;
+    markAppliedBtn: string;
+    alreadyAppliedBtn: string;
+    backToStep1Btn: string;
+    appliedOnLabel: string;
+    closeBtn: string;
+  }
+> = {
+  pt: {
+    guide1: 'Filtre ou pesquise pelo cargo desejado',
+    guide2: 'Clique em "Candidatar-se Agora"',
+    guide3: 'Adapte o CV ou envie no portal oficial',
+    tabMatches: 'Vagas Compatíveis',
+    tabApplied: 'Minhas Candidaturas',
+    applyNowBtn: 'Candidatar-se Agora',
+    appliedBadge: 'Candidatado',
+    openPortalBtn: 'Abrir Vaga',
+    removeAppliedBtn: 'Remover',
+    emptyAppliedTitle: 'Ainda não registou candidaturas',
+    emptyAppliedDesc: 'Ao clicar em "Candidatar-se Agora" numa vaga e enviar no portal, clique em "Marcar como Candidatado" para acompanhar tudo aqui.',
+    modalTitle: 'Assistente de Candidatura Rápida',
+    step1Heading: 'Preparar o seu CV para esta vaga',
+    step1Desc: 'Quer adaptar o seu currículo com IA às palavras-chave desta vaga ou avançar diretamente com o seu CV atual?',
+    tailorWithAiBtn: 'Adaptar CV com IA (Recomendado)',
+    useCurrentCvBtn: 'Avançar com CV Atual',
+    step2Heading: 'Enviar candidatura no portal oficial',
+    step2Desc: '1) Abra a vaga no site da empresa/portal para enviar o seu CV. 2) Depois confirme abaixo para guardar no seu histórico.',
+    openOfficialLinkBtn: 'Abrir Vaga no Portal',
+    markAppliedBtn: 'Marcar como Candidatado',
+    alreadyAppliedBtn: 'Guardado em Minhas Candidaturas',
+    backToStep1Btn: 'Voltar ao Passo 1',
+    appliedOnLabel: 'Candidatura registada em',
+    closeBtn: 'Fechar'
+  },
+  en: {
+    guide1: 'Filter or search your target role',
+    guide2: 'Click "Apply Now" on a match',
+    guide3: 'Tailor CV or submit on official portal',
+    tabMatches: 'Matched Jobs',
+    tabApplied: 'My Applications',
+    applyNowBtn: 'Apply Now',
+    appliedBadge: 'Applied',
+    openPortalBtn: 'Open Role',
+    removeAppliedBtn: 'Remove',
+    emptyAppliedTitle: 'No applications tracked yet',
+    emptyAppliedDesc: 'Click "Apply Now" on any matching job, submit on the company portal, and mark it as Applied to track your progress here.',
+    modalTitle: 'Quick Apply Assistant',
+    step1Heading: 'Prepare your CV for this role',
+    step1Desc: 'Would you like to tailor your resume keywords with AI for this opening or proceed with your current CV?',
+    tailorWithAiBtn: 'Tailor CV with AI (Recommended)',
+    useCurrentCvBtn: 'Use Current CV & Continue',
+    step2Heading: 'Submit on the official job portal',
+    step2Desc: '1) Open the official listing below to submit your CV. 2) Mark it as Applied to keep your history organized.',
+    openOfficialLinkBtn: 'Open Official Job Posting',
+    markAppliedBtn: 'Mark as Applied',
+    alreadyAppliedBtn: 'Saved in My Applications',
+    backToStep1Btn: 'Back to Step 1',
+    appliedOnLabel: 'Applied on',
+    closeBtn: 'Close'
+  },
+  es: {
+    guide1: 'Filtra o busca tu puesto ideal',
+    guide2: 'Haz clic en "Postular Ahora"',
+    guide3: 'Adapta tu CV o envía en el portal',
+    tabMatches: 'Vacantes Compatibles',
+    tabApplied: 'Mis Postulaciones',
+    applyNowBtn: 'Postular Ahora',
+    appliedBadge: 'Postulado',
+    openPortalBtn: 'Abrir Vacante',
+    removeAppliedBtn: 'Quitar',
+    emptyAppliedTitle: 'Aún no registraste postulaciones',
+    emptyAppliedDesc: 'Haz clic en "Postular Ahora" en cualquier vacante, envía en el portal oficial y márcala como Postulada aquí.',
+    modalTitle: 'Asistente de Postulación Rápida',
+    step1Heading: 'Prepara tu CV para esta vacante',
+    step1Desc: '¿Deseas adaptar tu currículum con IA a los requisitos de esta oferta o continuar con tu CV actual?',
+    tailorWithAiBtn: 'Adaptar CV con IA (Recomendado)',
+    useCurrentCvBtn: 'Continuar con CV Actual',
+    step2Heading: 'Enviar postulación en el portal oficial',
+    step2Desc: '1) Abre el enlace oficial abajo para enviar tu CV. 2) Márcalo como Postulado para llevar el seguimiento.',
+    openOfficialLinkBtn: 'Abrir Oferta en Portal Oficial',
+    markAppliedBtn: 'Marcar como Postulado',
+    alreadyAppliedBtn: 'Guardado en Mis Postulaciones',
+    backToStep1Btn: 'Volver al Paso 1',
+    appliedOnLabel: 'Postulado el',
+    closeBtn: 'Cerrar'
+  },
+  fr: {
+    guide1: 'Filtrez ou recherchez votre poste',
+    guide2: 'Cliquez sur « Postuler »',
+    guide3: 'Adaptez le CV ou envoyez sur le portail',
+    tabMatches: 'Offres Compatibles',
+    tabApplied: 'Mes Candidatures',
+    applyNowBtn: 'Postuler',
+    appliedBadge: 'Postulé',
+    openPortalBtn: 'Ouvrir l’offre',
+    removeAppliedBtn: 'Retirer',
+    emptyAppliedTitle: 'Aucune candidature enregistrée',
+    emptyAppliedDesc: 'Cliquez sur « Postuler » sur une offre, soumettez votre dossier sur le site officiel puis marquez-la ici.',
+    modalTitle: 'Assistant de Candidature Rapide',
+    step1Heading: 'Préparer votre CV pour cette offre',
+    step1Desc: 'Souhaitez-vous adapter votre CV avec l’IA aux mots-clés de cette offre ou continuer avec votre CV actuel ?',
+    tailorWithAiBtn: 'Adapter le CV avec IA (Recommandé)',
+    useCurrentCvBtn: 'Continuer avec le CV actuel',
+    step2Heading: 'Envoyer sur le portail officiel',
+    step2Desc: '1) Ouvrez l’offre officielle ci-dessous. 2) Confirmez ensuite pour suivre cette candidature.',
+    openOfficialLinkBtn: 'Ouvrir l’offre officielle',
+    markAppliedBtn: 'Marquer comme Postulé',
+    alreadyAppliedBtn: 'Enregistré dans Mes Candidatures',
+    backToStep1Btn: 'Retour à l’étape 1',
+    appliedOnLabel: 'Postulé le',
+    closeBtn: 'Fermer'
+  },
+  de: {
+    guide1: 'Nach Wunschposition filtern',
+    guide2: 'Auf „Jetzt Bewerben“ klicken',
+    guide3: 'CV anpassen & im Portal absenden',
+    tabMatches: 'Passende Stellen',
+    tabApplied: 'Meine Bewerbungen',
+    applyNowBtn: 'Jetzt Bewerben',
+    appliedBadge: 'Beworben',
+    openPortalBtn: 'Stelle öffnen',
+    removeAppliedBtn: 'Entfernen',
+    emptyAppliedTitle: 'Noch keine Bewerbungen erfasst',
+    emptyAppliedDesc: 'Klicken Sie bei einer Stelle auf „Jetzt Bewerben“, senden Sie Ihren CV ab und speichern Sie den Status hier.',
+    modalTitle: 'Schnell-Bewerbungsassistent',
+    step1Heading: 'Lebenslauf vorbereiten',
+    step1Desc: 'Möchten Sie Ihren Lebenslauf per KI auf diese Stelle zuschneiden oder direkt mit dem aktuellen CV fortfahren?',
+    tailorWithAiBtn: 'CV mit KI anpassen (Empfohlen)',
+    useCurrentCvBtn: 'Aktuellen CV verwenden',
+    step2Heading: 'Im offiziellen Portal bewerben',
+    step2Desc: '1) Öffnen Sie die offizielle Stellenanzeige unten. 2) Markieren Sie die Stelle als beworben.',
+    openOfficialLinkBtn: 'Offizielle Anzeige öffnen',
+    markAppliedBtn: 'Als Beworben markieren',
+    alreadyAppliedBtn: 'In Bewerbungen gespeichert',
+    backToStep1Btn: 'Zurück zu Schritt 1',
+    appliedOnLabel: 'Beworben am',
+    closeBtn: 'Schließen'
+  },
+  it: {
+    guide1: 'Filtra o cerca il ruolo target',
+    guide2: 'Clicca su "Candidati Ora"',
+    guide3: 'Adatta il CV o invia sul portale',
+    tabMatches: 'Offerte Compatibili',
+    tabApplied: 'Le Mie Candidature',
+    applyNowBtn: 'Candidati Ora',
+    appliedBadge: 'Candidato',
+    openPortalBtn: 'Apri Offerta',
+    removeAppliedBtn: 'Rimuovi',
+    emptyAppliedTitle: 'Nessuna candidatura salvata',
+    emptyAppliedDesc: 'Clicca su "Candidati Ora" su un’offerta, invia la candidatura sul portale ufficiale e salvala qui.',
+    modalTitle: 'Assistente Candidatura Rapida',
+    step1Heading: 'Prepara il tuo CV per questa offerta',
+    step1Desc: 'Vuoi adattare il CV con l’IA per questa posizione o procedere con il tuo CV attuale?',
+    tailorWithAiBtn: 'Adatta CV con IA (Consigliato)',
+    useCurrentCvBtn: 'Usa CV Attuale e Continua',
+    step2Heading: 'Invia sul portale ufficiale',
+    step2Desc: '1) Apri l’annuncio ufficiale qui sotto. 2) Conferma per salvare la candidatura nello storico.',
+    openOfficialLinkBtn: 'Apri Annuncio Ufficiale',
+    markAppliedBtn: 'Segna come Candidato',
+    alreadyAppliedBtn: 'Salvato in Candidature',
+    backToStep1Btn: 'Torna al Passo 1',
+    appliedOnLabel: 'Candidatura del',
+    closeBtn: 'Chiudi'
+  }
+};
+
+function loadAppliedJobs(): AppliedJobRecord[] {
+  try {
+    const raw = localStorage.getItem(APPLIED_JOBS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return [];
+}
 
 const COUNTRY_IDS = [
   'remoto_global',
@@ -185,10 +402,12 @@ function getSafeExternalHttpUrl(raw?: string | null): string {
 
 export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   cv,
-  onApplyJobToTailor
+  onApplyJobToTailor,
+  guideMode = 'guided'
 }) => {
   const { siteLanguage } = useLanguage();
   const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).jobMatches;
+  const applyUi = APPLY_FLOW_COPY[siteLanguage] || APPLY_FLOW_COPY.en;
   const intlLocale = getIntlLocale(siteLanguage);
   const [data, setData] = useState<JobMatchResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -199,8 +418,13 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [tailoringJobId, setTailoringJobId] = useState<string | null>(null);
 
+  const [viewTab, setViewTab] = useState<'matches' | 'applied'>('matches');
+  const [appliedJobs, setAppliedJobs] = useState<AppliedJobRecord[]>(() => loadAppliedJobs());
+  const [quickApplyJob, setQuickApplyJob] = useState<MatchedRadarJob | null>(null);
+  const [quickApplyStep, setQuickApplyStep] = useState<1 | 2>(1);
+
   const [preferences, setPreferences] = useState<JobPreferences>(() => loadSavedPreferences());
-  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(true);
+  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
   const [customRoleInput, setCustomRoleInput] = useState<string>('');
 
   // Persist user preferences cleanly
@@ -211,6 +435,14 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
       // Ignore storage quota errors
     }
   }, [preferences]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(APPLIED_JOBS_STORAGE_KEY, JSON.stringify(appliedJobs));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [appliedJobs]);
 
   const suggestedRoles = useMemo(() => {
     const rawList = [
@@ -349,7 +581,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
     setActiveSearch(searchInput.trim());
   };
 
-  const handleTailorForJob = async (job: MatchedRadarJob) => {
+  const handleTailorForJob = async (job: MatchedRadarJob, targetTab: 'ats' | 'ai' = 'ats') => {
     setTailoringJobId(job.id);
     try {
       let fullDescription = job.descriptionSnippet ? String(job.descriptionSnippet).trim() : '';
@@ -393,11 +625,35 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         ? `${headerBlock}\n\n${ui.tailorHeader.description}\n${fullDescription.slice(0, 4000)}`
         : `${headerBlock}\n\n${ui.tailorHeader.criteria} ${job.matchedKeywords.join(', ')}.`;
 
-      onApplyJobToTailor(combinedText, 'ats');
+      onApplyJobToTailor(combinedText, targetTab);
     } finally {
       setTailoringJobId(null);
     }
   };
+
+  const handleMarkAsApplied = (job: MatchedRadarJob) => {
+    setAppliedJobs((prev) => {
+      if (prev.some((item) => item.id === job.id)) return prev;
+      return [
+        {
+          id: job.id,
+          title: job.title,
+          company: job.company,
+          sourceName: job.sourceName,
+          applyUrl: job.applyUrl,
+          appliedAt: new Date().toISOString(),
+          matchScore: job.matchScore
+        },
+        ...prev
+      ];
+    });
+  };
+
+  const handleRemoveApplied = (jobId: string) => {
+    setAppliedJobs((prev) => prev.filter((item) => item.id !== jobId));
+  };
+
+  const appliedJobIds = useMemo(() => new Set(appliedJobs.map((j) => j.id)), [appliedJobs]);
 
   const activePrefCount =
     preferences.countries.length +
@@ -413,13 +669,120 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* 3-Step Guided Application Helper (Visible in Guided Mode) */}
+      {guideMode === 'guided' && (
+        <div className="bg-amber-50/90 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+          <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-medium">
+            <LightbulbStepBadge step={1} active />
+            <span className="leading-snug">{applyUi.guide1}</span>
+          </div>
+          <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-medium">
+            <LightbulbStepBadge step={2} active />
+            <span className="leading-snug">{applyUi.guide2}</span>
+          </div>
+          <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-medium">
+            <LightbulbStepBadge step={3} active />
+            <span className="leading-snug">{applyUi.guide3}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Clean View Switcher: Matched Jobs vs My Applications */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+        <button
+          type="button"
+          onClick={() => setViewTab('matches')}
+          className={`flex-1 py-1.5 px-3 rounded-lg font-semibold transition-colors whitespace-nowrap tabular-nums ${
+            viewTab === 'matches'
+              ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs font-bold'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-950'
+          }`}
+        >
+          {applyUi.tabMatches} ({compatibleCount})
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewTab('applied')}
+          className={`flex-1 py-1.5 px-3 rounded-lg font-semibold transition-colors whitespace-nowrap tabular-nums ${
+            viewTab === 'applied'
+              ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs font-bold'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-950'
+          }`}
+        >
+          {applyUi.tabApplied} ({appliedJobs.length})
+        </button>
+      </div>
+
+      {viewTab === 'applied' ? (
+        appliedJobs.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 text-center space-y-2.5">
+            <Briefcase className="w-6 h-6 text-slate-400 mx-auto" />
+            <p className="text-sm font-bold text-slate-900 dark:text-white">{applyUi.emptyAppliedTitle}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              {applyUi.emptyAppliedDesc}
+            </p>
+            <button
+              type="button"
+              onClick={() => setViewTab('matches')}
+              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-lg text-xs font-bold transition-colors"
+            >
+              {applyUi.tabMatches}
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200 dark:divide-slate-800 overflow-hidden">
+            {appliedJobs.map((item) => (
+              <div key={item.id} className="p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                      <Check className="w-3 h-3" />
+                      <span>{applyUi.appliedBadge}</span>
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-500 tabular-nums">
+                      {item.matchScore}%
+                    </span>
+                  </div>
+                  <p className="text-sm font-bold text-slate-950 dark:text-white mt-1 truncate">
+                    {item.title}
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    {item.company} · {item.sourceName} · {applyUi.appliedOnLabel}{' '}
+                    {new Date(item.appliedAt).toLocaleDateString(intlLocale)}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={getSafeExternalHttpUrl(item.applyUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap"
+                  >
+                    <span>{applyUi.openPortalBtn}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveApplied(item.id)}
+                    className="px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
+                  >
+                    {applyUi.removeAppliedBtn}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        <>
       {/* Header & Live Multi-Portal Count Strip */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Briefcase className="w-4 h-4 text-slate-800 shrink-0" />
-              <h2 className="text-sm font-bold text-slate-950 tracking-tight">
+              <Briefcase className="w-4 h-4 text-slate-800 dark:text-slate-200 shrink-0" />
+              <h2 className="text-sm font-bold text-slate-950 dark:text-white tracking-tight">
                 {ui.title}
               </h2>
             </div>
@@ -881,32 +1244,47 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickApplyJob(job);
+                        setQuickApplyStep(appliedJobIds.has(job.id) ? 2 : 1);
+                      }}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 ${
+                        appliedJobIds.has(job.id)
+                          ? 'bg-emerald-50 border border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                          : 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-2xs'
+                      }`}
+                    >
+                      {appliedJobIds.has(job.id) ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{applyUi.appliedBadge}</span>
+                        </>
+                      ) : (
+                        <>
+                          {guideMode === 'guided' && <Lightbulb className="w-3.5 h-3.5" />}
+                          <span>{applyUi.applyNowBtn}</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </>
+                      )}
+                    </button>
+
                     <a
                       href={getSafeExternalHttpUrl(job.applyUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0"
+                      className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
                     >
-                      <span>{ui.applyBtn}</span>
+                      <span>{applyUi.openPortalBtn}</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
-
-                    {job.radarUrl && job.radarUrl !== job.applyUrl && getSafeExternalHttpUrl(job.radarUrl) !== '#' && (
-                      <a
-                        href={getSafeExternalHttpUrl(job.radarUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0"
-                      >
-                        <span>{ui.viewOnPrefix} {job.sourceName}</span>
-                      </a>
-                    )}
                   </div>
 
                   <button
                     type="button"
                     disabled={tailoringJobId === job.id}
-                    onClick={() => void handleTailorForJob(job)}
+                    onClick={() => void handleTailorForJob(job, 'ats')}
                     className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0"
                   >
                     {tailoringJobId === job.id ? (
@@ -920,6 +1298,164 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               </article>
             );
           })}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* 2-Step Quick Apply Assistant Modal */}
+      {quickApplyJob && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center gap-2 min-w-0">
+                <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                <h3 className="text-sm font-bold text-slate-950 dark:text-white truncate">
+                  {applyUi.modalTitle}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickApplyJob(null)}
+                aria-label={applyUi.closeBtn}
+                className="p-1 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-md"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Role summary header */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-950 dark:text-white leading-snug">
+                    {quickApplyJob.title}
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                    {quickApplyJob.company} · {quickApplyJob.sourceName}
+                  </p>
+                </div>
+                <span className="font-mono text-xs font-extrabold text-emerald-700 dark:text-emerald-400 shrink-0 tabular-nums">
+                  {quickApplyJob.matchScore}%
+                </span>
+              </div>
+
+              {/* 2-Step Lightbulb Stepper */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setQuickApplyStep(1)}
+                  className={`p-2 rounded-lg border text-left flex items-center gap-2 transition-colors ${
+                    quickApplyStep === 1
+                      ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-400 text-slate-950 dark:text-white font-bold'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <LightbulbStepBadge step={1} active={quickApplyStep === 1} completed={quickApplyStep === 2} />
+                  <span className="truncate">{applyUi.step1Heading}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQuickApplyStep(2)}
+                  className={`p-2 rounded-lg border text-left flex items-center gap-2 transition-colors ${
+                    quickApplyStep === 2
+                      ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-400 text-slate-950 dark:text-white font-bold'
+                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}
+                >
+                  <LightbulbStepBadge step={2} active={quickApplyStep === 2} completed={appliedJobIds.has(quickApplyJob.id)} />
+                  <span className="truncate">{applyUi.step2Heading}</span>
+                </button>
+              </div>
+
+              {quickApplyStep === 1 ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {applyUi.step1Desc}
+                  </p>
+
+                  {quickApplyJob.matchedKeywords.length > 0 && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{ui.inYourCvLabel}</span>{' '}
+                      {quickApplyJob.matchedKeywords.join(', ')}
+                    </p>
+                  )}
+
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={tailoringJobId === quickApplyJob.id}
+                      onClick={() => {
+                        const targetJob = quickApplyJob;
+                        setQuickApplyJob(null);
+                        void handleTailorForJob(targetJob, 'ai');
+                      }}
+                      className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Wand2 className="w-4 h-4 shrink-0" />
+                      <span>{applyUi.tailorWithAiBtn}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setQuickApplyStep(2)}
+                      className="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <span>{applyUi.useCurrentCvBtn}</span>
+                      <ArrowRight className="w-4 h-4 shrink-0" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {applyUi.step2Desc}
+                  </p>
+
+                  <div className="space-y-2 pt-1">
+                    <a
+                      href={getSafeExternalHttpUrl(quickApplyJob.applyUrl)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <span>{applyUi.openOfficialLinkBtn} ({quickApplyJob.sourceName})</span>
+                      <ExternalLink className="w-4 h-4 shrink-0" />
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleMarkAsApplied(quickApplyJob);
+                        setQuickApplyJob(null);
+                      }}
+                      className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-colors ${
+                        appliedJobIds.has(quickApplyJob.id)
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-900'
+                      }`}
+                    >
+                      <Check className="w-4 h-4 shrink-0" />
+                      <span>
+                        {appliedJobIds.has(quickApplyJob.id)
+                          ? applyUi.alreadyAppliedBtn
+                          : applyUi.markAppliedBtn}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setQuickApplyStep(1)}
+                      className="w-full py-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                    >
+                      {applyUi.backToStep1Btn}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

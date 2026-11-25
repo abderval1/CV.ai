@@ -550,26 +550,40 @@ export async function createSaaSOrder(
   saveOrderToLocalCache(newOrder);
 
   const authToken = getAuthToken();
-  let backendOrderSaved = false;
-  if (authToken) {
+  let backendOrderSaved = Boolean(order.stripeSubscriptionId && newOrder.status === 'paid');
+  if (authToken || auth.currentUser) {
     const endpoint = order.adminManual ? '/api/admin/orders' : '/api/orders';
     try {
+      const reqHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) reqHeaders.Authorization = `Bearer ${authToken}`;
+      if (auth.currentUser) {
+        try {
+          const fbIdToken = await auth.currentUser.getIdToken();
+          if (fbIdToken) reqHeaders['x-firebase-id-token'] = fbIdToken;
+        } catch {
+          // ignore
+        }
+      }
       const resp = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authToken}`
-        },
+        headers: reqHeaders,
         body: JSON.stringify(newOrder)
       });
-      backendOrderSaved = resp.ok;
+      if (resp.ok) backendOrderSaved = true;
     } catch {
       // non-fatal
     }
   }
 
   if (!auth.currentUser) {
+    return newOrder;
+  }
+
+  // Non-admin paid card/promo orders are already persisted authoritatively by the Stripe backend;
+  // Firestore security rules restrict status='paid' client writes to admins only.
+  const isAdminClient = isUserAdmin(auth.currentUser.email);
+  if (!order.adminManual && newOrder.status === 'paid' && !isAdminClient) {
     return newOrder;
   }
 
@@ -595,8 +609,6 @@ export async function createSaaSOrder(
 
     return newOrder;
   } catch (error: any) {
-    // Non-admin Card / 100% Promo verified paid orders are persisted authoritatively on the Express backend;
-    // Firestore denies direct client writes of status='paid' by non-admins to prevent SDK spoofing.
     if (!order.adminManual && newOrder.status === 'paid' && backendOrderSaved) {
       return newOrder;
     }

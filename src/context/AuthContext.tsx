@@ -290,6 +290,10 @@ interface AuthContextType {
   refreshUser: () => Promise<User | null>;
   savedResumes: SavedResume[];
   saveCurrentResume: (cv: CVData, title: string, targetJob?: string) => Promise<string>;
+  incrementCvGenerated: (
+    count?: number,
+    meta?: { eventType?: 'resume_started' | 'word_exported'; templateStyle?: string; skipServerIncrement?: boolean }
+  ) => Promise<number>;
   loadResume: (id: string) => CVData | null;
   deleteResume: (id: string) => Promise<void>;
   isImpersonating: boolean;
@@ -481,6 +485,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (response.ok && Array.isArray(data?.resumes)) {
         const cleanServerResumes = sanitizeResumeList(data.resumes);
         setSavedResumes(cleanServerResumes);
+        if (cleanServerResumes.length > 0) {
+          setUser((prev) =>
+            prev && (prev.totalCvGenerated || 0) < cleanServerResumes.length
+              ? { ...prev, totalCvGenerated: cleanServerResumes.length }
+              : prev
+          );
+        }
       } else if (response.status === 401) {
         setSavedResumes([]);
       }
@@ -517,7 +528,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               })
               .sort((a, b) => (b._createdAt || b.id).localeCompare(a._createdAt || a.id))
               .map(({ _createdAt: _, ...rest }) => rest);
-            setSavedResumes(sanitizeResumeList(cloudResumes));
+            const cleanCloud = sanitizeResumeList(cloudResumes);
+            setSavedResumes(cleanCloud);
+            if (cleanCloud.length > 0) {
+              setUser((prev) => {
+                if (!prev || (prev.totalCvGenerated || 0) >= cleanCloud.length) return prev;
+                const nextCount = cleanCloud.length;
+                if (auth.currentUser && auth.currentUser.uid === firestoreUid && !originalAdminUser) {
+                  void updateDoc(
+                    doc(db, 'users', firestoreUid),
+                    sanitizeForFirestore({
+                      totalCvGenerated: nextCount,
+                      updatedAt: new Date().toISOString()
+                    })
+                  ).catch(() => {});
+                }
+                return { ...prev, totalCvGenerated: nextCount };
+              });
+            }
           } else {
             void hydrateResumesFromBackend(epoch, ownerUid);
           }
@@ -1727,6 +1755,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return nextUser;
   };
 
+  const incrementCvGenerated = async (
+    count = 1,
+    meta?: { eventType?: 'resume_started' | 'word_exported'; templateStyle?: string; skipServerIncrement?: boolean }
+  ): Promise<number> => {
+    const delta = Math.max(0, Math.min(5, Math.round(Number(count) || 0)));
+    if (!user) return 0;
+
+    let nextTotal = Math.max(user.totalCvGenerated || 0, savedResumes.length) + delta;
+
+    if (!originalAdminUser && (getStoredAuthToken() || user) && !meta?.skipServerIncrement) {
+      try {
+        const { response, data } = await apiAuthFetch('/api/auth/track-cv-activity', {
+          method: 'POST',
+          body: JSON.stringify({
+            increment: delta,
+            eventType: meta?.eventType,
+            templateStyle: meta?.templateStyle
+          })
+        });
+        if (response.ok && typeof data?.totalCvGenerated === 'number') {
+          nextTotal = Math.max(nextTotal, data.totalCvGenerated);
+        }
+      } catch {
+        // continue with local + Firestore persistence
+      }
+    }
+
+    const targetFirestoreUid = originalAdminUser && user?.id ? user.id : auth.currentUser?.uid;
+    if (auth.currentUser && targetFirestoreUid && delta > 0) {
+      try {
+        await updateDoc(
+          doc(db, 'users', targetFirestoreUid),
+          sanitizeForFirestore({
+            totalCvGenerated: nextTotal,
+            updatedAt: new Date().toISOString()
+          })
+        );
+      } catch {
+        // non-blocking Firestore counter sync
+      }
+    }
+
+    setUser((prev) => (prev ? { ...prev, totalCvGenerated: Math.max(prev.totalCvGenerated || 0, nextTotal) } : prev));
+    return nextTotal;
+  };
+
   const saveCurrentResume = async (
     cv: CVData,
     title: string,
@@ -1792,9 +1866,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 2. Sync to Backend persistence API (/api/resumes) when session token exists and not impersonating another user
+    let serverTotalCv: number | undefined;
     if (!originalAdminUser && (getStoredAuthToken() || user)) {
       try {
-        await apiAuthFetch('/api/resumes', {
+        const { response, data } = await apiAuthFetch('/api/resumes', {
           method: 'POST',
           body: JSON.stringify({
             id,
@@ -1804,12 +1879,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             data: cleanCv
           })
         });
+        if (response.ok && typeof data?.totalCvGenerated === 'number') {
+          serverTotalCv = data.totalCvGenerated;
+        }
       } catch (backendErr) {
         console.warn('Aviso ao guardar currículo no servidor:', backendErr);
       }
     }
 
+    const nextResumesCount = savedResumes.filter((r) => r.id !== newResume.id && r.title !== newResume.title).length + 1;
+    const isNewEntry = !savedResumes.some((r) => r.id === newResume.id || r.title === newResume.title);
+    const nextCvTotal = Math.max(
+      serverTotalCv ?? 0,
+      (user?.totalCvGenerated || 0) + (isNewEntry ? 1 : 0),
+      nextResumesCount
+    );
+
+    if (auth.currentUser && targetFirestoreUid && user && nextCvTotal > (user.totalCvGenerated || 0)) {
+      void updateDoc(
+        doc(db, 'users', targetFirestoreUid),
+        sanitizeForFirestore({
+          totalCvGenerated: nextCvTotal,
+          updatedAt: new Date().toISOString()
+        })
+      ).catch(() => {});
+    }
+
     setSavedResumes((prev) => [newResume, ...prev.filter((r) => r.id !== newResume.id && r.title !== newResume.title)]);
+    setUser((prev) => (prev ? { ...prev, totalCvGenerated: Math.max(prev.totalCvGenerated || 0, nextCvTotal) } : prev));
     if (user && !originalAdminUser) {
       void dispatchUserNotification({
         user,
@@ -1995,6 +2092,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         refreshUser,
         savedResumes,
         saveCurrentResume,
+        incrementCvGenerated,
         loadResume,
         deleteResume,
         isImpersonating: Boolean(originalAdminUser),

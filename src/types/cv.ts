@@ -144,6 +144,8 @@ export interface User {
   company?: string;
   creditsRemaining: number;
   creditsUsed?: number;
+  dailyAiCallsDate?: string;
+  dailyAiCallsCount?: number;
   totalCvGenerated?: number;
   billingCycle?: BillingCycle;
   subscriptionExpiresAt?: string;

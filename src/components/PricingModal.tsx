@@ -7,7 +7,8 @@ import { useCurrency, CURRENCIES } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/ToastContext';
 import { SubscriptionPlan, PaymentMethod, BillingCycle } from '../types/cv';
-import { createSaaSOrder, fetchAllCoupons, incrementCouponUsage } from '../services/saasDbService';
+import { createSaaSOrder, fetchAllCoupons, incrementCouponUsage, saveOrderToLocalCache } from '../services/saasDbService';
+import { auth } from '../lib/firebase';
 import {
   getStoredPlansSync,
   getStoredPlatformSettingsSync,
@@ -64,8 +65,8 @@ interface PricingModalProps {
   ) => void;
 }
 
-// Chave Pix padrão de fallback (pode ser substituída no Painel Administrativo)
-export const OFFICIAL_PIX_KEY = 'f4693532-31da-4e95-a589-19bccab0d915';
+// Chave Pix padrão (configurada dinamicamente via Painel Admin ou variável PIX_KEY no servidor)
+export const OFFICIAL_PIX_KEY = '';
 
 interface GatewayConfigResponse {
   cardEnabled: boolean;
@@ -169,6 +170,27 @@ function getPaymentAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+async function ensurePaymentAuthHeaders(
+  ensureSessionFn?: () => Promise<any>
+): Promise<Record<string, string>> {
+  let headers = getPaymentAuthHeaders();
+  if (!headers.Authorization && ensureSessionFn) {
+    await ensureSessionFn().catch(() => null);
+    headers = getPaymentAuthHeaders();
+  }
+  if (auth.currentUser) {
+    try {
+      const fbIdToken = await auth.currentUser.getIdToken();
+      if (fbIdToken) {
+        headers['x-firebase-id-token'] = fbIdToken;
+      }
+    } catch {
+      // ignore Firebase token error
+    }
+  }
+  return headers;
+}
+
 function getSafeExternalUrl(raw?: string | null): string | null {
   if (!raw || typeof raw !== 'string') return null;
   const trimmed = raw.trim();
@@ -264,6 +286,29 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     receiptUploaded?: boolean;
   } | null>(null);
   const [billingPortalUrl, setBillingPortalUrl] = useState<string | null>(null);
+  const [hostedCheckoutPending, setHostedCheckoutPending] = useState<{
+    sessionId: string;
+    url: string;
+    plan: SubscriptionPlan;
+    billingCycle: BillingCycle;
+    amount: number;
+    currency: string;
+  } | null>(null);
+  const [isCheckingHostedStatus, setIsCheckingHostedStatus] = useState<boolean>(false);
+  const [pendingHostedReturn, setPendingHostedReturn] = useState<{
+    sessionId: string;
+    plan: SubscriptionPlan;
+    cycle: BillingCycle;
+  } | null>(null);
+  const verifiedHostedSessionIdsRef = useRef<Set<string>>(new Set());
+
+  const isInsideIframe = useMemo(() => {
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  }, []);
 
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
@@ -274,6 +319,18 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       setPixSenderName((prev) => prev || user.name);
     }
   }, [user?.name]);
+
+  // Reset transient checkout state cleanly when modal closes so reopening starts fresh
+  useEffect(() => {
+    if (isOpen) return;
+    setUpgradeSuccess(false);
+    setSuccessDetails(null);
+    setCardError(null);
+    setPixError(null);
+    setPixPendingDetails(null);
+    setHostedCheckoutPending(null);
+    setIsProcessing(false);
+  }, [isOpen]);
 
   useEffect(() => {
     const syncConfigs = () => {
@@ -296,9 +353,17 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     fetch('/api/payments/config')
       .then((res) => (res.ok ? res.json() : null))
       .then(async (cfg: GatewayConfigResponse | null) => {
-        if (!active || !cfg) return;
+        if (!active) return;
+        if (!cfg) {
+          setCardLoadFailed(true);
+          return;
+        }
         setGatewayConfig(cfg);
-        if (cfg.cardEnabled && cfg.publishableKey && !stripeInstance) {
+        if (!cfg.cardEnabled || !cfg.publishableKey) {
+          setCardLoadFailed(true);
+          return;
+        }
+        if (!stripeInstance) {
           try {
             const loaded = await loadStripe(cfg.publishableKey);
             if (!active) return;
@@ -314,7 +379,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         }
       })
       .catch(() => {
-        // Fallback smoothly to platformSettings / Pix
+        if (active) setCardLoadFailed(true);
       });
 
     fetchAllCoupons()
@@ -348,7 +413,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       !upgradeSuccess &&
       !pixPendingDetails &&
       selectedPlan !== 'free' &&
-      paymentMethod === 'stripe' &&
+      (paymentMethod === 'stripe' || paymentMethod === 'card') &&
       cardFlowMode === 'embedded' &&
       appliedDiscount < 100 &&
       stripeInstance &&
@@ -462,7 +527,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     }
   }, [isOpen, initialPlan, initialCycle]);
 
-  // Hosted Checkout Return Verification & Analytics
+  // Capture Hosted Checkout Return Query Parameters on Open (waits for auth hydration before verifying)
   useEffect(() => {
     if (!isOpen) return;
     trackFrontendTelemetry({ type: 'checkout_opened' });
@@ -474,8 +539,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     const returnCycle = normalizeBillingCycle(queryParams.get('cycle'));
 
     if (checkoutStatus === 'success' && sessionId) {
-      handleHostedReturnVerification(sessionId, returnPlan, returnCycle);
-      window.history.replaceState({}, '', window.location.pathname);
+      if (!verifiedHostedSessionIdsRef.current.has(sessionId)) {
+        setPendingHostedReturn({ sessionId, plan: returnPlan, cycle: returnCycle });
+      }
     } else if (checkoutStatus === 'canceled') {
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -484,25 +550,40 @@ export const PricingModal: React.FC<PricingModalProps> = ({
   const handleHostedReturnVerification = async (
     sessionId: string,
     plan: SubscriptionPlan,
-    cycle: BillingCycle
-  ) => {
-    setIsProcessing(true);
+    cycle: BillingCycle,
+    silent = false
+  ): Promise<boolean> => {
+    if (verifiedHostedSessionIdsRef.current.has(sessionId)) return true;
+    if (!silent) {
+      setIsProcessing(true);
+    } else {
+      setIsCheckingHostedStatus(true);
+    }
     try {
+      const headers = await ensurePaymentAuthHeaders(refreshUser);
       const res = await fetch('/api/stripe/verify-session', {
         method: 'POST',
         credentials: 'include',
-        headers: getPaymentAuthHeaders(),
+        headers,
         body: JSON.stringify({ sessionId })
       });
       const data = await res.json();
       if (!res.ok || !data?.verified) {
+        if (silent && res.status === 402) {
+          return false;
+        }
         throw new Error(data?.error || ui.errHostedVerify);
       }
+
+      verifiedHostedSessionIdsRef.current.add(sessionId);
+      setPendingHostedReturn(null);
+      setHostedCheckoutPending(null);
 
       const subId = data.subscriptionId || `sub_${sessionId.slice(0, 12)}`;
       const verifiedCycle = normalizeBillingCycle(data.billingCycle || cycle);
       const durationDays = getCycleDurationDays(verifiedCycle);
-      const nextBilling = new Date(Date.now() + durationDays * 86400000).toISOString();
+      const nextBilling =
+        data.nextBillingDate || new Date(Date.now() + durationDays * 86400000).toISOString();
       const verifiedPlan = (data.plan === 'executive' ? 'executive' : plan) as SubscriptionPlan;
       const verifiedCurrency = String(data.currency || 'USD').toUpperCase();
       const verifiedAmount =
@@ -515,21 +596,24 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         stripeSubscriptionId: subId,
         stripeCustomerId: data.customerId
       });
+      await refreshUser().catch(() => null);
 
-      const order = await createSaaSOrder({
-        userId: user?.id || data.customerId || 'client-user',
-        userName: user?.name || ui.subscriberFallback,
-        userEmail: user?.email || data.customerEmail || '',
-        plan: verifiedPlan,
-        billingCycle: verifiedCycle,
-        amount: verifiedAmount,
-        currency: verifiedCurrency,
-        paymentMethod: 'card',
-        status: 'paid',
-        stripeSubscriptionId: subId,
-        receiptUrl: data.receiptUrl,
-        notes: `${ui.orderNoteHostedPrefix}${formatCycleLabel(verifiedCycle, siteLanguage).toLowerCase()}.`
-      });
+      const order = data.order
+        ? (saveOrderToLocalCache(data.order), data.order)
+        : await createSaaSOrder({
+            userId: user?.id || data.customerId || 'client-user',
+            userName: user?.name || ui.subscriberFallback,
+            userEmail: user?.email || data.customerEmail || '',
+            plan: verifiedPlan,
+            billingCycle: verifiedCycle,
+            amount: verifiedAmount,
+            currency: verifiedCurrency,
+            paymentMethod: 'card',
+            status: 'paid',
+            stripeSubscriptionId: subId,
+            receiptUrl: data.receiptUrl,
+            notes: `${ui.orderNoteHostedPrefix}${formatCycleLabel(verifiedCycle, siteLanguage).toLowerCase()}.`
+          });
 
       setSelectedPlan(verifiedPlan);
       setBillingCycle(verifiedCycle);
@@ -548,12 +632,51 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         ui.toastSubActiveTitle,
         `${ui.toastSubActiveSubPrefix}${verifiedPlan === 'executive' ? shortPlanNames.executive : shortPlanNames.pro}${ui.toastSubActiveSubSuffix}`
       );
+      return true;
     } catch (e: any) {
-      showError(ui.errPendingValTitle, e?.message || ui.errHostedVerify);
+      if (!silent) {
+        showError(ui.errPendingValTitle, e?.message || ui.errHostedVerify);
+      }
+      return false;
     } finally {
-      setIsProcessing(false);
+      if (!silent) {
+        setIsProcessing(false);
+      } else {
+        setIsCheckingHostedStatus(false);
+      }
     }
   };
+
+  // Run Hosted Checkout verification only after user/token hydration completes
+  useEffect(() => {
+    if (!isOpen || !pendingHostedReturn) return;
+    const hasAuth = Boolean(user?.id || getPaymentAuthHeaders().Authorization || auth.currentUser);
+    if (!hasAuth) return;
+
+    const { sessionId, plan, cycle } = pendingHostedReturn;
+    setPendingHostedReturn(null);
+    window.history.replaceState({}, '', window.location.pathname);
+    void handleHostedReturnVerification(sessionId, plan, cycle);
+  }, [isOpen, pendingHostedReturn, user?.id]);
+
+  // Auto-poll Hosted Checkout session when opened in an external tab from iframe preview
+  useEffect(() => {
+    if (!isOpen || upgradeSuccess || !hostedCheckoutPending?.sessionId) return;
+    let cancelled = false;
+    const poll = setInterval(async () => {
+      if (cancelled) return;
+      await handleHostedReturnVerification(
+        hostedCheckoutPending.sessionId,
+        hostedCheckoutPending.plan,
+        hostedCheckoutPending.billingCycle,
+        true
+      );
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [isOpen, upgradeSuccess, hostedCheckoutPending]);
 
   // Pricing Math
   const activePlanObj = mergedPlans.find((p) => p.id === selectedPlan) || mergedPlans[0];
@@ -567,11 +690,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     return Math.round(finalPriceUSD * 5.4 * 100) / 100;
   }, [currency, convertedFinalPrice, finalPriceUSD]);
 
-  // Live Personal Pix Configuration (Admin Governance > Server Config > Default Fallback)
+  // Live Personal Pix Configuration (Admin Governance > Server Config)
   const effectivePixKey = (
     platformSettings?.pixKey ||
     gatewayConfig?.pixConfig?.pixKey ||
-    OFFICIAL_PIX_KEY
+    ''
   ).trim();
   const effectivePixKeyType = (platformSettings?.pixKeyType ||
     gatewayConfig?.pixConfig?.pixKeyType ||
@@ -906,10 +1029,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     if (appliedDiscount >= 100) {
       setIsProcessing(true);
       try {
+        const authHeaders = await ensurePaymentAuthHeaders(refreshUser);
         const res = await fetch('/api/payments/create-subscription-intent', {
           method: 'POST',
           credentials: 'include',
-          headers: getPaymentAuthHeaders(),
+          headers: authHeaders,
           body: JSON.stringify({
             plan: selectedPlan,
             billingCycle,
@@ -929,20 +1053,23 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           billingCycle,
           stripeSubscriptionId: data.subscriptionId
         });
+        await refreshUser().catch(() => null);
 
-        const order = await createSaaSOrder({
-          userId: user.id,
-          userName: user.name || user.email,
-          userEmail: user.email,
-          plan: selectedPlan,
-          billingCycle,
-          amount: 0,
-          currency: currency === 'BRL' ? 'BRL' : 'USD',
-          paymentMethod: paymentMethod === 'pix' ? 'pix' : 'card',
-          status: 'paid',
-          stripeSubscriptionId: data.subscriptionId,
-          notes: `${ui.orderNoteCouponPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()} (${couponCode.toUpperCase()}).`
-        });
+        const order = data.order
+          ? (saveOrderToLocalCache(data.order), data.order)
+          : await createSaaSOrder({
+              userId: user.id,
+              userName: user.name || user.email,
+              userEmail: user.email,
+              plan: selectedPlan,
+              billingCycle,
+              amount: 0,
+              currency: currency === 'BRL' ? 'BRL' : 'USD',
+              paymentMethod: paymentMethod === 'pix' ? 'pix' : 'card',
+              status: 'paid',
+              stripeSubscriptionId: data.subscriptionId,
+              notes: `${ui.orderNoteCouponPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()} (${couponCode.toUpperCase()}).`
+            });
 
         setSuccessDetails({
           orderNumber: order.orderNumber,
@@ -968,10 +1095,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       if (cardFlowMode === 'checkout') {
         setIsProcessing(true);
         try {
+          const authHeaders = await ensurePaymentAuthHeaders(refreshUser);
           const res = await fetch('/api/stripe/create-checkout-session', {
             method: 'POST',
             credentials: 'include',
-            headers: getPaymentAuthHeaders(),
+            headers: authHeaders,
             body: JSON.stringify({
               plan: selectedPlan,
               billingCycle,
@@ -984,8 +1112,28 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             })
           });
           const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data?.error || ui.errCheckoutUrl);
+          }
+
+          if (data.mode === 'coupon_100' && data.sessionId) {
+            await handleHostedReturnVerification(data.sessionId, selectedPlan, billingCycle);
+            return;
+          }
+
           const safeCheckoutUrl = getSafeExternalUrl(data.url);
           if (safeCheckoutUrl) {
+            if (isInsideIframe && data.sessionId) {
+              setHostedCheckoutPending({
+                sessionId: data.sessionId,
+                url: safeCheckoutUrl,
+                plan: selectedPlan,
+                billingCycle,
+                amount: currency === 'BRL' ? priceBRL : finalPriceUSD,
+                currency: currency === 'BRL' ? 'BRL' : 'USD'
+              });
+              return;
+            }
             window.location.href = safeCheckoutUrl;
             return;
           }
@@ -1015,10 +1163,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
       setIsProcessing(true);
       try {
+        const authHeaders = await ensurePaymentAuthHeaders(refreshUser);
         const intentRes = await fetch('/api/payments/create-subscription-intent', {
           method: 'POST',
           credentials: 'include',
-          headers: getPaymentAuthHeaders(),
+          headers: authHeaders,
           body: JSON.stringify({
             plan: selectedPlan,
             billingCycle,
@@ -1036,6 +1185,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
         const clientSecretStr = String(intentData.clientSecret || '');
         let confirmedPaymentIntentId: string | undefined;
+        let confirmedSetupIntentId: string | undefined;
 
         if (clientSecretStr.startsWith('seti_')) {
           const setupConfirmation = await stripeInstance.confirmCardSetup(clientSecretStr, {
@@ -1053,6 +1203,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           if (setupConfirmation.setupIntent?.status !== 'succeeded') {
             throw new Error(ui.errNotCompleted);
           }
+          confirmedSetupIntentId = setupConfirmation.setupIntent.id;
         } else {
           const confirmation = await stripeInstance.confirmCardPayment(clientSecretStr, {
             payment_method: {
@@ -1075,10 +1226,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
         const confirmRes = await fetch('/api/payments/confirm-subscription', {
           method: 'POST',
           credentials: 'include',
-          headers: getPaymentAuthHeaders(),
+          headers: authHeaders,
           body: JSON.stringify({
             subscriptionId: intentData.subscriptionId,
             paymentIntentId: confirmedPaymentIntentId,
+            setupIntentId: confirmedSetupIntentId,
             plan: selectedPlan,
             billingCycle
           })
@@ -1093,25 +1245,28 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           stripeSubscriptionId: confirmData.subscriptionId,
           stripeCustomerId: confirmData.customerId
         });
+        await refreshUser().catch(() => null);
 
-        const order = await createSaaSOrder({
-          id: confirmData.order?.id,
-          orderNumber: confirmData.order?.orderNumber,
-          userId: user.id,
-          userName: cardholderName.trim(),
-          userEmail: user.email,
-          plan: selectedPlan,
-          billingCycle,
-          amount: confirmData.amount ?? intentData.amount,
-          currency: confirmData.currency || intentData.currency || 'USD',
-          paymentMethod: 'card',
-          status: 'paid',
-          stripeSubscriptionId: confirmData.subscriptionId,
-          stripePaymentIntentId: confirmedPaymentIntentId,
-          receiptUrl: confirmData.receiptUrl,
-          createdAt: confirmData.order?.createdAt,
-          notes: `${ui.orderNoteCardPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()}.`
-        });
+        const order = confirmData.order
+          ? (saveOrderToLocalCache(confirmData.order), confirmData.order)
+          : await createSaaSOrder({
+              id: confirmData.order?.id,
+              orderNumber: confirmData.order?.orderNumber,
+              userId: user.id,
+              userName: cardholderName.trim(),
+              userEmail: user.email,
+              plan: selectedPlan,
+              billingCycle,
+              amount: confirmData.amount ?? intentData.amount,
+              currency: confirmData.currency || intentData.currency || 'USD',
+              paymentMethod: 'card',
+              status: 'paid',
+              stripeSubscriptionId: confirmData.subscriptionId,
+              stripePaymentIntentId: confirmedPaymentIntentId || confirmedSetupIntentId,
+              receiptUrl: confirmData.receiptUrl,
+              createdAt: confirmData.order?.createdAt,
+              notes: `${ui.orderNoteCardPrefix}${formatCycleLabel(billingCycle, siteLanguage).toLowerCase()}.`
+            });
 
         setSuccessDetails({
           orderNumber: order.orderNumber,
@@ -1121,7 +1276,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           currencyLabel: order.currency,
           billingCycle,
           receiptUrl: confirmData.receiptUrl || order.receiptUrl,
-          paymentMethodUsed: ui.methodCardAuto
+          paymentMethodUsed: confirmData.cardBrand
+            ? `${confirmData.cardBrand}${confirmData.cardLast4 ? ` •••• ${confirmData.cardLast4}` : ''}`
+            : ui.methodCardAuto
         });
         setUpgradeSuccess(true);
         showSuccess(
@@ -1139,6 +1296,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
     }
 
     // 2. PERSONAL PIX PAYMENT (Direct Transfer -> Unique Ref Code + Proof -> Admin Approval)
+    if (!effectivePixKey) {
+      setPixError('Chave Pix ainda não configurada pela administração. Utilize pagamento por cartão ou contacte o suporte.');
+      return;
+    }
     const payerClean = pixSenderName.trim() || user?.name?.trim() || user?.email?.split('@')[0] || '';
     if (payerClean.length < 2) {
       setPixError(ui.errPixName);
@@ -1211,10 +1372,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({
       return;
     }
     try {
+      const headers = await ensurePaymentAuthHeaders(refreshUser);
       const res = await fetch('/api/stripe/customer-portal', {
         method: 'POST',
         credentials: 'include',
-        headers: getPaymentAuthHeaders(),
+        headers,
         body: JSON.stringify({
           customerId: user.stripeCustomerId,
           returnUrl: window.location.href
@@ -1898,6 +2060,55 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                             </p>
                           </div>
                         </div>
+                      ) : hostedCheckoutPending ? (
+                        <div className="p-4 bg-emerald-50/70 rounded-xl border border-emerald-200 text-center space-y-3">
+                          <ExternalLink className="w-7 h-7 text-emerald-700 mx-auto" />
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900">
+                              Checkout Seguro Pronto
+                            </h4>
+                            <p className="text-[11px] text-slate-600 max-w-md mx-auto">
+                              Clique abaixo para concluir o pagamento em uma nova aba protegida. Assim que confirmar, o seu plano será ativado automaticamente aqui.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center gap-2">
+                            <a
+                              href={hostedCheckoutPending.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm transition-colors"
+                            >
+                              <span>Abrir Pagamento Seguro Stripe</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleHostedReturnVerification(
+                                  hostedCheckoutPending.sessionId,
+                                  hostedCheckoutPending.plan,
+                                  hostedCheckoutPending.billingCycle
+                                )
+                              }
+                              disabled={isCheckingHostedStatus || isProcessing}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors disabled:opacity-50"
+                            >
+                              <RefreshCw
+                                className={`w-3.5 h-3.5 ${
+                                  isCheckingHostedStatus || isProcessing ? 'animate-spin' : ''
+                                }`}
+                              />
+                              <span>Verificar pagamento agora</span>
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setHostedCheckoutPending(null)}
+                            className="text-[11px] font-medium text-slate-500 hover:text-slate-800 underline"
+                          >
+                            Gerar novo link ou voltar para cartão no modal
+                          </button>
+                        </div>
                       ) : (
                         <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-center space-y-2.5">
                           <CreditCard className="w-8 h-8 text-slate-700 mx-auto" />
@@ -1955,6 +2166,17 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         </div>
                       </div>
 
+                      {!effectivePixKey ? (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-1.5">
+                          <div className="font-bold flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Pagamento via Pix temporariamente indisponível</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800">
+                            Nenhuma chave Pix oficial está configurada no painel administrativo no momento. Selecione <strong>Cartão de Crédito/Débito</strong> acima ou solicite ativação no suporte.
+                          </p>
+                        </div>
+                      ) : (
                       <div className="space-y-4">
                         {/* Payment Format Switcher */}
                         <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
@@ -2234,6 +2456,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2249,15 +2472,29 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={handleProcessSubscription}
-                    disabled={isProcessing}
+                    onClick={() => {
+                      if (
+                        (paymentMethod === 'stripe' || paymentMethod === 'card') &&
+                        cardFlowMode === 'checkout' &&
+                        hostedCheckoutPending
+                      ) {
+                        void handleHostedReturnVerification(
+                          hostedCheckoutPending.sessionId,
+                          hostedCheckoutPending.plan,
+                          hostedCheckoutPending.billingCycle
+                        );
+                        return;
+                      }
+                      void handleProcessSubscription();
+                    }}
+                    disabled={isProcessing || isCheckingHostedStatus || (paymentMethod === 'pix' && !effectivePixKey)}
                     className={`w-full sm:w-auto min-h-[44px] px-7 py-3 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50 ${
                       paymentMethod === 'pix'
                         ? 'bg-teal-600 hover:bg-teal-700'
                         : 'bg-slate-900 hover:bg-slate-800'
                     }`}
                   >
-                    {isProcessing ? (
+                    {isProcessing || isCheckingHostedStatus ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin text-white" />
                         <span>{ui.processingBtn}</span>
@@ -2270,6 +2507,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                             ? ui.freeActivateCouponBtn
                             : `Já Paguei via Pix (R$ ${priceBRL.toFixed(2)})`}
                         </span>
+                        <ArrowRight className="w-3.5 h-3.5 text-white/80" />
+                      </>
+                    ) : cardFlowMode === 'checkout' && hostedCheckoutPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 text-emerald-300" />
+                        <span>Verificar pagamento agora</span>
                         <ArrowRight className="w-3.5 h-3.5 text-white/80" />
                       </>
                     ) : cardFlowMode === 'checkout' ? (

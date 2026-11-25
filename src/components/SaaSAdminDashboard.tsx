@@ -59,6 +59,7 @@ import {
   subscribeAdminFirestoreSupportThreads,
   subscribeAdminFirestoreThreadMessages,
   mergeSupportMessagesList,
+  mergeSupportThreads,
   SupportWsStatus
 } from '../services/supportChatService';
 import {
@@ -341,6 +342,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   const [adminChatReply, setAdminChatReply] = useState<string>('');
   const [isSendingChatReply, setIsSendingChatReply] = useState<boolean>(false);
   const [supportWsStatus, setSupportWsStatus] = useState<SupportWsStatus>('connecting');
+  const [supportChatError, setSupportChatError] = useState<string | null>(null);
+  const [isRefreshingSupportChat, setIsRefreshingSupportChat] = useState<boolean>(false);
   const adminChatEndRef = React.useRef<HTMLDivElement | null>(null);
 
   // Inner Modals
@@ -473,7 +476,14 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
         fetchAuditLogs(),
         fetchServerTelemetry(),
         fetchAiHealthStatus(false),
-        fetchAdminSupportThreads().catch(() => ({ threads: [] as SupportChatThread[], unreadTotal: 0 }))
+        fetchAdminSupportThreads({
+          onError: (msg) => setSupportChatError(msg)
+        }).catch((err: unknown) => {
+          const errMsg = err instanceof Error ? err.message : 'Erro ao carregar conversas.';
+          console.error('[SaaSAdminDashboard] loadAllModules support chat error:', err);
+          setSupportChatError(errMsg);
+          return { threads: [] as SupportChatThread[], unreadTotal: 0 };
+        })
       ]);
 
       setUsersList(users);
@@ -500,7 +510,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       if (liveHealth) setAiLiveHealth(liveHealth);
       if (Array.isArray(chatResp?.threads)) {
         const validThreads = chatResp.threads.filter((t): t is SupportChatThread => Boolean(t && t.id));
-        setSupportThreads(validThreads);
+        if (validThreads.length > 0) {
+          setSupportChatError(null);
+        }
+        setSupportThreads((prev) => mergeSupportThreads(validThreads, prev || []));
         if (!selectedThreadId && validThreads.length > 0) {
           setSelectedThreadId(validThreads[0].id);
         }
@@ -649,37 +662,38 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
   });
   activeChatStateRef.current = { activeModule, selectedThreadId };
 
+  const refreshAdminSupportChat = React.useCallback(async (showSpinner = true) => {
+    if (showSpinner) setIsRefreshingSupportChat(true);
+    let diagnosticErr: string | null = null;
+    try {
+      const resp = await fetchAdminSupportThreads({
+        onError: (msg) => {
+          diagnosticErr = msg;
+        }
+      });
+      setSupportChatError(diagnosticErr);
+      if (Array.isArray(resp?.threads)) {
+        setSupportThreads((prev) => mergeSupportThreads(resp.threads, prev || []));
+      }
+    } catch (err: any) {
+      console.error('[SaaSAdminDashboard] refreshAdminSupportChat failed:', err);
+      setSupportChatError(err?.message || diagnosticErr || 'Falha ao carregar conversas de suporte.');
+    } finally {
+      if (showSpinner) setIsRefreshingSupportChat(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen || (!isAdminAccess && !isImpersonating)) return;
     const mergeIncomingThreads = (incomingList: SupportChatThread[]) => {
-      setSupportThreads((prev) => {
-        const byId = new Map<string, SupportChatThread>();
-        for (const t of prev || []) {
-          if (t?.id) byId.set(t.id, t);
-        }
-        for (const t of incomingList || []) {
-          if (!t?.id) continue;
-          const prevTh = byId.get(t.id);
-          if (!prevTh) {
-            byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
-          } else {
-            const mergedMsgs = mergeSupportMessagesList(prevTh?.messages, t?.messages);
-            const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
-            const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
-            const newer = curTs >= prevTs ? t : prevTh;
-            byId.set(t.id, { ...prevTh, ...newer, messages: mergedMsgs });
-          }
-        }
-        return Array.from(byId.values()).sort(
-          (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-        );
-      });
+      setSupportThreads((prev) => mergeSupportThreads(incomingList || [], prev || []));
     };
 
     const unsub = subscribeSupportChatWebSocket(
       (evt) => {
         if (evt.type === 'support_chat_update' && evt.thread) {
           const incoming = evt.thread;
+          setSupportChatError(null);
           mergeIncomingThreads([incoming]);
           if (
             activeChatStateRef.current.activeModule === 'support_chat' &&
@@ -691,12 +705,22 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
           }
         }
       },
-      setSupportWsStatus
+      setSupportWsStatus,
+      (wsErr) => {
+        console.warn('[SaaSAdminDashboard] Support WebSocket diagnostic:', wsErr);
+      }
     );
 
-    const unsubFsAdmin = subscribeAdminFirestoreSupportThreads((fsThreads) => {
-      mergeIncomingThreads(fsThreads);
-    });
+    const unsubFsAdmin = subscribeAdminFirestoreSupportThreads(
+      (fsThreads) => {
+        setSupportChatError(null);
+        mergeIncomingThreads(fsThreads);
+      },
+      (fsErr) => {
+        console.error('[SaaSAdminDashboard] Firestore supportThreads listener error:', fsErr);
+        setSupportChatError(fsErr);
+      }
+    );
 
     return () => {
       unsub();
@@ -717,63 +741,43 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     if (!isOpen || (!isAdminAccess && !isImpersonating) || activeModule !== 'support_chat') return;
     const activeId = selectedThreadId || supportThreads[0]?.id;
     if (!activeId) return;
-    const unsubMsgs = subscribeAdminFirestoreThreadMessages(activeId, (fsMsgs) => {
-      setSupportThreads((prev) =>
-        (prev || []).map((t) => {
-          if (t.id !== activeId) return t;
-          const mergedMsgs = mergeSupportMessagesList(t.messages, fsMsgs);
-          const lastMsg = mergedMsgs[mergedMsgs.length - 1];
-          return {
-            ...t,
-            messages: mergedMsgs,
-            ...(lastMsg
-              ? {
-                  lastMessageText: lastMsg.text.slice(0, 500),
-                  lastMessageSenderRole: lastMsg.senderRole,
-                  lastMessageAt: lastMsg.createdAt
-                }
-              : {})
-          };
-        })
-      );
-    });
+    const unsubMsgs = subscribeAdminFirestoreThreadMessages(
+      activeId,
+      (fsMsgs) => {
+        setSupportChatError(null);
+        setSupportThreads((prev) =>
+          (prev || []).map((t) => {
+            if (t.id !== activeId) return t;
+            const mergedMsgs = mergeSupportMessagesList(t.messages, fsMsgs);
+            const lastMsg = mergedMsgs[mergedMsgs.length - 1];
+            return {
+              ...t,
+              messages: mergedMsgs,
+              ...(lastMsg
+                ? {
+                    lastMessageText: lastMsg.text.slice(0, 500),
+                    lastMessageSenderRole: lastMsg.senderRole,
+                    lastMessageAt: lastMsg.createdAt
+                  }
+                : {})
+            };
+          })
+        );
+      },
+      (fsErr) => {
+        console.error('[SaaSAdminDashboard] Firestore active thread messages error:', fsErr);
+        setSupportChatError(fsErr);
+      }
+    );
     return () => unsubMsgs();
   }, [isOpen, isAdminAccess, isImpersonating, activeModule, selectedThreadId, firebaseUser?.uid]);
 
-  // Fallback HTTP + Firestore sync when WebSocket is unavailable (e.g. Vercel serverless)
+  // Fallback HTTP + Firestore sync whenever WebSocket is NOT connected (connecting, reconnecting, or disconnected)
   useEffect(() => {
     if (!isOpen || (!isAdminAccess && !isImpersonating)) return;
     const runRefresh = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      fetchAdminSupportThreads()
-        .then((resp) => {
-          if (!Array.isArray(resp?.threads)) return;
-          setSupportThreads((prev) => {
-            const byId = new Map<string, SupportChatThread>();
-            for (const t of prev || []) {
-              if (t?.id) byId.set(t.id, t);
-            }
-            for (const t of resp.threads) {
-              if (!t?.id) continue;
-              const prevTh = byId.get(t.id);
-              if (!prevTh) {
-                byId.set(t.id, { ...t, messages: Array.isArray(t.messages) ? t.messages : [] });
-              } else {
-                const mergedMsgs = mergeSupportMessagesList(prevTh?.messages, t?.messages);
-                const prevTs = new Date(prevTh.updatedAt || prevTh.lastMessageAt || 0).getTime();
-                const curTs = new Date(t.updatedAt || t.lastMessageAt || 0).getTime();
-                const newer = curTs >= prevTs ? t : prevTh;
-                byId.set(t.id, { ...prevTh, ...newer, messages: mergedMsgs });
-              }
-            }
-            return Array.from(byId.values()).sort(
-              (a, b) => new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-            );
-          });
-        })
-        .catch(() => {
-          // ignore transient poll error
-        });
+      void refreshAdminSupportChat(false);
     };
 
     if (activeModule === 'support_chat') {
@@ -781,10 +785,10 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     }
     if (supportWsStatus === 'connected') return;
 
-    const pollMs = activeModule === 'support_chat' ? 6000 : 20000;
+    const pollMs = activeModule === 'support_chat' ? 5000 : 18000;
     const timer = setInterval(runRefresh, pollMs);
     return () => clearInterval(timer);
-  }, [isOpen, isAdminAccess, isImpersonating, supportWsStatus, activeModule, firebaseUser?.uid]);
+  }, [isOpen, isAdminAccess, isImpersonating, supportWsStatus, activeModule, firebaseUser?.uid, refreshAdminSupportChat]);
 
   // Open User 360° Drawer
   const openUserDrawer = (target: User) => {
@@ -796,7 +800,18 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     setDrawerResumes([]);
     setIsLoadingDrawerResumes(true);
     fetchAdminUserResumes(target.id)
-      .then((resumes) => setDrawerResumes(resumes))
+      .then((resumes) => {
+        setDrawerResumes(resumes);
+        const reconciledCount = Math.max(target.totalCvGenerated || 0, resumes.length);
+        if (reconciledCount > (target.totalCvGenerated || 0)) {
+          setInspectedUser((prev) =>
+            prev && prev.id === target.id ? { ...prev, totalCvGenerated: reconciledCount } : prev
+          );
+          setUsersList((prev) =>
+            prev.map((u) => (u.id === target.id ? { ...u, totalCvGenerated: reconciledCount } : u))
+          );
+        }
+      })
       .catch(() => setDrawerResumes([]))
       .finally(() => setIsLoadingDrawerResumes(false));
   };
@@ -1028,18 +1043,34 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
     const checkoutReached = telemetry.checkoutOpenedCount;
     const purchasesCompleted = Math.max(paidUsers, periodPaidOrders.length);
 
+    const todayYmd = new Date().toISOString().slice(0, 10);
     const GEMINI_COST_PER_CALL_USD = 0.00032;
     const totalUserAiCalls = usersList.reduce((acc, u) => acc + (u.creditsUsed || 0), 0);
     const totalAiCalls = totalUserAiCalls + telemetry.aiCallsCount;
+    const userTodayCalls = usersList.reduce(
+      (acc, u) => acc + (u.dailyAiCallsDate === todayYmd ? (u.dailyAiCallsCount || 0) : 0),
+      0
+    );
+    const telemetryTodayCalls =
+      telemetry.todayAiCallsDate === todayYmd ? (telemetry.todayAiCallsCount || 0) : 0;
+    const effectiveTodayCalls = Math.max(userTodayCalls, telemetryTodayCalls);
     const todayCostUsd =
-      totalAiCalls > 0 ? Number(((totalAiCalls * 0.00028) / 14).toFixed(2)) : 0;
+      effectiveTodayCalls > 0
+        ? Number((effectiveTodayCalls * GEMINI_COST_PER_CALL_USD).toFixed(4))
+        : 0;
     const monthCostUsd =
       totalAiCalls > 0 ? Number((totalAiCalls * GEMINI_COST_PER_CALL_USD).toFixed(2)) : 0;
     const revBase = Math.max(totalRevenue, mrr);
     const costToRevenuePercent =
       revBase > 0 ? Number(((monthCostUsd / revBase) * 100).toFixed(1)) : 0;
+    const cardGatewayFeesUsd = periodPaidOrders
+      .filter((o) => o.paymentMethod === 'card' && Number(o.amount) > 0)
+      .reduce((acc, o) => acc + Number(o.amount) * 0.029 + 0.30, 0);
+    const gatewayFeePercent = revBase > 0 ? (cardGatewayFeesUsd / revBase) * 100 : 0;
     const grossMarginPercent =
-      revBase > 0 ? Number(Math.max(0, 100 - costToRevenuePercent - 3.9).toFixed(1)) : 0;
+      revBase > 0
+        ? Number(Math.max(0, 100 - costToRevenuePercent - gatewayFeePercent).toFixed(1))
+        : 0;
 
     const proMrr = Number((proUsers * proPrice).toFixed(2));
     const execMrr = Number((executiveUsers * execPrice).toFixed(2));
@@ -2986,8 +3017,8 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                           ${financialMetrics.paidArpu}
                           <span className="text-xs font-normal text-slate-400 ml-1">/assinante</span>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-1">
-                          Aquisição: <strong className="text-emerald-700">100% Orgânica (CAC $0)</strong>
+                        <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                          Subscritores: <strong className="text-emerald-700">{financialMetrics.proUsers} Pro · {financialMetrics.executiveUsers} VIP</strong>
                         </p>
                       </div>
 
@@ -6430,25 +6461,49 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                               <MessageCircle className="w-4 h-4 text-amber-600" />
                               Conversas ({supportThreads.length})
                             </span>
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser)
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-amber-100 text-amber-800'
-                              }`}
-                            >
-                              {supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser) ? (
-                                <Wifi className="w-3 h-3" />
-                              ) : (
-                                <WifiOff className="w-3 h-3" />
-                              )}
-                              {supportWsStatus === 'connected' || Boolean(firebaseUser)
-                                ? 'Tempo Real'
-                                : supportWsStatus === 'disconnected'
-                                ? 'HTTPS / Cloud'
-                                : 'A sincronizar'}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => void refreshAdminSupportChat(true)}
+                                disabled={isRefreshingSupportChat}
+                                title="Atualizar conversas e mensagens"
+                                className="p-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-50"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingSupportChat ? 'animate-spin' : ''}`} />
+                              </button>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser)
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {supportWsStatus === 'connected' || supportWsStatus === 'disconnected' || Boolean(firebaseUser) ? (
+                                  <Wifi className="w-3 h-3" />
+                                ) : (
+                                  <WifiOff className="w-3 h-3" />
+                                )}
+                                {supportWsStatus === 'connected' || Boolean(firebaseUser)
+                                  ? 'Tempo Real'
+                                  : supportWsStatus === 'disconnected'
+                                  ? 'HTTPS / Cloud'
+                                  : 'A sincronizar'}
+                              </span>
+                            </div>
                           </div>
+
+                          {supportChatError && (
+                            <div className="px-2.5 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-[11px] flex items-center justify-between gap-2">
+                              <span className="truncate">{supportChatError}</span>
+                              <button
+                                type="button"
+                                onClick={() => void refreshAdminSupportChat(true)}
+                                className="text-[10px] font-bold underline shrink-0"
+                              >
+                                Tentar novamente
+                              </button>
+                            </div>
+                          )}
 
                           <div className="relative">
                             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -6747,7 +6802,7 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block">CVs Gerados</span>
                   <span className="text-base font-black font-mono text-slate-900">
-                    {inspectedUser.totalCvGenerated ?? 0}
+                    {Math.max(inspectedUser.totalCvGenerated ?? 0, drawerResumes.length)}
                   </span>
                 </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">

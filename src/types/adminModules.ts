@@ -294,6 +294,8 @@ export interface FrontendTelemetryData {
   checkoutOpenedCount: number;
   wordExportsCount: number;
   aiCallsCount: number;
+  todayAiCallsDate?: string;
+  todayAiCallsCount?: number;
   estimatedTokensUsed: number;
   templateSelections: Record<string, number>;
   languageSelections: Record<string, number>;

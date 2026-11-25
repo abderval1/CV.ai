@@ -9,7 +9,8 @@ import {
   Clock,
   Wifi,
   WifiOff,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
@@ -46,6 +47,8 @@ const CHAT_COPY: Record<
     adminBadge: string;
     youBadge: string;
     hint: string;
+    retryBtn: string;
+    refreshLabel: string;
   }
 > = {
   pt: {
@@ -62,7 +65,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Enviar',
     adminBadge: 'Admin / Moderador',
     youBadge: 'Você',
-    hint: 'Enter envia · Shift+Enter quebra linha'
+    hint: 'Enter envia · Shift+Enter quebra linha',
+    retryBtn: 'Tentar novamente',
+    refreshLabel: 'Atualizar mensagens'
   },
   en: {
     title: 'Direct Support & Moderation',
@@ -78,7 +83,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Send',
     adminBadge: 'Admin / Moderator',
     youBadge: 'You',
-    hint: 'Enter to send · Shift+Enter for new line'
+    hint: 'Enter to send · Shift+Enter for new line',
+    retryBtn: 'Retry',
+    refreshLabel: 'Refresh messages'
   },
   es: {
     title: 'Soporte Directo y Moderación',
@@ -94,7 +101,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Enviar',
     adminBadge: 'Admin / Moderador',
     youBadge: 'Tú',
-    hint: 'Enter envía · Shift+Enter nueva línea'
+    hint: 'Enter envía · Shift+Enter nueva línea',
+    retryBtn: 'Reintentar',
+    refreshLabel: 'Actualizar mensajes'
   },
   fr: {
     title: 'Support Direct & Modération',
@@ -110,7 +119,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Envoyer',
     adminBadge: 'Admin / Modérateur',
     youBadge: 'Vous',
-    hint: 'Entrée envoie · Maj+Entrée nouvelle ligne'
+    hint: 'Entrée envoie · Maj+Entrée nouvelle ligne',
+    retryBtn: 'Réessayer',
+    refreshLabel: 'Actualiser les messages'
   },
   de: {
     title: 'Direktsupport & Moderation',
@@ -126,7 +137,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Senden',
     adminBadge: 'Admin / Moderator',
     youBadge: 'Sie',
-    hint: 'Enter sendet · Shift+Enter neue Zeile'
+    hint: 'Enter sendet · Shift+Enter neue Zeile',
+    retryBtn: 'Erneut versuchen',
+    refreshLabel: 'Nachrichten aktualisieren'
   },
   it: {
     title: 'Supporto Diretto & Moderazione',
@@ -142,7 +155,9 @@ const CHAT_COPY: Record<
     sendBtn: 'Invia',
     adminBadge: 'Admin / Moderatore',
     youBadge: 'Tu',
-    hint: 'Invio per spedire · Shift+Invio a capo'
+    hint: 'Invio per spedire · Shift+Invio a capo',
+    retryBtn: 'Riprova',
+    refreshLabel: 'Aggiorna messaggi'
   }
 };
 
@@ -175,6 +190,7 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [draft, setDraft] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSending, setIsSending] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<SupportWsStatus>('connecting');
@@ -182,6 +198,41 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isOpenRef = useRef<boolean>(isOpen);
   isOpenRef.current = isOpen;
+
+  const refreshThread = async (showSpinner = true) => {
+    if (!isAuthenticated || !user?.id) return;
+    if (showSpinner) setIsRefreshing(true);
+    let diagnosticErr: string | null = null;
+    try {
+      const th = await fetchMySupportThread({
+        onError: (msg) => {
+          diagnosticErr = msg;
+        }
+      });
+      if (!th || typeof th !== 'object') return;
+      const safeMsgs = Array.isArray(th.messages) ? th.messages : [];
+      setMessages((prev) => mergeMessages(prev, safeMsgs));
+      if (isOpenRef.current) {
+        setErrorMsg(diagnosticErr);
+        setThread({ ...th, unreadByUser: 0 });
+        onUnreadCountChange?.(0);
+        if ((th.unreadByUser || 0) > 0) {
+          void markMySupportThreadRead();
+        }
+      } else {
+        setThread(th);
+        onUnreadCountChange?.(th.unreadByUser || 0);
+      }
+    } catch (err: any) {
+      const msg = err?.message || diagnosticErr || 'Não foi possível carregar o chat.';
+      console.error('[SupportChatModal] refreshThread failed:', err);
+      if (isOpenRef.current) {
+        setErrorMsg(msg);
+      }
+    } finally {
+      if (showSpinner) setIsRefreshing(false);
+    }
+  };
 
   // Load initial thread + unread count whenever authenticated user changes or modal opens
   useEffect(() => {
@@ -194,16 +245,24 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     }
 
     let cancelled = false;
+    let diagnosticErr: string | null = null;
     if (isOpen) {
       setIsLoading(true);
       setErrorMsg(null);
     }
 
-    fetchMySupportThread()
+    fetchMySupportThread({
+      onError: (msg) => {
+        diagnosticErr = msg;
+        if (!cancelled && isOpenRef.current) {
+          setErrorMsg(msg);
+        }
+      }
+    })
       .then((th) => {
         if (cancelled || !th || typeof th !== 'object') return;
-        setErrorMsg(null);
         const safeMsgs = Array.isArray(th.messages) ? th.messages : [];
+        setErrorMsg(diagnosticErr);
         setMessages((prev) => mergeMessages(prev, safeMsgs));
         if (isOpenRef.current) {
           setThread({ ...th, unreadByUser: 0 });
@@ -217,8 +276,9 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
         }
       })
       .catch((err: any) => {
+        console.error('[SupportChatModal] Initial load failed:', err);
         if (!cancelled && isOpenRef.current) {
-          setErrorMsg(err?.message || 'Não foi possível carregar o chat.');
+          setErrorMsg(err?.message || diagnosticErr || 'Não foi possível carregar o chat.');
         }
       })
       .finally(() => {
@@ -257,31 +317,48 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
           }
         }
       },
-      setWsStatus
+      setWsStatus,
+      (wsErr) => {
+        console.warn('[SupportChatModal] WebSocket diagnostic:', wsErr);
+      }
     );
 
-    const unsubFsMsgs = subscribeMyFirestoreSupportMessages((fsMsgs) => {
-      if (Array.isArray(fsMsgs)) {
-        setMessages((prev) => mergeMessages(prev, fsMsgs));
-      }
-    });
-
-    const unsubFsThread = subscribeMyFirestoreSupportThread((fsThread) => {
-      if (!fsThread || typeof fsThread !== 'object') return;
-      setThread((prev) => ({
-        ...(prev || {}),
-        ...fsThread,
-        messages: prev?.messages
-      }));
-      if (isOpenRef.current) {
-        onUnreadCountChange?.(0);
-        if ((fsThread.unreadByUser || 0) > 0) {
-          void markMySupportThreadRead();
+    const unsubFsMsgs = subscribeMyFirestoreSupportMessages(
+      (fsMsgs) => {
+        if (Array.isArray(fsMsgs)) {
+          setErrorMsg(null);
+          setMessages((prev) => mergeMessages(prev, fsMsgs));
         }
-      } else {
-        onUnreadCountChange?.(Number(fsThread.unreadByUser) || 0);
+      },
+      (fsErr) => {
+        console.error('[SupportChatModal] Firestore messages listener error:', fsErr);
+        if (isOpenRef.current) setErrorMsg(fsErr);
       }
-    });
+    );
+
+    const unsubFsThread = subscribeMyFirestoreSupportThread(
+      (fsThread) => {
+        if (!fsThread || typeof fsThread !== 'object') return;
+        setErrorMsg(null);
+        setThread((prev) => ({
+          ...(prev || {}),
+          ...fsThread,
+          messages: prev?.messages
+        }));
+        if (isOpenRef.current) {
+          onUnreadCountChange?.(0);
+          if ((fsThread.unreadByUser || 0) > 0) {
+            void markMySupportThreadRead();
+          }
+        } else {
+          onUnreadCountChange?.(Number(fsThread.unreadByUser) || 0);
+        }
+      },
+      (fsErr) => {
+        console.error('[SupportChatModal] Firestore thread listener error:', fsErr);
+        if (isOpenRef.current) setErrorMsg(fsErr);
+      }
+    );
 
     return () => {
       unsubWs();
@@ -290,19 +367,24 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
     };
   }, [isAuthenticated, user?.id, firebaseUser?.uid, onUnreadCountChange]);
 
-  // Fallback HTTP polling when WebSocket is unavailable (e.g. Vercel serverless) — active both open (6s) and closed (15s) for unread notifications
+  // Fallback HTTP + Firestore polling whenever WebSocket is NOT connected (connecting, reconnecting, or disconnected)
   useEffect(() => {
-    if (!isAuthenticated || !user?.id || wsStatus !== 'disconnected') return;
-    const pollMs = isOpen ? 6000 : 15000;
+    if (!isAuthenticated || !user?.id || wsStatus === 'connected') return;
+    const pollMs = isOpen ? 5000 : 15000;
     const timer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      fetchMySupportThread()
+      let pollErr: string | null = null;
+      fetchMySupportThread({
+        onError: (msg) => {
+          pollErr = msg;
+        }
+      })
         .then((th) => {
           if (!th || typeof th !== 'object') return;
           const safeMsgs = Array.isArray(th.messages) ? th.messages : [];
           setMessages((prev) => mergeMessages(prev, safeMsgs));
           if (isOpenRef.current) {
-            setErrorMsg(null);
+            setErrorMsg(pollErr);
             setThread({ ...th, unreadByUser: 0 });
             onUnreadCountChange?.(0);
             if ((th.unreadByUser || 0) > 0) {
@@ -313,12 +395,15 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
             onUnreadCountChange?.(th.unreadByUser || 0);
           }
         })
-        .catch(() => {
-          // ignore transient poll error silently
+        .catch((err) => {
+          console.error('[SupportChatModal] Fallback polling failed:', err);
+          if (isOpenRef.current) {
+            setErrorMsg(err?.message || pollErr || 'Falha ao sincronizar mensagens.');
+          }
         });
     }, pollMs);
     return () => clearInterval(timer);
-  }, [isOpen, isAuthenticated, user?.id, wsStatus, onUnreadCountChange]);
+  }, [isOpen, isAuthenticated, user?.id, firebaseUser?.uid, wsStatus, onUnreadCountChange]);
 
   // Auto-scroll to bottom when messages change while open
   useEffect(() => {
@@ -400,14 +485,26 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => void refreshThread(true)}
+              disabled={isRefreshing}
+              aria-label={copy.refreshLabel}
+              title={copy.refreshLabel}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Thread status strip */}
@@ -494,9 +591,18 @@ export const SupportChatModal: React.FC<SupportChatModalProps> = ({
 
         {/* Error strip */}
         {errorMsg && (
-          <div className="px-4 py-2 bg-rose-50 dark:bg-rose-950/40 border-t border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-[11px] flex items-center gap-1.5 shrink-0">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{errorMsg}</span>
+          <div className="px-4 py-2 bg-rose-50 dark:bg-rose-950/40 border-t border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-[11px] flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{errorMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshThread(true)}
+              className="text-[10px] font-bold underline shrink-0 hover:text-rose-900 dark:hover:text-rose-100"
+            >
+              {copy.retryBtn}
+            </button>
           </div>
         )}
 

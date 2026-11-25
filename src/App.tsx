@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CVData, BillingCycle, SubscriptionPlan } from './types/cv';
-import { GENERIC_DEFAULT_CV, SAMPLE_JOB_OFFERS } from './data/initialCV';
+import { GENERIC_DEFAULT_CV } from './data/initialCV';
 import { Header, AppTab } from './components/Header';
 import { LandingHeroView } from './components/LandingHeroView';
 import { ShowcaseGalleryView, ShowcaseMode, ShowcaseSelectionPayload } from './components/ShowcaseGalleryView';
@@ -53,15 +53,31 @@ import {
 } from './services/adminModulesService';
 import { applyPageSeo, getPathnameForTab, getTabFromPathname } from './utils/seoManager';
 import { STUDIO_NAV_TRANSLATIONS } from './i18n/studioNavTranslations';
+import {
+  StudioGuideBar,
+  LightbulbStepBadge,
+  StudioCreationMode,
+  StudioGuideTab,
+  loadStudioModePrefs,
+  saveStudioModePrefs
+} from './components/StudioGuideSystem';
 import { FileText, SlidersHorizontal, Check, Edit3, Target, Download, Wand2, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase, Upload, MessageSquare } from 'lucide-react';
 
 export default function App() {
-  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError } = useAuth();
+  const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError, incrementCvGenerated } = useAuth();
   const { showSuccess, showError, showInfo } = useToast();
   const { siteText, studioText, siteLanguage } = useLanguage();
   const appUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).app;
   const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en;
   const [contentLanguage, setContentLanguage] = useState<LanguageCode>('en');
+  const [studioMode, setStudioMode] = useState<StudioCreationMode>(() => loadStudioModePrefs().mode);
+  const [hasChosenStudioMode, setHasChosenStudioMode] = useState<boolean>(() => loadStudioModePrefs().chosen);
+
+  const handleSelectStudioMode = useCallback((nextMode: StudioCreationMode) => {
+    setStudioMode(nextMode);
+    setHasChosenStudioMode(true);
+    saveStudioModePrefs(nextMode, true);
+  }, []);
 
   const getDraftKey = useCallback(
     (base: string, uid?: string | null) => `${base}_${uid || 'visitor'}`,
@@ -117,7 +133,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     } catch {
       // Fallback
     }
-    return SAMPLE_JOB_OFFERS[0].description;
+    return '';
   });
 
   const activeDraftOwnerRef = useRef<string | null>(user?.id || null);
@@ -367,7 +383,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     if (!nextUid) {
       // Logged out: wipe active editor state back to generic default so next user cannot see previous user's CV
       setCv(GENERIC_DEFAULT_CV);
-      setJobDescription(SAMPLE_JOB_OFFERS[0].description);
+      setJobDescription('');
       setLetterBodyState(getDefaultLetterText());
       translationCacheRef.current = {
         en: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
@@ -386,7 +402,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         const parsedCv = JSON.parse(scopedCvRaw);
         if (parsedCv?.personalDetails?.name) {
           setCv(parsedCv);
-          setJobDescription(scopedJobRaw && scopedJobRaw.trim().length > 10 ? scopedJobRaw : SAMPLE_JOB_OFFERS[0].description);
+          setJobDescription(scopedJobRaw && scopedJobRaw.trim().length > 10 ? scopedJobRaw : '');
           setLetterBodyState(scopedLetterRaw && scopedLetterRaw.trim().length > 10 ? scopedLetterRaw : getDefaultLetterText());
           return;
         }
@@ -395,7 +411,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       if (prevUid && prevUid !== nextUid) {
         // Switched directly from User A to User B (or impersonation) where User B has no local draft yet
         setCv(GENERIC_DEFAULT_CV);
-        setJobDescription(SAMPLE_JOB_OFFERS[0].description);
+        setJobDescription('');
         setLetterBodyState(getDefaultLetterText());
         translationCacheRef.current = {
           en: { cv: GENERIC_DEFAULT_CV, letterBody: getDefaultLetterText(), verified: true }
@@ -404,7 +420,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     } catch {
       if (prevUid && prevUid !== nextUid) {
         setCv(GENERIC_DEFAULT_CV);
-        setJobDescription(SAMPLE_JOB_OFFERS[0].description);
+        setJobDescription('');
         setLetterBodyState(getDefaultLetterText());
       }
     }
@@ -821,6 +837,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         const blob = await generateCoverLetterDocx(cv, letterBody, true, contentLanguage);
         triggerDownload(blob, `Carta_Apresentacao_${sanitizedName}.docx`);
         trackFrontendTelemetry({ type: 'word_exported' });
+        void incrementCvGenerated(1, { eventType: 'word_exported' });
         void recordAuditLog({
           actorUserId: user?.id,
           actorEmail: user?.email,
@@ -853,6 +870,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         const blob = await generateWordDocument(cv, true, density, contentLanguage);
         triggerDownload(blob, `Curriculo_${sanitizedName}_${templateTag}.docx`);
         trackFrontendTelemetry({ type: 'word_exported', templateStyle: cv.templateStyle });
+        void incrementCvGenerated(1, { eventType: 'word_exported', templateStyle: cv.templateStyle });
         void recordAuditLog({
           actorUserId: user?.id,
           actorEmail: user?.email,
@@ -1044,6 +1062,20 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 label: appUi.resumeBuilderLabel
               })
             }
+            onStartGuided={() => {
+              handleSelectStudioMode('guided');
+              handleUseShowcaseItem({
+                targetTab: 'raw',
+                label: appUi.resumeBuilderLabel
+              });
+            }}
+            onStartSolo={() => {
+              handleSelectStudioMode('solo');
+              handleUseShowcaseItem({
+                targetTab: 'editor',
+                label: appUi.resumeBuilderLabel
+              });
+            }}
             onOpenPricing={() => handleOpenPricingModal()}
             onSelectPlanForCheckout={(plan, cycle) => handleOpenPricingModal(undefined, plan, cycle)}
             onSelectTemplate={(templateId) => {
@@ -1126,6 +1158,16 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 mobileViewMode === 'preview' ? 'hidden lg:flex' : 'flex'
               }`}
             >
+              {/* Step-by-Step Lightbulb Guide vs Self-Service Solo Bar */}
+              <StudioGuideBar
+                mode={studioMode}
+                hasChosenMode={hasChosenStudioMode}
+                onSelectMode={handleSelectStudioMode}
+                activeTab={activeTab as StudioGuideTab}
+                onNavigateTab={(t) => setActiveTab(t)}
+                onExportFinal={handleExportWord}
+              />
+
               {/* Studio Compact 2-Row Mode Switcher (Importar First, Zero Hidden Tabs) */}
               <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 min-w-0 px-3 sm:px-4 py-1.5 space-y-1">
                 {/* Tier 1: Core 1-2-3 Creation Flow */}
@@ -1146,6 +1188,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
+                    {studioMode === 'guided' && <LightbulbStepBadge step={1} active={activeTab === 'raw'} />}
                     <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <span className="truncate">{studioNav.tabs.raw.label}</span>
                   </button>
@@ -1162,6 +1205,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
+                    {studioMode === 'guided' && <LightbulbStepBadge step={2} active={activeTab === 'editor'} />}
                     <FileText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300 shrink-0" />
                     <span className="truncate">{studioNav.tabs.editor.label}</span>
                   </button>
@@ -1178,6 +1222,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
+                    {studioMode === 'guided' && <LightbulbStepBadge step={5} active={activeTab === 'cover'} />}
                     <Mail className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <span className="truncate">{studioNav.tabs.cover.label}</span>
                   </button>
@@ -1201,6 +1246,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
+                    {studioMode === 'guided' && <LightbulbStepBadge step={3} active={activeTab === 'ai'} />}
                     <Wand2 className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
                     <span className="truncate">{studioNav.tabs.ai.label}</span>
                   </button>
@@ -1233,6 +1279,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                     }`}
                   >
+                    {studioMode === 'guided' && <LightbulbStepBadge step={4} active={activeTab === 'jobs'} />}
                     <Briefcase className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
                     <span className="truncate">{studioNav.tabs.jobs.label}</span>
                   </button>
@@ -1279,14 +1326,24 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                     />
                   ) : (
                     <RawInputGenerator
-                      onCVGenerated={(newCV) => {
+                      onCVGenerated={(newCV, meta) => {
                         updateCvWithCache(newCV);
+                        void incrementCvGenerated(1, {
+                          skipServerIncrement: meta?.source === 'ai',
+                          eventType: 'resume_started',
+                          templateStyle: newCV.templateStyle
+                        });
                         setActiveTab('editor');
                       }}
                       currentJobDescription={jobDescription}
                       onUpdateJobDescription={setJobDescription}
                       onOpenPreview={() => {
                         setMobileViewMode('preview');
+                      }}
+                      guideMode={studioMode}
+                      onGoToSoloEditor={() => {
+                        handleSelectStudioMode('solo');
+                        setActiveTab('editor');
                       }}
                     />
                   )
@@ -1316,6 +1373,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
                       density={density}
                       onDensityChange={setDensity}
+                      guideMode={studioMode}
                     />
                   )
                 )}
@@ -1357,6 +1415,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       setJobDescription(desc);
                       setActiveTab(tab);
                     }}
+                    guideMode={studioMode}
                   />
                 )}
 

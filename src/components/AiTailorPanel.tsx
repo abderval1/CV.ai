@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CVData } from '../types/cv';
 import { SlidersHorizontal, Check, ArrowRight, Loader2, AlertCircle, Copy, Plus, Wand2, Briefcase } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { auditCVAgainstJob } from '../utils/atsAnalyzer';
@@ -25,6 +26,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   jobDescription
 }) => {
   const { showWarning, showSuccess } = useToast();
+  const { incrementCvGenerated } = useAuth();
   const { siteLanguage } = useLanguage();
   const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).aiTailor;
   const [panelMode, setPanelMode] = useState<'full' | 'xyz'>('full');
@@ -137,6 +139,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
       const data = await response.json();
       setTailoredResult(data);
       trackFrontendTelemetry({ type: 'ai_called', feature: 'aiTailor', tokens: 1650 });
+      void incrementCvGenerated(1, { skipServerIncrement: true, eventType: 'resume_started', templateStyle: cv.templateStyle });
     } catch (err: any) {
       console.warn('API error, applying intelligent heuristic optimizer:', err);
       logGenerationError({
@@ -178,6 +181,7 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           ]
         }
       });
+      void incrementCvGenerated(1, { skipServerIncrement: false, eventType: 'resume_started', templateStyle: cv.templateStyle });
     } finally {
       setIsLoading(false);
     }

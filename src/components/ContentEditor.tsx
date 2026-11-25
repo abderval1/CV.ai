@@ -42,8 +42,10 @@ import {
   AlertCircle,
   Type,
   RotateCcw,
-  LayoutTemplate
+  LayoutTemplate,
+  Lightbulb
 } from 'lucide-react';
+import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -72,6 +74,7 @@ interface ContentEditorProps {
   onOpenPricingModal?: (prompt?: string) => void;
   density?: 'compact' | 'normal' | 'relaxed';
   onDensityChange?: (density: 'compact' | 'normal' | 'relaxed') => void;
+  guideMode?: StudioCreationMode;
 }
 
 export type EditorStepId =
@@ -119,7 +122,8 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   onOpenAuthModal,
   onOpenPricingModal,
   density = 'normal',
-  onDensityChange
+  onDensityChange,
+  guideMode = 'guided'
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [credentialsTab, setCredentialsTab] = useState<'academic' | 'skills'>('academic');
@@ -762,21 +766,29 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/80 font-medium'
                   }`}
                 >
-                  <span
-                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                      isActive
-                        ? 'bg-slate-900 text-white'
-                        : step.isCompleted
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-200 text-slate-600'
-                    }`}
-                  >
-                    {step.isCompleted && !isActive ? (
-                      <Check className="w-2.5 h-2.5 stroke-[2.75]" />
-                    ) : (
-                      idx + 1
-                    )}
-                  </span>
+                  {guideMode === 'guided' ? (
+                    <LightbulbStepBadge
+                      step={idx + 1}
+                      active={isActive}
+                      completed={step.isCompleted && !isActive}
+                    />
+                  ) : (
+                    <span
+                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                        isActive
+                          ? 'bg-slate-900 text-white'
+                          : step.isCompleted
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {step.isCompleted && !isActive ? (
+                        <Check className="w-2.5 h-2.5 stroke-[2.75]" />
+                      ) : (
+                        idx + 1
+                      )}
+                    </span>
+                  )}
                   <span className="truncate sm:hidden">{step.mobileLabel}</span>
                   <span className="truncate hidden sm:inline">{step.shortLabel}</span>
                 </button>
@@ -910,6 +922,25 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
       {/* 2. SCROLLABLE STEP CONTENT AREA */}
       <div className="p-3.5 sm:p-5 space-y-4 flex-1 min-h-0 overflow-y-auto">
+        {guideMode === 'guided' && (
+          <div className="px-3 py-2 bg-amber-50/90 border border-amber-200 rounded-lg flex items-center justify-between gap-2 text-[11px] text-slate-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <Lightbulb className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="truncate font-medium">
+                {guides.stepTabsTitle[currentStep.id]}
+              </span>
+            </div>
+            {currentStepIndex < STEPS.length - 1 && (
+              <button
+                type="button"
+                onClick={goToNextStep}
+                className="font-bold text-amber-800 hover:underline whitespace-nowrap shrink-0"
+              >
+                {ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].mobileLabel} →
+              </button>
+            )}
+          </div>
+        )}
         {/* ========================================================================= */}
         {/* STAGE 1: PERFIL, CONTACTOS & RESUMO EXECUTIVO */}
         {/* ========================================================================= */}

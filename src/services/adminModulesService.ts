@@ -1328,7 +1328,7 @@ export const DEFAULT_PLATFORM_SETTINGS: PlatformSettingsConfig = {
   requirePaidPlanForExport: true,
   enableAiFeaturesGlobally: true,
   maxDailyFreeAiCalls: 5,
-  pixKey: 'f4693532-31da-4e95-a589-19bccab0d915',
+  pixKey: '',
   pixKeyType: 'evp',
   pixBeneficiaryName: 'CURRICULO ESTRATEGICO',
   pixCity: 'SAO PAULO',
@@ -1399,6 +1399,8 @@ const DEFAULT_TELEMETRY: FrontendTelemetryData = {
   checkoutOpenedCount: 0,
   wordExportsCount: 0,
   aiCallsCount: 0,
+  todayAiCallsDate: new Date().toISOString().slice(0, 10),
+  todayAiCallsCount: 0,
   estimatedTokensUsed: 0,
   templateSelections: {},
   languageSelections: {},
@@ -1445,11 +1447,16 @@ export async function fetchServerTelemetry(): Promise<FrontendTelemetryData> {
     const overview = await adminApiFetch('/api/admin/overview', { method: 'GET' });
     const srv = overview?.telemetry;
     if (srv && typeof srv === 'object') {
+      const todayYmd = new Date().toISOString().slice(0, 10);
+      const srvToday = srv.todayAiCallsDate === todayYmd ? Number(srv.todayAiCallsCount) || 0 : 0;
+      const localToday = local.todayAiCallsDate === todayYmd ? Number(local.todayAiCallsCount) || 0 : 0;
       const merged: FrontendTelemetryData = {
         resumesStartedCount: Math.max(Number(srv.resumesStartedCount) || 0, local.resumesStartedCount || 0),
         checkoutOpenedCount: Math.max(Number(srv.checkoutOpenedCount) || 0, local.checkoutOpenedCount || 0),
         wordExportsCount: Math.max(Number(srv.wordExportsCount) || 0, local.wordExportsCount || 0),
         aiCallsCount: Math.max(Number(srv.aiCallsCount) || 0, local.aiCallsCount || 0),
+        todayAiCallsDate: todayYmd,
+        todayAiCallsCount: Math.max(srvToday, localToday),
         estimatedTokensUsed: Math.max(Number(srv.estimatedTokensUsed) || 0, local.estimatedTokensUsed || 0),
         templateSelections: { ...(local.templateSelections || {}), ...(srv.templateSelections || {}) },
         languageSelections: { ...(local.languageSelections || {}), ...(srv.languageSelections || {}) },
@@ -1485,6 +1492,11 @@ export function trackFrontendTelemetry(
     | { type: 'ai_called'; feature: keyof FrontendTelemetryData['featureUsage']; tokens?: number }
 ): void {
   const cur = getFrontendTelemetry();
+  const todayYmd = new Date().toISOString().slice(0, 10);
+  if (cur.todayAiCallsDate !== todayYmd) {
+    cur.todayAiCallsDate = todayYmd;
+    cur.todayAiCallsCount = 0;
+  }
   if (event.type === 'resume_started') {
     cur.resumesStartedCount += 1;
   } else if (event.type === 'checkout_opened') {
@@ -1500,6 +1512,7 @@ export function trackFrontendTelemetry(
     cur.languageSelections[event.language] = (cur.languageSelections[event.language] || 0) + 1;
   } else if (event.type === 'ai_called') {
     cur.aiCallsCount += 1;
+    cur.todayAiCallsCount = (cur.todayAiCallsCount || 0) + 1;
     cur.estimatedTokensUsed += event.tokens || 1400;
     cur.featureUsage[event.feature] = (cur.featureUsage[event.feature] || 0) + 1;
   }

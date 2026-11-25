@@ -302,7 +302,8 @@ service cloud.firestore {
 
     // Admins registry
     match /admins/{adminId} {
-      allow read, write: if isAdmin() && isValidId(adminId);
+      allow get, write: if isAdmin() && isValidId(adminId);
+      allow list: if isAdmin();
     }
 
     // Users collection: Private user profile, plan and credits
@@ -480,7 +481,8 @@ service cloud.firestore {
 
     // AI Prompts Configuration (No-Code Prompt Management)
     match /promptsConfig/{promptId} {
-      allow read: if isAdmin() && isValidId(promptId);
+      allow get: if isAdmin() && isValidId(promptId);
+      allow list: if isAdmin();
       allow write: if isAdmin() && isValidId(promptId) && incoming().keys().size() <= 30;
     }
 
@@ -523,14 +525,16 @@ service cloud.firestore {
 
     // Technical Generation Error Logs (clients can only log unresolved errors; Admins manage/resolve)
     match /generationErrorLogs/{logId} {
-      allow read, delete: if isAdmin() && isValidId(logId);
+      allow get, delete: if isAdmin() && isValidId(logId);
+      allow list: if isAdmin();
       allow update: if isAdmin() && isValidId(logId) && isValidErrorLog(incoming());
       allow create: if isSignedIn() && isValidId(logId) && isValidErrorLog(incoming()) && incoming().resolved == false;
     }
 
     // GDPR / LGPD Requests
     match /gdprRequests/{requestId} {
-      allow read, delete: if isAdmin() && isValidId(requestId);
+      allow get, delete: if isAdmin() && isValidId(requestId);
+      allow list: if isAdmin();
       allow update: if isAdmin() && isValidId(requestId) && isValidGdprRequest(incoming());
       allow create: if isValidId(requestId) && isValidGdprRequest(incoming()) && (
         isAdmin() ||
@@ -540,7 +544,9 @@ service cloud.firestore {
 
     // Impersonation Audit Logs
     match /impersonationAuditLogs/{logId} {
-      allow read, write: if isAdmin() && isValidId(logId) && (!('action' in incoming()) || incoming().action in ['started', 'ended']);
+      allow get: if isAdmin() && isValidId(logId);
+      allow list: if isAdmin();
+      allow write: if isAdmin() && isValidId(logId) && (!('action' in incoming()) || incoming().action in ['started', 'ended']);
     }
 
     // Security & Sensitive Action Audit Logs (strictly append-only & tamper-evident)
@@ -607,7 +613,10 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(threadId);
 
       match /messages/{messageId} {
-        allow read: if isSignedIn() && isValidId(threadId) && isValidId(messageId) && (
+        allow get: if isSignedIn() && isValidId(threadId) && isValidId(messageId) && (
+          isAdmin() || threadId == request.auth.uid
+        );
+        allow list: if isSignedIn() && isValidId(threadId) && (
           isAdmin() || threadId == request.auth.uid
         );
         allow create: if isSignedIn() &&

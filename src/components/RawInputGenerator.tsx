@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CVData, TemplateStyle } from '../types/cv';
 import { SAMPLE_JOB_OFFERS, AGOSTINHO_CV, TECH_LEAD_CV, GENERIC_DEFAULT_CV } from '../data/initialCV';
-import portraitManImg from '../assets/images/portrait_executive_man_1794571428722.jpg';
 import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
 import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { authorizedFetch } from '../utils/authHeaders';
@@ -26,8 +25,13 @@ import {
   Palette,
   Eye,
   ExternalLink,
-  Camera
+  Camera,
+  Lightbulb,
+  ChevronRight,
+  ChevronLeft,
+  Zap
 } from 'lucide-react';
+import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
 
 interface LinkedInExtractionReport {
   directFetchStatus: string;
@@ -262,21 +266,416 @@ const LINKEDIN_ACCENT_PALETTE = [
   { hex: '#7c2d12', label: 'Burgundy' }
 ];
 
+const GUIDED_WIZARD_COPY: Record<
+  SiteLanguageCode,
+  {
+    entryTitle: string;
+    entrySubtitle: string;
+    tabWizard: string;
+    tabImport: string;
+    tabSolo: string;
+    stepOf: string;
+    step1Title: string;
+    step1Hint: string;
+    fullNameLabel: string;
+    fullNamePh: string;
+    roleLabel: string;
+    rolePh: string;
+    emailLabel: string;
+    phoneLabel: string;
+    locationLabel: string;
+    locationPh: string;
+    step2Title: string;
+    step2Hint: string;
+    companyLabel: string;
+    companyPh: string;
+    expRoleLabel: string;
+    periodLabel: string;
+    periodPh: string;
+    bulletsLabel: string;
+    bulletsPh: string;
+    addSampleBulletsBtn: string;
+    sampleBulletsText: string;
+    step3Title: string;
+    step3Hint: string;
+    degreeLabel: string;
+    degreePh: string;
+    schoolLabel: string;
+    schoolPh: string;
+    eduPeriodLabel: string;
+    skillsLabel: string;
+    skillsPh: string;
+    langsLabel: string;
+    step4Title: string;
+    step4Hint: string;
+    backBtn: string;
+    nextBtn: string;
+    buildCvBtn: string;
+    missingNameErr: string;
+    builtSuccess: string;
+    wizardModels: Array<{ id: TemplateStyle; label: string; desc: string; accent: string; hasPhoto: boolean }>;
+  }
+> = {
+  pt: {
+    entryTitle: 'Como quer começar o seu CV?',
+    entrySubtitle: 'Escolha o assistente guiado de 4 perguntas, importe o LinkedIn/PDF ou vá direto ao editor.',
+    tabWizard: 'Passo a Passo (4 Perguntas)',
+    tabImport: 'Importar LinkedIn / PDF',
+    tabSolo: 'Fazer Sozinho no Editor',
+    stepOf: 'Pergunta {n} de 4',
+    step1Title: 'Quem é você e qual cargo procura?',
+    step1Hint: 'Preencha apenas os dados básicos de contacto que aparecerão no topo do CV.',
+    fullNameLabel: 'Nome Completo *',
+    fullNamePh: 'Ex: Maria João Ferreira',
+    roleLabel: 'Cargo Pretendido *',
+    rolePh: 'Ex: Gestora de Operações / Analista de Dados',
+    emailLabel: 'Email Profissional',
+    phoneLabel: 'Telefone / WhatsApp',
+    locationLabel: 'Cidade e País',
+    locationPh: 'Ex: Lisboa, Portugal',
+    step2Title: 'Qual foi a sua experiência principal?',
+    step2Hint: 'Não precisa de texto perfeito: indique a empresa e 2 ou 3 coisas que fazia lá.',
+    companyLabel: 'Empresa / Organização',
+    companyPh: 'Ex: Banco Atlântico / TechCorp',
+    expRoleLabel: 'Função Exercida',
+    periodLabel: 'Período',
+    periodPh: 'Ex: 2021 – Presente',
+    bulletsLabel: 'Principais Tarefas ou Resultados (1 por linha)',
+    bulletsPh: '- Liderou atendimento e carteira de clientes corporativos\n- Otimizou relatórios mensais reduzindo prazos em 25%',
+    addSampleBulletsBtn: 'Inserir exemplo pronto',
+    sampleBulletsText: '- Coordenou equipas e metas operacionais com entrega consistente de resultados.\n- Melhorou processos internos reduzindo atrasos e retrabalho.',
+    step3Title: 'Formação e Competências Principais',
+    step3Hint: 'Indique o seu curso mais importante e as ferramentas ou áreas em que domina.',
+    degreeLabel: 'Curso / Licenciatura',
+    degreePh: 'Ex: Licenciatura em Gestão de Empresas',
+    schoolLabel: 'Universidade / Escola',
+    schoolPh: 'Ex: Universidade Nova',
+    eduPeriodLabel: 'Ano / Período',
+    skillsLabel: 'Competências (separadas por vírgula)',
+    skillsPh: 'Ex: Excel Avançado, Gestão de Projetos, Atendimento ao Cliente, CRM',
+    langsLabel: 'Idiomas',
+    step4Title: 'Escolha o visual do seu CV',
+    step4Hint: 'Clique no modelo preferido e depois em "Criar Meu CV Agora".',
+    backBtn: 'Voltar',
+    nextBtn: 'Avançar',
+    buildCvBtn: 'Criar Meu CV Agora',
+    missingNameErr: 'Por favor preencha pelo menos o seu Nome Completo e Cargo Pretendido.',
+    builtSuccess: 'CV estruturado com sucesso! A abrir no Editor e Pré-visualização...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Clássico sem foto · Máxima nota ATS', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Tech Moderno', desc: 'Limpo e estruturado para Tecnologia & Negócios', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass c/ Foto', desc: 'Formato Europeu com foto profissional', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Corporativo Global', desc: 'Ideal para multinacionais, ONG e gestão', accent: '#0f766e', hasPhoto: false }
+    ]
+  },
+  en: {
+    entryTitle: 'How would you like to start your CV?',
+    entrySubtitle: 'Use the 4-question Step-by-Step Builder, import LinkedIn/PDF, or go straight to the Solo Editor.',
+    tabWizard: 'Step-by-Step (4 Questions)',
+    tabImport: 'Import LinkedIn / PDF',
+    tabSolo: 'Do It Myself in Editor',
+    stepOf: 'Question {n} of 4',
+    step1Title: 'Who are you and what role are you targeting?',
+    step1Hint: 'Add your basic contact details that appear at the top of your resume.',
+    fullNameLabel: 'Full Name *',
+    fullNamePh: 'e.g. Jordan Taylor',
+    roleLabel: 'Target Job Title *',
+    rolePh: 'e.g. Operations Manager / Data Analyst',
+    emailLabel: 'Email Address',
+    phoneLabel: 'Phone Number',
+    locationLabel: 'City & Country',
+    locationPh: 'e.g. London, UK · Remote',
+    step2Title: 'What is your most recent work experience?',
+    step2Hint: 'Keep it simple: enter the company name and 2–3 key responsibilities or results.',
+    companyLabel: 'Company / Organization',
+    companyPh: 'e.g. Northstar Logistics',
+    expRoleLabel: 'Job Title Held',
+    periodLabel: 'Dates',
+    periodPh: 'e.g. 2021 – Present',
+    bulletsLabel: 'Key Achievements or Tasks (1 per line)',
+    bulletsPh: '- Managed daily operations and key client accounts\n- Streamlined reporting workflows cutting turnaround by 25%',
+    addSampleBulletsBtn: 'Insert ready example',
+    sampleBulletsText: '- Coordinated cross-functional workflows and delivered quarterly KPIs ahead of schedule.\n- Improved internal procedures, cutting bottlenecks and operating costs.',
+    step3Title: 'Education & Core Skills',
+    step3Hint: 'List your highest degree or training plus your main tools and skills.',
+    degreeLabel: 'Degree / Certificate',
+    degreePh: 'e.g. B.Sc. in Business Administration',
+    schoolLabel: 'University / Institution',
+    schoolPh: 'e.g. State University',
+    eduPeriodLabel: 'Year / Dates',
+    skillsLabel: 'Key Skills (comma separated)',
+    skillsPh: 'e.g. Project Management, Excel, SQL, Stakeholder Communication',
+    langsLabel: 'Languages',
+    step4Title: 'Pick your CV look & finish',
+    step4Hint: 'Choose a layout below and click "Build My CV Now".',
+    backBtn: 'Back',
+    nextBtn: 'Next Question',
+    buildCvBtn: 'Build My CV Now',
+    missingNameErr: 'Please enter at least your Full Name and Target Job Title.',
+    builtSuccess: 'CV created! Opening Editor and live A4 preview...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Classic no-photo · Highest ATS score', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Modern Tech', desc: 'Clean structured layout for Tech & Business', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass w/ Photo', desc: 'European standard with profile photo', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Global Corporate', desc: 'Designed for international firms & NGOs', accent: '#0f766e', hasPhoto: false }
+    ]
+  },
+  es: {
+    entryTitle: '¿Cómo quieres empezar tu currículum?',
+    entrySubtitle: 'Usa el asistente guiado de 4 preguntas, importa LinkedIn/PDF o ve directo al editor.',
+    tabWizard: 'Paso a Paso (4 Preguntas)',
+    tabImport: 'Importar LinkedIn / PDF',
+    tabSolo: 'Hacerlo Solo en Editor',
+    stepOf: 'Pregunta {n} de 4',
+    step1Title: '¿Quién eres y a qué puesto postulas?',
+    step1Hint: 'Indica tus datos básicos de contacto para el encabezado del CV.',
+    fullNameLabel: 'Nombre Completo *',
+    fullNamePh: 'Ej: Carlos Mendoza',
+    roleLabel: 'Puesto Objetivo *',
+    rolePh: 'Ej: Gerente de Operaciones / Analista',
+    emailLabel: 'Correo Electrónico',
+    phoneLabel: 'Teléfono',
+    locationLabel: 'Ciudad y País',
+    locationPh: 'Ej: Madrid, España',
+    step2Title: '¿Cuál fue tu experiencia principal?',
+    step2Hint: 'Indica la empresa y 2 o 3 logros o tareas clave.',
+    companyLabel: 'Empresa / Organización',
+    companyPh: 'Ej: Grupo Horizonte',
+    expRoleLabel: 'Cargo Ocupado',
+    periodLabel: 'Fechas',
+    periodPh: 'Ej: 2021 – Actualidad',
+    bulletsLabel: 'Logros o Tareas Clave (1 por línea)',
+    bulletsPh: '- Gestionó operaciones diarias y cuentas clave\n- Optimizó informes reduciendo tiempos en un 25%',
+    addSampleBulletsBtn: 'Insertar ejemplo listo',
+    sampleBulletsText: '- Coordinó equipos multifuncionales cumpliendo objetivos trimestrales.\n- Mejoró procesos internos reduciendo retrasos operativos.',
+    step3Title: 'Formación y Habilidades',
+    step3Hint: 'Añade tu formación principal y tus herramientas clave.',
+    degreeLabel: 'Título / Curso',
+    degreePh: 'Ej: Grado en Administración',
+    schoolLabel: 'Universidad / Centro',
+    schoolPh: 'Ej: Universidad Complutense',
+    eduPeriodLabel: 'Año / Período',
+    skillsLabel: 'Habilidades (separadas por comas)',
+    skillsPh: 'Ej: Gestión de Proyectos, Excel, SQL, Atención al Cliente',
+    langsLabel: 'Idiomas',
+    step4Title: 'Elige el diseño de tu CV',
+    step4Hint: 'Selecciona una plantilla y pulsa "Crear Mi CV Ahora".',
+    backBtn: 'Atrás',
+    nextBtn: 'Siguiente',
+    buildCvBtn: 'Crear Mi CV Ahora',
+    missingNameErr: 'Por favor completa tu Nombre Completo y Puesto Objetivo.',
+    builtSuccess: '¡CV generado! Abriendo Editor y vista previa A4...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Clásico sin foto · Máxima nota ATS', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Tech Moderno', desc: 'Limpio para Tecnología y Negocios', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass c/ Foto', desc: 'Formato Europeo con foto', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Corporativo Global', desc: 'Ideal para multinacionales y ONG', accent: '#0f766e', hasPhoto: false }
+    ]
+  },
+  fr: {
+    entryTitle: 'Comment souhaitez-vous démarrer votre CV ?',
+    entrySubtitle: 'Utilisez l’assistant en 4 questions, importez LinkedIn/PDF ou passez directement à l’éditeur.',
+    tabWizard: 'Pas à Pas (4 Questions)',
+    tabImport: 'Importer LinkedIn / PDF',
+    tabSolo: 'Faire Seul (Éditeur)',
+    stepOf: 'Question {n} sur 4',
+    step1Title: 'Qui êtes-vous et quel poste visez-vous ?',
+    step1Hint: 'Renseignez vos coordonnées de base pour l’en-tête du CV.',
+    fullNameLabel: 'Nom Complet *',
+    fullNamePh: 'Ex: Camille Laurent',
+    roleLabel: 'Poste Visé *',
+    rolePh: 'Ex: Responsable Opérations / Analyste',
+    emailLabel: 'Email Professionnel',
+    phoneLabel: 'Téléphone',
+    locationLabel: 'Ville & Pays',
+    locationPh: 'Ex: Paris, France',
+    step2Title: 'Votre expérience principale',
+    step2Hint: 'Indiquez l’entreprise et 2 à 3 réalisations clés.',
+    companyLabel: 'Entreprise',
+    companyPh: 'Ex: Groupe Horizon',
+    expRoleLabel: 'Poste Occupé',
+    periodLabel: 'Période',
+    periodPh: 'Ex: 2021 – Présent',
+    bulletsLabel: 'Réalisations clés (1 par ligne)',
+    bulletsPh: '- Piloté les opérations quotidiennes et comptes clients\n- Réduit les délais de reporting de 25 %',
+    addSampleBulletsBtn: 'Insérer un exemple',
+    sampleBulletsText: '- Coordonné les équipes transverses et atteint les objectifs trimestriels.\n- Amélioré les processus internes et réduit les retards.',
+    step3Title: 'Formation & Compétences',
+    step3Hint: 'Indiquez votre diplôme principal et vos outils clés.',
+    degreeLabel: 'Diplôme / Formation',
+    degreePh: 'Ex: Master en Management',
+    schoolLabel: 'Université / École',
+    schoolPh: 'Ex: Université Paris',
+    eduPeriodLabel: 'Année / Période',
+    skillsLabel: 'Compétences (séparées par des virgules)',
+    skillsPh: 'Ex: Gestion de Projet, Excel, SQL, Relation Client',
+    langsLabel: 'Langues',
+    step4Title: 'Choisissez le design de votre CV',
+    step4Hint: 'Sélectionnez un modèle puis cliquez sur « Créer Mon CV ».',
+    backBtn: 'Retour',
+    nextBtn: 'Suivant',
+    buildCvBtn: 'Créer Mon CV',
+    missingNameErr: 'Veuillez saisir votre Nom Complet et le Poste Visé.',
+    builtSuccess: 'CV créé avec succès ! Ouverture de l’éditeur...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Classique sans photo · Score ATS max', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Tech Moderne', desc: 'Épuré pour Tech & Business', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass + Photo', desc: 'Standard Européen avec photo', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Corporate Global', desc: 'Idéal pour grands groupes & ONG', accent: '#0f766e', hasPhoto: false }
+    ]
+  },
+  de: {
+    entryTitle: 'Wie möchten Sie Ihren Lebenslauf starten?',
+    entrySubtitle: 'Nutzen Sie den 4-Fragen-Assistenten, importieren Sie LinkedIn/PDF oder starten Sie direkt im Editor.',
+    tabWizard: 'Schritt-für-Schritt (4 Fragen)',
+    tabImport: 'LinkedIn / PDF Import',
+    tabSolo: 'Direkt im Editor Starten',
+    stepOf: 'Frage {n} von 4',
+    step1Title: 'Wer sind Sie und welche Rolle suchen Sie?',
+    step1Hint: 'Geben Sie Ihre Kontaktdaten für den Lebenslauf-Kopf ein.',
+    fullNameLabel: 'Vollständiger Name *',
+    fullNamePh: 'z. B. Lukas Weber',
+    roleLabel: 'Zielposition *',
+    rolePh: 'z. B. Operations Manager / Analyst',
+    emailLabel: 'E-Mail',
+    phoneLabel: 'Telefon',
+    locationLabel: 'Stadt & Land',
+    locationPh: 'z. B. Berlin, Deutschland',
+    step2Title: 'Ihre wichtigste Berufserfahrung',
+    step2Hint: 'Nennen Sie das Unternehmen und 2–3 zentrale Aufgaben oder Erfolge.',
+    companyLabel: 'Unternehmen',
+    companyPh: 'z. B. Horizon GmbH',
+    expRoleLabel: 'Position',
+    periodLabel: 'Zeitraum',
+    periodPh: 'z. B. 2021 – Heute',
+    bulletsLabel: 'Erfolge & Aufgaben (1 pro Zeile)',
+    bulletsPh: '- Leitete den täglichen Betrieb und wichtige Kundenkonten\n- Optimierte Berichte und verkürzte Durchlaufzeiten um 25 %',
+    addSampleBulletsBtn: 'Beispiel einfügen',
+    sampleBulletsText: '- Koordinierte bereichsübergreifende Teams zur Erreichung der Quartalsziele.\n- Optimierte interne Abläufe und senkte Verzögerungen.',
+    step3Title: 'Ausbildung & Kernkompetenzen',
+    step3Hint: 'Ergänzen Sie Ihren Abschluss und wichtige Fähigkeiten.',
+    degreeLabel: 'Abschluss / Studium',
+    degreePh: 'z. B. B.Sc. Betriebswirtschaft',
+    schoolLabel: 'Hochschule / Institut',
+    schoolPh: 'z. B. TU Berlin',
+    eduPeriodLabel: 'Jahr / Zeitraum',
+    skillsLabel: 'Kompetenzen (mit Komma getrennt)',
+    skillsPh: 'z. B. Projektmanagement, Excel, SQL, Kundenbetreuung',
+    langsLabel: 'Sprachen',
+    step4Title: 'Design auswählen & erstellen',
+    step4Hint: 'Wählen Sie ein Layout und klicken Sie auf „Lebenslauf Jetzt Erstellen“.',
+    backBtn: 'Zurück',
+    nextBtn: 'Weiter',
+    buildCvBtn: 'Lebenslauf Jetzt Erstellen',
+    missingNameErr: 'Bitte geben Sie mindestens Name und Zielposition an.',
+    builtSuccess: 'Lebenslauf erstellt! Editor wird geöffnet...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Klassisch ohne Foto · Top ATS-Score', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Modern Tech', desc: 'Klar strukturiert für Tech & Business', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass mit Foto', desc: 'Europäischer Standard mit Foto', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Global Corporate', desc: 'Für Konzerne & NGOs', accent: '#0f766e', hasPhoto: false }
+    ]
+  },
+  it: {
+    entryTitle: 'Come vuoi iniziare il tuo CV?',
+    entrySubtitle: 'Usa la procedura guidata in 4 domande, importa LinkedIn/PDF oppure vai direttamente all’editor.',
+    tabWizard: 'Passo Passo (4 Domande)',
+    tabImport: 'Importa LinkedIn / PDF',
+    tabSolo: 'Fai da Te nell’Editor',
+    stepOf: 'Domanda {n} di 4',
+    step1Title: 'Chi sei e quale ruolo cerchi?',
+    step1Hint: 'Inserisci i recapiti essenziali per l’intestazione del CV.',
+    fullNameLabel: 'Nome Completo *',
+    fullNamePh: 'Es: Marco Conti',
+    roleLabel: 'Ruolo Target *',
+    rolePh: 'Es: Operations Manager / Analista Dati',
+    emailLabel: 'Email',
+    phoneLabel: 'Telefono',
+    locationLabel: 'Città e Paese',
+    locationPh: 'Es: Milano, Italia',
+    step2Title: 'La tua esperienza principale',
+    step2Hint: 'Indica azienda e 2–3 risultati o attività principali.',
+    companyLabel: 'Azienda',
+    companyPh: 'Es: Gruppo Orizzonte',
+    expRoleLabel: 'Ruolo Svolto',
+    periodLabel: 'Periodo',
+    periodPh: 'Es: 2021 – Presente',
+    bulletsLabel: 'Risultati o Attività (1 per riga)',
+    bulletsPh: '- Gestito operazioni quotidiane e clienti chiave\n- Ottimizzato reportistica riducendo i tempi del 25%',
+    addSampleBulletsBtn: 'Inserisci esempio pronto',
+    sampleBulletsText: '- Coordinato team interfunzionali raggiungendo gli obiettivi trimestrali.\n- Migliorato i processi interni riducendo ritardi operativi.',
+    step3Title: 'Istruzione e Competenze',
+    step3Hint: 'Inserisci titolo di studio e strumenti principali.',
+    degreeLabel: 'Titolo / Laurea',
+    degreePh: 'Es: Laurea in Economia Aziendale',
+    schoolLabel: 'Università / Istituto',
+    schoolPh: 'Es: Università Bocconi',
+    eduPeriodLabel: 'Anno / Periodo',
+    skillsLabel: 'Competenze (separate da virgola)',
+    skillsPh: 'Es: Project Management, Excel, SQL, Gestione Clienti',
+    langsLabel: 'Lingue',
+    step4Title: 'Scegli lo stile e genera',
+    step4Hint: 'Seleziona un layout e clicca su "Crea il Mio CV Ora".',
+    backBtn: 'Indietro',
+    nextBtn: 'Avanti',
+    buildCvBtn: 'Crea il Mio CV Ora',
+    missingNameErr: 'Inserisci almeno Nome Completo e Ruolo Target.',
+    builtSuccess: 'CV creato! Apertura editor e anteprima A4...',
+    wizardModels: [
+      { id: 'executive_harvard', label: 'Harvard ATS', desc: 'Classico senza foto · Massimo punteggio ATS', accent: '#1e293b', hasPhoto: false },
+      { id: 'tech_modern', label: 'Tech Moderno', desc: 'Pulito per Tecnologia e Business', accent: '#0f172a', hasPhoto: false },
+      { id: 'european_europass', label: 'Europass con Foto', desc: 'Formato Europeo con foto', accent: '#1d4ed8', hasPhoto: true },
+      { id: 'un_classic', label: 'Corporate Globale', desc: 'Ideale per multinazionali e ONG', accent: '#0f766e', hasPhoto: false }
+    ]
+  }
+};
+
 interface RawInputGeneratorProps {
-  onCVGenerated: (generatedCV: CVData) => void;
+  onCVGenerated: (generatedCV: CVData, meta?: { source?: 'ai' | 'client' }) => void;
   currentJobDescription: string;
   onUpdateJobDescription: (desc: string) => void;
   onOpenPreview: () => void;
+  guideMode?: StudioCreationMode;
+  onGoToSoloEditor?: () => void;
 }
 
 export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   onCVGenerated,
   currentJobDescription,
   onUpdateJobDescription,
-  onOpenPreview
+  onOpenPreview,
+  guideMode = 'guided',
+  onGoToSoloEditor
 }) => {
   const { siteLanguage } = useLanguage();
   const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).rawGenerator;
+  const wizUi = GUIDED_WIZARD_COPY[siteLanguage] || GUIDED_WIZARD_COPY.en;
+  const [entryPath, setEntryPath] = useState<'wizard' | 'import'>(() =>
+    guideMode === 'guided' ? 'wizard' : 'import'
+  );
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [wizName, setWizName] = useState<string>('');
+  const [wizTitle, setWizTitle] = useState<string>('');
+  const [wizEmail, setWizEmail] = useState<string>('');
+  const [wizPhone, setWizPhone] = useState<string>('');
+  const [wizLocation, setWizLocation] = useState<string>('');
+  const [wizCompany, setWizCompany] = useState<string>('');
+  const [wizExpRole, setWizExpRole] = useState<string>('');
+  const [wizPeriod, setWizPeriod] = useState<string>('');
+  const [wizBullets, setWizBullets] = useState<string>('');
+  const [wizDegree, setWizDegree] = useState<string>('');
+  const [wizSchool, setWizSchool] = useState<string>('');
+  const [wizEduPeriod, setWizEduPeriod] = useState<string>('');
+  const [wizSkills, setWizSkills] = useState<string>('');
+  const [wizLangs, setWizLangs] = useState<string>('Portuguese, English');
+  const [wizTemplate, setWizTemplate] = useState<TemplateStyle>('executive_harvard');
+
+  useEffect(() => {
+    if (guideMode === 'solo' && entryPath === 'wizard') {
+      setEntryPath('import');
+    }
+  }, [guideMode]);
+
   const [generationMode, setGenerationMode] = useState<'standard' | 'tailored'>(() => {
     try {
       const savedJob = localStorage.getItem('curriculo_job_draft_v1');
@@ -290,12 +689,11 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   });
   const [candidateRawText, setCandidateRawText] = useState<string>('');
   const [jobDescription, setJobDescription] = useState<string>(
-    currentJobDescription || SAMPLE_JOB_OFFERS[0].description
+    currentJobDescription || ''
   );
   const [linkedInUrl, setLinkedInUrl] = useState<string>('');
   const [showLinkedInHelper, setShowLinkedInHelper] = useState<boolean>(false);
   const [showPresets, setShowPresets] = useState<boolean>(false);
-  const [isLinkedInConnecting, setIsLinkedInConnecting] = useState<boolean>(false);
   const [isLinkedInExtracting, setIsLinkedInExtracting] = useState<boolean>(false);
   const lkUi = LINKEDIN_DEEP_COPY[siteLanguage] || LINKEDIN_DEEP_COPY.en;
   const [linkedInJobState, setLinkedInJobState] = useState<{
@@ -654,7 +1052,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         )
       }
     };
-    onCVGenerated(finalCV);
+    onCVGenerated(finalCV, { source: 'ai' });
     setSuccessMessage(ui.msgLinkedInApplied);
     if (openPreviewImmediately) {
       setTimeout(() => onOpenPreview(), 250);
@@ -716,11 +1114,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         email,
         linkedin,
         website,
-        photoUrl:
-          targetStandard === 'europass'
-            ? portraitManImg
-            : undefined,
-        showPhoto: targetStandard === 'europass'
+        photoUrl: undefined,
+        showPhoto: false
       },
       summary:
         mode === 'tailored' && jobDesc.trim()
@@ -799,7 +1194,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
 
     if (platformSettings.enableAiFeaturesGlobally === false) {
       const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription, activeMode);
-      onCVGenerated(fallbackCV);
+      onCVGenerated(fallbackCV, { source: 'client' });
       setSuccessMessage(
         activeMode === 'standard'
           ? ui.msgAiPausedStandard
@@ -854,11 +1249,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
             email: generatedData.personalDetails.email || '',
             linkedin: generatedData.personalDetails.linkedin || linkedInUrl || 'linkedin.com/in/seu-perfil',
             website: generatedData.personalDetails.website,
-            photoUrl:
-              targetStandard === 'europass'
-                ? portraitManImg
-                : undefined,
-            showPhoto: targetStandard === 'europass'
+            photoUrl: undefined,
+            showPhoto: false
           },
           summary: generatedData.summary || GENERIC_DEFAULT_CV.summary,
           competencies:
@@ -896,7 +1288,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               : 'un_classic'
         };
 
-        onCVGenerated(fullCV);
+        onCVGenerated(fullCV, { source: 'ai' });
         setSuccessMessage(
           activeMode === 'standard'
             ? ui.msgSuccessStandard
@@ -920,7 +1312,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       });
       // Smart client-side fallback parsing the actual candidate's input
       const fallbackCV = parseRawTextToCV(candidateRawText, jobDescription, activeMode);
-      onCVGenerated(fallbackCV);
+      onCVGenerated(fallbackCV, { source: 'client' });
       setSuccessMessage(
         activeMode === 'standard'
           ? ui.msgFallbackStandard
@@ -934,25 +1326,492 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
     }
   };
 
+  const handleFinishGuidedWizard = () => {
+    if (!wizName.trim() || !wizTitle.trim()) {
+      setErrorMessage(wizUi.missingNameErr);
+      setWizardStep(1);
+      return;
+    }
+
+    const chosenModel = wizUi.wizardModels.find((m) => m.id === wizTemplate) || wizUi.wizardModels[0];
+    const parsedBullets = wizBullets
+      .split('\n')
+      .map((line) => line.replace(/^[-•*]\s*/, '').trim())
+      .filter((line) => line.length > 3);
+
+    const parsedSkillsList = wizSkills
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const parsedLangs = wizLangs
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((language) => ({ language, level: 'Proficient' }));
+
+    const summaryText = `${wizTitle.trim()} with practical background at ${
+      wizCompany.trim() || 'multidisciplinary organizations'
+    }, focused on execution excellence${
+      parsedSkillsList.length > 0 ? ` in ${parsedSkillsList.slice(0, 4).join(', ')}` : ''
+    } and measurable outcomes.`;
+
+    const builtCV: CVData = {
+      personalDetails: {
+        name: wizName.trim().toUpperCase(),
+        title: wizTitle.trim(),
+        location: wizLocation.trim() || 'Remote / Global',
+        phone: wizPhone.trim(),
+        email: wizEmail.trim(),
+        linkedin: linkedInUrl.trim() || '',
+        photoUrl: undefined,
+        showPhoto: chosenModel.hasPhoto
+      },
+      summary: summaryText,
+      competencies:
+        parsedSkillsList.length > 0
+          ? [
+              {
+                id: 'comp-wiz-1',
+                category: siteLanguage === 'pt' ? 'Competências Principais' : 'Core Competencies',
+                description: parsedSkillsList.join(' · ')
+              }
+            ]
+          : GENERIC_DEFAULT_CV.competencies,
+      experiences: [
+        {
+          id: `exp-wiz-${Date.now()}`,
+          company: wizCompany.trim() || (siteLanguage === 'pt' ? 'Experiência Profissional' : 'Professional Experience'),
+          role: wizExpRole.trim() || wizTitle.trim(),
+          period: wizPeriod.trim() || '2022 – Present',
+          highlights:
+            parsedBullets.length > 0
+              ? parsedBullets
+              : wizUi.sampleBulletsText
+                  .split('\n')
+                  .map((l) => l.replace(/^[-•*]\s*/, '').trim())
+                  .filter(Boolean)
+        }
+      ],
+      educations: [
+        {
+          id: `edu-wiz-${Date.now()}`,
+          degree: wizDegree.trim() || (siteLanguage === 'pt' ? 'Formação Académica' : 'Academic Degree'),
+          institution: wizSchool.trim() || (siteLanguage === 'pt' ? 'Instituição de Ensino' : 'University / Institution'),
+          period: wizEduPeriod.trim() || '2020'
+        }
+      ],
+      trainings: [],
+      languages: parsedLangs.length > 0 ? parsedLangs : GENERIC_DEFAULT_CV.languages,
+      references: [],
+      templateStyle: chosenModel.id,
+      accentColor: chosenModel.accent
+    };
+
+    setErrorMessage(null);
+    setSuccessMessage(wizUi.builtSuccess);
+    onCVGenerated(builtCV, { source: 'client' });
+    setTimeout(() => onOpenPreview(), 400);
+  };
+
   return (
     <div className="space-y-3.5">
-      {/* Compact Header & Mode / Standard Controls */}
+      {/* Start Choice Bar: Step-by-Step 4 Questions vs Import LinkedIn/PDF vs Solo Editor */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <FileText className="w-4 h-4 text-slate-800 dark:text-slate-200 shrink-0" />
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-              {ui.title}
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              {guideMode === 'guided' && <LightbulbStepBadge step={1} active size="sm" />}
+              <span>{wizUi.entryTitle}</span>
             </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              {wizUi.entrySubtitle}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setEntryPath('wizard');
+              setErrorMessage(null);
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${
+              entryPath === 'wizard'
+                ? 'bg-amber-400 border-amber-400 text-slate-950 font-bold shadow-2xs'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-amber-400'
+            }`}
+          >
+            <Lightbulb className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{wizUi.tabWizard}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEntryPath('import');
+              setErrorMessage(null);
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${
+              entryPath === 'import'
+                ? 'bg-slate-900 dark:bg-slate-100 border-slate-900 dark:border-slate-100 text-white dark:text-slate-950 font-bold'
+                : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{wizUi.tabImport}</span>
+          </button>
+
+          {onGoToSoloEditor && (
+            <button
+              type="button"
+              onClick={onGoToSoloEditor}
+              className="px-3 py-2 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
+            >
+              <Zap className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="truncate">{wizUi.tabSolo}</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* PATH A: 4-QUESTION STEP-BY-STEP GUIDED WIZARD */}
+      {entryPath === 'wizard' ? (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 sm:p-5 space-y-4">
+          {/* Progress header */}
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5">
+              {([1, 2, 3, 4] as const).map((sNum) => (
+                <button
+                  key={sNum}
+                  type="button"
+                  onClick={() => setWizardStep(sNum)}
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                    wizardStep === sNum
+                      ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
+                      : wizardStep > sNum
+                      ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                  }`}
+                >
+                  <LightbulbStepBadge step={sNum} active={wizardStep === sNum} completed={wizardStep > sNum} />
+                </button>
+              ))}
+            </div>
+            <span className="text-[11px] font-mono font-semibold text-slate-500 dark:text-slate-400">
+              {wizUi.stepOf.replace('{n}', String(wizardStep))}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* Compact Mode Switcher */}
-            <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px]">
+          {errorMessage && (
+            <div className="flex items-center gap-2 p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-lg">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {wizardStep === 1 && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{wizUi.step1Title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{wizUi.step1Hint}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.fullNameLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizName}
+                    onChange={(e) => setWizName(e.target.value)}
+                    placeholder={wizUi.fullNamePh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.roleLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizTitle}
+                    onChange={(e) => setWizTitle(e.target.value)}
+                    placeholder={wizUi.rolePh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.emailLabel}
+                  </label>
+                  <input
+                    type="email"
+                    value={wizEmail}
+                    onChange={(e) => setWizEmail(e.target.value)}
+                    placeholder="name@email.com"
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.phoneLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizPhone}
+                    onChange={(e) => setWizPhone(e.target.value)}
+                    placeholder="+1 555 234 5678"
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.locationLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizLocation}
+                    onChange={(e) => setWizLocation(e.target.value)}
+                    placeholder={wizUi.locationPh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 2 && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{wizUi.step2Title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{wizUi.step2Hint}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.companyLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizCompany}
+                    onChange={(e) => setWizCompany(e.target.value)}
+                    placeholder={wizUi.companyPh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.expRoleLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizExpRole}
+                    onChange={(e) => setWizExpRole(e.target.value)}
+                    placeholder={wizTitle || wizUi.rolePh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.periodLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizPeriod}
+                    onChange={(e) => setWizPeriod(e.target.value)}
+                    placeholder={wizUi.periodPh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    {wizUi.bulletsLabel}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setWizBullets(wizUi.sampleBulletsText)}
+                    className="text-[11px] font-semibold text-amber-700 dark:text-amber-400 hover:underline"
+                  >
+                    + {wizUi.addSampleBulletsBtn}
+                  </button>
+                </div>
+                <textarea
+                  rows={4}
+                  value={wizBullets}
+                  onChange={(e) => setWizBullets(e.target.value)}
+                  placeholder={wizUi.bulletsPh}
+                  className="w-full text-xs p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900 leading-relaxed"
+                />
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 3 && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{wizUi.step3Title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{wizUi.step3Hint}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.degreeLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizDegree}
+                    onChange={(e) => setWizDegree(e.target.value)}
+                    placeholder={wizUi.degreePh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.schoolLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizSchool}
+                    onChange={(e) => setWizSchool(e.target.value)}
+                    placeholder={wizUi.schoolPh}
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    {wizUi.eduPeriodLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={wizEduPeriod}
+                    onChange={(e) => setWizEduPeriod(e.target.value)}
+                    placeholder="2018 – 2022"
+                    className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {wizUi.skillsLabel}
+                </label>
+                <input
+                  type="text"
+                  value={wizSkills}
+                  onChange={(e) => setWizSkills(e.target.value)}
+                  placeholder={wizUi.skillsPh}
+                  className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {wizUi.langsLabel}
+                </label>
+                <input
+                  type="text"
+                  value={wizLangs}
+                  onChange={(e) => setWizLangs(e.target.value)}
+                  placeholder="English, Portuguese, Spanish"
+                  className="w-full text-xs px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:border-slate-900"
+                />
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 4 && (
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">{wizUi.step4Title}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{wizUi.step4Hint}</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {wizUi.wizardModels.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => setWizTemplate(model.id)}
+                    className={`p-3 rounded-xl border text-left transition-colors ${
+                      wizTemplate === model.id
+                        ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-400 text-slate-950 dark:text-white'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-400'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold">{model.label}</span>
+                      {wizTemplate === model.id && <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{model.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Wizard Navigation Footer */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              disabled={wizardStep === 1}
+              onClick={() => setWizardStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : 1))}
+              className="px-3 py-2 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 inline-flex items-center gap-1"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>{wizUi.backBtn}</span>
+            </button>
+
+            {wizardStep < 4 ? (
               <button
                 type="button"
-                onClick={() => {
-                  setGenerationMode('standard');
+                onClick={() => setWizardStep((s) => (s < 4 ? ((s + 1) as 1 | 2 | 3 | 4) : 4))}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 inline-flex items-center gap-1.5 transition-colors"
+              >
+                <Lightbulb className="w-3.5 h-3.5" />
+                <span>{wizUi.nextBtn}</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleFinishGuidedWizard}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-amber-300 inline-flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span>{wizUi.buildCvBtn}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* PATH B: EXISTING IMPORT LINKEDIN / PDF / RAW TEXT */}
+          {/* Compact Header & Mode / Standard Controls */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {guideMode === 'guided' && <LightbulbStepBadge step={1} active />}
+                <FileText className="w-4 h-4 text-slate-800 dark:text-slate-200 shrink-0" />
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                  {ui.title}
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                {/* Compact Mode Switcher */}
+                <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGenerationMode('standard');
                   setErrorMessage(null);
                 }}
                 title={ui.modeStandardDesc}
@@ -1607,6 +2466,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               disabled={isGenerating}
               className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg whitespace-nowrap shrink-0"
             >
+              {guideMode === 'guided' && !isGenerating && <LightbulbStepBadge step={2} active />}
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
@@ -1630,6 +2490,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

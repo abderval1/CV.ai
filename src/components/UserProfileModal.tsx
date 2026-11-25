@@ -85,7 +85,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     };
   }, []);
 
-  const pixKey = platformSettings.pixKey || 'f4693532-31da-4e95-a589-19bccab0d915';
+  const pixKey = (platformSettings.pixKey || '').trim();
   const pixKeyLabel = getPixKeyTypeLabel(platformSettings.pixKeyType, siteLanguage);
 
   const loadOrders = useCallback(async () => {
@@ -465,25 +465,27 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </div>
 
               {/* Pix Key Instant Reference */}
-              <div className="p-3.5 bg-teal-50/70 border border-teal-200 rounded-2xl text-xs space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-teal-950 flex items-center gap-1.5">
-                    <QrCode className="w-3.5 h-3.5 text-teal-700" />
-                    {ui.pixOfficialPrefix}{pixKeyLabel})
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleCopyPix}
-                    className="text-[11px] font-semibold text-teal-800 hover:text-teal-950 underline flex items-center gap-1"
-                  >
-                    {copiedPix ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedPix ? ui.copiedBtn : ui.copyKeyBtn}</span>
-                  </button>
+              {pixKey && (
+                <div className="p-3.5 bg-teal-50/70 border border-teal-200 rounded-2xl text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-teal-950 flex items-center gap-1.5">
+                      <QrCode className="w-3.5 h-3.5 text-teal-700" />
+                      {ui.pixOfficialPrefix}{pixKeyLabel})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyPix}
+                      className="text-[11px] font-semibold text-teal-800 hover:text-teal-950 underline flex items-center gap-1"
+                    >
+                      {copiedPix ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPix ? ui.copiedBtn : ui.copyKeyBtn}</span>
+                    </button>
+                  </div>
+                  <div className="p-2 bg-white rounded-xl border border-teal-200 font-mono text-[11px] text-slate-800 select-all break-all shadow-2xs">
+                    {pixKey}
+                  </div>
                 </div>
-                <div className="p-2 bg-white rounded-xl border border-teal-200 font-mono text-[11px] text-slate-800 select-all break-all shadow-2xs">
-                  {pixKey}
-                </div>
-              </div>
+              )}
 
               {/* RGPD Privacy & Data Rights */}
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2.5">

@@ -10,7 +10,9 @@ import {
   Target,
   SlidersHorizontal,
   Minus,
-  Briefcase
+  Briefcase,
+  Lightbulb,
+  Zap
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { GENERIC_DEFAULT_CV, GENERIC_DEFAULT_CV_PT } from '../data/initialCV';
@@ -35,6 +37,8 @@ import {
 
 interface LandingHeroViewProps {
   onStartCreating: () => void;
+  onStartGuided?: () => void;
+  onStartSolo?: () => void;
   onOpenPricing: () => void;
   onSelectPlanForCheckout?: (plan: SubscriptionPlan, cycle: BillingCycle) => void;
   onSelectTemplate: (templateId: string) => void;
@@ -43,6 +47,87 @@ interface LandingHeroViewProps {
   currentCV?: CVData;
   onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview' | 'jobs') => void;
 }
+
+const MARKETING_MODE_COPY = {
+  pt: {
+    chooseLabel: 'Escolha como prefere trabalhar:',
+    guidedTitle: 'Passo a Passo Guiado',
+    guidedSub: 'Lâmpadas numeradas mostram onde clicar em cada etapa',
+    soloTitle: 'Fazer Sozinho',
+    soloSub: 'Editor direto e rápido sem guias',
+    applyFunnel: [
+      { num: '1', title: 'Lê o seu CV automaticamente', desc: 'Extrai cargo, idiomas e competências chave do currículo.' },
+      { num: '2', title: 'Filtra vagas compatíveis', desc: 'Filtra por perfil, remoto/híbrido, país e contrato.' },
+      { num: '3', title: 'Adapta e Candidata-se em 1 Clique', desc: 'Ajusta palavras ATS para a vaga e acompanha a candidatura.' }
+    ],
+    applyQuickBtn: 'Candidatar-se'
+  },
+  en: {
+    chooseLabel: 'Choose how you want to build:',
+    guidedTitle: 'Step-by-Step Guided',
+    guidedSub: 'Numbered lightbulbs show exactly where to click next',
+    soloTitle: 'Do It Myself (Solo)',
+    soloSub: 'Direct self-service studio without prompts',
+    applyFunnel: [
+      { num: '1', title: 'Reads your CV automatically', desc: 'Matches your title, skills, and seniority across job boards.' },
+      { num: '2', title: 'Filters by profile & location', desc: 'Filter live roles by remote, hybrid, country, and match %.' },
+      { num: '3', title: 'Tailor & Apply in 1 Click', desc: 'Align ATS keywords and submit directly with tracked status.' }
+    ],
+    applyQuickBtn: 'Apply Now'
+  },
+  es: {
+    chooseLabel: 'Elige cómo prefieres crear tu CV:',
+    guidedTitle: 'Paso a Paso Guiado',
+    guidedSub: 'Bombillas numeradas muestran dónde hacer clic en cada paso',
+    soloTitle: 'Hacerlo Solo',
+    soloSub: 'Editor directo y ágil sin indicaciones',
+    applyFunnel: [
+      { num: '1', title: 'Lee tu CV automáticamente', desc: 'Detecta puesto, habilidades y experiencia al instante.' },
+      { num: '2', title: 'Filtra vacantes compatibles', desc: 'Filtra por perfil, remoto/híbrido, país y afinidad.' },
+      { num: '3', title: 'Adapta y Postula en 1 Clic', desc: 'Ajusta el CV al puesto y envía en el portal oficial.' }
+    ],
+    applyQuickBtn: 'Postular Ahora'
+  },
+  fr: {
+    chooseLabel: 'Choisissez votre mode de création :',
+    guidedTitle: 'Pas à Pas Guidé',
+    guidedSub: 'Ampoules numérotées indiquant où cliquer à chaque étape',
+    soloTitle: 'Faire Seul',
+    soloSub: 'Accès direct à l’éditeur complet',
+    applyFunnel: [
+      { num: '1', title: 'Lit votre CV automatiquement', desc: 'Extrait poste, compétences et séniorité en un instant.' },
+      { num: '2', title: 'Filtre les offres compatibles', desc: 'Tri par profil, télétravail, pays et score de compatibilité.' },
+      { num: '3', title: 'Adaptez & Postulez en 1 Clic', desc: 'Optimisez vos mots-clés ATS et suivez vos candidatures.' }
+    ],
+    applyQuickBtn: 'Postuler'
+  },
+  de: {
+    chooseLabel: 'Wählen Sie Ihren Arbeitsmodus:',
+    guidedTitle: 'Schritt-für-Schritt Geführt',
+    guidedSub: 'Nummerierte Glühbirnen zeigen jeden nächsten Klick',
+    soloTitle: 'Selbst Erstellen',
+    soloSub: 'Direkter Studio-Zugang ohne Hinweise',
+    applyFunnel: [
+      { num: '1', title: 'Liest Ihren CV automatisch', desc: 'Erkennt Position, Skills und Erfahrung sofort.' },
+      { num: '2', title: 'Filtert passende Stellen', desc: 'Nach Profil, Remote, Land und Match-Score filtern.' },
+      { num: '3', title: 'Anpassen & direkt Bewerben', desc: 'ATS-Keywords optimieren und Bewerbung verfolgen.' }
+    ],
+    applyQuickBtn: 'Bewerben'
+  },
+  it: {
+    chooseLabel: 'Scegli come preferisci creare:',
+    guidedTitle: 'Passo Dopo Passo Guidato',
+    guidedSub: 'Lampadine numerate mostrano dove cliccare in ogni fase',
+    soloTitle: 'Fai da Te',
+    soloSub: 'Editor diretto senza suggerimenti guidati',
+    applyFunnel: [
+      { num: '1', title: 'Legge il tuo CV in automatico', desc: 'Estrae ruolo, competenze ed esperienza all’istante.' },
+      { num: '2', title: 'Filtra le offerte compatibili', desc: 'Filtra per profilo, remoto/ibrido, paese e affinità.' },
+      { num: '3', title: 'Adatta e Candidati in 1 Clic', desc: 'Ottimizza le parole chiave ATS e traccia l’invio.' }
+    ],
+    applyQuickBtn: 'Candidati Ora'
+  }
+} as const;
 
 const HERO_PREVIEW_MODELS: Array<{
   id: TemplateStyle;
@@ -88,6 +173,8 @@ const HERO_PREVIEW_MODELS: Array<{
 
 export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   onStartCreating,
+  onStartGuided,
+  onStartSolo,
   onOpenPricing,
   onSelectPlanForCheckout,
   onSelectTemplate,
@@ -99,6 +186,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const { currency, formatPrice, convertFromUSD } = useCurrency();
   const { siteText, siteLanguage } = useLanguage();
   const l = siteText.landing;
+  const mktMode = MARKETING_MODE_COPY[siteLanguage] || MARKETING_MODE_COPY.en;
   const cycles = siteText.billingCycles;
   const [heroModelIdx, setHeroModelIdx] = useState<number>(0);
   const [heroPreviewLang, setHeroPreviewLang] = useState<'en' | 'pt'>('en');
@@ -113,6 +201,29 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const [adminTemplates, setAdminTemplates] = useState(() => getStoredTemplatesSync());
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
 
+  const [liveJobsByProfile, setLiveJobsByProfile] = useState<
+    Partial<
+      Record<
+        'coo' | 'tech' | 'finance',
+        Array<{
+          id: string;
+          profile: 'coo' | 'tech' | 'finance';
+          title: string;
+          company: string;
+          workplace: 'remote' | 'hybrid';
+          workplaceLabel: string;
+          region: 'us_global' | 'europe';
+          regionLabel: string;
+          contract: string;
+          matchScore: number;
+          matchedKeywords: string[];
+          applyUrl?: string;
+          sourceName?: string;
+        }>
+      >
+    >
+  >({});
+
   useEffect(() => {
     const refreshConfig = () => {
       setAdminTemplates(getStoredTemplatesSync());
@@ -125,6 +236,102 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       window.removeEventListener('storage', refreshConfig);
     };
   }, []);
+
+  useEffect(() => {
+    if (liveJobsByProfile[jobMatchProfile]?.length) return;
+    let cancelled = false;
+    const profileQueries: Record<
+      'coo' | 'tech' | 'finance',
+      { title: string; skills: string; search: string }
+    > = {
+      coo: {
+        title: 'Chief Operating Officer VP Operations',
+        skills: 'Operations Strategy P&L Management Supply Chain KPIs OKRs',
+        search: 'operations'
+      },
+      tech: {
+        title: 'Senior Full Stack Engineer Cloud Architect',
+        skills: 'TypeScript React Node.js AWS Kubernetes PostgreSQL',
+        search: 'engineer'
+      },
+      finance: {
+        title: 'FP&A Director Financial Controller CFO',
+        skills: 'IFRS US GAAP Financial Modeling FP&A Treasury Audit',
+        search: 'finance'
+      }
+    };
+    const meta = profileQueries[jobMatchProfile];
+    fetch('/api/jobs/match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        search: meta.search,
+        cv: {
+          personalDetails: { title: meta.title, location: 'Remote' },
+          summary: meta.skills,
+          competencies: [{ id: '1', category: 'Core', description: meta.skills }]
+        }
+      })
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const rawJobs = Array.isArray(data?.matchedJobs)
+          ? data.matchedJobs
+          : Array.isArray(data?.jobs)
+          ? data.jobs
+          : [];
+        if (cancelled || rawJobs.length === 0) return;
+        const mapped = rawJobs.slice(0, 8).map((j: any) => {
+          const wpRaw = String(j.workplace || '').toLowerCase();
+          const workplace: 'remote' | 'hybrid' = wpRaw.includes('hybrid') ? 'hybrid' : 'remote';
+          const locJoined = [
+            ...(Array.isArray(j.locations) ? j.locations : []),
+            ...(Array.isArray(j.allowedCountries) ? j.allowedCountries : [])
+          ]
+            .join(' ')
+            .toLowerCase();
+          const isEurope =
+            /\b(europe|eu|uk|germany|france|spain|portugal|netherlands|berlin|london|paris|lisbon|madrid|emea)\b/.test(
+              locJoined
+            );
+          const region: 'us_global' | 'europe' = isEurope ? 'europe' : 'us_global';
+          return {
+            id: String(j.id || `live-${Math.random()}`),
+            profile: jobMatchProfile,
+            title: String(j.title || ''),
+            company: String(j.company || j.sourceName || 'Verified Employer'),
+            workplace,
+            workplaceLabel:
+              workplace === 'hybrid'
+                ? l.jobMatch.workplaceFilters.hybrid
+                : l.jobMatch.workplaceFilters.remote,
+            region,
+            regionLabel:
+              (Array.isArray(j.locations) && j.locations[0]) ||
+              (region === 'europe' ? l.jobMatch.regionFilters.europe : l.jobMatch.regionFilters.us_global),
+            contract: String(j.employmentType || j.sourceName || 'Full-time'),
+            matchScore: typeof j.matchScore === 'number' ? j.matchScore : 82,
+            matchedKeywords:
+              Array.isArray(j.matchedKeywords) && j.matchedKeywords.length > 0
+                ? j.matchedKeywords.slice(0, 4)
+                : Array.isArray(j.skills)
+                ? j.skills.slice(0, 4)
+                : [],
+            applyUrl: typeof j.applyUrl === 'string' ? j.applyUrl : undefined,
+            sourceName: typeof j.sourceName === 'string' ? j.sourceName : undefined
+          };
+        });
+        if (mapped.length > 0) {
+          setLiveJobsByProfile((prev) => ({ ...prev, [jobMatchProfile]: mapped }));
+        }
+      })
+      .catch(() => {
+        // Keep localized catalog gracefully when offline
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [jobMatchProfile, liveJobsByProfile, l.jobMatch.workplaceFilters, l.jobMatch.regionFilters]);
 
   const proPlan = adminPlans.find((p) => p.id === 'pro') || adminPlans[0];
   const execPlan = adminPlans.find((p) => p.id === 'executive') || adminPlans[1];
@@ -434,16 +641,28 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     [l.jobMatch.profiles, jobMatchProfile]
   );
 
-  const filteredMatchJobs = useMemo(
-    () =>
-      l.jobMatch.jobs.filter((job) => {
-        if (job.profile !== jobMatchProfile) return false;
-        if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
-        if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
-        return true;
-      }),
-    [l.jobMatch.jobs, jobMatchProfile, jobMatchWorkplace, jobMatchRegion]
-  );
+  const filteredMatchJobs = useMemo(() => {
+    const liveList = liveJobsByProfile[jobMatchProfile];
+    const sourceList = liveList && liveList.length > 0 ? liveList : l.jobMatch.jobs;
+    const matched = sourceList.filter((job) => {
+      if (job.profile !== jobMatchProfile) return false;
+      if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
+      if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
+      return true;
+    });
+    if (matched.length > 0) return matched.slice(0, 4);
+    if (liveList && liveList.length > 0) {
+      return l.jobMatch.jobs
+        .filter((job) => {
+          if (job.profile !== jobMatchProfile) return false;
+          if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
+          if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
+          return true;
+        })
+        .slice(0, 4);
+    }
+    return [];
+  }, [liveJobsByProfile, l.jobMatch.jobs, jobMatchProfile, jobMatchWorkplace, jobMatchRegion]);
 
   const filteredTemplates = activeMergedTemplates.filter((tmpl) => {
     if (templateFilter === 'without_photo') return !tmpl.hasPhoto;
@@ -517,7 +736,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <div className="pt-1 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
                 <button
                   type="button"
-                  onClick={onStartCreating}
+                  onClick={onStartGuided || onStartCreating}
                   className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation shadow-xs"
                 >
                   <span>{l.ctaBuild}</span>
@@ -532,6 +751,52 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>{l.ctaExploreModels}</span>
                 </button>
+              </div>
+
+              {/* 2-Path Creation Choice: Step-by-Step Lightbulb Guide vs Self-Service Solo */}
+              <div className="pt-1 space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  {mktMode.chooseLabel}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
+                  <button
+                    type="button"
+                    onClick={onStartGuided || onStartCreating}
+                    className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-500/10 hover:bg-amber-100/90 dark:hover:bg-amber-500/15 border border-amber-300/90 dark:border-amber-500/30 transition-colors flex items-start gap-2.5 group"
+                  >
+                    <span className="w-6 h-6 rounded-md bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 mt-0.5">
+                      <Lightbulb className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-950 dark:text-white flex items-center gap-1">
+                        <span>{mktMode.guidedTitle}</span>
+                        <ArrowRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-300 block leading-snug mt-0.5">
+                        {mktMode.guidedSub}
+                      </span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onStartSolo || onStartCreating}
+                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition-colors flex items-start gap-2.5 group"
+                  >
+                    <span className="w-6 h-6 rounded-md bg-slate-900 dark:bg-slate-700 text-white flex items-center justify-center shrink-0 mt-0.5">
+                      <Zap className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-slate-950 dark:text-white flex items-center gap-1">
+                        <span>{mktMode.soloTitle}</span>
+                        <ArrowRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                      <span className="text-[11px] text-slate-600 dark:text-slate-400 block leading-snug mt-0.5">
+                        {mktMode.soloSub}
+                      </span>
+                    </div>
+                  </button>
+                </div>
               </div>
 
               <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
@@ -737,6 +1002,26 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </button>
           </div>
 
+          {/* Clear 3-Step Job Discovery & Application Funnel */}
+          <div className="grid grid-cols-1 md:grid-cols-3 border border-slate-200 dark:border-slate-800 rounded-xl divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800 bg-slate-50/70 dark:bg-[#0E131D] overflow-hidden">
+            {mktMode.applyFunnel.map((fStep) => (
+              <div key={fStep.num} className="p-4 flex items-start gap-3">
+                <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-amber-400 text-slate-950 text-[11px] font-extrabold tabular-nums shrink-0 mt-0.5">
+                  <Lightbulb className="w-3 h-3" />
+                  <span>{fStep.num}</span>
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-950 dark:text-white leading-snug">
+                    {fStep.title}
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    {fStep.desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 space-y-5 shadow-xs dark:shadow-none">
             {/* CV Profile Switcher + Live Work-Mode & Region Filters */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -855,9 +1140,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       <button
                         type="button"
                         onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
-                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold rounded-md transition-colors whitespace-nowrap"
+                        className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-md transition-colors whitespace-nowrap inline-flex items-center gap-1"
                       >
-                        {l.jobMatch.browseJobsCta}
+                        <span>{mktMode.applyQuickBtn}</span>
+                        <ArrowRight className="w-3 h-3" />
                       </button>
                     </div>
                   </div>

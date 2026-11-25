@@ -88,6 +88,36 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   return data;
 }
 
+function reportSupportError(
+  context: string,
+  err: unknown,
+  op: OperationType,
+  path: string,
+  onError?: (msg: string) => void
+): string {
+  const rawMsg = err instanceof Error ? err.message : String(err || 'Erro desconhecido');
+  const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : '';
+  if (code.includes('permission-denied')) {
+    try {
+      handleFirestoreError(err, op, path);
+    } catch (wrappedErr: unknown) {
+      const wrappedMsg = wrappedErr instanceof Error ? wrappedErr.message : rawMsg;
+      console.error(`[SupportChat:${context}] Firestore permission denied on "${path}":`, wrappedMsg);
+      const friendly = `Permissão Firestore recusada em ${path}. Verifique as regras ou sessão.`;
+      onError?.(friendly);
+      return friendly;
+    }
+  }
+  console.error(`[SupportChat:${context}] Failed on "${path}":`, {
+    code: code || undefined,
+    message: rawMsg,
+    error: err
+  });
+  const friendly = code ? `[${code}] ${rawMsg}` : rawMsg;
+  onError?.(friendly);
+  return friendly;
+}
+
 export function mergeSupportMessagesList(
   a: SupportChatMessage[] = [],
   b: SupportChatMessage[] = []
@@ -215,52 +245,96 @@ async function syncSupportToFirestore(
   }
 }
 
-async function fetchMyFirestoreThread(): Promise<SupportChatThread | null> {
+async function fetchMyFirestoreThread(
+  onError?: (msg: string) => void
+): Promise<{ thread: SupportChatThread | null; error?: string }> {
   const fbUser = auth.currentUser;
-  if (!fbUser?.uid || !isValidFirestoreId(fbUser.uid)) return null;
+  if (!fbUser?.uid || !isValidFirestoreId(fbUser.uid)) {
+    return { thread: null };
+  }
+  let lastError: string | undefined;
   try {
     const threadRef = doc(db, 'supportThreads', fbUser.uid);
+    const msgsQuery = query(
+      collection(db, 'supportThreads', fbUser.uid, 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(150)
+    );
+
     const [threadSnap, msgsSnap] = await Promise.all([
-      getDoc(threadRef).catch(() => null),
-      getDocs(
-        query(collection(db, 'supportThreads', fbUser.uid, 'messages'), orderBy('createdAt', 'asc'), limit(150))
-      ).catch(() => null)
+      getDoc(threadRef).catch((err) => {
+        lastError = reportSupportError(
+          'fetchMyFirestoreThread:doc',
+          err,
+          OperationType.GET,
+          `supportThreads/${fbUser.uid}`,
+          onError
+        );
+        return null;
+      }),
+      getDocs(msgsQuery).catch((err) => {
+        lastError = reportSupportError(
+          'fetchMyFirestoreThread:messages',
+          err,
+          OperationType.LIST,
+          `supportThreads/${fbUser.uid}/messages`,
+          onError
+        );
+        return null;
+      })
     ]);
 
     const fsMsgs: SupportChatMessage[] = msgsSnap
       ? msgsSnap.docs.map((d) => d.data() as SupportChatMessage)
       : [];
     const fsData = threadSnap && threadSnap.exists() ? (threadSnap.data() as SupportChatThread) : null;
-    if (!fsData && fsMsgs.length === 0) return null;
+    if (!fsData && fsMsgs.length === 0) {
+      return { thread: null, error: lastError };
+    }
 
     const nowIso = new Date().toISOString();
     const lastMsg = fsMsgs[fsMsgs.length - 1];
     return {
-      id: fbUser.uid,
-      userId: fbUser.uid,
-      userName: sanitizeUserName(fsData?.userName || fbUser.displayName, fsData?.userEmail || fbUser.email),
-      userEmail: sanitizeUserEmail(fsData?.userEmail, fbUser.email),
-      ...(fsData?.userAvatarUrl || fbUser.photoURL
-        ? { userAvatarUrl: sanitizeAvatarUrl(fsData?.userAvatarUrl || fbUser.photoURL) }
-        : {}),
-      userPlan: sanitizePlan(fsData?.userPlan),
-      status: fsData?.status === 'resolved' ? 'resolved' : 'open',
-      lastMessageText: fsData?.lastMessageText || lastMsg?.text || '',
-      lastMessageSenderRole: fsData?.lastMessageSenderRole || lastMsg?.senderRole,
-      lastMessageAt: fsData?.lastMessageAt || lastMsg?.createdAt || nowIso,
-      unreadByUser: Number(fsData?.unreadByUser) || 0,
-      unreadByAdmin: Number(fsData?.unreadByAdmin) || 0,
-      createdAt: fsData?.createdAt || lastMsg?.createdAt || nowIso,
-      updatedAt: fsData?.updatedAt || lastMsg?.createdAt || nowIso,
-      messages: fsMsgs
+      thread: {
+        id: fbUser.uid,
+        userId: fbUser.uid,
+        userName: sanitizeUserName(fsData?.userName || fbUser.displayName, fsData?.userEmail || fbUser.email),
+        userEmail: sanitizeUserEmail(fsData?.userEmail, fbUser.email),
+        ...(fsData?.userAvatarUrl || fbUser.photoURL
+          ? { userAvatarUrl: sanitizeAvatarUrl(fsData?.userAvatarUrl || fbUser.photoURL) }
+          : {}),
+        userPlan: sanitizePlan(fsData?.userPlan),
+        status: fsData?.status === 'resolved' ? 'resolved' : 'open',
+        lastMessageText: fsData?.lastMessageText || lastMsg?.text || '',
+        lastMessageSenderRole: fsData?.lastMessageSenderRole || lastMsg?.senderRole,
+        lastMessageAt: fsData?.lastMessageAt || lastMsg?.createdAt || nowIso,
+        unreadByUser: Number(fsData?.unreadByUser) || 0,
+        unreadByAdmin: Number(fsData?.unreadByAdmin) || 0,
+        createdAt: fsData?.createdAt || lastMsg?.createdAt || nowIso,
+        updatedAt: fsData?.updatedAt || lastMsg?.createdAt || nowIso,
+        messages: fsMsgs
+      },
+      error: lastError
     };
-  } catch {
-    return null;
+  } catch (err) {
+    lastError = reportSupportError(
+      'fetchMyFirestoreThread',
+      err,
+      OperationType.GET,
+      `supportThreads/${fbUser.uid}`,
+      onError
+    );
+    return { thread: null, error: lastError };
   }
 }
 
-export async function fetchMySupportThread(): Promise<SupportChatThread> {
-  const [backendResult, fsThread] = await Promise.all([
+export async function fetchMySupportThread(options?: {
+  onError?: (msg: string) => void;
+}): Promise<SupportChatThread> {
+  let backendError: string | undefined;
+  let fsError: string | undefined;
+
+  const [backendResult, fsRes] = await Promise.all([
     authorizedFetch('/api/support-chat/thread', { method: 'GET', cache: 'no-store' })
       .then((res) => parseJsonResponse<{ thread?: SupportChatThread }>(res))
       .then((data) =>
@@ -271,9 +345,18 @@ export async function fetchMySupportThread(): Promise<SupportChatThread> {
             }
           : null
       )
-      .catch(() => null),
-    fetchMyFirestoreThread()
+      .catch((err: unknown) => {
+        backendError = err instanceof Error ? err.message : String(err || 'Erro HTTP');
+        console.warn('[SupportChat:fetchMySupportThread] HTTP /api/support-chat/thread fallback triggered:', backendError);
+        return null;
+      }),
+    fetchMyFirestoreThread((msg) => {
+      fsError = msg;
+    })
   ]);
+
+  const fsThread = fsRes.thread;
+  if (fsRes.error) fsError = fsRes.error;
 
   if (backendResult && fsThread) {
     const backendTs = new Date(backendResult.updatedAt || backendResult.lastMessageAt || 0).getTime();
@@ -289,11 +372,27 @@ export async function fetchMySupportThread(): Promise<SupportChatThread> {
     };
   }
 
-  if (fsThread) return fsThread;
-  if (backendResult) return backendResult;
+  if (fsThread) {
+    if (fsError) options?.onError?.(fsError);
+    return fsThread;
+  }
+  if (backendResult) {
+    if (fsError && String(fsError).includes('Permissão Firestore')) {
+      options?.onError?.(fsError);
+    }
+    return backendResult;
+  }
 
   const fbUser = auth.currentUser;
   if (fbUser?.uid) {
+    if (fsError || backendError) {
+      const combinedErr = fsError || backendError || 'Falha ao sincronizar histórico do chat.';
+      console.error('[SupportChat:fetchMySupportThread] Could not load history from HTTP or Firestore:', {
+        backendError,
+        fsError
+      });
+      options?.onError?.(combinedErr);
+    }
     const nowIso = new Date().toISOString();
     return {
       id: fbUser.uid,
@@ -313,7 +412,10 @@ export async function fetchMySupportThread(): Promise<SupportChatThread> {
     };
   }
 
-  throw new Error('Não foi possível carregar a conversa de suporte.');
+  const finalErr = fsError || backendError || 'Não foi possível carregar a conversa de suporte.';
+  console.error('[SupportChat:fetchMySupportThread] All channels failed:', finalErr);
+  options?.onError?.(finalErr);
+  throw new Error(finalErr);
 }
 
 export async function sendUserSupportMessage(
@@ -369,7 +471,7 @@ export async function sendUserSupportMessage(
       createdAt: nowIso
     };
 
-    const existing = await fetchMyFirestoreThread();
+    const { thread: existing } = await fetchMyFirestoreThread();
     const threadSnapshot: SupportChatThread = {
       id: fbUser.uid,
       userId: fbUser.uid,
@@ -480,8 +582,11 @@ export function mergeSupportThreads(
   );
 }
 
-async function fetchFirestoreAdminThreads(): Promise<SupportChatThread[]> {
-  if (!auth.currentUser) return [];
+async function fetchFirestoreAdminThreads(
+  onError?: (msg: string) => void
+): Promise<{ threads: SupportChatThread[]; error?: string }> {
+  if (!auth.currentUser) return { threads: [] };
+  let lastError: string | undefined;
   try {
     const q = query(collection(db, 'supportThreads'), orderBy('lastMessageAt', 'desc'), limit(80));
     const snap = await getDocs(q);
@@ -494,8 +599,14 @@ async function fetchFirestoreAdminThreads(): Promise<SupportChatThread[]> {
             query(collection(db, 'supportThreads', d.id, 'messages'), orderBy('createdAt', 'asc'), limit(150))
           );
           msgs = msgSnap.docs.map((m) => m.data() as SupportChatMessage);
-        } catch {
-          // ignore subcollection read errors
+        } catch (subErr) {
+          lastError = reportSupportError(
+            'fetchFirestoreAdminThreads:messages',
+            subErr,
+            OperationType.LIST,
+            `supportThreads/${d.id}/messages`,
+            onError
+          );
         }
         return {
           ...th,
@@ -504,29 +615,64 @@ async function fetchFirestoreAdminThreads(): Promise<SupportChatThread[]> {
         };
       })
     );
-    return items.filter((t) => (t.messages && t.messages.length > 0) || Boolean(t.lastMessageText));
-  } catch {
-    return [];
+    return {
+      threads: items.filter((t) => (t.messages && t.messages.length > 0) || Boolean(t.lastMessageText)),
+      error: lastError
+    };
+  } catch (err) {
+    lastError = reportSupportError(
+      'fetchFirestoreAdminThreads',
+      err,
+      OperationType.LIST,
+      'supportThreads',
+      onError
+    );
+    return { threads: [], error: lastError };
   }
 }
 
-export async function fetchAdminSupportThreads(): Promise<{
+export async function fetchAdminSupportThreads(options?: {
+  onError?: (msg: string) => void;
+}): Promise<{
   threads: SupportChatThread[];
   unreadTotal: number;
+  error?: string;
 }> {
-  const [backendResult, fsThreads] = await Promise.all([
+  let backendError: string | undefined;
+  let fsError: string | undefined;
+
+  const [backendResult, fsRes] = await Promise.all([
     authorizedFetch('/api/admin/support-chat/threads', {
       method: 'GET',
       cache: 'no-store'
     })
       .then((res) => parseJsonResponse<{ threads: SupportChatThread[]; unreadTotal: number }>(res))
-      .catch(() => ({ threads: [] as SupportChatThread[], unreadTotal: 0 })),
-    fetchFirestoreAdminThreads()
+      .catch((err: unknown) => {
+        backendError = err instanceof Error ? err.message : String(err || 'Erro HTTP');
+        console.warn('[SupportChat:fetchAdminSupportThreads] HTTP /api/admin/support-chat/threads fallback triggered:', backendError);
+        return { threads: [] as SupportChatThread[], unreadTotal: 0 };
+      }),
+    fetchFirestoreAdminThreads((msg) => {
+      fsError = msg;
+    })
   ]);
 
-  const merged = mergeSupportThreads(backendResult.threads || [], fsThreads);
+  if (fsRes.error) fsError = fsRes.error;
+  const merged = mergeSupportThreads(backendResult.threads || [], fsRes.threads || []);
   const unreadTotal = merged.reduce((sum, t) => sum + (Number(t.unreadByAdmin) || 0), 0);
-  return { threads: merged, unreadTotal };
+
+  const surfacedError =
+    fsError && String(fsError).includes('Permissão Firestore')
+      ? fsError
+      : merged.length === 0 && (fsError || backendError)
+      ? fsError || backendError
+      : undefined;
+
+  if (surfacedError) {
+    options?.onError?.(surfacedError);
+  }
+
+  return { threads: merged, unreadTotal, error: surfacedError };
 }
 
 export async function sendAdminSupportReply(
@@ -714,11 +860,12 @@ export async function updateAdminSupportThreadStatus(
 
 /**
  * Connects to the authoritative WebSocket server on `/ws/support-chat`
- * with exponential backoff reconnection on unexpected drops.
+ * with handshake timeout protection and exponential backoff reconnection.
  */
 export function subscribeSupportChatWebSocket(
   onEvent: (event: SupportChatRealtimeEvent) => void,
-  onStatusChange?: (status: SupportWsStatus) => void
+  onStatusChange?: (status: SupportWsStatus) => void,
+  onError?: (msg: string) => void
 ): () => void {
   if (typeof window === 'undefined') return () => {};
 
@@ -728,12 +875,17 @@ export function subscribeSupportChatWebSocket(
   let preOpenFailures = 0;
   let reconnectAttempts = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let connectTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   const clearTimers = () => {
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
+    }
+    if (connectTimeoutTimer) {
+      clearTimeout(connectTimeoutTimer);
+      connectTimeoutTimer = null;
     }
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
@@ -752,20 +904,34 @@ export function subscribeSupportChatWebSocket(
 
     try {
       ws = new WebSocket(url);
-    } catch {
+    } catch (err) {
+      console.warn('[SupportChat:WS] WebSocket constructor failed, falling back to HTTP/Firestore polling:', err);
+      onError?.('WebSocket indisponível; a usar sincronização HTTP/Firestore.');
       onStatusChange?.('disconnected');
       return;
     }
 
     let openedThisAttempt = false;
 
+    if (connectTimeoutTimer) clearTimeout(connectTimeoutTimer);
+    connectTimeoutTimer = setTimeout(() => {
+      if (!openedThisAttempt && ws && ws.readyState === WebSocket.CONNECTING) {
+        console.warn('[SupportChat:WS] Handshake timed out after 6000ms — switching to HTTP/Firestore fallback.');
+        try {
+          ws.close();
+        } catch {
+          // ignore close error
+        }
+      }
+    }, 6000);
+
     ws.onopen = () => {
       openedThisAttempt = true;
       hadSuccessfulOpen = true;
       preOpenFailures = 0;
       reconnectAttempts = 0;
-      onStatusChange?.('connected');
       clearTimers();
+      onStatusChange?.('connected');
       heartbeatTimer = setInterval(() => {
         if (ws && ws.readyState === WebSocket.OPEN) {
           try {
@@ -783,12 +949,16 @@ export function subscribeSupportChatWebSocket(
         if (parsed && parsed.type) {
           onEvent(parsed);
         }
-      } catch {
-        // ignore malformed frames
+      } catch (err) {
+        console.warn('[SupportChat:WS] Ignored malformed WebSocket frame:', err);
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (evt) => {
+      if (connectTimeoutTimer) {
+        clearTimeout(connectTimeoutTimer);
+        connectTimeoutTimer = null;
+      }
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
@@ -799,11 +969,17 @@ export function subscribeSupportChatWebSocket(
       }
       if (!openedThisAttempt && !hadSuccessfulOpen) {
         preOpenFailures += 1;
+        console.warn(
+          `[SupportChat:WS] Connection closed before opening (attempt ${preOpenFailures}, code=${evt.code || 'unknown'}).`
+        );
         if (preOpenFailures >= 2) {
-          // Serverless hostings (e.g. Vercel) do not support WS upgrade; fall back cleanly to HTTP/Firestore sync
+          // Serverless hostings (e.g. Vercel) do not support WS upgrade; fall back cleanly to HTTP/Firestore polling
+          console.info('[SupportChat:WS] WebSocket unsupported on host; using HTTP/Firestore polling.');
           onStatusChange?.('disconnected');
           return;
         }
+      } else {
+        console.warn(`[SupportChat:WS] Socket dropped (code=${evt.code || 'unknown'}), scheduling reconnect.`);
       }
       reconnectAttempts += 1;
       onStatusChange?.('reconnecting');
@@ -811,8 +987,8 @@ export function subscribeSupportChatWebSocket(
       reconnectTimer = setTimeout(connect, delayMs);
     };
 
-    ws.onerror = () => {
-      // onclose handles cleanup & backoff reconnection
+    ws.onerror = (evt) => {
+      console.warn('[SupportChat:WS] Socket transport error detected; fallback polling active.', evt);
     };
   };
 
@@ -837,15 +1013,13 @@ export function subscribeSupportChatWebSocket(
  * Real-time Firestore mirror listener for authenticated user's own messages.
  */
 export function subscribeMyFirestoreSupportMessages(
-  onMessages: (messages: SupportChatMessage[]) => void
+  onMessages: (messages: SupportChatMessage[]) => void,
+  onError?: (msg: string) => void
 ): () => void {
   const fbUser = auth.currentUser;
   if (!fbUser?.uid || !isValidFirestoreId(fbUser.uid)) return () => {};
-  const q = query(
-    collection(db, 'supportThreads', fbUser.uid, 'messages'),
-    orderBy('createdAt', 'asc'),
-    limit(150)
-  );
+  const path = `supportThreads/${fbUser.uid}/messages`;
+  const q = query(collection(db, 'supportThreads', fbUser.uid, 'messages'), orderBy('createdAt', 'asc'), limit(150));
   const unsub: Unsubscribe = onSnapshot(
     q,
     (snap) => {
@@ -855,13 +1029,7 @@ export function subscribeMyFirestoreSupportMessages(
       }
     },
     (err) => {
-      if (String(err?.code || '').includes('permission-denied')) {
-        try {
-          handleFirestoreError(err, OperationType.LIST, `supportThreads/${fbUser.uid}/messages`);
-        } catch {
-          // handled
-        }
-      }
+      reportSupportError('subscribeMyFirestoreSupportMessages', err, OperationType.LIST, path, onError);
     }
   );
   return () => unsub();
@@ -871,10 +1039,12 @@ export function subscribeMyFirestoreSupportMessages(
  * Watches the user's supportThreads document in Firestore for instant unread badge / status updates.
  */
 export function subscribeMyFirestoreSupportThread(
-  onThread: (thread: SupportChatThread) => void
+  onThread: (thread: SupportChatThread) => void,
+  onError?: (msg: string) => void
 ): () => void {
   const fbUser = auth.currentUser;
   if (!fbUser?.uid || !isValidFirestoreId(fbUser.uid)) return () => {};
+  const path = `supportThreads/${fbUser.uid}`;
   const ref = doc(db, 'supportThreads', fbUser.uid);
   const unsub: Unsubscribe = onSnapshot(
     ref,
@@ -886,13 +1056,7 @@ export function subscribeMyFirestoreSupportThread(
       }
     },
     (err) => {
-      if (String(err?.code || '').includes('permission-denied')) {
-        try {
-          handleFirestoreError(err, OperationType.GET, `supportThreads/${fbUser.uid}`);
-        } catch {
-          // handled
-        }
-      }
+      reportSupportError('subscribeMyFirestoreSupportThread', err, OperationType.GET, path, onError);
     }
   );
   return () => unsub();
@@ -902,7 +1066,8 @@ export function subscribeMyFirestoreSupportThread(
  * Watches all supportThreads in Firestore for Admin Dashboard real-time inbox sync on serverless hosts.
  */
 export function subscribeAdminFirestoreSupportThreads(
-  onThreads: (threads: SupportChatThread[]) => void
+  onThreads: (threads: SupportChatThread[]) => void,
+  onError?: (msg: string) => void
 ): () => void {
   const fbUser = auth.currentUser;
   if (!fbUser?.uid) return () => {};
@@ -924,8 +1089,14 @@ export function subscribeAdminFirestoreSupportThreads(
                 )
               );
               msgs = msgSnap.docs.map((m) => m.data() as SupportChatMessage);
-            } catch {
-              // ignore
+            } catch (subErr) {
+              reportSupportError(
+                'subscribeAdminFirestoreSupportThreads:messages',
+                subErr,
+                OperationType.LIST,
+                `supportThreads/${d.id}/messages`,
+                onError
+              );
             }
             return {
               ...th,
@@ -938,12 +1109,12 @@ export function subscribeAdminFirestoreSupportThreads(
         if (nonEmpty.length > 0) {
           onThreads(nonEmpty);
         }
-      } catch {
-        // ignore transient errors
+      } catch (err) {
+        reportSupportError('subscribeAdminFirestoreSupportThreads:snap', err, OperationType.LIST, 'supportThreads', onError);
       }
     },
-    () => {
-      // ignore non-admin listener permissions if token refreshed
+    (err) => {
+      reportSupportError('subscribeAdminFirestoreSupportThreads', err, OperationType.LIST, 'supportThreads', onError);
     }
   );
   return () => unsub();
@@ -954,14 +1125,12 @@ export function subscribeAdminFirestoreSupportThreads(
  */
 export function subscribeAdminFirestoreThreadMessages(
   threadId: string,
-  onMessages: (messages: SupportChatMessage[]) => void
+  onMessages: (messages: SupportChatMessage[]) => void,
+  onError?: (msg: string) => void
 ): () => void {
   if (!auth.currentUser || !isValidFirestoreId(threadId)) return () => {};
-  const q = query(
-    collection(db, 'supportThreads', threadId, 'messages'),
-    orderBy('createdAt', 'asc'),
-    limit(150)
-  );
+  const path = `supportThreads/${threadId}/messages`;
+  const q = query(collection(db, 'supportThreads', threadId, 'messages'), orderBy('createdAt', 'asc'), limit(150));
   const unsub: Unsubscribe = onSnapshot(
     q,
     (snap) => {
@@ -970,8 +1139,8 @@ export function subscribeAdminFirestoreThreadMessages(
         onMessages(list);
       }
     },
-    () => {
-      // ignore permission errors on non-admin/stale states
+    (err) => {
+      reportSupportError('subscribeAdminFirestoreThreadMessages', err, OperationType.LIST, path, onError);
     }
   );
   return () => unsub();

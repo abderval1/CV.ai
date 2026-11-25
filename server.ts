@@ -181,11 +181,14 @@ export function createApiApp() {
     next();
   });
 
-  // Security HTTP headers (iframe-compatible for AI Studio preview, no X-Frame-Options: DENY)
+  // Security HTTP headers (iframe-compatible for AI Studio preview, allows Stripe Payment APIs)
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), payment=(), usb=()');
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), geolocation=(), payment=(self "https://js.stripe.com" "https://checkout.stripe.com"), usb=()'
+    );
     res.setHeader('X-DNS-Prefetch-Control', 'off');
     res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
     if (isProduction || req.secure || req.headers['x-forwarded-proto'] === 'https') {
@@ -194,10 +197,15 @@ export function createApiApp() {
     next();
   });
 
-  // Strict per-endpoint JSON body limits: 2mb default, 14mb allowed only on /api/extract-document
+  // Strict per-endpoint JSON body limits: raw buffer for Stripe webhook signature verification,
+  // 14mb allowed only on /api/extract-document, 2mb default elsewhere.
+  const webhookRawParser = express.raw({ type: 'application/json', limit: '2mb' });
   const defaultJsonParser = express.json({ limit: '2mb' });
   const uploadJsonParser = express.json({ limit: '14mb' });
   app.use((req, res, next) => {
+    if (req.path === '/api/stripe/webhook') {
+      return webhookRawParser(req, res, next);
+    }
     if (req.path === '/api/extract-document') {
       return uploadJsonParser(req, res, next);
     }
@@ -391,6 +399,8 @@ export function createApiApp() {
     checkoutOpenedCount: number;
     wordExportsCount: number;
     aiCallsCount: number;
+    todayAiCallsDate?: string;
+    todayAiCallsCount?: number;
     estimatedTokensUsed: number;
     templateSelections: Record<string, number>;
     languageSelections: Record<string, number>;
@@ -410,6 +420,8 @@ export function createApiApp() {
       checkoutOpenedCount: 0,
       wordExportsCount: 0,
       aiCallsCount: 0,
+      todayAiCallsDate: new Date().toISOString().slice(0, 10),
+      todayAiCallsCount: 0,
       estimatedTokensUsed: 0,
       templateSelections: {},
       languageSelections: {},
@@ -432,6 +444,11 @@ export function createApiApp() {
     if (!authStore.telemetry.languageSelections) authStore.telemetry.languageSelections = {};
     if (!authStore.telemetry.featureUsage) {
       authStore.telemetry.featureUsage = createEmptyTelemetry().featureUsage;
+    }
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    if (authStore.telemetry.todayAiCallsDate !== todayYmd) {
+      authStore.telemetry.todayAiCallsDate = todayYmd;
+      authStore.telemetry.todayAiCallsCount = 0;
     }
     return authStore.telemetry as ServerTelemetryData;
   }
@@ -464,7 +481,13 @@ export function createApiApp() {
         const l = String(event.language || '').slice(0, 16).toLowerCase();
         if (l) tel.languageSelections[l] = (tel.languageSelections[l] || 0) + 1;
       } else if (event.type === 'ai_called') {
+        const todayYmd = new Date().toISOString().slice(0, 10);
+        if (tel.todayAiCallsDate !== todayYmd) {
+          tel.todayAiCallsDate = todayYmd;
+          tel.todayAiCallsCount = 0;
+        }
         tel.aiCallsCount += 1;
+        tel.todayAiCallsCount = (tel.todayAiCallsCount || 0) + 1;
         tel.estimatedTokensUsed += Math.max(0, Math.min(20000, Number(event.tokens) || 1400));
         tel.featureUsage[event.feature] = (tel.featureUsage[event.feature] || 0) + 1;
       }
@@ -883,12 +906,11 @@ export function createApiApp() {
     throw lastError || new Error('Serviço de IA temporariamente indisponível.');
   }
 
-  // Initialize Stripe client if secret key is available (Apenas 2 chaves: Secret Key e Publishable Key)
-  const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_KEY;
+  // Initialize Stripe client if secret key is available (Secret Key + Publishable Key + optional Webhook Secret)
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.STRIPE_KEY || '';
   const stripePublishableKey =
-    process.env.STRIPE_PUBLISHABLE_KEY ||
-    process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-    'pk_live_51SZIxqBnqz01NuqKqCW35zbD4WIxv1ws4HhsX8s2p78SHrldEIfpcTuvlLYhATRFBcDq9hy1zAUjuGZnvF6Wi4Wg00CjKUEhsr';
+    process.env.STRIPE_PUBLISHABLE_KEY || process.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+  const stripeWebhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 
   let stripeClient: Stripe | null = null;
   if (stripeSecretKey) {
@@ -1189,6 +1211,7 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
       );
 
       const parsedData = parseAiJson(response.text);
+      incrementUserCvGeneratedRecord(req, 1);
       recordServerTelemetry({
         type: 'ai_called',
         feature: 'aiTailor',
@@ -1445,6 +1468,8 @@ Responda ESTRITAMENTE em formato JSON com esta estrutura exata:
       );
 
       const parsed = parseAiJson(response.text);
+      incrementUserCvGeneratedRecord(req, 1);
+      recordServerTelemetry({ type: 'resume_started' });
       recordServerTelemetry({
         type: 'ai_called',
         feature: 'rawImport',
@@ -1546,6 +1571,7 @@ Responda ESTRITAMENTE em JSON:
       );
 
       const parsed = parseAiJson(response.text);
+      incrementUserCvGeneratedRecord(req, 1);
       recordServerTelemetry({
         type: 'ai_called',
         feature: 'coverLetter',
@@ -2398,6 +2424,9 @@ Retorne ESTRITAMENTE JSON válido com esta estrutura exata:
             `Extração estruturada: ${extractedCV.experiences.length} cargo(s), ${highlightsTotal} conquista(s), ${extractedCV.competencies.length} bloco(s) de competências, ${extractedCV.trainings.length} certificação(ões)/projeto(s).`
           );
 
+          incrementUserCvGeneratedRecord(req, 1);
+          recordServerTelemetry({ type: 'resume_started' });
+
           return res.json({
             jobId,
             status: 'completed',
@@ -2902,7 +2931,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       isTestMode: Boolean(stripeSecretKey && !stripeSecretKey.startsWith('sk_live_') && !stripeSecretKey.startsWith('rk_live_')),
       supportedCurrencies: ['usd', 'brl'],
       pixConfig: {
-        pixKey: gov.pixKey || 'f4693532-31da-4e95-a589-19bccab0d915',
+        pixKey: String(gov.pixKey || process.env.PIX_KEY || '').trim(),
         pixKeyType: gov.pixKeyType || 'evp',
         pixBeneficiaryName: gov.pixBeneficiaryName || 'CURRICULO ESTRATEGICO',
         pixCity: gov.pixCity || 'SAO PAULO'
@@ -2956,6 +2985,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         secretMode,
         publishableMode,
         keysMatchMode,
+        webhookConfigured: Boolean(stripeWebhookSecret),
         apiReachable: false,
         error: 'Chave secreta Stripe não configurada.'
       });
@@ -2968,6 +2998,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         secretMode,
         publishableMode,
         keysMatchMode,
+        webhookConfigured: Boolean(stripeWebhookSecret),
         apiReachable: true
       });
     } catch (err: any) {
@@ -2976,11 +3007,100 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         secretMode,
         publishableMode,
         keysMatchMode,
+        webhookConfigured: Boolean(stripeWebhookSecret),
         apiReachable: false,
         error: err?.message || 'Falha ao validar conexão com o processador de cartão.'
       });
     }
   });
+
+  function upsertUserOrder(ownerUid: string, order: any) {
+    if (!order || !ownerUid) return order;
+    if (!authStore.ordersByUser) authStore.ordersByUser = {};
+    const existing = authStore.ordersByUser[ownerUid] || [];
+    const filtered = existing.filter((o) => {
+      if (!o) return false;
+      if (o.id === order.id) return false;
+      if (order.stripePaymentIntentId && o.stripePaymentIntentId === order.stripePaymentIntentId) return false;
+      if (
+        order.stripeSubscriptionId &&
+        o.stripeSubscriptionId === order.stripeSubscriptionId &&
+        !order.stripePaymentIntentId &&
+        !o.stripePaymentIntentId
+      ) {
+        return false;
+      }
+      return true;
+    });
+    authStore.ordersByUser[ownerUid] = [order, ...filtered].slice(0, 100);
+    return order;
+  }
+
+  function getCombinedUserOrders(userOrId: BackendUserRecord | string | undefined): any[] {
+    if (!userOrId || !authStore.ordersByUser) return [];
+    const userRec = typeof userOrId === 'string' ? authStore.users[userOrId] : userOrId;
+    const rawId = typeof userOrId === 'string' ? userOrId : userOrId.id;
+    const cleanEmail = String(userRec?.email || '').trim().toLowerCase();
+    const candidateKeys = new Set<string>([rawId]);
+    if (userRec?.id) candidateKeys.add(userRec.id);
+    if (userRec?.firebaseUid) candidateKeys.add(userRec.firebaseUid);
+    if (cleanEmail) {
+      for (const sibling of findBackendUsersByEmail(cleanEmail)) {
+        if (sibling.id) candidateKeys.add(sibling.id);
+        if (sibling.firebaseUid) candidateKeys.add(sibling.firebaseUid);
+      }
+    }
+
+    const byId = new Map<string, any>();
+    for (const [bucketKey, list] of Object.entries(authStore.ordersByUser)) {
+      if (!Array.isArray(list)) continue;
+      for (const item of list) {
+        if (!item?.id) continue;
+        const itemEmail = String(item.userEmail || '').trim().toLowerCase();
+        const matchesUser =
+          candidateKeys.has(bucketKey) ||
+          (item.userId && candidateKeys.has(String(item.userId))) ||
+          (cleanEmail && itemEmail === cleanEmail);
+        if (matchesUser) {
+          byId.set(item.id, item);
+        }
+      }
+    }
+
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
+  }
+
+  function findUserByStripeRefs(refs: {
+    userId?: string | null;
+    email?: string | null;
+    customerId?: string | null;
+    subscriptionId?: string | null;
+  }): BackendUserRecord | undefined {
+    const uid = refs.userId ? String(refs.userId).trim() : '';
+    if (uid && authStore.users[uid]) return authStore.users[uid];
+    if (uid) {
+      const byFb = Object.values(authStore.users).find((u) => u.firebaseUid === uid);
+      if (byFb) return byFb;
+    }
+    const cleanEmail = refs.email ? String(refs.email).trim().toLowerCase() : '';
+    if (cleanEmail) {
+      const byEmail = findBackendUserByEmail(cleanEmail);
+      if (byEmail) return byEmail;
+    }
+    const cusId = refs.customerId ? String(refs.customerId).trim() : '';
+    if (cusId) {
+      const byCus = Object.values(authStore.users).find((u) => u.stripeCustomerId === cusId);
+      if (byCus) return byCus;
+    }
+    const subId = refs.subscriptionId ? String(refs.subscriptionId).trim() : '';
+    if (subId) {
+      const bySub = Object.values(authStore.users).find((u) => u.stripeSubscriptionId === subId);
+      if (bySub) return bySub;
+    }
+    return undefined;
+  }
 
   function activateOrderAndUserPlan(order: any) {
     if (!order) return null;
@@ -3068,7 +3188,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Inicie sessão na sua conta antes de concluir a subscrição.' });
       }
-      const sessionUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const sessionUser = resolveAuthenticatedUserRecord(payload);
       if (sessionUser?.status === 'suspended') {
         return res.status(403).json({ error: 'Esta conta encontra-se suspensa.' });
       }
@@ -3134,8 +3254,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           sessionUser.updatedAt = now.toISOString();
           syncDuplicateBackendUsers(sessionUser);
         }
-        if (!authStore.ordersByUser) authStore.ordersByUser = {};
-        authStore.ordersByUser[verifiedUserId] = [promoOrder, ...(authStore.ordersByUser[verifiedUserId] || [])].slice(0, 50);
+        upsertUserOrder(verifiedUserId, promoOrder);
         persistAuthStore();
 
         return res.json({
@@ -3148,7 +3267,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           amount: 0,
           currency: targetCurrency.toUpperCase(),
           nextBillingDate,
-          order: promoOrder
+          order: promoOrder,
+          user: sessionUser ? sanitizeUser(sessionUser) : undefined
         });
       }
 
@@ -3176,7 +3296,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
       if (!customerId) {
         const existingCustomers = await stripeClient.customers.list({ email: cleanEmail, limit: 1 });
-        if (existingCustomers.data.length > 0) {
+        if (existingCustomers.data.length > 0 && !(existingCustomers.data[0] as any).deleted) {
           customerId = existingCustomers.data[0].id;
         } else {
           const createdCustomer = await stripeClient.customers.create({
@@ -3186,6 +3306,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           });
           customerId = createdCustomer.id;
         }
+      }
+
+      if (sessionUser && customerId && sessionUser.stripeCustomerId !== customerId) {
+        sessionUser.stripeCustomerId = customerId;
+        sessionUser.updatedAt = new Date().toISOString();
+        syncDuplicateBackendUsers(sessionUser);
+        persistAuthStore();
       }
 
       const productId = await ensureGatewayProductId(pricing.plan);
@@ -3205,7 +3332,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           }
         ],
         payment_behavior: 'default_incomplete',
-        payment_settings: { save_default_payment_method: 'on_subscription' },
+        payment_settings: {
+          payment_method_types: ['card'],
+          save_default_payment_method: 'on_subscription'
+        },
         metadata: {
           userId: verifiedUserId,
           userEmail: cleanEmail,
@@ -3214,7 +3344,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           billingCycle: pricing.billingCycle,
           couponCode: pricing.appliedCoupon?.code || ''
         },
-        expand: ['latest_invoice.confirmation_secret']
+        expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payment_intent']
       });
 
       const latestInvoice = subscription.latest_invoice as any;
@@ -3224,9 +3354,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       if (!clientSecret && latestInvoice?.id) {
         const retrievedInv = await stripeClient.invoices.retrieve(latestInvoice.id, {
-          expand: ['confirmation_secret']
+          expand: ['confirmation_secret', 'payment_intent']
         });
-        clientSecret = (retrievedInv as any)?.confirmation_secret?.client_secret;
+        clientSecret =
+          (retrievedInv as any)?.confirmation_secret?.client_secret ||
+          (retrievedInv as any)?.payment_intent?.client_secret;
       }
 
       if (!clientSecret) {
@@ -3267,10 +3399,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ verified: false, error: 'Sessão inválida ou expirada.' });
       }
-      const callerUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const callerUser = resolveAuthenticatedUserRecord(payload);
 
-      const { subscriptionId, paymentIntentId, plan: rawPlan, billingCycle: rawCycle, cardLast4, cardBrand } =
-        req.body || {};
+      const {
+        subscriptionId,
+        paymentIntentId,
+        setupIntentId,
+        plan: rawPlan,
+        billingCycle: rawCycle,
+        cardLast4,
+        cardBrand
+      } = req.body || {};
 
       if (!stripeClient) {
         return res.status(503).json({
@@ -3283,7 +3422,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const subscription = await stripeClient.subscriptions.retrieve(subscriptionId, {
-        expand: ['latest_invoice']
+        expand: ['latest_invoice', 'default_payment_method']
       });
 
       const subCustomerId =
@@ -3294,6 +3433,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const metaUserEmail = String(subscription.metadata?.userEmail || '').trim().toLowerCase();
       const ownsSubscription =
         metaUserId === payload.uid ||
+        (callerUser?.id && metaUserId === callerUser.id) ||
         (metaUserEmail && metaUserEmail === String(payload.email || '').toLowerCase()) ||
         (callerUser?.stripeCustomerId && callerUser.stripeCustomerId === subCustomerId);
       if (!ownsSubscription && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())) {
@@ -3301,11 +3441,34 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       let paymentSucceeded = false;
-      let verifiedIntentId = typeof paymentIntentId === 'string' ? paymentIntentId : '';
-      if (verifiedIntentId) {
-        const pi = await stripeClient.paymentIntents.retrieve(verifiedIntentId);
-        if (pi.status === 'succeeded' && (!pi.customer || pi.customer === subCustomerId)) {
+      const verifiedIntentId = typeof paymentIntentId === 'string' ? paymentIntentId.trim() : '';
+      const verifiedSetupIntentId = typeof setupIntentId === 'string' ? setupIntentId.trim() : '';
+      let resolvedBrand = typeof cardBrand === 'string' ? cardBrand.trim() : '';
+      let resolvedLast4 = typeof cardLast4 === 'string' ? cardLast4.trim() : '';
+
+      if (verifiedIntentId && verifiedIntentId.startsWith('pi_')) {
+        const pi = await stripeClient.paymentIntents
+          .retrieve(verifiedIntentId, { expand: ['payment_method'] })
+          .catch(() => null);
+        const piCus = typeof pi?.customer === 'string' ? pi.customer : (pi?.customer as any)?.id;
+        if (pi && pi.status === 'succeeded' && (!piCus || piCus === subCustomerId)) {
           paymentSucceeded = true;
+          const pmCard = (pi.payment_method as any)?.card;
+          if (!resolvedBrand && pmCard?.brand) resolvedBrand = String(pmCard.brand).toUpperCase();
+          if (!resolvedLast4 && pmCard?.last4) resolvedLast4 = String(pmCard.last4);
+        }
+      }
+
+      if (!paymentSucceeded && verifiedSetupIntentId && verifiedSetupIntentId.startsWith('seti_')) {
+        const si = await stripeClient.setupIntents
+          .retrieve(verifiedSetupIntentId, { expand: ['payment_method'] })
+          .catch(() => null);
+        const siCus = typeof si?.customer === 'string' ? si.customer : (si?.customer as any)?.id;
+        if (si && si.status === 'succeeded' && (!siCus || siCus === subCustomerId)) {
+          paymentSucceeded = true;
+          const pmCard = (si.payment_method as any)?.card;
+          if (!resolvedBrand && pmCard?.brand) resolvedBrand = String(pmCard.brand).toUpperCase();
+          if (!resolvedLast4 && pmCard?.last4) resolvedLast4 = String(pmCard.last4);
         }
       }
 
@@ -3316,6 +3479,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         latestInv?.status === 'paid'
       ) {
         paymentSucceeded = true;
+      }
+
+      if (!resolvedBrand && !resolvedLast4 && (subscription.default_payment_method as any)?.card) {
+        const defaultCard = (subscription.default_payment_method as any).card;
+        if (defaultCard.brand) resolvedBrand = String(defaultCard.brand).toUpperCase();
+        if (defaultCard.last4) resolvedLast4 = String(defaultCard.last4);
       }
 
       if (!paymentSucceeded) {
@@ -3334,8 +3503,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const targetUser =
         callerUser ||
-        (metaUserId && authStore.users[metaUserId]) ||
-        (metaUserEmail ? findBackendUserByEmail(metaUserEmail) : undefined);
+        findUserByStripeRefs({
+          userId: metaUserId,
+          email: metaUserEmail,
+          customerId,
+          subscriptionId: subscription.id
+        });
 
       const nextBillingDate = new Date(Date.now() + spec.days * 86400000).toISOString();
       const amountPaid = latestInv?.amount_paid
@@ -3360,11 +3533,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const now = new Date();
-      const uidKey = targetUser?.id || metaUserId || metaUserEmail || 'client';
-      if (!authStore.ordersByUser) authStore.ordersByUser = {};
-      const existingOrders = authStore.ordersByUser[uidKey] || [];
+      const uidKey = targetUser?.id || metaUserId || metaUserEmail || payload.uid;
+      const existingOrders = getCombinedUserOrders(targetUser || uidKey);
       let order = existingOrders.find(
-        (o) => o?.stripeSubscriptionId === subscription.id || (verifiedIntentId && o?.stripePaymentIntentId === verifiedIntentId)
+        (o) =>
+          o?.stripeSubscriptionId === subscription.id ||
+          (verifiedIntentId && o?.stripePaymentIntentId === verifiedIntentId)
       );
 
       if (!order) {
@@ -3384,14 +3558,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           paymentMethod: 'card',
           status: 'paid',
           stripeSubscriptionId: subscription.id,
-          stripePaymentIntentId: verifiedIntentId || undefined,
+          stripePaymentIntentId: verifiedIntentId || verifiedSetupIntentId || undefined,
           receiptUrl,
           createdAt: now.toISOString(),
           notes: `Assinatura ${spec.label.toLowerCase()} confirmada via Cartão${
-            cardBrand || cardLast4 ? ` (${cardBrand || 'Cartão'} ${cardLast4 ? 'final ' + cardLast4 : ''})` : ''
+            resolvedBrand || resolvedLast4
+              ? ` (${resolvedBrand || 'Cartão'} ${resolvedLast4 ? 'final ' + resolvedLast4 : ''})`
+              : ''
           }. Renovação: ${nextBillingDate.slice(0, 10)}.`
         };
-        authStore.ordersByUser[uidKey] = [order, ...existingOrders].slice(0, 50);
+        upsertUserOrder(uidKey, order);
       }
 
       persistAuthStore();
@@ -3400,14 +3576,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         verified: true,
         subscriptionId: subscription.id,
         customerId,
-        paymentIntentId: verifiedIntentId || undefined,
+        paymentIntentId: verifiedIntentId || verifiedSetupIntentId || undefined,
+        cardBrand: resolvedBrand || undefined,
+        cardLast4: resolvedLast4 || undefined,
         plan,
         billingCycle,
         amount: amountPaid,
         currency: currencyPaid,
         nextBillingDate,
         receiptUrl,
-        order
+        order,
+        user: targetUser ? sanitizeUser(targetUser) : undefined
       });
     } catch (err: any) {
       console.error('Erro ao confirmar assinatura por cartão:', err);
@@ -3429,7 +3608,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ error: 'Inicie sessão antes de prosseguir com o pagamento.' });
       }
-      const sessionUser = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const sessionUser = resolveAuthenticatedUserRecord(payload);
       if (sessionUser?.status === 'suspended') {
         return res.status(403).json({ error: 'Esta conta encontra-se suspensa.' });
       }
@@ -3498,12 +3677,23 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
+      let verifiedCustomerId = sessionUser?.stripeCustomerId;
+      if (verifiedCustomerId) {
+        const existingCus = await stripeClient.customers.retrieve(verifiedCustomerId).catch(() => null);
+        if (!existingCus || (existingCus as any).deleted) {
+          verifiedCustomerId = undefined;
+        }
+      }
+
       const session = await stripeClient.checkout.sessions.create({
         mode: 'subscription',
-        customer_email: verifiedUserEmail || undefined,
+        ...(verifiedCustomerId
+          ? { customer: verifiedCustomerId }
+          : { customer_email: verifiedUserEmail || undefined }),
         client_reference_id: verifiedUserId,
         metadata: {
           userId: verifiedUserId,
+          userEmail: verifiedUserEmail,
           userName: verifiedUserName,
           plan: pricing.plan,
           billingCycle: pricing.billingCycle,
@@ -3513,6 +3703,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           metadata: {
             userId: verifiedUserId,
             userEmail: verifiedUserEmail,
+            userName: verifiedUserName,
             plan: pricing.plan,
             billingCycle: pricing.billingCycle,
             couponCode: pricing.appliedCoupon?.code || ''
@@ -3596,7 +3787,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     }
   });
 
-  // 6. Strict Checkout Session Verification
+  // 6. Strict Checkout Session Verification (Idempotent activation + order persistence)
   app.post('/api/stripe/verify-session', async (req, res) => {
     try {
       if (!checkPaymentRateLimit(req)) {
@@ -3607,6 +3798,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (!payload?.uid) {
         return res.status(401).json({ verified: false, error: 'Sessão não autenticada.' });
       }
+      const callerUser = resolveAuthenticatedUserRecord(payload);
 
       const { sessionId } = req.body || {};
       if (!sessionId || typeof sessionId !== 'string') {
@@ -3618,12 +3810,65 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         if (!promo) {
           return res.status(404).json({ verified: false, error: 'Sessão promocional não encontrada.' });
         }
+        const promoEmail = String(promo.userEmail || '').toLowerCase();
+        const callerEmail = String(callerUser?.email || payload.email || '').toLowerCase();
         if (
           promo.userId !== payload.uid &&
-          String(promo.userEmail || '').toLowerCase() !== String(payload.email || '').toLowerCase()
+          (!callerUser?.id || promo.userId !== callerUser.id) &&
+          promoEmail !== callerEmail
         ) {
           return res.status(403).json({ verified: false, error: 'Sessão promocional não pertence à conta autenticada.' });
         }
+
+        const promoCycle = normalizeServerCycle(promo.billingCycle);
+        const promoPlan: 'pro' | 'executive' = promo.plan === 'executive' ? 'executive' : 'pro';
+        const promoDays = getServerCycleSpec(promoCycle).days;
+        const nextBillingDate = new Date(Date.now() + promoDays * 86400000).toISOString();
+        const targetUser =
+          callerUser || findUserByStripeRefs({ userId: promo.userId, email: promo.userEmail });
+
+        if (targetUser) {
+          const nowMs = Date.now();
+          targetUser.plan = promoPlan;
+          targetUser.billingCycle = promoCycle;
+          targetUser.creditsRemaining = 9999;
+          targetUser.subscriptionExpiresAt = nextBillingDate;
+          targetUser.stripeSubscriptionId = promo.subscriptionId;
+          targetUser.stripeStatus = 'active';
+          targetUser.status = 'active';
+          targetUser.planUpdatedAt = nowMs;
+          targetUser.updatedAt = new Date(nowMs).toISOString();
+          syncDuplicateBackendUsers(targetUser);
+        }
+
+        const uidKey = targetUser?.id || promo.userId || payload.uid;
+        let order = getCombinedUserOrders(targetUser || uidKey).find(
+          (o) => o?.stripeSubscriptionId === promo.subscriptionId
+        );
+        if (!order) {
+          const now = new Date();
+          order = {
+            id: `ord-${Date.now()}`,
+            orderNumber: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+              Math.floor(1000 + Math.random() * 9000)
+            )}`,
+            userId: uidKey,
+            userName: targetUser?.name || callerEmail || 'Assinante',
+            userEmail: promo.userEmail || callerEmail,
+            plan: promoPlan,
+            billingCycle: promoCycle,
+            amount: 0,
+            currency: 'USD',
+            paymentMethod: 'card',
+            status: 'paid',
+            stripeSubscriptionId: promo.subscriptionId,
+            createdAt: now.toISOString(),
+            notes: `Assinatura ativada via Checkout com cupom 100% (${promo.couponCode}).`
+          };
+          upsertUserOrder(uidKey, order);
+        }
+        persistAuthStore();
+
         return res.json({
           verified: true,
           mode: 'coupon_100',
@@ -3631,10 +3876,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           paymentStatus: 'paid',
           subscriptionId: promo.subscriptionId,
           customerId: undefined,
-          plan: promo.plan,
-          billingCycle: normalizeServerCycle(promo.billingCycle),
+          plan: promoPlan,
+          billingCycle: promoCycle,
           amount: 0,
-          currency: 'USD'
+          currency: 'USD',
+          nextBillingDate,
+          order,
+          user: targetUser ? sanitizeUser(targetUser) : undefined
         });
       }
 
@@ -3643,15 +3891,23 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
 
       const session = await stripeClient.checkout.sessions.retrieve(sessionId, {
-        expand: ['subscription', 'customer']
+        expand: ['subscription', 'subscription.latest_invoice', 'customer']
       });
 
+      const sub = session.subscription as Stripe.Subscription | null;
+      const customerId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id;
+      const callerEmail = String(callerUser?.email || payload.email || '').toLowerCase();
+      const sessionEmail = String(
+        session.customer_email || session.customer_details?.email || session.metadata?.userEmail || ''
+      ).toLowerCase();
       const sessionOwnerMatch =
         session.client_reference_id === payload.uid ||
+        (callerUser?.id && session.client_reference_id === callerUser.id) ||
         session.metadata?.userId === payload.uid ||
-        String(session.customer_email || session.customer_details?.email || '').toLowerCase() ===
-          String(payload.email || '').toLowerCase();
-      if (!sessionOwnerMatch && !ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase())) {
+        (callerUser?.id && session.metadata?.userId === callerUser.id) ||
+        (callerUser?.stripeCustomerId && customerId && callerUser.stripeCustomerId === customerId) ||
+        (sessionEmail && callerEmail && sessionEmail === callerEmail);
+      if (!sessionOwnerMatch && !ADMIN_EMAILS_BACKEND.has(callerEmail)) {
         return res.status(403).json({ verified: false, error: 'Sessão de pagamento não pertence à conta autenticada.' });
       }
 
@@ -3668,13 +3924,80 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         });
       }
 
-      const sub = session.subscription as Stripe.Subscription | null;
-      const plan: 'pro' | 'executive' = session.metadata?.plan === 'executive' ? 'executive' : 'pro';
-      const billingCycle = normalizeServerCycle(session.metadata?.billingCycle);
-      const customerId = typeof session.customer === 'string' ? session.customer : (session.customer as any)?.id;
+      const plan: 'pro' | 'executive' =
+        session.metadata?.plan === 'executive' || sub?.metadata?.plan === 'executive' ? 'executive' : 'pro';
+      const billingCycle = normalizeServerCycle(session.metadata?.billingCycle || sub?.metadata?.billingCycle);
+      const spec = getServerCycleSpec(billingCycle);
       const subscriptionId = typeof session.subscription === 'string' ? session.subscription : sub?.id;
-      const amount = session.amount_total ? Math.round((session.amount_total / 100) * 100) / 100 : resolveServerPlanPricing(plan, billingCycle).baseUSD;
+      const amount = session.amount_total
+        ? Math.round((session.amount_total / 100) * 100) / 100
+        : resolveServerPlanPricing(plan, billingCycle).baseUSD;
       const currency = String(session.currency || 'usd').toUpperCase();
+      const latestInv = (sub as any)?.latest_invoice as any;
+      const receiptUrl = latestInv?.hosted_invoice_url || latestInv?.invoice_pdf || undefined;
+      const nextBillingDate = new Date(Date.now() + spec.days * 86400000).toISOString();
+
+      const targetUser =
+        callerUser ||
+        findUserByStripeRefs({
+          userId: session.metadata?.userId || session.client_reference_id,
+          email: sessionEmail || callerEmail,
+          customerId,
+          subscriptionId
+        });
+
+      if (targetUser) {
+        const nowMs = Date.now();
+        targetUser.plan = plan;
+        targetUser.billingCycle = billingCycle;
+        targetUser.creditsRemaining = 9999;
+        targetUser.subscriptionExpiresAt = nextBillingDate;
+        if (customerId) targetUser.stripeCustomerId = customerId;
+        if (subscriptionId) targetUser.stripeSubscriptionId = subscriptionId;
+        targetUser.stripeStatus = 'active';
+        targetUser.status = 'active';
+        targetUser.planUpdatedAt = nowMs;
+        targetUser.updatedAt = new Date(nowMs).toISOString();
+        syncDuplicateBackendUsers(targetUser);
+      }
+
+      const uidKey = targetUser?.id || session.metadata?.userId || payload.uid;
+      const existingOrders = getCombinedUserOrders(targetUser || uidKey);
+      let order = existingOrders.find(
+        (o) =>
+          (subscriptionId && o?.stripeSubscriptionId === subscriptionId) ||
+          o?.stripePaymentIntentId === session.id
+      );
+
+      if (!order) {
+        const now = new Date();
+        order = {
+          id: `ord-${Date.now()}`,
+          orderNumber: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+            Math.floor(1000 + Math.random() * 9000)
+          )}`,
+          userId: uidKey,
+          userName: session.metadata?.userName || session.customer_details?.name || targetUser?.name || 'Assinante',
+          userEmail: sessionEmail || targetUser?.email || callerEmail,
+          plan,
+          billingCycle,
+          amount,
+          currency,
+          paymentMethod: 'card',
+          status: 'paid',
+          stripeSubscriptionId: subscriptionId,
+          stripePaymentIntentId: session.id,
+          receiptUrl,
+          createdAt: now.toISOString(),
+          notes: `Assinatura ${spec.label.toLowerCase()} confirmada via Checkout Seguro Stripe. Renovação: ${nextBillingDate.slice(
+            0,
+            10
+          )}.`
+        };
+        upsertUserOrder(uidKey, order);
+      }
+
+      persistAuthStore();
 
       return res.json({
         verified: true,
@@ -3687,7 +4010,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         plan,
         billingCycle,
         amount,
-        currency
+        currency,
+        nextBillingDate,
+        receiptUrl,
+        order,
+        user: targetUser ? sanitizeUser(targetUser) : undefined
       });
     } catch (err: any) {
       console.error('Erro ao verificar sessão de pagamento:', err);
@@ -3789,10 +4116,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(400).json({ error: 'Identificador de assinatura obrigatório.' });
       }
 
-      const userRec = authStore.users[payload.uid] || findBackendUserByEmail(payload.email);
+      const userRec = resolveAuthenticatedUserRecord(payload);
       const isAdmin =
         userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
-      const userOrders = authStore.ordersByUser?.[payload.uid] || [];
+      const userOrders = getCombinedUserOrders(userRec || payload.uid);
       const ownsSub =
         userRec?.stripeSubscriptionId === subscriptionId ||
         userOrders.some((o) => o?.stripeSubscriptionId === subscriptionId);
@@ -3815,6 +4142,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       if (stripeClient && subscriptionId.startsWith('sub_') && !subscriptionId.startsWith('sub_promo_')) {
         const canceled = await stripeClient.subscriptions.cancel(subscriptionId);
+        if (userRec && userRec.stripeSubscriptionId === subscriptionId) {
+          userRec.stripeStatus = 'canceled';
+          userRec.updatedAt = new Date().toISOString();
+          syncDuplicateBackendUsers(userRec);
+          persistAuthStore();
+        }
         appendServerAuditLog(req, {
           actorUserId: payload.uid,
           actorEmail: payload.email,
@@ -3831,6 +4164,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           status: canceled.status,
           message: 'Renovação automática cancelada com sucesso.'
         });
+      }
+
+      if (userRec && userRec.stripeSubscriptionId === subscriptionId) {
+        userRec.stripeStatus = 'canceled';
+        userRec.updatedAt = new Date().toISOString();
+        syncDuplicateBackendUsers(userRec);
+        persistAuthStore();
       }
 
       appendServerAuditLog(req, {
@@ -3852,6 +4192,210 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     } catch (err: any) {
       console.error('Erro ao cancelar assinatura:', err);
       return res.status(500).json({ error: 'Não foi possível cancelar a assinatura neste momento.' });
+    }
+  });
+
+  // 9. Stripe Webhook Handler (signature-verified async renewals, Checkout completions, and cancellations)
+  app.post('/api/stripe/webhook', async (req, res) => {
+    try {
+      if (!stripeClient || !stripeWebhookSecret) {
+        return res.status(503).json({
+          error: 'Webhook Stripe não configurado (STRIPE_WEBHOOK_SECRET ausente).'
+        });
+      }
+      const sig = req.headers['stripe-signature'];
+      if (!sig || typeof sig !== 'string' || !Buffer.isBuffer(req.body)) {
+        return res.status(400).json({ error: 'Assinatura Stripe ausente ou corpo inválido.' });
+      }
+
+      let event: Stripe.Event;
+      try {
+        event = stripeClient.webhooks.constructEvent(req.body, sig, stripeWebhookSecret);
+      } catch (err: any) {
+        console.warn('Webhook Stripe rejeitado por assinatura inválida:', err?.message);
+        return res.status(400).json({ error: 'Assinatura Stripe inválida.' });
+      }
+
+      const obj = event.data.object as any;
+
+      if (event.type === 'checkout.session.completed') {
+        const isPaid = obj?.payment_status === 'paid' || obj?.payment_status === 'no_payment_required';
+        if (isPaid) {
+          const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
+          const subscriptionId = typeof obj.subscription === 'string' ? obj.subscription : obj.subscription?.id;
+          const userRec = findUserByStripeRefs({
+            userId: obj?.metadata?.userId || obj?.client_reference_id,
+            email: obj?.customer_details?.email || obj?.customer_email || obj?.metadata?.userEmail,
+            customerId,
+            subscriptionId
+          });
+          if (userRec) {
+            const plan: 'pro' | 'executive' = obj?.metadata?.plan === 'executive' ? 'executive' : 'pro';
+            const billingCycle = normalizeServerCycle(obj?.metadata?.billingCycle);
+            const days = getServerCycleSpec(billingCycle).days;
+            const nowMs = Date.now();
+            userRec.plan = plan;
+            userRec.billingCycle = billingCycle;
+            userRec.creditsRemaining = 9999;
+            userRec.subscriptionExpiresAt = new Date(nowMs + days * 86400000).toISOString();
+            if (customerId) userRec.stripeCustomerId = customerId;
+            if (subscriptionId) userRec.stripeSubscriptionId = subscriptionId;
+            userRec.stripeStatus = 'active';
+            userRec.status = 'active';
+            userRec.planUpdatedAt = nowMs;
+            userRec.updatedAt = new Date(nowMs).toISOString();
+            syncDuplicateBackendUsers(userRec);
+
+            const amount = obj?.amount_total
+              ? Math.round((Number(obj.amount_total) / 100) * 100) / 100
+              : resolveServerPlanPricing(plan, billingCycle).baseUSD;
+            const now = new Date();
+            upsertUserOrder(userRec.id, {
+              id: `ord-wh-${obj.id}`,
+              orderNumber: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+                Math.floor(1000 + Math.random() * 9000)
+              )}`,
+              userId: userRec.id,
+              userName: userRec.name || obj?.customer_details?.name || 'Assinante',
+              userEmail: userRec.email,
+              plan,
+              billingCycle,
+              amount,
+              currency: String(obj?.currency || 'usd').toUpperCase(),
+              paymentMethod: 'card',
+              status: 'paid',
+              stripeSubscriptionId: subscriptionId,
+              stripePaymentIntentId: obj.id,
+              createdAt: now.toISOString(),
+              notes: `Checkout confirmado automaticamente via webhook (${billingCycle}).`
+            });
+            persistAuthStore();
+          }
+        }
+      } else if (event.type === 'invoice.paid') {
+        const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
+        const subscriptionId =
+          typeof obj.subscription === 'string'
+            ? obj.subscription
+            : obj.subscription?.id || obj.parent?.subscription_details?.subscription;
+        let subMeta: Record<string, any> = {};
+        if (subscriptionId && stripeClient) {
+          const subObj = await stripeClient.subscriptions.retrieve(subscriptionId).catch(() => null);
+          if (subObj?.metadata) subMeta = subObj.metadata;
+        }
+        const userRec = findUserByStripeRefs({
+          userId: subMeta?.userId,
+          email: obj?.customer_email || subMeta?.userEmail,
+          customerId,
+          subscriptionId
+        });
+        if (userRec) {
+          const plan: 'pro' | 'executive' =
+            subMeta?.plan === 'executive' || userRec.plan === 'executive' ? 'executive' : 'pro';
+          const billingCycle = normalizeServerCycle(subMeta?.billingCycle || userRec.billingCycle);
+          const days = getServerCycleSpec(billingCycle).days;
+          const nowMs = Date.now();
+          userRec.plan = plan;
+          userRec.billingCycle = billingCycle;
+          userRec.creditsRemaining = 9999;
+          userRec.subscriptionExpiresAt = new Date(nowMs + days * 86400000).toISOString();
+          if (customerId) userRec.stripeCustomerId = customerId;
+          if (subscriptionId) userRec.stripeSubscriptionId = subscriptionId;
+          userRec.stripeStatus = 'active';
+          userRec.status = 'active';
+          userRec.planUpdatedAt = nowMs;
+          userRec.updatedAt = new Date(nowMs).toISOString();
+          syncDuplicateBackendUsers(userRec);
+
+          const invoiceRef = typeof obj?.id === 'string' ? obj.id : undefined;
+          const alreadyHasInvoice =
+            invoiceRef &&
+            getCombinedUserOrders(userRec).some((o) => o?.stripePaymentIntentId === invoiceRef || o?.id === `ord-wh-${invoiceRef}`);
+          if (!alreadyHasInvoice && Number(obj?.amount_paid || 0) >= 0) {
+            const now = new Date();
+            upsertUserOrder(userRec.id, {
+              id: `ord-wh-${invoiceRef || Date.now()}`,
+              orderNumber: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+                Math.floor(1000 + Math.random() * 9000)
+              )}`,
+              userId: userRec.id,
+              userName: userRec.name || 'Assinante',
+              userEmail: userRec.email,
+              plan,
+              billingCycle,
+              amount: Math.round((Number(obj.amount_paid || 0) / 100) * 100) / 100,
+              currency: String(obj?.currency || 'usd').toUpperCase(),
+              paymentMethod: 'card',
+              status: 'paid',
+              stripeSubscriptionId: subscriptionId,
+              stripePaymentIntentId: invoiceRef,
+              receiptUrl: obj?.hosted_invoice_url || obj?.invoice_pdf || undefined,
+              createdAt: now.toISOString(),
+              notes: `Fatura paga via Stripe (${billingCycle}).`
+            });
+          }
+          persistAuthStore();
+        }
+      } else if (event.type === 'invoice.payment_failed') {
+        const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
+        const subscriptionId = typeof obj.subscription === 'string' ? obj.subscription : obj.subscription?.id;
+        const userRec = findUserByStripeRefs({
+          email: obj?.customer_email,
+          customerId,
+          subscriptionId
+        });
+        if (userRec) {
+          userRec.stripeStatus = 'past_due';
+          userRec.updatedAt = new Date().toISOString();
+          syncDuplicateBackendUsers(userRec);
+          persistAuthStore();
+        }
+      } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
+        const customerId = typeof obj.customer === 'string' ? obj.customer : obj.customer?.id;
+        const subscriptionId = typeof obj.id === 'string' ? obj.id : undefined;
+        const userRec = findUserByStripeRefs({
+          userId: obj?.metadata?.userId,
+          email: obj?.metadata?.userEmail,
+          customerId,
+          subscriptionId
+        });
+        if (userRec) {
+          const nowMs = Date.now();
+          if (event.type === 'customer.subscription.deleted' || obj?.status === 'canceled' || obj?.status === 'unpaid') {
+            userRec.plan = 'free';
+            userRec.creditsRemaining = getFreePlanDefaultCredits();
+            userRec.stripeStatus = 'canceled';
+            userRec.subscriptionExpiresAt = undefined;
+          } else {
+            const stripeState =
+              obj?.status === 'past_due'
+                ? 'past_due'
+                : obj?.status === 'trialing'
+                ? 'trialing'
+                : 'active';
+            userRec.stripeStatus = stripeState;
+            if (obj?.metadata?.plan === 'pro' || obj?.metadata?.plan === 'executive') {
+              userRec.plan = obj.metadata.plan;
+              userRec.creditsRemaining = 9999;
+            }
+            if (obj?.metadata?.billingCycle) {
+              userRec.billingCycle = normalizeServerCycle(obj.metadata.billingCycle);
+            }
+            if (typeof obj?.current_period_end === 'number' && obj.current_period_end > 0) {
+              userRec.subscriptionExpiresAt = new Date(obj.current_period_end * 1000).toISOString();
+            }
+          }
+          userRec.planUpdatedAt = nowMs;
+          userRec.updatedAt = new Date(nowMs).toISOString();
+          syncDuplicateBackendUsers(userRec);
+          persistAuthStore();
+        }
+      }
+
+      return res.json({ received: true });
+    } catch (err: any) {
+      console.error('Erro ao processar webhook Stripe:', err);
+      return res.status(500).json({ error: 'Falha ao processar evento Stripe.' });
     }
   });
 
@@ -4578,7 +5122,34 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     });
   }
 
+  function getCombinedUserResumes(record: BackendUserRecord): any[] {
+    const candidateKeys = new Set<string>([record.id]);
+    if (record.firebaseUid) candidateKeys.add(record.firebaseUid);
+    const cleanEmail = String(record.email || '').trim().toLowerCase();
+    if (cleanEmail) {
+      for (const u of Object.values(authStore.users)) {
+        if (u?.email && u.email.toLowerCase() === cleanEmail) {
+          candidateKeys.add(u.id);
+          if (u.firebaseUid) candidateKeys.add(u.firebaseUid);
+        }
+      }
+    }
+    const seenIds = new Set<string>();
+    const combined: any[] = [];
+    for (const key of candidateKeys) {
+      const arr = authStore.resumesByUser?.[key];
+      if (!Array.isArray(arr)) continue;
+      for (const item of arr) {
+        if (!item || !item.id || item.id === 'resume-default' || seenIds.has(item.id)) continue;
+        seenIds.add(item.id);
+        combined.push(item);
+      }
+    }
+    return combined;
+  }
+
   function sanitizeUser(record: BackendUserRecord) {
+    const resumesCount = getCombinedUserResumes(record).length;
     return {
       id: record.id,
       name: record.name,
@@ -4593,10 +5164,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       avatarUrl: record.avatarUrl,
       creditsRemaining: record.creditsRemaining,
       creditsUsed: record.creditsUsed,
-      totalCvGenerated: Math.max(
-        record.totalCvGenerated || 0,
-        authStore.resumesByUser?.[record.id]?.length || 0
-      ),
+      totalCvGenerated: Math.max(record.totalCvGenerated || 0, resumesCount),
       billingCycle: record.billingCycle,
       subscriptionExpiresAt: record.subscriptionExpiresAt,
       stripeCustomerId: record.stripeCustomerId,
@@ -4622,6 +5190,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
   function syncDuplicateBackendUsers(source: BackendUserRecord) {
     const cleanEmail = String(source.email || '').trim().toLowerCase();
+    const matchedRecs: BackendUserRecord[] = [];
+    let maxCv = source.totalCvGenerated || 0;
+    let maxCreditsUsed = source.creditsUsed || 0;
     for (const rec of Object.values(authStore.users)) {
       if (!rec || rec === source) continue;
       const sameEmail = Boolean(cleanEmail && rec.email.toLowerCase() === cleanEmail);
@@ -4629,10 +5200,19 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         (source.firebaseUid && (rec.id === source.firebaseUid || rec.firebaseUid === source.firebaseUid)) ||
         rec.firebaseUid === source.id;
       if (!sameEmail && !sameFirebase) continue;
+      matchedRecs.push(rec);
+      maxCv = Math.max(maxCv, rec.totalCvGenerated || 0);
+      maxCreditsUsed = Math.max(maxCreditsUsed, rec.creditsUsed || 0);
+    }
+    source.totalCvGenerated = maxCv;
+    source.creditsUsed = maxCreditsUsed;
+    for (const rec of matchedRecs) {
       rec.role = source.role;
       rec.status = source.status;
       rec.plan = source.plan;
       rec.creditsRemaining = source.creditsRemaining;
+      rec.creditsUsed = maxCreditsUsed;
+      rec.totalCvGenerated = maxCv;
       rec.billingCycle = source.billingCycle;
       rec.subscriptionExpiresAt = source.subscriptionExpiresAt;
       rec.stripeStatus = source.stripeStatus;
@@ -4642,6 +5222,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       if (source.lastTokenIat) rec.lastTokenIat = source.lastTokenIat;
       if (source.updatedAt) rec.updatedAt = source.updatedAt;
       if (source.firebaseUid) rec.firebaseUid = source.firebaseUid;
+    }
+  }
+
+  function incrementUserCvGeneratedRecord(req: express.Request, amount = 1): number | null {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) return null;
+      const record = resolveAuthenticatedUserRecord(payload);
+      if (!record || record.status === 'suspended') return null;
+      const step = Math.max(1, Math.min(5, Math.round(Number(amount) || 1)));
+      record.totalCvGenerated = (record.totalCvGenerated || 0) + step;
+      record.updatedAt = new Date().toISOString();
+      syncDuplicateBackendUsers(record);
+      persistAuthStore();
+      return sanitizeUser(record).totalCvGenerated;
+    } catch {
+      return null;
     }
   }
 
@@ -5697,6 +6295,12 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           if (typeof firestoreUser.name === 'string' && firestoreUser.name.trim()) {
             record.name = firestoreUser.name.trim().slice(0, 120);
           }
+          if (typeof firestoreUser.totalCvGenerated === 'number' && Number.isFinite(firestoreUser.totalCvGenerated)) {
+            record.totalCvGenerated = Math.max(record.totalCvGenerated || 0, Math.round(firestoreUser.totalCvGenerated));
+          }
+          if (typeof firestoreUser.creditsUsed === 'number' && Number.isFinite(firestoreUser.creditsUsed)) {
+            record.creditsUsed = Math.max(record.creditsUsed || 0, Math.round(firestoreUser.creditsUsed));
+          }
         } else if (backendPlanIsNewer && candidatePlan) {
           record.plan = candidatePlan;
           if (typeof candidateCredits === 'number' && Number.isFinite(candidateCredits)) {
@@ -5842,6 +6446,22 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
               }
               if (fsUpdatedMs > (userRecord.planUpdatedAt || 0)) {
                 userRecord.planUpdatedAt = fsUpdatedMs;
+              }
+            }
+            if (typeof fsUser.totalCvGenerated === 'number' && Number.isFinite(fsUser.totalCvGenerated)) {
+              const mergedCv = Math.max(userRecord.totalCvGenerated || 0, Math.round(fsUser.totalCvGenerated));
+              if (mergedCv !== (userRecord.totalCvGenerated || 0)) {
+                userRecord.totalCvGenerated = mergedCv;
+                syncDuplicateBackendUsers(userRecord);
+                persistAuthStore();
+              }
+            }
+            if (typeof fsUser.creditsUsed === 'number' && Number.isFinite(fsUser.creditsUsed)) {
+              const mergedUsed = Math.max(userRecord.creditsUsed || 0, Math.round(fsUser.creditsUsed));
+              if (mergedUsed !== (userRecord.creditsUsed || 0)) {
+                userRecord.creditsUsed = mergedUsed;
+                syncDuplicateBackendUsers(userRecord);
+                persistAuthStore();
               }
             }
 
@@ -6312,7 +6932,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         const subId = typeof stripeSubscriptionId === 'string' ? stripeSubscriptionId.trim() : '';
 
         if (!verifiedPaid && subId) {
-          const userOrders = authStore.ordersByUser?.[userRecord.id] || [];
+          const userOrders = getCombinedUserOrders(userRecord);
           const hasPaidOrder = userOrders.some(
             (o) => o?.stripeSubscriptionId === subId && o?.status === 'paid' && o?.plan === plan
           );
@@ -6587,13 +7207,48 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(401).json({ error: 'Conta inválida, removida ou suspensa.' });
       }
       const ownerUid = userRecord.id;
-      const list = Array.isArray(authStore.resumesByUser?.[ownerUid])
-        ? authStore.resumesByUser[ownerUid].filter((r) => r && r.id && r.id !== 'resume-default')
-        : [];
+      const list = getCombinedUserResumes(userRecord);
       return res.json({ resumes: list, ownerUid });
     } catch (err: any) {
       console.error('Erro em GET /api/resumes:', err);
       return res.status(500).json({ error: 'Erro ao carregar currículos guardados.' });
+    }
+  });
+
+  app.post('/api/auth/track-cv-activity', (req, res) => {
+    try {
+      const token = extractTokenFromRequest(req);
+      const payload = token ? verifySessionToken(token) : null;
+      if (!payload?.uid) {
+        return res.status(401).json({ error: 'Sessão não autenticada.' });
+      }
+      const userRecord = resolveAuthenticatedUserRecord(payload);
+      if (!userRecord || userRecord.status === 'suspended') {
+        return res.status(401).json({ error: 'Conta inválida ou suspensa.' });
+      }
+      const body = req.body || {};
+      const delta = Math.max(0, Math.min(5, Math.round(Number(body.increment ?? 1) || 0)));
+      if (delta > 0) {
+        userRecord.totalCvGenerated = (userRecord.totalCvGenerated || 0) + delta;
+        userRecord.updatedAt = new Date().toISOString();
+        syncDuplicateBackendUsers(userRecord);
+        persistAuthStore();
+      }
+      if (body.eventType === 'resume_started') {
+        recordServerTelemetry({ type: 'resume_started' });
+      } else if (body.eventType === 'word_exported') {
+        recordServerTelemetry({
+          type: 'word_exported',
+          templateStyle: typeof body.templateStyle === 'string' ? body.templateStyle : undefined
+        });
+      }
+      return res.json({
+        success: true,
+        totalCvGenerated: sanitizeUser(userRecord).totalCvGenerated
+      });
+    } catch (err: any) {
+      console.error('Erro em POST /api/auth/track-cv-activity:', err);
+      return res.status(500).json({ error: 'Falha ao registar atividade de currículo.' });
     }
   });
 
@@ -6661,9 +7316,16 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       ].slice(0, 50);
       if (!isReplacingExisting) {
         userRecord.totalCvGenerated = (userRecord.totalCvGenerated || 0) + 1;
+        recordServerTelemetry({ type: 'resume_started' });
       }
+      userRecord.updatedAt = new Date().toISOString();
+      syncDuplicateBackendUsers(userRecord);
       persistAuthStore();
-      return res.status(201).json({ success: true, resume: savedItem });
+      return res.status(201).json({
+        success: true,
+        resume: savedItem,
+        totalCvGenerated: sanitizeUser(userRecord).totalCvGenerated
+      });
     } catch (err: any) {
       console.error('Erro em POST /api/resumes:', err);
       return res.status(500).json({ error: 'Falha ao guardar currículo no servidor.' });
@@ -6714,7 +7376,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       authStore.users[targetId] ||
       Object.values(authStore.users).find((u) => u.id === targetId || u.firebaseUid === targetId);
     const lookupKey = targetUser?.id || targetId;
-    const list = Array.isArray(authStore.resumesByUser?.[lookupKey])
+    const list = targetUser
+      ? getCombinedUserResumes(targetUser)
+      : Array.isArray(authStore.resumesByUser?.[lookupKey])
       ? authStore.resumesByUser[lookupKey].filter((r) => r && r.id && r.id !== 'resume-default')
       : [];
     return res.json({ resumes: list, ownerUid: lookupKey });
@@ -6729,8 +7393,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
       const userRec = resolveAuthenticatedUserRecord(payload);
-      const ownerUid = userRec?.id || payload.uid;
-      const list = authStore.ordersByUser?.[ownerUid] || [];
+      const list = getCombinedUserOrders(userRec || payload.uid);
       return res.json({ orders: list });
     } catch (err: any) {
       console.error('Erro em GET /api/orders:', err);
@@ -6749,6 +7412,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         return res.status(401).json({ error: 'Sessão não autenticada.' });
       }
       const userRec = resolveAuthenticatedUserRecord(payload);
+      const ownerUid = userRec?.id || payload.uid;
       const isAdmin =
         userRec?.role === 'admin' || ADMIN_EMAILS_BACKEND.has(String(payload.email || '').toLowerCase());
 
@@ -6768,11 +7432,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         verifiedStatus = requestedStatus;
       } else if (paymentMethod === 'card' && requestedStatus === 'paid') {
         const subId = typeof bodyOrder.stripeSubscriptionId === 'string' ? bodyOrder.stripeSubscriptionId : '';
-        const existingOrders = authStore.ordersByUser?.[payload.uid] || [];
+        const existingOrders = getCombinedUserOrders(userRec || ownerUid);
         const alreadyVerifiedOnServer =
           existingOrders.some((o) => o?.stripeSubscriptionId === subId && o?.status === 'paid') ||
           Object.values(authStore.promoSessions || {}).some(
-            (p: any) => p?.subscriptionId === subId && p?.userId === payload.uid
+            (p: any) =>
+              p?.subscriptionId === subId &&
+              (p?.userId === ownerUid ||
+                p?.userId === payload.uid ||
+                String(p?.userEmail || '').toLowerCase() === String(userRec?.email || payload.email || '').toLowerCase())
           );
 
         if (alreadyVerifiedOnServer) {
@@ -6780,17 +7448,20 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         } else if (stripeClient && subId.startsWith('sub_') && !subId.startsWith('sub_promo_')) {
           const sub = await stripeClient.subscriptions.retrieve(subId, { expand: ['latest_invoice'] }).catch(() => null);
           const latestInv = sub?.latest_invoice as any;
+          const subCusId = typeof sub?.customer === 'string' ? sub.customer : (sub?.customer as any)?.id;
           const ownsSub =
+            sub?.metadata?.userId === ownerUid ||
             sub?.metadata?.userId === payload.uid ||
-            String(sub?.metadata?.userEmail || '').toLowerCase() === String(payload.email || '').toLowerCase();
+            String(sub?.metadata?.userEmail || '').toLowerCase() === String(userRec?.email || payload.email || '').toLowerCase() ||
+            (userRec?.stripeCustomerId && userRec.stripeCustomerId === subCusId);
           if (ownsSub && (sub?.status === 'active' || sub?.status === 'trialing' || latestInv?.status === 'paid')) {
             verifiedStatus = 'paid';
           }
         }
         if (verifiedStatus !== 'paid') {
           appendServerAuditLog(req, {
-            actorUserId: payload.uid,
-            actorEmail: payload.email,
+            actorUserId: ownerUid,
+            actorEmail: userRec?.email || payload.email,
             actorRole: isAdmin ? 'admin' : 'user',
             action: 'unauthorized_access_attempt',
             category: 'subscription',
@@ -6818,7 +7489,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const sanitizedOrder = {
         id: String(bodyOrder.id).slice(0, 128),
         orderNumber: String(bodyOrder.orderNumber).slice(0, 60),
-        userId: payload.uid,
+        userId: ownerUid,
         userName: String(bodyOrder.userName || userRec?.name || 'Cliente').slice(0, 120),
         userEmail: String(userRec?.email || payload.email || '').slice(0, 180),
         plan,
@@ -6840,14 +7511,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         notes: typeof bodyOrder.notes === 'string' ? bodyOrder.notes.slice(0, 500) : ''
       };
 
-      if (!authStore.ordersByUser) {
-        authStore.ordersByUser = {};
-      }
-      const existing = authStore.ordersByUser[payload.uid] || [];
-      authStore.ordersByUser[payload.uid] = [
-        sanitizedOrder,
-        ...existing.filter((o) => o.id !== sanitizedOrder.id)
-      ].slice(0, 50);
+      upsertUserOrder(ownerUid, sanitizedOrder);
       persistAuthStore();
       appendServerAuditLog(req, {
         actorUserId: payload.uid,
