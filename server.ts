@@ -1227,6 +1227,267 @@ Responda ESTRITAMENTE em formato JSON válido com esta estrutura:
     }
   });
 
+  // Discreet inline AI field improver (Summary, Experience bullets, Competencies)
+  app.post('/api/ai/improve-field', aiRateLimitMiddleware, async (req, res) => {
+    try {
+      const { field, cvData, experienceIndex, language, jobContext } = req.body || {};
+      if (!cvData || !['summary', 'experience', 'competencies'].includes(field)) {
+        return res.status(400).json({ error: 'Campo ou dados do currículo inválidos.' });
+      }
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados.',
+          aiPaused: true
+        });
+      }
+      if (!ai) {
+        return res.status(503).json({ error: 'Chave GEMINI_API_KEY não configurada no servidor.' });
+      }
+      const usageCheck = trackAuthenticatedAiUsage(req, 'aiTailor');
+      if (usageCheck.featureBlocked || usageCheck.quotaExceeded) {
+        return res.status(usageCheck.featureBlocked ? 403 : 402).json({
+          error: usageCheck.message || 'Limite de IA atingido. Faça upgrade para continuar.',
+          quotaExceeded: Boolean(usageCheck.quotaExceeded),
+          featureBlocked: Boolean(usageCheck.featureBlocked)
+        });
+      }
+
+      const langNames: Record<string, string> = {
+        pt: 'Português',
+        en: 'English',
+        es: 'Español',
+        fr: 'Français',
+        de: 'Deutsch',
+        it: 'Italiano'
+      };
+      const targetLang = langNames[String(language || 'pt')] || 'Português';
+      const safeJob = typeof jobContext === 'string' && jobContext.trim() ? jobContext.trim().slice(0, 4000) : '';
+
+      let prompt = '';
+      if (field === 'summary') {
+        prompt = `Você é um especialista em recrutamento internacional e sistemas ATS.
+Reescreva e melhore o Resumo Profissional abaixo no idioma ${targetLang}, mantendo rigorosamente apenas fatos reais do candidato, com 3 a 5 linhas claras, verbos fortes, foco em resultados e alta legibilidade ATS.
+Cargo do candidato: ${cvData?.personalDetails?.title || ''}
+Resumo atual: ${cvData?.summary || '(vazio — gere um resumo profissional sólido baseado nas experiências do candidato)'}
+Experiências resumidas: ${JSON.stringify((cvData?.experiences || []).slice(0, 3))}
+${safeJob ? `Vaga alvo:\n${safeJob}` : ''}
+Responda APENAS JSON válido: { "summary": "texto melhorado do resumo" }`;
+      } else if (field === 'experience') {
+        const exps = Array.isArray(cvData?.experiences) ? cvData.experiences : [];
+        const idx = typeof experienceIndex === 'number' && exps[experienceIndex] ? experienceIndex : 0;
+        const targetExp = exps[idx];
+        if (!targetExp) {
+          return res.status(400).json({ error: 'Experiência não encontrada para melhorar.' });
+        }
+        prompt = `Você é um consultor sênior de RH e especialista em ATS.
+Melhore os pontos de realização (highlights) desta experiência profissional no idioma ${targetLang}.
+Use a fórmula de impacto (Verbo de ação + O que foi feito + Resultado/Métrica ou escopo claro) SEM inventar números falsos nem alterar empresa/cargo/datas. Se houver poucos pontos, retorne 3 a 5 pontos claros e objetivos.
+Experiência: ${JSON.stringify(targetExp)}
+${safeJob ? `Vaga alvo:\n${safeJob}` : ''}
+Responda APENAS JSON válido: { "highlights": ["ponto 1", "ponto 2", "ponto 3"] }`;
+      } else {
+        prompt = `Você é um especialista em recrutamento e triagem ATS.
+Organize e melhore as competências-chave deste candidato no idioma ${targetLang} para passar facilmente por filtros ATS.
+Cargo: ${cvData?.personalDetails?.title || ''}
+Resumo: ${cvData?.summary || ''}
+Competências atuais: ${JSON.stringify(cvData?.competencies || [])}
+Experiências: ${JSON.stringify((cvData?.experiences || []).slice(0, 3))}
+${safeJob ? `Vaga alvo:\n${safeJob}` : ''}
+Retorne entre 4 e 6 categorias concisas e profissionais.
+Responda APENAS JSON válido: { "competencies": [{ "category": "Nome da Categoria", "description": "Competências e ferramentas separadas por vírgula" }] }`;
+      }
+
+      const response = await generateContentWithRetry(
+        prompt,
+        { responseMimeType: 'application/json' },
+        { preferredModel: 'gemini-4-hydrogen' }
+      );
+      const parsed = parseAiJson(response.text);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'aiTailor',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
+      return res.json(parsed);
+    } catch (err: any) {
+      console.error('Erro na rota /api/ai/improve-field:', err);
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Não foi possível melhorar o campo com IA agora.')
+      });
+    }
+  });
+
+  // Analyze job posting from URL or pasted text + suggest & adapt CV ("Aplicar a vagas")
+  app.post('/api/jobs/analyze-url', aiRateLimitMiddleware, async (req, res) => {
+    try {
+      const { jobUrl, pastedJobText, cvData, language, adaptCv } = req.body || {};
+      if (!cvData) {
+        return res.status(400).json({ error: 'Dados do currículo não fornecidos.' });
+      }
+
+      let rawText = typeof pastedJobText === 'string' ? pastedJobText.trim() : '';
+      let fetchedTitleHint = '';
+
+      if (typeof jobUrl === 'string' && jobUrl.trim()) {
+        let safeUrl: URL;
+        try {
+          safeUrl = await assertSafeExternalUrl(jobUrl.trim());
+        } catch (urlErr: any) {
+          return res.status(400).json({
+            error: urlErr?.message || 'Link da vaga inválido ou não permitido.'
+          });
+        }
+
+        if (!rawText) {
+          const controller = new AbortController();
+          const fetchTimer = setTimeout(() => controller.abort(), 9000);
+          try {
+            const resp = await fetch(safeUrl.toString(), {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; CareerMatchBot/1.0)',
+                Accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.8'
+              }
+            });
+            if (!resp.ok) {
+              return res.json({
+                needsManualPaste: true,
+                reason: `O portal (${safeUrl.hostname}) bloqueou a leitura automática (HTTP ${resp.status}). Cole o texto da vaga abaixo para analisar e adaptar o CV.`
+              });
+            }
+            const html = (await resp.text()).slice(0, 260_000);
+            const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            if (titleMatch?.[1]) {
+              fetchedTitleHint = titleMatch[1].replace(/\s+/g, ' ').trim().slice(0, 140);
+            }
+            const cleaned = html
+              .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+              .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+              .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+              .replace(/<[^>]+>/g, ' ')
+              .replace(/&nbsp;/gi, ' ')
+              .replace(/&amp;/gi, '&')
+              .replace(/&lt;/gi, '<')
+              .replace(/&gt;/gi, '>')
+              .replace(/\s+/g, ' ')
+              .trim();
+
+            if (cleaned.length < 140 || /authwall|sign in to view|entrar no linkedin/i.test(cleaned.slice(0, 800))) {
+              return res.json({
+                needsManualPaste: true,
+                reason: `Este link exige início de sessão no portal (${safeUrl.hostname}). Copie e cole a descrição da vaga abaixo para continuarmos.`
+              });
+            }
+            rawText = cleaned.slice(0, 11000);
+          } catch {
+            return res.json({
+              needsManualPaste: true,
+              reason: 'Não foi possível aceder ao link da vaga automaticamente. Cole o texto da vaga abaixo para analisarmos em segundos.'
+            });
+          } finally {
+            clearTimeout(fetchTimer);
+          }
+        }
+      }
+
+      if (!rawText || rawText.length < 30) {
+        return res.status(400).json({
+          error: 'Cole o link ou a descrição da vaga para analisar a compatibilidade.'
+        });
+      }
+
+      if (isAiGloballyPaused()) {
+        return res.status(503).json({
+          error: 'Os recursos de Inteligência Artificial estão temporariamente pausados.',
+          aiPaused: true
+        });
+      }
+      if (!ai) {
+        return res.status(503).json({ error: 'Chave GEMINI_API_KEY não configurada no servidor.' });
+      }
+      const usageCheck = trackAuthenticatedAiUsage(req, 'aiTailor');
+      if (usageCheck.featureBlocked || usageCheck.quotaExceeded) {
+        return res.status(usageCheck.featureBlocked ? 403 : 402).json({
+          error: usageCheck.message || 'Limite de IA atingido. Faça upgrade para continuar.',
+          quotaExceeded: Boolean(usageCheck.quotaExceeded),
+          featureBlocked: Boolean(usageCheck.featureBlocked)
+        });
+      }
+
+      const langNames: Record<string, string> = {
+        pt: 'Português',
+        en: 'English',
+        es: 'Español',
+        fr: 'Français',
+        de: 'Deutsch',
+        it: 'Italiano'
+      };
+      const targetLang = langNames[String(language || 'pt')] || 'Português';
+
+      const prompt = `Você é um recrutador executivo e especialista em sistemas ATS.
+Analise a vaga abaixo em relação ao currículo do candidato e responda no idioma ${targetLang}.
+${fetchedTitleHint ? `Título da página da vaga: ${fetchedTitleHint}` : ''}
+CONTEÚDO DA VAGA:
+${rawText.slice(0, 10000)}
+
+CURRÍCULO DO CANDIDATO:
+${JSON.stringify(cvData)}
+
+TAREFA:
+1. Extraia jobTitle, company e location da vaga.
+2. Calcule compatibilityScore realista (0 a 100) entre o currículo atual e os requisitos da vaga.
+3. Liste até 6 matchingKeywords (já presentes) e até 6 missingKeywords (importantes da vaga em falta).
+4. Liste 3 a 4 suggestions práticas e curtas do que melhorar no CV.
+5. Gere cleanedJobDescription (resumo estruturado dos principais requisitos da vaga em 4-6 frases).
+${adaptCv !== false ? '6. Gere adaptedCV adaptando summary, competencies (4-6 categorias) e experiences (mantendo empresas, cargos e datas reais, melhorando os highlights para alinhar à vaga).' : ''}
+
+Responda APENAS JSON válido com esta estrutura:
+{
+  "jobTitle": "Nome da vaga",
+  "company": "Empresa",
+  "location": "Localização / Remoto",
+  "compatibilityScore": 78,
+  "matchingKeywords": ["kw1"],
+  "missingKeywords": ["kw2"],
+  "suggestions": ["sugestão 1", "sugestão 2"],
+  "cleanedJobDescription": "Resumo limpo dos requisitos da vaga",
+  "adaptedCV": {
+    "summary": "Resumo adaptado",
+    "competencies": [{ "category": "Categoria", "description": "Lista" }],
+    "experiences": [
+      {
+        "id": "id original",
+        "company": "empresa original",
+        "role": "cargo original",
+        "period": "período original",
+        "location": "local",
+        "donor": "projeto",
+        "highlights": ["bullet adaptado"]
+      }
+    ]
+  }
+}`;
+
+      const response = await generateContentWithRetry(
+        prompt,
+        { responseMimeType: 'application/json' },
+        { preferredModel: 'gemini-4-hydrogen' }
+      );
+      const parsed = parseAiJson(response.text);
+      recordServerTelemetry({
+        type: 'ai_called',
+        feature: 'aiTailor',
+        tokens: Math.ceil((prompt.length + (response.text?.length || 0)) / 4)
+      });
+      return res.json(parsed);
+    } catch (err: any) {
+      console.error('Erro na rota /api/jobs/analyze-url:', err);
+      return res.status(500).json({
+        error: sanitizeAiErrorMessage(err, 'Erro ao analisar a vaga com IA.')
+      });
+    }
+  });
+
   // Generate full structured CV from raw inputs & target job description
   app.post('/api/generate-from-raw', aiRateLimitMiddleware, async (req, res) => {
     try {

@@ -7,10 +7,50 @@ import {
   Camera,
   ShieldCheck,
   FileText,
-  Check
+  Check,
+  Star,
+  Search,
+  X
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { SiteLanguageCode } from '../i18n/siteTranslations';
 import { EDITOR_UI_TRANSLATIONS, TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
+
+const DROPDOWN_EXTRA_LABELS: Record<
+  SiteLanguageCode,
+  { searchPh: string; top5Title: string; noMatch: string }
+> = {
+  pt: {
+    searchPh: 'Procurar modelo (ex: ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Mais Recomendados',
+    noMatch: 'Nenhum modelo encontrado.'
+  },
+  en: {
+    searchPh: 'Search template (e.g. ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Most Recommended',
+    noMatch: 'No templates found.'
+  },
+  es: {
+    searchPh: 'Buscar diseño (ej: ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Más Recomendados',
+    noMatch: 'No se encontraron diseños.'
+  },
+  fr: {
+    searchPh: 'Rechercher un modèle (ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Les Plus Recommandés',
+    noMatch: 'Aucun modèle trouvé.'
+  },
+  de: {
+    searchPh: 'Vorlage suchen (z.B. ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Empfohlene Vorlagen',
+    noMatch: 'Keine Vorlagen gefunden.'
+  },
+  it: {
+    searchPh: 'Cerca modello (es: ATS, Tech, Europass)...',
+    top5Title: 'Top 5 Più Consigliati',
+    noMatch: 'Nessun modello trovato.'
+  }
+};
 
 interface TemplateSelectorDropdownProps {
   currentStyle: TemplateStyle;
@@ -26,6 +66,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
   className = ''
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number }>({
     top: 64,
     left: 12,
@@ -35,6 +76,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
   const menuRef = useRef<HTMLDivElement>(null);
   const { siteLanguage } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).dropdown;
+  const extraUi = DROPDOWN_EXTRA_LABELS[siteLanguage] || DROPDOWN_EXTRA_LABELS.en;
   const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
   const getTplMeta = <T extends { id: TemplateStyle }>(tpl: T): T => {
     const loc = tplMetaMap?.[tpl.id];
@@ -69,11 +111,11 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
     const margin = 12;
     const menuWidth = Math.min(360, viewportW - margin * 2);
     const left = Math.max(margin, Math.min(rect.left, viewportW - menuWidth - margin));
-    const maxMenuH = Math.min(440, viewportH - margin * 2);
+    const maxMenuH = Math.min(480, viewportH - margin * 2);
     const top =
       rect.bottom + 6 + maxMenuH > viewportH - margin && rect.top - 6 - maxMenuH >= margin
         ? rect.top - 6 - maxMenuH
-        : Math.min(rect.bottom + 6, viewportH - margin - 200);
+        : Math.min(rect.bottom + 6, viewportH - margin - 240);
     setMenuPos({ top: Math.max(margin, top), left, width: menuWidth });
   }, []);
 
@@ -108,15 +150,35 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
     };
   }, [isOpen, updatePosition]);
 
-  const photoTemplates = allTemplates.filter((t) => t.category === 'with_photo' || t.category === 'hybrid');
-  const withoutPhotoTemplates = allTemplates.filter((t) => t.category === 'without_photo');
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const matchingTemplates = trimmedQuery
+    ? allTemplates.filter((rawItem) => {
+        const item = getTplMeta(rawItem);
+        return (
+          item.name.toLowerCase().includes(trimmedQuery) ||
+          item.shortName.toLowerCase().includes(trimmedQuery) ||
+          item.tagline.toLowerCase().includes(trimmedQuery) ||
+          item.regions.some((r) => r.toLowerCase().includes(trimmedQuery))
+        );
+      })
+    : allTemplates;
 
-  const renderTemplateButton = (rawItem: typeof allTemplates[number], isPhotoGroup: boolean) => {
+  const recommendedTemplates = matchingTemplates.filter((t) => t.isRecommended);
+  const photoTemplates = matchingTemplates.filter(
+    (t) => t.category === 'with_photo' || t.category === 'hybrid'
+  );
+  const withoutPhotoTemplates = matchingTemplates.filter((t) => t.category === 'without_photo');
+
+  const renderTemplateButton = (
+    rawItem: typeof allTemplates[number],
+    isPhotoGroup: boolean,
+    keyPrefix = ''
+  ) => {
     const item = getTplMeta(rawItem);
     const isSelected = currentStyle === item.id;
     return (
       <button
-        key={item.id}
+        key={`${keyPrefix}${item.id}`}
         type="button"
         onClick={() => {
           trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
@@ -133,8 +195,9 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
-              {item.name}
+            <span className="text-xs font-semibold text-slate-900 dark:text-white truncate flex items-center gap-1">
+              {item.isRecommended && <Star className="w-3 h-3 text-amber-500 fill-amber-400 shrink-0" />}
+              <span className="truncate">{item.name}</span>
             </span>
             <span className="text-[10px] font-mono tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
               {item.atsScore}% ATS
@@ -196,7 +259,9 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
             <div className="px-3 py-2.5 bg-slate-900 text-white flex items-center justify-between gap-2 border-b border-slate-800">
               <div className="flex items-center gap-1.5 min-w-0">
                 <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span className="text-xs font-bold truncate">{ui.menuTitle}</span>
+                <span className="text-xs font-bold truncate">
+                  {ui.menuTitle} ({allTemplates.length})
+                </span>
               </div>
               <button
                 type="button"
@@ -210,26 +275,77 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
               </button>
             </div>
 
-            <div className="max-h-[62dvh] sm:max-h-[380px] overflow-y-auto p-2 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800">
-              <div>
-                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3 h-3 shrink-0" />
-                  <span>{ui.noPhotoGroupTitle}</span>
-                </div>
-                <div className="space-y-0.5 mt-1">
-                  {withoutPhotoTemplates.map((rawItem) => renderTemplateButton(rawItem, false))}
-                </div>
+            <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={extraUi.searchPh}
+                  className="w-full min-h-[36px] pl-8 pr-8 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+            </div>
 
-              <div className="pt-2">
-                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
-                  <Camera className="w-3 h-3 shrink-0" />
-                  <span>{ui.photoGroupTitle}</span>
-                </div>
-                <div className="space-y-0.5 mt-1">
-                  {photoTemplates.map((rawItem) => renderTemplateButton(rawItem, true))}
-                </div>
-              </div>
+            <div className="max-h-[56dvh] sm:max-h-[380px] overflow-y-auto p-2 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800">
+              {matchingTemplates.length === 0 ? (
+                <p className="py-6 text-center text-xs text-slate-500 dark:text-slate-400">
+                  {extraUi.noMatch}
+                </p>
+              ) : (
+                <>
+                  {recommendedTemplates.length > 0 && (
+                    <div>
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+                        <Star className="w-3 h-3 text-amber-500 fill-amber-400 shrink-0" />
+                        <span>{extraUi.top5Title}</span>
+                      </div>
+                      <div className="space-y-0.5 mt-1">
+                        {recommendedTemplates.map((rawItem) =>
+                          renderTemplateButton(rawItem, rawItem.hasPhoto, 'rec-')
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {withoutPhotoTemplates.length > 0 && (
+                    <div className={recommendedTemplates.length > 0 ? 'pt-2' : ''}>
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3 h-3 shrink-0" />
+                        <span>{ui.noPhotoGroupTitle} ({withoutPhotoTemplates.length})</span>
+                      </div>
+                      <div className="space-y-0.5 mt-1">
+                        {withoutPhotoTemplates.map((rawItem) =>
+                          renderTemplateButton(rawItem, false)
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {photoTemplates.length > 0 && (
+                    <div className="pt-2">
+                      <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                        <Camera className="w-3 h-3 shrink-0" />
+                        <span>{ui.photoGroupTitle} ({photoTemplates.length})</span>
+                      </div>
+                      <div className="space-y-0.5 mt-1">
+                        {photoTemplates.map((rawItem) => renderTemplateButton(rawItem, true))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </>

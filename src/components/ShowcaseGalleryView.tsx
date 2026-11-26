@@ -250,7 +250,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   const l = siteText.landing;
   const extra = SHOWCASE_EXTRA_COPY[siteLanguage] || SHOWCASE_EXTRA_COPY.en;
 
-  const [cvFilter, setCvFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
+  const [cvFilter, setCvFilter] = useState<'all' | 'recommended' | 'without_photo' | 'with_photo'>('all');
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [activePreview, setActivePreview] = useState<ModalPreviewState | null>(null);
@@ -312,6 +312,7 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
   }, [adminTemplates, siteLanguage]);
 
   const filteredCvTemplates = activeCvTemplates.filter((tmpl) => {
+    if (cvFilter === 'recommended' && !tmpl.isRecommended) return false;
     if (cvFilter === 'without_photo' && tmpl.hasPhoto) return false;
     if (cvFilter === 'with_photo' && !tmpl.hasPhoto) return false;
     if (searchTerm.trim()) {
@@ -470,6 +471,21 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
               <>
                 {[
                   { id: 'all', label: `${s.allModels} (${activeCvTemplates.length})` },
+                  {
+                    id: 'recommended',
+                    label:
+                      siteLanguage === 'pt'
+                        ? '★ Top 5 Recomendados'
+                        : siteLanguage === 'es'
+                        ? '★ Top 5 Recomendados'
+                        : siteLanguage === 'fr'
+                        ? '★ Top 5 Recommandés'
+                        : siteLanguage === 'de'
+                        ? '★ Top 5 Empfohlen'
+                        : siteLanguage === 'it'
+                        ? '★ Top 5 Consigliati'
+                        : '★ Top 5 Recommended'
+                  },
                   { id: 'without_photo', label: s.noPhotoAts },
                   { id: 'with_photo', label: s.withPhotoEu }
                 ].map((f) => (
@@ -655,9 +671,16 @@ export const ShowcaseGalleryView: React.FC<ShowcaseGalleryViewProps> = ({
                   {/* Card Details */}
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                     <div className="space-y-1.5">
-                      <p className="text-[11px] font-medium text-slate-500">
-                        {tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts} · {tmpl.atsScore}% ATS · {tmpl.regions[0]}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-medium text-slate-500 truncate">
+                          {tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts} · {tmpl.atsScore}% ATS · {tmpl.regions[0]}
+                        </p>
+                        {tmpl.isRecommended && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200 shrink-0">
+                            ★ Top 5
+                          </span>
+                        )}
+                      </div>
                       <h2 className="text-base font-bold text-slate-900">{tmpl.shortName}</h2>
                       <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">{tmpl.tagline}</p>
                     </div>

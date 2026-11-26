@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CVData, TemplateStyle, CVSectionKey } from '../types/cv';
-import { DEFAULT_SECTION_ORDER } from '../utils/executivePhrasing';
 import {
   Download,
-  Printer,
   Copy,
   Check,
   ZoomIn,
@@ -18,7 +16,6 @@ import {
   ChevronRight,
   ChevronDown,
   UserCheck,
-  Lock,
   AlertTriangle,
   Terminal,
   BookOpen,
@@ -35,8 +32,12 @@ import { getTemplateById } from '../data/templateCatalog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
-import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
-import { SECTION_TITLES_BY_LANG, getResolvedSectionTitles } from '../utils/cvDocumentLabels';
+import {
+  SECTION_TITLES_BY_LANG,
+  getResolvedSectionTitles,
+  resolveTemplateStyleProfile,
+  resolveEffectiveSectionOrder
+} from '../utils/cvDocumentLabels';
 import { getStoredPlatformSettingsSync, logGenerationError } from '../services/adminModulesService';
 import { recordAuditLog } from '../services/auditLogService';
 import { dispatchUserNotification } from '../services/notificationService';
@@ -83,7 +84,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
   const { studioText, siteLanguage, t } = useLanguage();
-  const appUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).app;
+  void onExportWord;
+  void isExportingWord;
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
@@ -188,21 +190,26 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const currentAccent = cv.accentColor || '#0f172a';
   const currentTemplate = getTemplateById(cv.templateStyle);
 
-  // Template Style Flags
-  const isClassic = cv.templateStyle === 'un_classic';
-  const isHarvard = cv.templateStyle === 'executive_harvard';
-  const isAts = cv.templateStyle === 'ats_compact';
-  const isEuropass = cv.templateStyle === 'european_europass';
-  const isCreative = cv.templateStyle === 'creative_split';
-  const isTech = cv.templateStyle === 'tech_modern';
-  const isMinimalist = cv.templateStyle === 'hybrid_minimalist';
-  const isAcademic = cv.templateStyle === 'academic_lattes';
-  const isModern = cv.templateStyle === 'european_modern';
-  const isFinance = cv.templateStyle === 'finance_wallstreet';
-  const isBoard = cv.templateStyle === 'executive_board';
-  const isProduct = cv.templateStyle === 'product_strategy';
-  const isEditorial = cv.templateStyle === 'modern_editorial';
-  const isBlueprint = cv.templateStyle === 'engineering_blueprint';
+  // Template Style Flags (resolved across all 43 models)
+  const {
+    isClassic,
+    isHarvard,
+    isAts,
+    isStrictMonoAts,
+    isEuropass,
+    isCreative,
+    isTech,
+    isMinimalist,
+    isAcademic,
+    isAcademicLattes,
+    isModern,
+    isFinance,
+    isBoard,
+    isProduct,
+    isEditorial,
+    isBlueprint,
+    supportsPhoto
+  } = resolveTemplateStyleProfile(cv.templateStyle);
 
   const resolvedFontClass =
     cv.fontFamily === 'garamond'
@@ -215,7 +222,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       ? 'font-cinzel'
       : isClassic || isHarvard || isAcademic || isFinance || isBoard
       ? 'font-serif-cv'
-      : isAts
+      : isStrictMonoAts
       ? 'font-mono-code text-[13px] leading-relaxed'
       : 'font-jakarta';
 
@@ -273,68 +280,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     }
     if (isClassic) return <span className="text-blue-900 font-serif font-bold mr-1.5">{index + 1}.</span>;
     return null;
-  };
-
-  const handlePrint = () => {
-    if (exportRequiresPaidPlan && !isAuthenticated) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: `resumes/${cv.templateStyle}/pdf`,
-        details: 'Exportação PDF bloqueada: utilizador não autenticado.',
-        metadata: { format: 'pdf', reason: 'unauthenticated' }
-      });
-      showWarning('Registo Obrigatório', 'Inicie sessão ou registe-se para imprimir ou guardar em PDF.');
-      onOpenAuthModal?.('O registo é obrigatório para descarregar ou imprimir o seu currículo em PDF.');
-      return;
-    }
-    if (!canExportClean) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: `resumes/${cv.templateStyle}/pdf`,
-        details: 'Exportação PDF bloqueada: subscrição ativa exigida.',
-        metadata: { format: 'pdf', reason: 'plan_required' }
-      });
-      showWarning('Plano Requerido', 'A impressão e download do PDF de Alta Resolução são exclusivos para subscritores.');
-      onOpenPricingModal?.(
-        'A impressão e download em PDF de Alta Resolução são exclusivos para subscritores. Ative um plano para descarregar o seu documento oficial sem marca de água.'
-      );
-      return;
-    }
-    try {
-      void recordAuditLog({
-        action: 'cv_exported_pdf',
-        category: 'cv_export',
-        severity: 'info',
-        status: 'success',
-        targetResource: `resumes/${cv.templateStyle}/pdf`,
-        details: `Currículo exportado/impresso em PDF (${currentTemplate.shortName}, ${docLang.toUpperCase()}).`,
-        metadata: { format: 'pdf', templateStyle: cv.templateStyle, language: docLang }
-      });
-      if (user) {
-        void dispatchUserNotification({
-          user,
-          eventType: 'export',
-          title: 'Exportação PDF Iniciada',
-          message: `Currículo (${currentTemplate.shortName}, ${docLang.toUpperCase()}) preparado para exportação/impressão em PDF.`,
-          targetResource: `resumes/${cv.templateStyle}/pdf`
-        });
-      }
-      window.print();
-    } catch (err: any) {
-      logGenerationError({
-        timestamp: new Date().toISOString(),
-        userEmail: cv.personalDetails.email || 'anonymous',
-        operationType: 'pdf_export',
-        errorMessage: err?.message || 'Falha ao acionar impressão PDF',
-        resolved: false
-      });
-    }
   };
 
   const handleCopyPlainText = () => {
@@ -545,28 +490,14 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
   // Photo Logic:
   // Show photo if user has configured a photo and showPhoto is not false, on all photo-supporting models
-  const templateSupportsPhoto =
-    isEuropass ||
-    isCreative ||
-    isMinimalist ||
-    isModern ||
-    isTech ||
-    isClassic ||
-    isAcademic ||
-    isProduct ||
-    isEditorial;
+  const templateSupportsPhoto = supportsPhoto;
   const hasUserPhoto = Boolean(cv.personalDetails.photoUrl);
   const shouldRenderPhoto = templateSupportsPhoto && hasUserPhoto && cv.personalDetails.showPhoto !== false;
 
-  // Has photo configured but current template strictly bans it (strict US ATS / Harvard / Wall Street / Board / Principal Systems alert)
-  const isPhotoSuppressedForAts =
-    hasUserPhoto &&
-    (isAts || isHarvard || isFinance || isBoard || isBlueprint) &&
-    !templateSupportsPhoto;
+  // Has photo configured but current template strictly bans it
+  const isPhotoSuppressedForAts = hasUserPhoto && !templateSupportsPhoto;
 
-  const sectionOrder: CVSectionKey[] = cv.sectionOrder && cv.sectionOrder.length > 0
-    ? cv.sectionOrder
-    : DEFAULT_SECTION_ORDER;
+  const sectionOrder: CVSectionKey[] = resolveEffectiveSectionOrder(cv);
 
   const isSectionVisible = (key: CVSectionKey): boolean => {
     return cv.sectionVisibility?.[key] !== false;
@@ -978,67 +909,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               </div>
             )}
           </div>
-
-          {/* Print / Save PDF Button */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap touch-manipulation ${
-              !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
-                : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
-            }`}
-            title={
-              !isAuthenticated
-                ? 'Registo obrigatório para imprimir ou guardar em PDF'
-                : !hasActivePlan
-                ? 'Requer ativação de Plano (Pro ou Executive) para descarregar em PDF'
-                : 'Imprimir ou Guardar em PDF A4 limpo'
-            }
-          >
-            {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-            ) : (
-              <Printer className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-            )}
-            <span>{studioText.docToolbar.pdfBtn}</span>
-          </button>
-
-          {/* Localized CV / Resume Export Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (!isAuthenticated) {
-                onOpenAuthModal?.(appUi.authExportPrompt);
-                return;
-              }
-              if (!hasActivePlan) {
-                onOpenPricingModal?.(appUi.planExportPrompt);
-                return;
-              }
-              onExportWord();
-            }}
-            disabled={isExportingWord}
-            className={`min-h-[38px] flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shadow-xs touch-manipulation ${
-              !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-            title={
-              !isAuthenticated
-                ? appUi.authExportPrompt
-                : !hasActivePlan
-                ? appUi.planExportPrompt
-                : studioText.docToolbar.wordBtn
-            }
-          >
-            {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-slate-950 shrink-0" />
-            ) : (
-              <Download className="w-3.5 h-3.5 shrink-0" />
-            )}
-            <span>{isExportingWord ? studioText.docToolbar.generating : studioText.docToolbar.wordBtn}</span>
-          </button>
         </div>
       </div>
 
@@ -1400,37 +1270,31 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 >
                   {/* Left / Main text details */}
                   <div className={`flex-1 min-w-0 ${isClassic || isBoard ? 'text-center' : 'text-left'}`}>
-                    {/* European flag/official indicator in Europass */}
-                    {isEuropass && (
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#003399] text-white tracking-wider uppercase shadow-2xs">
-                          Curriculum Vitae Europass
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          {currentTitles.europassOfficial}
-                        </span>
-                      </div>
-                    )}
-
                     {/* Tech header badge */}
                     {isTech && (
                       <div className="flex items-center gap-1.5 mb-2 font-mono text-[11px] text-teal-700 font-semibold tracking-wide">
                         <Terminal className="w-3.5 h-3.5 text-teal-600" />
-                        <span>// TECH LEAD & SYSTEMS ARCHITECTURE</span>
+                        <span>
+                          {cv.templateStyle === 'data_science_ai'
+                            ? '// DATA SCIENCE, ANALYTICS & AI'
+                            : '// TECH & SOFTWARE ENGINEERING'}
+                        </span>
                       </div>
                     )}
 
                     {/* Principal Engineering Blueprint tag */}
                     {isBlueprint && (
                       <div className="text-[10px] font-mono tracking-widest uppercase mb-1.5 font-semibold" style={{ color: currentAccent }}>
-                        SYSTEMS ARCHITECTURE · PRINCIPAL ENGINEERING
+                        {cv.templateStyle === 'engineering_resume'
+                          ? 'ENGINEERING & TECHNICAL SYSTEMS'
+                          : 'SYSTEMS ARCHITECTURE · PRINCIPAL ENGINEERING'}
                       </div>
                     )}
 
                     {/* Wall Street Finance tag */}
                     {isFinance && (
                       <div className="text-[10px] font-serif tracking-[0.2em] uppercase text-slate-500 mb-1.5 font-semibold">
-                        INSTITUTIONAL FINANCE &amp; M&amp;A STANDARD
+                        INSTITUTIONAL FINANCE &amp; AUDIT STANDARD
                       </div>
                     )}
 
@@ -1444,33 +1308,41 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     {/* Product & Growth tag */}
                     {isProduct && (
                       <div className="text-[10px] font-jakarta tracking-[0.16em] uppercase mb-1.5 font-bold" style={{ color: currentAccent }}>
-                        PRODUCT STRATEGY &amp; GROWTH LEADERSHIP
+                        {cv.templateStyle === 'project_based'
+                          ? 'PROJECT DELIVERY & PMO LEADERSHIP'
+                          : cv.templateStyle === 'freelancer_consultant'
+                          ? 'INDEPENDENT CONSULTING & CLIENT DELIVERY'
+                          : cv.templateStyle === 'business_analyst'
+                          ? 'BUSINESS ANALYSIS & STRATEGY'
+                          : 'PRODUCT STRATEGY & GROWTH LEADERSHIP'}
                       </div>
                     )}
 
                     {/* Two-Tone Editorial tag */}
                     {isEditorial && (
                       <div className="text-[10px] font-jakarta tracking-[0.18em] uppercase text-white/75 mb-1.5 font-semibold">
-                        EXECUTIVE EDITORIAL PROFILE
+                        {cv.templateStyle === 'marketing_professional'
+                          ? 'MARKETING & DIGITAL BRAND PROFILE'
+                          : 'EXECUTIVE EDITORIAL PROFILE'}
                       </div>
                     )}
 
                     {/* Minimalist Nordic tag */}
-                    {isMinimalist && (
+                    {cv.templateStyle === 'hybrid_minimalist' && (
                       <div className="text-[10px] font-mono tracking-widest uppercase text-slate-400 mb-1.5 font-semibold">
                         CURRICULUM VITAE · NORDIC EDITION
                       </div>
                     )}
 
-                    {/* ATS indicator */}
-                    {isAts && (
+                    {/* Strict Mono ATS indicator */}
+                    {isStrictMonoAts && (
                       <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-2 border-b border-slate-300 pb-1">
                         [ATS COMPACT · OCR PARSER COMPLIANT]
                       </div>
                     )}
 
                     {/* Academic Lattes tag */}
-                    {isAcademic && (
+                    {isAcademicLattes && (
                       <div className="mb-3 border-y border-slate-700/60 py-1.5 text-center font-serif">
                         <div className="text-[11px] font-bold tracking-wider uppercase text-slate-800">
                           SCIENTIFIC &amp; ACADEMIC CURRICULUM VITAE
@@ -1481,11 +1353,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       </div>
                     )}
 
-                    {/* UN Classic Diplomatic tag */}
+                    {/* UN / Governance tag */}
                     {isClassic && (
                       <div className="flex items-center justify-center gap-1.5 mb-2 font-serif text-[11px] text-blue-900 font-bold tracking-wider uppercase">
                         <Globe className="w-3.5 h-3.5 text-blue-800 shrink-0" />
-                        <span>INTERNATIONAL GOVERNANCE &amp; PROGRAMS STANDARD</span>
+                        <span>
+                          {cv.templateStyle === 'ngo_humanitarian'
+                            ? 'HUMANITARIAN & INTERNATIONAL PROGRAMS'
+                            : cv.templateStyle === 'government_public'
+                            ? 'PUBLIC SECTOR & INSTITUTIONAL RECORD'
+                            : 'INTERNATIONAL GOVERNANCE & PROGRAMS STANDARD'}
+                        </span>
                       </div>
                     )}
 

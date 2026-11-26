@@ -29,8 +29,6 @@ import {
   Sliders,
   Mail,
   User,
-  Save,
-  RefreshCw,
   Award,
   Palette,
   BookOpen,
@@ -40,13 +38,17 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Type,
   RotateCcw,
   LayoutTemplate,
   MoreHorizontal,
   Target,
   Download,
-  Search
+  Search,
+  Loader2,
+  Star,
+  Square
 } from 'lucide-react';
 import { StudioCreationMode } from './StudioGuideSystem';
 import { useAuth } from '../context/AuthContext';
@@ -65,6 +67,10 @@ import {
   POPULAR_COMPETENCY_CLUSTERS,
   calculateCVMetrics
 } from '../utils/executivePhrasing';
+import { auditCVAgainstJob } from '../utils/atsAnalyzer';
+import { authorizedFetch } from '../utils/authHeaders';
+import { OnboardingGoalId, getGoalPreset, getSavedOnboardingGoal } from '../utils/onboardingGoals';
+import { getTemplateById } from '../data/templateCatalog';
 import { getStoredSnippetsSync, trackFrontendTelemetry } from '../services/adminModulesService';
 import { ProfessionSnippetExample } from '../types/adminModules';
 
@@ -178,6 +184,230 @@ const COMPLETION_EVAL_COPY: Record<
   }
 };
 
+const EDITOR_V2_COPY: Record<
+  SiteLanguageCode,
+  {
+    steps: { profile: string; career: string; credentials: string; structure: string };
+    autoSaved: string;
+    syncing: string;
+    lastSyncNow: string;
+    lastSyncMinPrefix: string;
+    lastSyncMinSuffix: string;
+    improveAiBtn: string;
+    improvingAiBtn: string;
+    aiUpdatedTitle: string;
+    aiUpdatedMsg: string;
+    aiErrorTitle: string;
+    atsWidgetTitle: string;
+    expDetailed: string;
+    expMissing: string;
+    skillsRelevant: string;
+    skillsMissing: string;
+    keywordsGood: string;
+    keywordsMissing: string;
+    applyJobsBtn: string;
+    recommendedForYou: string;
+    reasonLabel: string;
+    useRecommendedBtn: string;
+    activeOnCv: string;
+    changeGoalBtn: string;
+    finishApplyBtn: string;
+  }
+> = {
+  pt: {
+    steps: {
+      profile: 'Dados pessoais',
+      career: 'Experiência',
+      credentials: 'Educação',
+      structure: 'Finalizar'
+    },
+    autoSaved: 'Salvado automaticamente',
+    syncing: 'A sincronizar…',
+    lastSyncNow: 'Última sincronização: agora mesmo',
+    lastSyncMinPrefix: 'Última sincronização: há ',
+    lastSyncMinSuffix: ' min',
+    improveAiBtn: 'Melhorar com IA',
+    improvingAiBtn: 'A melhorar…',
+    aiUpdatedTitle: 'Melhorado com IA',
+    aiUpdatedMsg: 'Texto reescrito com mais impacto e foco ATS.',
+    aiErrorTitle: 'Não foi possível melhorar agora',
+    atsWidgetTitle: 'Pontuação ATS',
+    expDetailed: 'Experiência detalhada',
+    expMissing: 'Adicionar conquistas e métricas na experiência',
+    skillsRelevant: 'Competências relevantes',
+    skillsMissing: 'Adicionar competências-chave',
+    keywordsGood: 'Boas palavras-chave e resumo',
+    keywordsMissing: 'Adicionar mais palavras-chave',
+    applyJobsBtn: 'Aplicar a vagas',
+    recommendedForYou: 'Recomendado para você',
+    reasonLabel: 'Motivo:',
+    useRecommendedBtn: 'Usar este modelo',
+    activeOnCv: 'Ativo no seu CV',
+    changeGoalBtn: 'Mudar objetivo',
+    finishApplyBtn: 'Aplicar a vagas'
+  },
+  en: {
+    steps: {
+      profile: 'Personal info',
+      career: 'Experience',
+      credentials: 'Education',
+      structure: 'Finish'
+    },
+    autoSaved: 'Auto-saved',
+    syncing: 'Syncing…',
+    lastSyncNow: 'Last sync: just now',
+    lastSyncMinPrefix: 'Last sync: ',
+    lastSyncMinSuffix: 'm ago',
+    improveAiBtn: 'Improve with AI',
+    improvingAiBtn: 'Improving…',
+    aiUpdatedTitle: 'Improved with AI',
+    aiUpdatedMsg: 'Rewritten with stronger ATS impact.',
+    aiErrorTitle: 'Could not improve right now',
+    atsWidgetTitle: 'ATS Score',
+    expDetailed: 'Detailed experience',
+    expMissing: 'Add measurable experience achievements',
+    skillsRelevant: 'Relevant skills',
+    skillsMissing: 'Add core competencies',
+    keywordsGood: 'Strong keywords & summary',
+    keywordsMissing: 'Add more keywords',
+    applyJobsBtn: 'Apply to jobs',
+    recommendedForYou: 'Recommended for you',
+    reasonLabel: 'Reason:',
+    useRecommendedBtn: 'Use this template',
+    activeOnCv: 'Active on your CV',
+    changeGoalBtn: 'Change goal',
+    finishApplyBtn: 'Apply to jobs'
+  },
+  es: {
+    steps: {
+      profile: 'Datos personales',
+      career: 'Experiencia',
+      credentials: 'Educación',
+      structure: 'Finalizar'
+    },
+    autoSaved: 'Guardado automáticamente',
+    syncing: 'Sincronizando…',
+    lastSyncNow: 'Última sincronización: ahora mismo',
+    lastSyncMinPrefix: 'Última sincronización: hace ',
+    lastSyncMinSuffix: ' min',
+    improveAiBtn: 'Mejorar con IA',
+    improvingAiBtn: 'Mejorando…',
+    aiUpdatedTitle: 'Mejorado con IA',
+    aiUpdatedMsg: 'Texto optimizado para impacto ATS.',
+    aiErrorTitle: 'No se pudo mejorar ahora',
+    atsWidgetTitle: 'Puntuación ATS',
+    expDetailed: 'Experiencia detallada',
+    expMissing: 'Añadir logros medibles en experiencia',
+    skillsRelevant: 'Competencias relevantes',
+    skillsMissing: 'Añadir competencias clave',
+    keywordsGood: 'Buenas palabras clave y resumen',
+    keywordsMissing: 'Añadir más palabras clave',
+    applyJobsBtn: 'Aplicar a vacantes',
+    recommendedForYou: 'Recomendado para ti',
+    reasonLabel: 'Motivo:',
+    useRecommendedBtn: 'Usar esta plantilla',
+    activeOnCv: 'Activa en tu CV',
+    changeGoalBtn: 'Cambiar objetivo',
+    finishApplyBtn: 'Aplicar a vacantes'
+  },
+  fr: {
+    steps: {
+      profile: 'Données personnelles',
+      career: 'Expérience',
+      credentials: 'Formation',
+      structure: 'Finaliser'
+    },
+    autoSaved: 'Enregistré automatiquement',
+    syncing: 'Synchronisation…',
+    lastSyncNow: 'Dernière synchro : à l’instant',
+    lastSyncMinPrefix: 'Dernière synchro : il y a ',
+    lastSyncMinSuffix: ' min',
+    improveAiBtn: 'Améliorer avec l’IA',
+    improvingAiBtn: 'Amélioration…',
+    aiUpdatedTitle: 'Amélioré par l’IA',
+    aiUpdatedMsg: 'Contenu optimisé pour les filtres ATS.',
+    aiErrorTitle: 'Impossible d’améliorer pour le moment',
+    atsWidgetTitle: 'Score ATS',
+    expDetailed: 'Expérience détaillée',
+    expMissing: 'Détailler vos réalisations chiffrées',
+    skillsRelevant: 'Compétences pertinentes',
+    skillsMissing: 'Ajouter des compétences clés',
+    keywordsGood: 'Bons mots-clés et profil',
+    keywordsMissing: 'Ajouter plus de mots-clés',
+    applyJobsBtn: 'Postuler aux offres',
+    recommendedForYou: 'Recommandé pour vous',
+    reasonLabel: 'Raison :',
+    useRecommendedBtn: 'Utiliser ce modèle',
+    activeOnCv: 'Actif sur votre CV',
+    changeGoalBtn: 'Changer d’objectif',
+    finishApplyBtn: 'Postuler aux offres'
+  },
+  de: {
+    steps: {
+      profile: 'Persönliche Daten',
+      career: 'Erfahrung',
+      credentials: 'Ausbildung',
+      structure: 'Abschließen'
+    },
+    autoSaved: 'Automatisch gespeichert',
+    syncing: 'Synchronisiere…',
+    lastSyncNow: 'Letzte Synchro: gerade eben',
+    lastSyncMinPrefix: 'Letzte Synchro: vor ',
+    lastSyncMinSuffix: ' Min.',
+    improveAiBtn: 'Mit KI verbessern',
+    improvingAiBtn: 'Verbessere…',
+    aiUpdatedTitle: 'Mit KI optimiert',
+    aiUpdatedMsg: 'Text für ATS-Filter geschärft.',
+    aiErrorTitle: 'Verbesserung aktuell nicht möglich',
+    atsWidgetTitle: 'ATS-Score',
+    expDetailed: 'Detaillierte Erfahrung',
+    expMissing: 'Messbare Erfolge in Erfahrung ergänzen',
+    skillsRelevant: 'Relevante Kompetenzen',
+    skillsMissing: 'Kernkompetenzen hinzufügen',
+    keywordsGood: 'Starke Keywords & Profil',
+    keywordsMissing: 'Mehr Keywords hinzufügen',
+    applyJobsBtn: 'Auf Stellen bewerben',
+    recommendedForYou: 'Empfohlen für Sie',
+    reasonLabel: 'Grund:',
+    useRecommendedBtn: 'Vorlage nutzen',
+    activeOnCv: 'Aktiv im Lebenslauf',
+    changeGoalBtn: 'Ziel ändern',
+    finishApplyBtn: 'Auf Stellen bewerben'
+  },
+  it: {
+    steps: {
+      profile: 'Dati personali',
+      career: 'Esperienza',
+      credentials: 'Istruzione',
+      structure: 'Completa'
+    },
+    autoSaved: 'Salvato automaticamente',
+    syncing: 'Sincronizzazione…',
+    lastSyncNow: 'Ultima sincronizzazione: adesso',
+    lastSyncMinPrefix: 'Ultima sincronizzazione: ',
+    lastSyncMinSuffix: ' min fa',
+    improveAiBtn: 'Migliora con IA',
+    improvingAiBtn: 'Miglioramento…',
+    aiUpdatedTitle: 'Migliorato con IA',
+    aiUpdatedMsg: 'Testo riscritto con maggiore impatto ATS.',
+    aiErrorTitle: 'Impossibile migliorare ora',
+    atsWidgetTitle: 'Punteggio ATS',
+    expDetailed: 'Esperienza dettagliata',
+    expMissing: 'Aggiungi risultati misurabili',
+    skillsRelevant: 'Competenze rilevanti',
+    skillsMissing: 'Aggiungi competenze chiave',
+    keywordsGood: 'Buone parole chiave e profilo',
+    keywordsMissing: 'Aggiungi più parole chiave',
+    applyJobsBtn: 'Candidati alle offerte',
+    recommendedForYou: 'Consigliato per te',
+    reasonLabel: 'Motivo:',
+    useRecommendedBtn: 'Usa questo modello',
+    activeOnCv: 'Attivo nel tuo CV',
+    changeGoalBtn: 'Cambia obiettivo',
+    finishApplyBtn: 'Candidati alle offerte'
+  }
+};
+
 interface ContentEditorProps {
   cv: CVData;
   onChange: (cv: CVData) => void;
@@ -190,6 +420,9 @@ interface ContentEditorProps {
   density?: 'compact' | 'normal' | 'relaxed';
   onDensityChange?: (density: 'compact' | 'normal' | 'relaxed') => void;
   guideMode?: StudioCreationMode;
+  jobDescription?: string;
+  selectedGoalId?: OnboardingGoalId | null;
+  onOpenGoalModal?: () => void;
 }
 
 export type EditorStepId =
@@ -240,7 +473,10 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   onOpenPricingModal,
   density = 'normal',
   onDensityChange,
-  guideMode = 'guided'
+  guideMode = 'guided',
+  jobDescription = '',
+  selectedGoalId,
+  onOpenGoalModal
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [credentialsTab, setCredentialsTab] = useState<'academic' | 'skills'>('academic');
@@ -258,7 +494,10 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     });
     return initial;
   });
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [syncState, setSyncState] = useState<'saved' | 'saving'>('saved');
+  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => Date.now());
+  const [syncClockTick, setSyncClockTick] = useState<number>(0);
+  const [improvingFieldKey, setImprovingFieldKey] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<ProfessionSnippetExample[]>(() => getStoredSnippetsSync());
   const [showSnippetPicker, setShowSnippetPicker] = useState<boolean>(false);
   const [showDiagnostics, setShowDiagnostics] = useState<boolean>(false);
@@ -270,6 +509,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const [sectionsOrderOpen, setSectionsOrderOpen] = useState<boolean>(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
+  const hasMountedAutoSaveRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -371,12 +611,45 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const { showSuccess, showError } = useToast();
   const { siteLanguage, studioText } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).editor;
+  const v2 = EDITOR_V2_COPY[siteLanguage] || EDITOR_V2_COPY.en;
   const guides = (STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en).editorGuides;
   const evalUi = COMPLETION_EVAL_COPY[siteLanguage] || COMPLETION_EVAL_COPY.en;
 
-  // Live readiness metrics
+  // Live readiness & ATS employability metrics (computed dynamically from real CV + active job description)
   const cvMetrics = useMemo(() => calculateCVMetrics(cv), [cv]);
+  const atsAudit = useMemo(
+    () => auditCVAgainstJob(cv, jobDescription || '', siteLanguage),
+    [cv, jobDescription, siteLanguage]
+  );
+  const effectiveAtsScore = useMemo(() => {
+    if (jobDescription && jobDescription.trim().length > 20) {
+      return Math.round(cvMetrics.strengthScore * 0.45 + atsAudit.score * 0.55);
+    }
+    return cvMetrics.strengthScore;
+  }, [cvMetrics.strengthScore, atsAudit.score, jobDescription]);
+
+  const effectiveGoalId = selectedGoalId ?? getSavedOnboardingGoal();
+  const recommendedPreset = useMemo(
+    () => getGoalPreset(effectiveGoalId || 'quick_job'),
+    [effectiveGoalId]
+  );
+  const recommendedTemplateMeta = useMemo(
+    () => getTemplateById(recommendedPreset.templateStyle),
+    [recommendedPreset.templateStyle]
+  );
   const completedCriteria = cvMetrics.completenessChecklist.filter((c) => c.completed).length;
+
+  useEffect(() => {
+    const interval = setInterval(() => setSyncClockTick((t) => t + 1), 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  void syncClockTick;
+  const syncMinutesAgo = Math.floor((Date.now() - lastSyncedAt) / 60000);
+  const syncTimeText =
+    syncMinutesAgo < 1
+      ? v2.lastSyncNow
+      : `${v2.lastSyncMinPrefix}${syncMinutesAgo}${v2.lastSyncMinSuffix}`;
 
   const handleApplySnippetSummary = (snip: ProfessionSnippetExample) => {
     commitChange(
@@ -430,44 +703,114 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     );
   };
 
-  const handleSaveProgress = async () => {
-    if (!isAuthenticated) {
-      if (onOpenAuthModal) {
-        onOpenAuthModal(ui.toasts.authPromptSave);
-      }
+  // Silent debounced Auto-Save (updates local timestamp immediately & syncs cloud when signed in)
+  useEffect(() => {
+    if (!hasMountedAutoSaveRef.current) {
+      hasMountedAutoSaveRef.current = true;
       return;
     }
-
-    if (!hasActivePlan) {
-      if (onOpenPricingModal) {
-        onOpenPricingModal(ui.toasts.pricingPromptSave);
-      } else {
-        showError(ui.toasts.planRequiredTitle, ui.toasts.planRequiredMsg);
+    setSyncState('saving');
+    const localTimer = setTimeout(() => {
+      setLastSyncedAt(Date.now());
+      if (!isAuthenticated || !hasActivePlan || !cv.personalDetails.name?.trim()) {
+        setSyncState('saved');
       }
-      return;
+    }, 450);
+
+    let cloudTimer: ReturnType<typeof setTimeout> | undefined;
+    if (isAuthenticated && hasActivePlan && cv.personalDetails.name?.trim()) {
+      cloudTimer = setTimeout(async () => {
+        try {
+          const name = cv.personalDetails.name.trim();
+          const role = cv.personalDetails.title?.trim() || ui.toasts.defaultCvTitle;
+          const title = name ? `${name} - ${role}` : ui.toasts.defaultCvTitle;
+          await saveCurrentResume(cv, title, cv.personalDetails.title);
+          setLastSyncedAt(Date.now());
+        } catch (err) {
+          console.warn('Auto-sync cloud warning:', err);
+        } finally {
+          setSyncState('saved');
+        }
+      }, 3200);
     }
 
+    return () => {
+      clearTimeout(localTimer);
+      if (cloudTimer) clearTimeout(cloudTimer);
+    };
+  }, [cv, isAuthenticated, hasActivePlan, saveCurrentResume, ui.toasts.defaultCvTitle]);
+
+  // Discreet inline 1-click AI field enhancement
+  const handleImproveFieldWithAi = async (
+    field: 'summary' | 'experience' | 'competencies',
+    experienceIndex?: number
+  ) => {
+    const key = field === 'experience' ? `exp-${experienceIndex ?? 0}` : field;
+    setImprovingFieldKey(key);
     try {
-      setIsSaving(true);
-      const name = cv.personalDetails.name?.trim();
-      const role = cv.personalDetails.title?.trim() || ui.toasts.defaultCvTitle;
-      const title = name ? `${name} - ${role}` : ui.toasts.defaultCvTitle;
-      await saveCurrentResume(cv, title, cv.personalDetails.title);
-      showSuccess(
-        ui.toasts.savedTitle,
-        ui.toasts.savedMsg
-          .replace('{exps}', String(cv.experiences.length))
-          .replace('{comps}', String(cv.competencies.length))
-      );
+      const res = await authorizedFetch('/api/ai/improve-field', {
+        method: 'POST',
+        body: JSON.stringify({
+          field,
+          cvData: cv,
+          experienceIndex,
+          language: siteLanguage,
+          jobContext: jobDescription
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        if (onOpenAuthModal) onOpenAuthModal(ui.toasts.authPromptSave);
+        return;
+      }
+      if (res.status === 402 || res.status === 403) {
+        if (onOpenPricingModal) {
+          onOpenPricingModal(data?.error || ui.toasts.pricingPromptSave);
+        } else {
+          showError(v2.aiErrorTitle, data?.error || ui.toasts.planRequiredMsg);
+        }
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(data?.error || v2.aiErrorTitle);
+      }
+
+      if (field === 'summary' && typeof data.summary === 'string' && data.summary.trim()) {
+        commitChange({ ...cv, summary: data.summary.trim() }, true);
+      } else if (
+        field === 'experience' &&
+        typeof experienceIndex === 'number' &&
+        Array.isArray(data.highlights) &&
+        data.highlights.length > 0
+      ) {
+        const nextExps = cv.experiences.map((exp, idx) =>
+          idx === experienceIndex
+            ? { ...exp, highlights: data.highlights.map(String).filter(Boolean) }
+            : exp
+        );
+        commitChange({ ...cv, experiences: nextExps }, true);
+      } else if (
+        field === 'competencies' &&
+        Array.isArray(data.competencies) &&
+        data.competencies.length > 0
+      ) {
+        const nextComps: Competency[] = data.competencies
+          .filter((c: any) => c && (c.category || c.description))
+          .map((c: any, idx: number) => ({
+            id: cv.competencies[idx]?.id || `comp-ai-${Date.now()}-${idx}`,
+            category: String(c.category || ''),
+            description: String(c.description || '')
+          }));
+        if (nextComps.length > 0) {
+          commitChange({ ...cv, competencies: nextComps }, true);
+        }
+      }
+
+      showSuccess(v2.aiUpdatedTitle, v2.aiUpdatedMsg);
     } catch (err: any) {
-      console.error('Erro ao guardar progresso:', err);
-      const rawMsg = String(err?.message || '');
-      const friendlyDetail = rawMsg.includes('permission')
-        ? ui.toasts.savePermError
-        : ui.toasts.saveGenericError;
-      showError(ui.toasts.saveErrorTitle, friendlyDetail);
+      showError(v2.aiErrorTitle, err?.message || ui.toasts.saveGenericError);
     } finally {
-      setIsSaving(false);
+      setImprovingFieldKey(null);
     }
   };
 
@@ -767,37 +1110,37 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     commitChange({ ...cv, references: list }, true);
   };
 
-  // 4 Streamlined Grouped Stages
+  // 4 Visual Checklist Stages
   const STEPS: StepDefinition[] = [
     {
       id: 'profile',
-      mobileLabel: ui.steps.profile.mobile,
-      shortLabel: ui.steps.profile.short,
+      mobileLabel: v2.steps.profile,
+      shortLabel: v2.steps.profile,
       isCompleted: Boolean(
         cv.personalDetails.name?.trim() &&
           cv.personalDetails.email?.trim() &&
-          cv.personalDetails.phone?.trim() &&
-          cv.summary &&
-          cv.summary.trim().length >= 40
+          cv.personalDetails.phone?.trim()
       )
     },
     {
       id: 'career',
-      mobileLabel: ui.steps.career.mobile,
-      shortLabel: ui.steps.career.short,
-      isCompleted: cv.experiences.length > 0
+      mobileLabel: v2.steps.career,
+      shortLabel: v2.steps.career,
+      isCompleted:
+        cv.experiences.length > 0 &&
+        cv.experiences.some((e) => Boolean(e.company?.trim() || e.role?.trim()))
     },
     {
       id: 'credentials',
-      mobileLabel: ui.steps.credentials.mobile,
-      shortLabel: ui.steps.credentials.short,
+      mobileLabel: v2.steps.credentials,
+      shortLabel: v2.steps.credentials,
       isCompleted: cv.educations.length > 0 && cv.competencies.length > 0
     },
     {
       id: 'structure',
-      mobileLabel: ui.steps.structure.mobile,
-      shortLabel: ui.steps.structure.short,
-      isCompleted: true
+      mobileLabel: v2.steps.structure,
+      shortLabel: v2.steps.structure,
+      isCompleted: effectiveAtsScore >= 75
     }
   ];
 
@@ -897,169 +1240,164 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
       onKeyDown={handleEditorKeyDown}
       className="flex flex-col flex-1 min-h-0 h-full bg-slate-50/60"
     >
-      {/* 1. CLEAN 4-STEP TAB BAR + SINGLE OPTIONS MENU + SAVE */}
+      {/* 1. VISUAL CHECKLIST PROGRESS + AUTO-SAVE STATUS + OPTIONS MENU */}
       <div className="shrink-0 z-20 bg-white border-b border-slate-200">
-        <div className="flex flex-col sm:flex-row sm:items-stretch justify-between">
-          <div className="grid grid-cols-2 sm:grid-cols-4 flex-1 min-w-0 order-2 sm:order-1 border-t border-slate-100 sm:border-t-0">
-            {STEPS.map((step, idx) => {
-              const isActive = currentStepIndex === idx;
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => {
-                    setCurrentStepIndex(idx);
-                    setOpenMenuId(null);
-                  }}
-                  title={guides.stepTabsTitle[step.id]}
-                  className={`min-h-[44px] sm:min-h-0 flex items-center justify-center gap-1.5 px-2 sm:px-2.5 py-2.5 text-xs transition-colors border-b-2 whitespace-nowrap min-w-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600 ${
-                    isActive
-                      ? 'bg-blue-50/80 dark:bg-blue-950/50 border-blue-600 text-blue-900 dark:text-blue-100 font-bold'
-                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 font-medium'
-                  }`}
-                >
-                  <span
-                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                      isActive
-                        ? 'bg-blue-600 text-white'
-                        : step.isCompleted
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-200 text-slate-600'
+        {/* Visual Checklist Tabs (4 Clear Steps) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-slate-100">
+          {STEPS.map((step, idx) => {
+            const isActive = currentStepIndex === idx;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => {
+                  setCurrentStepIndex(idx);
+                  setOpenMenuId(null);
+                }}
+                title={guides.stepTabsTitle[step.id]}
+                className={`min-h-[44px] flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs transition-colors border-b-2 min-w-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600 ${
+                  isActive
+                    ? 'bg-blue-50/80 dark:bg-blue-950/50 border-blue-600 text-blue-900 dark:text-blue-100 font-bold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 font-medium'
+                }`}
+              >
+                {step.isCompleted ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <Square
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      isActive ? 'text-blue-600' : 'text-slate-300'
                     }`}
-                  >
-                    {step.isCompleted && !isActive ? (
-                      <Check className="w-2.5 h-2.5 stroke-[2.75]" />
-                    ) : (
-                      idx + 1
-                    )}
-                  </span>
-                  <span className="truncate">{step.shortLabel}</span>
-                </button>
-              );
-            })}
+                  />
+                )}
+                <span className="truncate">{step.shortLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Calm Auto-Save Strip + Live ATS Score Pill + Options */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-1.5 bg-slate-50/70">
+          <div className="flex items-center gap-2 min-w-0 text-[11px] text-slate-600">
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 shrink-0">
+              {syncState === 'saving' ? (
+                <Loader2 className="w-3 h-3 animate-spin text-blue-600 shrink-0" />
+              ) : (
+                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+              )}
+              <span>{syncState === 'saving' ? v2.syncing : v2.autoSaved}</span>
+            </span>
+            <span aria-hidden="true" className="text-slate-300 hidden sm:inline">·</span>
+            <span className="text-slate-500 truncate hidden sm:inline">{syncTimeText}</span>
           </div>
 
-          {/* Tucked Actions: Single Options Menu + Save */}
-          <div className="flex items-center justify-between sm:justify-end gap-1.5 px-3 py-1.5 sm:py-0 sm:px-3 sm:border-l border-slate-100 shrink-0 order-1 sm:order-2">
-            <span className="text-[11px] font-semibold text-slate-500 sm:hidden">
-              {ui.footer.stepOf
-                .replace('{current}', String(currentStepIndex + 1))
-                .replace('{total}', String(STEPS.length))}
-            </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowDiagnostics((prev) => !prev)}
+              className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold border flex items-center gap-1.5 transition-colors whitespace-nowrap tabular-nums ${
+                showDiagnostics
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              <Target className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>{v2.atsWidgetTitle}: {effectiveAtsScore}/100</span>
+            </button>
 
-            <div className="flex items-center gap-1.5">
-              <div className="relative" data-editor-menu="true">
-                <button
-                  type="button"
-                  onClick={() => setOpenMenuId((prev) => (prev === 'top-options' ? null : 'top-options'))}
-                  aria-expanded={openMenuId === 'top-options'}
-                  title={optionsMenuLabel}
-                  className={`min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors whitespace-nowrap touch-manipulation ${
-                    openMenuId === 'top-options' || showDiagnostics
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
-                  <span>{optionsMenuLabel}</span>
-                </button>
+            <div className="relative" data-editor-menu="true">
+              <button
+                type="button"
+                onClick={() => setOpenMenuId((prev) => (prev === 'top-options' ? null : 'top-options'))}
+                aria-expanded={openMenuId === 'top-options'}
+                title={optionsMenuLabel}
+                className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1 transition-colors whitespace-nowrap touch-manipulation ${
+                  openMenuId === 'top-options'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">{optionsMenuLabel}</span>
+              </button>
 
-                {openMenuId === 'top-options' && (
-                  <div className="absolute right-0 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                    <button
-                      type="button"
-                      disabled={undoStack.length === 0}
-                      onClick={() => {
-                        handleUndo();
-                        setOpenMenuId(null);
-                      }}
-                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Undo2 className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{ui.undoTitle}</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">Ctrl+Z</span>
-                    </button>
+              {openMenuId === 'top-options' && (
+                <div className="absolute right-0 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <button
+                    type="button"
+                    disabled={undoStack.length === 0}
+                    onClick={() => {
+                      handleUndo();
+                      setOpenMenuId(null);
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Undo2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{ui.undoTitle}</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">Ctrl+Z</span>
+                  </button>
 
-                    <button
-                      type="button"
-                      disabled={redoStack.length === 0}
-                      onClick={() => {
-                        handleRedo();
-                        setOpenMenuId(null);
-                      }}
-                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Redo2 className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{ui.redoTitle}</span>
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400">Ctrl+Y</span>
-                    </button>
+                  <button
+                    type="button"
+                    disabled={redoStack.length === 0}
+                    onClick={() => {
+                      handleRedo();
+                      setOpenMenuId(null);
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Redo2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{ui.redoTitle}</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">Ctrl+Y</span>
+                  </button>
 
-                    <div className="my-1 border-t border-slate-100" />
+                  <div className="my-1 border-t border-slate-100" />
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowDiagnostics((prev) => !prev);
-                        setOpenMenuId(null);
-                      }}
-                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center justify-between gap-2"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Target className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>{guides.checklistTooltip}</span>
-                      </span>
-                      <span className="text-[11px] font-mono tabular-nums font-bold text-slate-900">
-                        {cvMetrics.strengthScore}%
-                      </span>
-                    </button>
-
+                  {onOpenGoalModal && (
                     <button
                       type="button"
                       onClick={() => {
                         setOpenMenuId(null);
-                        onOpenAiTailor();
+                        onOpenGoalModal();
                       }}
                       className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                     >
-                      <Wand2 className="w-3.5 h-3.5 text-amber-600" />
-                      <span>{ui.stage1.aiOptimizeBtn}</span>
+                      <Star className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{v2.changeGoalBtn}</span>
                     </button>
+                  )}
 
-                    {onOpenCoverLetter && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenMenuId(null);
-                          onOpenCoverLetter();
-                        }}
-                        className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                      >
-                        <Mail className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{ui.stage4.coverCtaTitle}</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      onOpenAiTailor();
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <Wand2 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{ui.stage1.aiOptimizeBtn}</span>
+                  </button>
 
-              <button
-                type="button"
-                onClick={handleSaveProgress}
-                disabled={isSaving}
-                className="min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors whitespace-nowrap touch-manipulation"
-                title={ui.saveTitle}
-              >
-                {isSaving ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Save className="w-3.5 h-3.5" />
-                )}
-                <span>{isSaving ? ui.saving : ui.save}</span>
-              </button>
+                  {onOpenCoverLetter && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        onOpenCoverLetter();
+                      }}
+                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{ui.stage4.coverCtaTitle}</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1353,47 +1691,62 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   />
                 </div>
 
-                {/* Single Assistant Menu for Examples & AI Optimize */}
-                <div className="relative shrink-0" data-editor-menu="true">
+                {/* Discreet 1-click AI Improve + Assistant Menu */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setOpenMenuId((prev) => (prev === 'summary-assist' ? null : 'summary-assist'))}
-                    aria-expanded={openMenuId === 'summary-assist'}
-                    className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    disabled={improvingFieldKey === 'summary'}
+                    onClick={() => void handleImproveFieldWithAi('summary')}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-800 transition-colors flex items-center gap-1.5 whitespace-nowrap disabled:opacity-60"
                   >
-                    <Wand2 className="w-3.5 h-3.5 text-amber-600" />
-                    <span>{assistantMenuLabel}</span>
-                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${openMenuId === 'summary-assist' ? 'rotate-180' : ''}`} />
+                    {improvingFieldKey === 'summary' ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                    )}
+                    <span>{improvingFieldKey === 'summary' ? v2.improvingAiBtn : v2.improveAiBtn}</span>
                   </button>
 
-                  {openMenuId === 'summary-assist' && (
-                    <div className="absolute right-0 mt-1.5 w-52 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenMenuId(null);
-                          onOpenAiTailor();
-                        }}
-                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
-                      >
-                        <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>{ui.stage1.aiOptimizeBtn}</span>
-                      </button>
-                      {snippets.length > 0 && (
+                  <div className="relative shrink-0" data-editor-menu="true">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId((prev) => (prev === 'summary-assist' ? null : 'summary-assist'))}
+                      aria-expanded={openMenuId === 'summary-assist'}
+                      className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
+                    >
+                      <span>{assistantMenuLabel}</span>
+                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${openMenuId === 'summary-assist' ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {openMenuId === 'summary-assist' && (
+                      <div className="absolute right-0 mt-1.5 w-52 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
                         <button
                           type="button"
                           onClick={() => {
                             setOpenMenuId(null);
-                            setShowSnippetPicker((prev) => !prev);
+                            onOpenAiTailor();
                           }}
                           className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
                         >
-                          <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span>{ui.stage1.examplesBtn} ({snippets.length})</span>
+                          <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>{ui.stage1.aiOptimizeBtn}</span>
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {snippets.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenMenuId(null);
+                              setShowSnippetPicker((prev) => !prev);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                          >
+                            <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span>{ui.stage1.examplesBtn} ({snippets.length})</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1802,7 +2155,22 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                 />
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={improvingFieldKey === `exp-${expIdx}`}
+                                  onClick={() => void handleImproveFieldWithAi('experience', expIdx)}
+                                  className="text-[11px] px-2 py-1 rounded-md border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-800 font-semibold flex items-center gap-1 whitespace-nowrap disabled:opacity-60"
+                                >
+                                  {improvingFieldKey === `exp-${expIdx}` ? (
+                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                  ) : (
+                                    <Sparkles className="w-3 h-3 text-blue-600" />
+                                  )}
+                                  <span>
+                                    {improvingFieldKey === `exp-${expIdx}` ? v2.improvingAiBtn : v2.improveAiBtn}
+                                  </span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1811,7 +2179,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                   title={guides.actionVerbsTooltip}
                                   className="text-[11px] px-2 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 font-semibold flex items-center gap-1 whitespace-nowrap"
                                 >
-                                  <Sparkles className="w-3 h-3 text-amber-600" />
+                                  <Wand2 className="w-3 h-3 text-amber-600" />
                                   <span>{ui.stage2.actionVerbsBtn}</span>
                                 </button>
                                 <button
@@ -2157,7 +2525,22 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       />
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={improvingFieldKey === 'competencies'}
+                        onClick={() => void handleImproveFieldWithAi('competencies')}
+                        className="min-h-[38px] px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-blue-200 bg-blue-50/80 hover:bg-blue-100 text-blue-800 transition-colors flex items-center gap-1.5 whitespace-nowrap disabled:opacity-60"
+                      >
+                        {improvingFieldKey === 'competencies' ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        )}
+                        <span>
+                          {improvingFieldKey === 'competencies' ? v2.improvingAiBtn : v2.improveAiBtn}
+                        </span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => setShowClusterPicker((prev) => !prev)}
@@ -2168,7 +2551,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                             : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
                         }`}
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                         <span className="hidden sm:inline">{ui.stage3.clustersBtn}</span>
                       </button>
                       <button
@@ -2340,6 +2723,129 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         {/* ========================================================================= */}
         {currentStep.id === 'structure' && (
           <div className="space-y-4 animate-in fade-in duration-150">
+            {/* Compact ATS Employability Score Widget + Contextual Template Recommendation */}
+            <div className="grid grid-cols-1 gap-3">
+              {/* 1. Compact ATS Score Widget */}
+              {(() => {
+                const hasDetailedExp =
+                  cv.experiences.length > 0 &&
+                  cv.experiences.some((e) => e.highlights.filter((h) => h.trim().length > 20).length >= 2);
+                const hasRelevantSkills = cv.competencies.length >= 2;
+                const hasKeywords =
+                  summaryWordCount >= 35 &&
+                  (jobDescription.trim().length > 20 ? atsAudit.missingKeywords.length <= 3 : cvMetrics.totalWords >= 160);
+
+                return (
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-blue-600 shrink-0" />
+                        <span className="text-xs font-bold text-slate-900">{v2.atsWidgetTitle}</span>
+                      </div>
+                      <span className="text-sm font-extrabold font-mono tabular-nums text-slate-950">
+                        {effectiveAtsScore}/100
+                      </span>
+                    </div>
+
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center gap-2">
+                        {hasDetailedExp ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        )}
+                        <span className={hasDetailedExp ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                          {hasDetailedExp ? v2.expDetailed : v2.expMissing}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {hasRelevantSkills ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        )}
+                        <span className={hasRelevantSkills ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                          {hasRelevantSkills ? v2.skillsRelevant : v2.skillsMissing}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {hasKeywords ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        )}
+                        <span className={hasKeywords ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                          {hasKeywords ? v2.keywordsGood : v2.keywordsMissing}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 2. Contextual Smart Template Recommendation */}
+              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-800">
+                      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                      <span>{v2.recommendedForYou}</span>
+                    </span>
+                    <p className="text-sm font-extrabold text-slate-950 truncate">
+                      {recommendedTemplateMeta.shortName || recommendedPreset.templateName}
+                    </p>
+                  </div>
+                  {onOpenGoalModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenGoalModal}
+                      className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline shrink-0"
+                    >
+                      {v2.changeGoalBtn}
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-xs text-slate-700 leading-relaxed">
+                  <strong className="font-semibold text-slate-900">{v2.reasonLabel}</strong>{' '}
+                  {recommendedPreset.labels[siteLanguage]?.reason || recommendedPreset.labels.en.reason}
+                </p>
+
+                <div className="flex items-center gap-2 pt-0.5">
+                  {cv.templateStyle === recommendedPreset.templateStyle ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                      <span>{v2.activeOnCv}</span>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackFrontendTelemetry({
+                          type: 'template_selected',
+                          templateStyle: recommendedPreset.templateStyle
+                        });
+                        commitChange(
+                          {
+                            ...cv,
+                            templateStyle: recommendedPreset.templateStyle,
+                            accentColor: recommendedPreset.accentColor,
+                            sectionOrder: recommendedPreset.sectionOrder
+                          },
+                          true
+                        );
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors"
+                    >
+                      {v2.useRecommendedBtn}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
               {/* Visual Style & Template Picker */}
               <div className="p-4 sm:p-5 space-y-4">
@@ -2845,15 +3351,26 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
               <span className="truncate">{ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].shortLabel}</span>
               <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
-          ) : (
+          ) : onOpenJobs ? (
             <button
               type="button"
-              onClick={handleSaveProgress}
-              className="min-h-[42px] px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
+              onClick={onOpenJobs}
+              className="min-h-[42px] px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
             >
-              <Check className="w-4 h-4 shrink-0" />
-              <span>{ui.footer.finishSave}</span>
+              <Search className="w-4 h-4 shrink-0" />
+              <span>{v2.finishApplyBtn}</span>
             </button>
+          ) : (
+            onExportCv && (
+              <button
+                type="button"
+                onClick={onExportCv}
+                className="min-h-[42px] px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
+              >
+                <Download className="w-4 h-4 shrink-0" />
+                <span>{studioText.docToolbar.wordBtn}</span>
+              </button>
+            )
           )}
         </div>
       </div>

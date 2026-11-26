@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { CVData } from '../types/cv';
 import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
+import { useToast } from '../context/ToastContext';
+import { authorizedFetch } from '../utils/authHeaders';
 import { TOOLS_UI_TRANSLATIONS, ToolsUiDictionary, getIntlLocale } from '../i18n/toolsUiTranslations';
 import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
 import {
@@ -21,7 +23,10 @@ import {
   Lightbulb,
   Check,
   ArrowRight,
-  Wand2
+  Wand2,
+  Link2,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 
 export interface MatchedRadarJob {
@@ -82,7 +87,27 @@ export interface JobPreferences {
 interface JobMatchesPanelProps {
   cv: CVData;
   onApplyJobToTailor: (jobDescriptionText: string, targetTab: 'ats' | 'ai') => void;
+  onUpdateCV?: (updatedCV: CVData) => void;
+  onSetJobDescription?: (desc: string) => void;
+  onOpenAuthModal?: (prompt?: string) => void;
+  onOpenPricingModal?: (prompt?: string) => void;
   guideMode?: StudioCreationMode;
+}
+
+interface UrlJobAnalysisResult {
+  jobTitle: string;
+  company: string;
+  location: string;
+  compatibilityScore: number;
+  matchingKeywords: string[];
+  missingKeywords: string[];
+  suggestions: string[];
+  cleanedJobDescription: string;
+  adaptedCV?: {
+    summary?: string;
+    competencies?: Array<{ category: string; description: string }>;
+    experiences?: Array<{ index: number; highlights: string[] }>;
+  } | null;
 }
 
 interface AppliedJobRecord {
@@ -285,6 +310,158 @@ const APPLY_FLOW_COPY: Record<
   }
 };
 
+const URL_ANALYZER_COPY: Record<
+  SiteLanguageCode,
+  {
+    badge: string;
+    title: string;
+    subtitle: string;
+    urlPh: string;
+    pasteToggle: string;
+    pasteHide: string;
+    pastePh: string;
+    analyzeBtn: string;
+    analyzingBtn: string;
+    compatLabel: string;
+    matchedTitle: string;
+    missingTitle: string;
+    suggestionsTitle: string;
+    adaptNowBtn: string;
+    adaptedDoneBtn: string;
+    adaptedToastTitle: string;
+    adaptedToastMsg: string;
+    errGeneric: string;
+    errEmpty: string;
+  }
+> = {
+  pt: {
+    badge: 'Aplicar a vagas',
+    title: 'Cole o link da vaga e adapte o seu CV com IA',
+    subtitle: 'Analisamos os requisitos da vaga, calculamos a compatibilidade ATS e ajustamos o seu CV.',
+    urlPh: 'https://vaga.com/... (LinkedIn, UNJobs, Indeed, Glassdoor)',
+    pasteToggle: 'Ou colar texto da vaga',
+    pasteHide: 'Ocultar texto da vaga',
+    pastePh: 'Cole aqui a descrição completa ou requisitos da vaga...',
+    analyzeBtn: 'Analisar vaga e adaptar CV',
+    analyzingBtn: 'A analisar vaga…',
+    compatLabel: 'Compatibilidade ATS',
+    matchedTitle: 'Pontos fortes no seu CV',
+    missingTitle: 'Palavras-chave em falta',
+    suggestionsTitle: 'Sugestões rápidas',
+    adaptNowBtn: 'Aplicar ajustes ao meu CV',
+    adaptedDoneBtn: 'CV adaptado para esta vaga',
+    adaptedToastTitle: 'CV adaptado com sucesso',
+    adaptedToastMsg: 'Resumo, competências e destaques atualizados para esta vaga.',
+    errGeneric: 'Não foi possível analisar a vaga agora.',
+    errEmpty: 'Cole o link da vaga ou o texto da descrição.'
+  },
+  en: {
+    badge: 'Apply to jobs',
+    title: 'Paste a job link and tailor your CV with AI',
+    subtitle: 'We analyze the role requirements, compute ATS compatibility, and adapt your resume.',
+    urlPh: 'https://job.com/... (LinkedIn, UNJobs, Indeed, Glassdoor)',
+    pasteToggle: 'Or paste job description',
+    pasteHide: 'Hide description field',
+    pastePh: 'Paste the full job description or requirements here...',
+    analyzeBtn: 'Analyze job & tailor CV',
+    analyzingBtn: 'Analyzing job…',
+    compatLabel: 'ATS Compatibility',
+    matchedTitle: 'Matched in your CV',
+    missingTitle: 'Missing keywords',
+    suggestionsTitle: 'Quick improvements',
+    adaptNowBtn: 'Apply tailored updates to CV',
+    adaptedDoneBtn: 'CV tailored for this role',
+    adaptedToastTitle: 'CV tailored successfully',
+    adaptedToastMsg: 'Summary, skills, and bullet highlights updated for this job.',
+    errGeneric: 'Could not analyze this job right now.',
+    errEmpty: 'Paste a job link or job description first.'
+  },
+  es: {
+    badge: 'Aplicar a vacantes',
+    title: 'Pega el enlace de la vacante y adapta tu CV con IA',
+    subtitle: 'Analizamos los requisitos, medimos compatibilidad ATS y ajustamos tu currículum.',
+    urlPh: 'https://oferta.com/... (LinkedIn, UNJobs, Indeed)',
+    pasteToggle: 'O pegar texto de la oferta',
+    pasteHide: 'Ocultar texto de la oferta',
+    pastePh: 'Pega aquí la descripción o requisitos de la vacante...',
+    analyzeBtn: 'Analizar vacante y adaptar CV',
+    analyzingBtn: 'Analizando oferta…',
+    compatLabel: 'Compatibilidad ATS',
+    matchedTitle: 'Coincidencias en tu CV',
+    missingTitle: 'Palabras clave faltantes',
+    suggestionsTitle: 'Sugerencias rápidas',
+    adaptNowBtn: 'Aplicar ajustes a mi CV',
+    adaptedDoneBtn: 'CV adaptado para esta vacante',
+    adaptedToastTitle: 'CV adaptado con éxito',
+    adaptedToastMsg: 'Resumen, competencias y logros actualizados para esta oferta.',
+    errGeneric: 'No se pudo analizar la vacante ahora.',
+    errEmpty: 'Pega el enlace o la descripción de la vacante.'
+  },
+  fr: {
+    badge: 'Postuler aux offres',
+    title: 'Collez le lien de l’offre et adaptez votre CV avec l’IA',
+    subtitle: 'Nous analysons les critères du poste, calculons le score ATS et ajustons votre CV.',
+    urlPh: 'https://offre.com/... (LinkedIn, UNJobs, Indeed)',
+    pasteToggle: 'Ou coller le texte de l’offre',
+    pasteHide: 'Masquer le texte',
+    pastePh: 'Collez ici la description complète du poste...',
+    analyzeBtn: 'Analyser l’offre et adapter le CV',
+    analyzingBtn: 'Analyse en cours…',
+    compatLabel: 'Compatibilité ATS',
+    matchedTitle: 'Points forts de votre CV',
+    missingTitle: 'Mots-clés manquants',
+    suggestionsTitle: 'Améliorations suggérées',
+    adaptNowBtn: 'Appliquer les ajustements au CV',
+    adaptedDoneBtn: 'CV adapté pour cette offre',
+    adaptedToastTitle: 'CV adapté avec succès',
+    adaptedToastMsg: 'Profil, compétences et réalisations mis à jour pour cette offre.',
+    errGeneric: 'Impossible d’analyser cette offre maintenant.',
+    errEmpty: 'Collez d’abord le lien ou le texte de l’offre.'
+  },
+  de: {
+    badge: 'Auf Stellen bewerben',
+    title: 'Stellenlink einfügen & Lebenslauf per KI anpassen',
+    subtitle: 'Wir analysieren die Anforderungen, berechnen die ATS-Passung und optimieren Ihren CV.',
+    urlPh: 'https://stelle.de/... (LinkedIn, UNJobs, Indeed)',
+    pasteToggle: 'Oder Stellenbeschreibung einfügen',
+    pasteHide: 'Textfeld ausblenden',
+    pastePh: 'Fügen Sie hier die vollständige Stellenanzeige ein...',
+    analyzeBtn: 'Stelle analysieren & CV anpassen',
+    analyzingBtn: 'Analysiere Stelle…',
+    compatLabel: 'ATS-Kompatibilität',
+    matchedTitle: 'Im CV vorhanden',
+    missingTitle: 'Fehlende Keywords',
+    suggestionsTitle: 'Schnelle Tipps',
+    adaptNowBtn: 'Anpassungen in CV übernehmen',
+    adaptedDoneBtn: 'CV für diese Stelle angepasst',
+    adaptedToastTitle: 'Lebenslauf erfolgreich angepasst',
+    adaptedToastMsg: 'Profil, Kompetenzen und Erfolge auf diese Stelle zugeschnitten.',
+    errGeneric: 'Stelle konnte aktuell nicht analysiert werden.',
+    errEmpty: 'Bitte fügen Sie zuerst einen Link oder Text ein.'
+  },
+  it: {
+    badge: 'Candidati alle offerte',
+    title: 'Incolla il link dell’offerta e adatta il CV con l’IA',
+    subtitle: 'Analizziamo i requisiti del ruolo, calcoliamo il punteggio ATS e adattiamo il tuo CV.',
+    urlPh: 'https://offerta.it/... (LinkedIn, UNJobs, Indeed)',
+    pasteToggle: 'Oppure incolla il testo dell’offerta',
+    pasteHide: 'Nascondi testo',
+    pastePh: 'Incolla qui la descrizione completa dell’offerta...',
+    analyzeBtn: 'Analizza offerta e adatta CV',
+    analyzingBtn: 'Analisi in corso…',
+    compatLabel: 'Compatibilità ATS',
+    matchedTitle: 'Presenti nel tuo CV',
+    missingTitle: 'Parole chiave mancanti',
+    suggestionsTitle: 'Suggerimenti rapidi',
+    adaptNowBtn: 'Applica modifiche al CV',
+    adaptedDoneBtn: 'CV adattato per questa offerta',
+    adaptedToastTitle: 'CV adattato con successo',
+    adaptedToastMsg: 'Profilo, competenze ed esperienze aggiornati per questa offerta.',
+    errGeneric: 'Impossibile analizzare l’offerta ora.',
+    errEmpty: 'Incolla prima un link o il testo dell’offerta.'
+  }
+};
+
 function loadAppliedJobs(): AppliedJobRecord[] {
   try {
     const raw = localStorage.getItem(APPLIED_JOBS_STORAGE_KEY);
@@ -403,11 +580,17 @@ function getSafeExternalHttpUrl(raw?: string | null): string {
 export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   cv,
   onApplyJobToTailor,
+  onUpdateCV,
+  onSetJobDescription,
+  onOpenAuthModal,
+  onOpenPricingModal,
   guideMode = 'guided'
 }) => {
   const { siteLanguage } = useLanguage();
+  const { showSuccess, showError } = useToast();
   const ui = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).jobMatches;
   const applyUi = APPLY_FLOW_COPY[siteLanguage] || APPLY_FLOW_COPY.en;
+  const analyzerUi = URL_ANALYZER_COPY[siteLanguage] || URL_ANALYZER_COPY.en;
   const intlLocale = getIntlLocale(siteLanguage);
   const [data, setData] = useState<JobMatchResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -417,6 +600,15 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   const [workplaceFilter, setWorkplaceFilter] = useState<'all' | 'remote' | 'hybrid' | 'onsite'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [tailoringJobId, setTailoringJobId] = useState<string | null>(null);
+
+  // Hero "Aplicar a vagas" URL/Description AI Analyzer state
+  const [jobUrlInput, setJobUrlInput] = useState<string>('');
+  const [pastedJobText, setPastedJobText] = useState<string>('');
+  const [showPasteField, setShowPasteField] = useState<boolean>(false);
+  const [isAnalyzingJob, setIsAnalyzingJob] = useState<boolean>(false);
+  const [urlAnalysisError, setUrlAnalysisError] = useState<string | null>(null);
+  const [urlAnalysisResult, setUrlAnalysisResult] = useState<UrlJobAnalysisResult | null>(null);
+  const [hasAppliedUrlAdaptation, setHasAppliedUrlAdaptation] = useState<boolean>(false);
 
   const [viewTab, setViewTab] = useState<'matches' | 'applied'>('matches');
   const [appliedJobs, setAppliedJobs] = useState<AppliedJobRecord[]>(() => loadAppliedJobs());
@@ -653,6 +845,110 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
     setAppliedJobs((prev) => prev.filter((item) => item.id !== jobId));
   };
 
+  const handleAnalyzeJobLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUrl = jobUrlInput.trim();
+    const cleanText = pastedJobText.trim();
+    if (!cleanUrl && cleanText.length < 20) {
+      setUrlAnalysisError(analyzerUi.errEmpty);
+      return;
+    }
+
+    setIsAnalyzingJob(true);
+    setUrlAnalysisError(null);
+    setHasAppliedUrlAdaptation(false);
+    try {
+      const res = await authorizedFetch('/api/jobs/analyze-url', {
+        method: 'POST',
+        body: JSON.stringify({
+          jobUrl: cleanUrl || undefined,
+          pastedJobText: cleanText || undefined,
+          cvData: cv,
+          language: siteLanguage,
+          adaptCv: true
+        })
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        if (onOpenAuthModal) onOpenAuthModal(analyzerUi.subtitle);
+        return;
+      }
+      if (res.status === 402 || res.status === 403) {
+        if (onOpenPricingModal) {
+          onOpenPricingModal(json?.error || analyzerUi.subtitle);
+        } else {
+          setUrlAnalysisError(json?.error || analyzerUi.errGeneric);
+        }
+        return;
+      }
+      if (json?.needsManualPaste) {
+        setShowPasteField(true);
+        setUrlAnalysisError(json?.reason || json?.error || analyzerUi.errGeneric);
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(json?.error || analyzerUi.errGeneric);
+      }
+
+      const result = json as UrlJobAnalysisResult;
+      setUrlAnalysisResult(result);
+      if (result.cleanedJobDescription && onSetJobDescription) {
+        onSetJobDescription(result.cleanedJobDescription);
+      }
+    } catch (err: any) {
+      setUrlAnalysisError(err?.message || analyzerUi.errGeneric);
+    } finally {
+      setIsAnalyzingJob(false);
+    }
+  };
+
+  const handleApplyUrlAdaptationToCv = () => {
+    if (!urlAnalysisResult?.adaptedCV) return;
+    const adapted = urlAnalysisResult.adaptedCV;
+    const nextSummary =
+      typeof adapted.summary === 'string' && adapted.summary.trim()
+        ? adapted.summary.trim()
+        : cv.summary;
+    const nextComps =
+      Array.isArray(adapted.competencies) && adapted.competencies.length > 0
+        ? adapted.competencies
+            .filter((c) => c && (c.category || c.description))
+            .map((c, idx) => ({
+              id: cv.competencies[idx]?.id || `comp-job-${Date.now()}-${idx}`,
+              category: String(c.category || ''),
+              description: String(c.description || '')
+            }))
+        : cv.competencies;
+
+    const expPatchMap = new Map<number, string[]>();
+    if (Array.isArray(adapted.experiences)) {
+      for (const item of adapted.experiences) {
+        if (typeof item?.index === 'number' && Array.isArray(item.highlights) && item.highlights.length > 0) {
+          expPatchMap.set(item.index, item.highlights.map(String).filter(Boolean));
+        }
+      }
+    }
+    const nextExperiences = cv.experiences.map((exp, idx) => {
+      const patched = expPatchMap.get(idx);
+      return patched ? { ...exp, highlights: patched } : exp;
+    });
+
+    if (onUpdateCV) {
+      onUpdateCV({
+        ...cv,
+        summary: nextSummary,
+        competencies: nextComps,
+        experiences: nextExperiences
+      });
+    }
+    if (urlAnalysisResult.cleanedJobDescription && onSetJobDescription) {
+      onSetJobDescription(urlAnalysisResult.cleanedJobDescription);
+    }
+    setHasAppliedUrlAdaptation(true);
+    showSuccess(analyzerUi.adaptedToastTitle, analyzerUi.adaptedToastMsg);
+  };
+
   const appliedJobIds = useMemo(() => new Set(appliedJobs.map((j) => j.id)), [appliedJobs]);
 
   const activePrefCount =
@@ -669,6 +965,152 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* HERO CONVERSION FEATURE: APLICAR A VAGAS POR LINK OU TEXTO */}
+      <div className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800/70 rounded-xl p-4 sm:p-5 space-y-3 shadow-xs">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+              <Sparkles className="w-3.5 h-3.5 shrink-0" />
+              <span>{analyzerUi.badge}</span>
+            </span>
+          </div>
+          <h2 className="text-sm sm:text-base font-extrabold text-slate-950 dark:text-white tracking-tight">
+            {analyzerUi.title}
+          </h2>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            {analyzerUi.subtitle}
+          </p>
+        </div>
+
+        <form onSubmit={handleAnalyzeJobLink} className="space-y-2.5">
+          <div className="relative flex items-center">
+            <Link2 className="w-4 h-4 text-slate-400 absolute left-3 pointer-events-none" />
+            <input
+              type="url"
+              value={jobUrlInput}
+              onChange={(e) => setJobUrlInput(e.target.value)}
+              placeholder={analyzerUi.urlPh}
+              className="w-full text-xs pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowPasteField((prev) => !prev)}
+              className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-950 underline"
+            >
+              {showPasteField ? analyzerUi.pasteHide : analyzerUi.pasteToggle}
+            </button>
+          </div>
+
+          {showPasteField && (
+            <textarea
+              rows={4}
+              value={pastedJobText}
+              onChange={(e) => setPastedJobText(e.target.value)}
+              placeholder={analyzerUi.pastePh}
+              className="w-full text-xs p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-hidden focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-600/15"
+            />
+          )}
+
+          {urlAnalysisError && (
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>{urlAnalysisError}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isAnalyzingJob}
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-xs touch-manipulation"
+          >
+            {isAnalyzingJob ? (
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            ) : (
+              <Wand2 className="w-4 h-4 shrink-0" />
+            )}
+            <span>{isAnalyzingJob ? analyzerUi.analyzingBtn : analyzerUi.analyzeBtn}</span>
+          </button>
+        </form>
+
+        {urlAnalysisResult && (
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in duration-150">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold text-slate-950 dark:text-white truncate">
+                  {urlAnalysisResult.jobTitle}
+                </p>
+                {(urlAnalysisResult.company || urlAnalysisResult.location) && (
+                  <p className="text-xs text-slate-500 truncate">
+                    {[urlAnalysisResult.company, urlAnalysisResult.location].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+              </div>
+              <div className="px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs font-mono font-bold tabular-nums shrink-0">
+                {analyzerUi.compatLabel}: {urlAnalysisResult.compatibilityScore}/100
+              </div>
+            </div>
+
+            {urlAnalysisResult.matchingKeywords.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-emerald-700 block">
+                  {analyzerUi.matchedTitle}
+                </span>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {urlAnalysisResult.matchingKeywords.slice(0, 8).join(', ')}
+                </p>
+              </div>
+            )}
+
+            {urlAnalysisResult.missingKeywords.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[11px] font-bold text-amber-700 block">
+                  {analyzerUi.missingTitle}
+                </span>
+                <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {urlAnalysisResult.missingKeywords.slice(0, 8).join(', ')}
+                </p>
+              </div>
+            )}
+
+            {urlAnalysisResult.suggestions.length > 0 && (
+              <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                {urlAnalysisResult.suggestions.slice(0, 3).map((tip, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {urlAnalysisResult.adaptedCV && onUpdateCV && (
+              <button
+                type="button"
+                onClick={handleApplyUrlAdaptationToCv}
+                disabled={hasAppliedUrlAdaptation}
+                className={`w-full min-h-[42px] px-4 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors ${
+                  hasAppliedUrlAdaptation
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
+              >
+                {hasAppliedUrlAdaptation ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                )}
+                <span>
+                  {hasAppliedUrlAdaptation ? analyzerUi.adaptedDoneBtn : analyzerUi.adaptNowBtn}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* 3-Step Guided Application Helper (Visible in Guided Mode) */}
       {guideMode === 'guided' && (
         <div className="bg-amber-50/90 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">

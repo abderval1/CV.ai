@@ -4,23 +4,17 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
 import {
-  Download,
-  Printer,
   Copy,
   Check,
   ZoomIn,
   ZoomOut,
   Mail,
-  Lock,
   Loader2,
   Globe,
   ChevronDown
 } from 'lucide-react';
-import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
 import { COVER_CHROME_LABELS } from '../utils/cvDocumentLabels';
 import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
-import { recordAuditLog } from '../services/auditLogService';
-import { dispatchUserNotification } from '../services/notificationService';
 
 interface CoverLetterDocumentViewProps {
   cv: CVData;
@@ -47,12 +41,13 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
   translatingTargetLang = null,
   contentLanguage = 'pt'
 }) => {
-  const { user, isAuthenticated, hasActivePlan } = useAuth();
-  const { showSuccess, showError, showWarning } = useToast();
+  const { isAuthenticated, hasActivePlan } = useAuth();
+  const { showSuccess, showWarning } = useToast();
   const { studioText } = useLanguage();
+  void onExportWord;
+  void isExportingWord;
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
-  const [isExportingLocal, setIsExportingLocal] = useState<boolean>(false);
   const [langMenuOpen, setLangMenuOpen] = useState<boolean>(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
@@ -106,125 +101,6 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
     setCopied(true);
     showSuccess('Copiado!', 'O texto da carta foi copiado para a área de transferência.');
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handlePrint = () => {
-    if (exportRequiresPaidPlan && !isAuthenticated) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: 'cover-letter/pdf',
-        details: 'Impressão PDF da carta bloqueada: utilizador não autenticado.',
-        metadata: { format: 'pdf', documentType: 'cover_letter' }
-      });
-      showWarning('Registo Obrigatório', 'Faça login para imprimir ou descarregar a sua carta em PDF.');
-      onOpenAuthModal?.('O registo é obrigatório para imprimir ou guardar a sua carta em PDF.');
-      return;
-    }
-    if (!canExportClean) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: 'cover-letter/pdf',
-        details: 'Impressão PDF da carta bloqueada: plano pago exigido.',
-        metadata: { format: 'pdf', documentType: 'cover_letter' }
-      });
-      showWarning('Plano Requerido', 'A exportação oficial da carta requer um plano Pro ou Executivo VIP ativo.');
-      onOpenPricingModal?.(
-        'A impressão e download da Carta de Apresentação sem marca de água são exclusivos para subscritores.'
-      );
-      return;
-    }
-    void recordAuditLog({
-      action: 'cv_exported_pdf',
-      category: 'cv_export',
-      severity: 'info',
-      status: 'success',
-      targetResource: 'cover-letter/pdf',
-      details: `Carta de apresentação exportada/impressa em PDF (${effectiveContentLang.toUpperCase()}).`,
-      metadata: { format: 'pdf', documentType: 'cover_letter', language: effectiveContentLang }
-    });
-    if (user) {
-      void dispatchUserNotification({
-        user,
-        eventType: 'export',
-        title: 'Exportação PDF da Carta',
-        message: `Carta de apresentação (${effectiveContentLang.toUpperCase()}) preparada para exportação/impressão em PDF.`,
-        targetResource: 'cover-letter/pdf'
-      });
-    }
-    window.print();
-  };
-
-  const handleDownloadWord = async () => {
-    if (exportRequiresPaidPlan && !isAuthenticated) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: 'cover-letter/docx',
-        details: 'Download Word da carta bloqueado: utilizador não autenticado.',
-        metadata: { format: 'docx', documentType: 'cover_letter' }
-      });
-      onOpenAuthModal?.('Faça login para descarregar a sua carta oficial em formato Word (.docx).');
-      return;
-    }
-    if (!canExportClean) {
-      void recordAuditLog({
-        action: 'cv_export_blocked_unauthorized',
-        category: 'cv_export',
-        severity: 'warning',
-        status: 'blocked',
-        targetResource: 'cover-letter/docx',
-        details: 'Download Word da carta bloqueado: plano pago exigido.',
-        metadata: { format: 'docx', documentType: 'cover_letter' }
-      });
-      onOpenPricingModal?.(
-        'O download da Carta de Apresentação em formato Word (.docx) requer um plano Pro ou Executive ativo.'
-      );
-      return;
-    }
-
-    if (onExportWord) {
-      onExportWord();
-      return;
-    }
-
-    try {
-      setIsExportingLocal(true);
-      const blob = await generateCoverLetterDocx(cv, letterBody, true, effectiveContentLang);
-      const nameClean = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Carta_Apresentacao';
-      triggerDownload(blob, `Carta_${nameClean}.docx`);
-      void recordAuditLog({
-        action: 'cv_exported_docx',
-        category: 'cv_export',
-        severity: 'info',
-        status: 'success',
-        targetResource: 'cover-letter/docx',
-        details: `Carta de apresentação exportada em Word (.docx) (${effectiveContentLang.toUpperCase()}).`,
-        metadata: { format: 'docx', documentType: 'cover_letter', language: effectiveContentLang }
-      });
-      if (user) {
-        void dispatchUserNotification({
-          user,
-          eventType: 'export',
-          title: 'Carta Exportada em Word',
-          message: `A carta Carta_${nameClean}.docx foi exportada com sucesso (${effectiveContentLang.toUpperCase()}).`,
-          targetResource: 'cover-letter/docx'
-        });
-      }
-      showSuccess('Word Descarregado!', 'A carta foi compilada em formato nativo Microsoft Word (.docx).');
-    } catch (err: any) {
-      console.error('Erro ao compilar Word:', err);
-      showError('Erro ao Descarregar', 'Não foi possível compilar o ficheiro Word.');
-    } finally {
-      setIsExportingLocal(false);
-    }
   };
 
   const candidateName = cv.personalDetails.name || 'Seu Nome Completo';
@@ -369,48 +245,6 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
             <span>{copied ? studioText.docToolbar.copied : studioText.docToolbar.copy}</span>
-          </button>
-
-          {/* Print / Save PDF */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            className={`min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-2xs touch-manipulation ${
-              !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
-                : 'bg-white border border-slate-300 text-slate-800 hover:bg-slate-50'
-            }`}
-            title={studioText.docToolbar.pdfBtn}
-          >
-            {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-amber-700" />
-            ) : (
-              <Printer className="w-3.5 h-3.5 text-slate-700" />
-            )}
-            <span>{studioText.docToolbar.pdfBtn}</span>
-          </button>
-
-          {/* Download Letter */}
-          <button
-            type="button"
-            onClick={handleDownloadWord}
-            disabled={isExportingWord || isExportingLocal}
-            className={`min-h-[38px] flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors shadow-xs whitespace-nowrap touch-manipulation ${
-              !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-          >
-            {!isAuthenticated || !hasActivePlan ? (
-              <Lock className="w-3.5 h-3.5 text-slate-950" />
-            ) : (
-              <Download className="w-3.5 h-3.5" />
-            )}
-            <span>
-              {isExportingWord || isExportingLocal
-                ? studioText.docToolbar.generating
-                : studioText.docToolbar.coverBtn}
-            </span>
           </button>
         </div>
       </div>

@@ -18,11 +18,12 @@ import {
   ShadingType
 } from 'docx';
 import { CVData, CVSectionKey, TemplateStyle } from '../types/cv';
-import { DEFAULT_SECTION_ORDER } from './executivePhrasing';
 import { LanguageCode } from '../context/LanguageContext';
 import {
   getResolvedSectionTitles,
-  COVER_CHROME_LABELS
+  COVER_CHROME_LABELS,
+  resolveTemplateStyleProfile,
+  resolveEffectiveSectionOrder
 } from './cvDocumentLabels';
 
 const A4_WIDTH_TWIP = convertMillimetersToTwip(210);
@@ -409,20 +410,24 @@ function buildSingleColumnCVDoc(
   density: 'compact' | 'normal' | 'relaxed',
   lang: LanguageCode
 ): Document {
-  const style: TemplateStyle = cv.templateStyle || 'european_modern';
-  const isHarvard = style === 'executive_harvard';
-  const isEuropass = style === 'european_europass';
-  const isTech = style === 'tech_modern';
-  const isAts = style === 'ats_compact';
-  const isMinimalist = style === 'hybrid_minimalist';
-  const isAcademic = style === 'academic_lattes';
-  const isClassic = style === 'un_classic';
-  const isModern = style === 'european_modern';
-  const isFinance = style === 'finance_wallstreet';
-  const isBoard = style === 'executive_board';
-  const isProduct = style === 'product_strategy';
-  const isEditorial = style === 'modern_editorial';
-  const isBlueprint = style === 'engineering_blueprint';
+  const style: TemplateStyle = cv.templateStyle || 'modern_professional';
+  const {
+    isClassic,
+    isHarvard,
+    isStrictMonoAts,
+    isEuropass,
+    isTech,
+    isMinimalist,
+    isAcademic,
+    isAcademicLattes,
+    isModern,
+    isFinance,
+    isBoard,
+    isProduct,
+    isEditorial,
+    isBlueprint,
+    supportsPhoto
+  } = resolveTemplateStyleProfile(style);
 
   const titles = getResolvedSectionTitles(lang, style);
   const m = getSpacingMetrics(density);
@@ -431,7 +436,7 @@ function buildSingleColumnCVDoc(
   const primaryFont =
     isHarvard || isAcademic || isClassic || isFinance || isBoard
       ? 'Times New Roman'
-      : isAts
+      : isStrictMonoAts
       ? 'Consolas'
       : 'Calibri';
   const serifFont = 'Times New Roman';
@@ -439,7 +444,7 @@ function buildSingleColumnCVDoc(
 
   // Exact colors matching CVDocumentView.tsx
   const sectionHeadingColor =
-    isHarvard || isAts || isFinance
+    isHarvard || isStrictMonoAts || isFinance
       ? '020617'
       : isTech
       ? '0F766E'
@@ -456,7 +461,7 @@ function buildSingleColumnCVDoc(
   const sectionBorderColor =
     isHarvard || isFinance
       ? '0F172A'
-      : isAts
+      : isStrictMonoAts
       ? '94A3B8'
       : isTech
       ? '0D9488'
@@ -470,11 +475,9 @@ function buildSingleColumnCVDoc(
       ? 'CBD5E1'
       : COLOR_PRIMARY;
 
-  const nameColor = isEuropass ? '003399' : isAts || isFinance ? '0F172A' : COLOR_PRIMARY;
+  const nameColor = isEuropass ? '003399' : isStrictMonoAts || isFinance ? '0F172A' : COLOR_PRIMARY;
 
-  const templateSupportsPhoto =
-    isEuropass || isMinimalist || isModern || isTech || isClassic || isAcademic || isProduct || isEditorial;
-  const effectivePhoto = templateSupportsPhoto ? photoBytes : null;
+  const effectivePhoto = supportsPhoto ? photoBytes : null;
 
   const children: (Paragraph | Table)[] = [];
 
@@ -482,8 +485,8 @@ function buildSingleColumnCVDoc(
     children.push(createWatermarkNotice(primaryFont));
   }
 
-  // Academic Lattes full-width boxed banner matching CVDocumentView lines 1363-1372
-  if (isAcademic) {
+  // Academic Lattes full-width boxed banner matching CVDocumentView
+  if (isAcademicLattes) {
     children.push(
       new Paragraph({
         alignment: AlignmentType.CENTER,
@@ -516,37 +519,14 @@ function buildSingleColumnCVDoc(
   const headerAlign = isClassic || isBoard ? AlignmentType.CENTER : AlignmentType.LEFT;
   const headerTextParagraphs: Paragraph[] = [];
 
-  if (isEuropass) {
-    headerTextParagraphs.push(
-      new Paragraph({
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 55 },
-        children: [
-          new TextRun({
-            text: ' CURRICULUM VITAE EUROPASS ',
-            bold: true,
-            size: 16,
-            font: primaryFont,
-            color: 'FFFFFF',
-            shading: { fill: '003399', type: ShadingType.CLEAR }
-          }),
-          new TextRun({
-            text: `   ${titles.chrome.europassOfficial}`,
-            size: 16.5,
-            font: primaryFont,
-            color: '64748B'
-          })
-        ]
-      })
-    );
-  } else if (isTech) {
+  if (isTech) {
     headerTextParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.LEFT,
         spacing: { after: 45 },
         children: [
           new TextRun({
-            text: '// TECH LEAD & SYSTEMS ARCHITECTURE',
+            text: style === 'data_science_ai' ? '// DATA SCIENCE, ANALYTICS & AI' : '// TECH & SOFTWARE ENGINEERING',
             bold: true,
             size: 17,
             font: monoFont,
@@ -636,7 +616,7 @@ function buildSingleColumnCVDoc(
         ]
       })
     );
-  } else if (isMinimalist) {
+  } else if (style === 'hybrid_minimalist') {
     headerTextParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.LEFT,
@@ -652,7 +632,7 @@ function buildSingleColumnCVDoc(
         ]
       })
     );
-  } else if (isAts) {
+  } else if (isStrictMonoAts) {
     headerTextParagraphs.push(
       new Paragraph({
         alignment: AlignmentType.LEFT,
@@ -1433,8 +1413,7 @@ function buildSingleColumnCVDoc(
     }
   }
 
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
+  const effectiveOrder: CVSectionKey[] = resolveEffectiveSectionOrder(cv);
 
   effectiveOrder.forEach((secKey) => {
     children.push(...renderSection(secKey));
@@ -1950,8 +1929,7 @@ function buildCreativeSplitDoc(
     }
   }
 
-  const effectiveOrder: CVSectionKey[] =
-    cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : DEFAULT_SECTION_ORDER;
+  const effectiveOrder: CVSectionKey[] = resolveEffectiveSectionOrder(cv);
 
   effectiveOrder.forEach((secKey) => {
     mainElements.push(...renderCreativeMainSection(secKey));
@@ -2021,10 +1999,10 @@ export async function generateWordDocument(
   const hasPhotoEnabled = cv.personalDetails.showPhoto !== false && Boolean(cv.personalDetails.photoUrl);
   const photoBytes = hasPhotoEnabled ? await getPhotoBytes(cv.personalDetails.photoUrl) : null;
 
-  const doc =
-    cv.templateStyle === 'creative_split'
-      ? buildCreativeSplitDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang)
-      : buildSingleColumnCVDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang);
+  const styleProfile = resolveTemplateStyleProfile(cv.templateStyle);
+  const doc = styleProfile.isCreative
+    ? buildCreativeSplitDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang)
+    : buildSingleColumnCVDoc(cv, hasActivePlan, COLOR_PRIMARY, photoBytes, density, lang);
 
   return await Packer.toBlob(doc);
 }

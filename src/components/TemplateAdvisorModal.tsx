@@ -14,12 +14,51 @@ import {
   GraduationCap,
   Briefcase,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Star,
+  Search
 } from 'lucide-react';
 
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { SiteLanguageCode } from '../i18n/siteTranslations';
 import { EDITOR_UI_TRANSLATIONS, TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
+
+const ADVISOR_EXTRA_COPY: Record<
+  SiteLanguageCode,
+  { top5Label: string; top5Badge: string; searchPh: string }
+> = {
+  pt: { top5Label: 'Top 5', top5Badge: 'Recomendado', searchPh: 'Filtrar modelos...' },
+  en: { top5Label: 'Top 5', top5Badge: 'Recommended', searchPh: 'Filter templates...' },
+  es: { top5Label: 'Top 5', top5Badge: 'Recomendado', searchPh: 'Filtrar diseños...' },
+  fr: { top5Label: 'Top 5', top5Badge: 'Recommandé', searchPh: 'Filtrer modèles...' },
+  de: { top5Label: 'Top 5', top5Badge: 'Empfohlen', searchPh: 'Vorlagen filtern...' },
+  it: { top5Label: 'Top 5', top5Badge: 'Consigliato', searchPh: 'Filtra modelli...' }
+};
+
+const EXECUTIVE_AND_SECTOR_IDS = new Set<TemplateStyle>([
+  'executive_harvard',
+  'executive_resume',
+  'executive_board',
+  'finance_wallstreet',
+  'finance_banking',
+  'consulting_style',
+  'product_strategy',
+  'product_manager',
+  'business_analyst',
+  'tech_modern',
+  'tech_professional',
+  'data_science_ai',
+  'engineering_blueprint',
+  'engineering_resume',
+  'un_classic',
+  'un_agency_cv',
+  'ngo_humanitarian',
+  'government_public',
+  'academic_lattes',
+  'academic_cv',
+  'research_cv'
+]);
 
 interface TemplateAdvisorModalProps {
   isOpen: boolean;
@@ -45,12 +84,14 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
   const { isAuthenticated, hasActivePlan } = useAuth();
   const { siteLanguage } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).advisor;
+  const extra = ADVISOR_EXTRA_COPY[siteLanguage] || ADVISOR_EXTRA_COPY.en;
   const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
   const getTplMeta = (tpl: CVTemplateInfo) => {
     const loc = tplMetaMap?.[tpl.id];
     return loc ? { ...tpl, ...loc } : tpl;
   };
-  const [filter, setFilter] = useState<'all' | 'with_photo' | 'without_photo' | 'executive'>('all');
+  const [filter, setFilter] = useState<'recommended' | 'all' | 'with_photo' | 'without_photo' | 'executive'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTemplateForDetail, setSelectedTemplateForDetail] = useState<CVTemplateInfo>(
     CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]
   );
@@ -58,20 +99,21 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
 
   if (!isOpen) return null;
 
-  const filteredTemplates = CV_TEMPLATES.filter((tpl) => {
-    if (filter === 'with_photo') return tpl.hasPhoto;
-    if (filter === 'without_photo') return !tpl.hasPhoto;
-    if (filter === 'executive')
+  const q = searchQuery.trim().toLowerCase();
+  const filteredTemplates = CV_TEMPLATES.filter((rawTpl) => {
+    if (filter === 'recommended' && !rawTpl.isRecommended) return false;
+    if (filter === 'with_photo' && !rawTpl.hasPhoto) return false;
+    if (filter === 'without_photo' && rawTpl.hasPhoto) return false;
+    if (filter === 'executive' && !EXECUTIVE_AND_SECTOR_IDS.has(rawTpl.id)) return false;
+    if (q) {
+      const tpl = getTplMeta(rawTpl);
       return (
-        tpl.id === 'executive_harvard' ||
-        tpl.id === 'finance_wallstreet' ||
-        tpl.id === 'executive_board' ||
-        tpl.id === 'product_strategy' ||
-        tpl.id === 'engineering_blueprint' ||
-        tpl.id === 'un_classic' ||
-        tpl.id === 'tech_modern' ||
-        tpl.id === 'academic_lattes'
+        tpl.name.toLowerCase().includes(q) ||
+        tpl.shortName.toLowerCase().includes(q) ||
+        tpl.tagline.toLowerCase().includes(q) ||
+        tpl.regions.some((r) => r.toLowerCase().includes(q))
       );
+    }
     return true;
   });
 
@@ -170,12 +212,24 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
         )}
 
         {/* Filter Tabs */}
-        <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-200/70 rounded-lg text-xs">
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          <div className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg text-xs overflow-x-auto max-w-full">
+            <button
+              type="button"
+              onClick={() => setFilter('recommended')}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
+                filter === 'recommended'
+                  ? 'bg-amber-400 text-slate-950 shadow-2xs font-bold'
+                  : 'text-slate-700 hover:text-slate-950'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+              <span>{extra.top5Label} (5)</span>
+            </button>
             <button
               type="button"
               onClick={() => setFilter('all')}
-              className={`px-3 py-1 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap ${
                 filter === 'all'
                   ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -186,7 +240,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             <button
               type="button"
               onClick={() => setFilter('with_photo')}
-              className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                 filter === 'with_photo'
                   ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -198,7 +252,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             <button
               type="button"
               onClick={() => setFilter('without_photo')}
-              className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                 filter === 'without_photo'
                   ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -210,7 +264,7 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             <button
               type="button"
               onClick={() => setFilter('executive')}
-              className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${
                 filter === 'executive'
                   ? 'bg-white text-slate-900 shadow-2xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -221,11 +275,23 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
             </button>
           </div>
 
-          <div className="text-[11px] text-slate-500 font-medium">
-            {ui.activeTemplateLabel}{' '}
-            <strong className="text-slate-800">
-              {getTplMeta(CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]).name}
-            </strong>
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="relative flex-1 sm:w-48">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={extra.searchPh}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="text-[11px] text-slate-500 font-medium hidden md:block">
+              {ui.activeTemplateLabel}{' '}
+              <strong className="text-slate-800">
+                {getTplMeta(CV_TEMPLATES.find((t) => t.id === currentTemplateId) || CV_TEMPLATES[0]).name}
+              </strong>
+            </div>
           </div>
         </div>
 
@@ -249,22 +315,30 @@ export const TemplateAdvisorModal: React.FC<TemplateAdvisorModalProps> = ({
                   {/* Top Badges */}
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          template.hasPhoto
-                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                            : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                        }`}
-                      >
-                        {template.hasPhoto ? (
-                          <Camera className="w-3 h-3 text-blue-700" />
-                        ) : (
-                          <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            template.hasPhoto
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {template.hasPhoto ? (
+                            <Camera className="w-3 h-3 text-blue-700" />
+                          ) : (
+                            <ShieldCheck className="w-3 h-3 text-emerald-700" />
+                          )}
+                          <span>{template.badge}</span>
+                        </span>
+                        {rawTemplate.isRecommended && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                            <Star className="w-2.5 h-2.5 text-amber-600 fill-amber-500" />
+                            <span>{extra.top5Badge}</span>
+                          </span>
                         )}
-                        <span>{template.badge}</span>
-                      </span>
+                      </div>
 
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
                         {template.atsScore}% ATS
                       </span>
                     </div>

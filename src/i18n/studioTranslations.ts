@@ -137,7 +137,7 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
         benefits: [
           'Importação rápida de LinkedIn, PDF e Word (.docx)',
           'Organização automática em modelos profissionais',
-          'Acesso completo aos 14 modelos do site',
+          'Acesso completo aos 40+ modelos do site',
           'Guarda e edições ilimitadas na nuvem'
         ]
       },

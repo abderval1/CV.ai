@@ -386,7 +386,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Planos',
       showcaseCvHeader: 'Currículos (Visualização Livre)',
       showcaseModelsCv: 'Modelos de CV',
-      showcaseModelsCvDesc: '14 layouts A4 ATS, Harvard, Finanças, Produto e Europass',
+      showcaseModelsCvDesc: '40+ layouts A4 ATS, Harvard, Finanças, Produto e Europass',
       showcaseExamplesCv: 'Exemplos de CV',
       showcaseExamplesCvDesc: 'Currículos preenchidos por profissão e setor',
       showcaseCoverHeader: 'Cartas de Apresentação',
@@ -443,12 +443,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Entrar / Registar'
     },
     landing: {
-      heroKicker: 'Estúdio ATS · Vagas Compatíveis por Perfil · Word & PDF',
-      heroTitle: 'Crie o seu CV ATS, descubra vagas compatíveis com o seu perfil e candidate-se em minutos.',
+      heroKicker: 'IA de Candidatura · Pontuação ATS · PDF & Word',
+      heroTitle: 'IA que adapta automaticamente o seu CV para qualquer vaga e aumenta as hipóteses de entrevista.',
       heroSubtitle:
-        'Construa currículos em 14 modelos internacionais (Harvard, Wall Street, Produto, Tech e Europass), filtre vagas ao vivo por regime e região com base no seu perfil e adapte cada candidatura em 1 clique.',
-      ctaBuild: 'Construir Meu Currículo',
-      ctaExploreModels: 'Explorar 14 Modelos',
+        'Cole o link de uma vaga, veja a sua compatibilidade ATS na hora e adapte resumo, conquistas e palavras-chave em 1 clique — pronto a exportar em PDF ou Word.',
+      ctaBuild: 'Adaptar CV e Começar',
+      ctaExploreModels: 'Explorar 40+ Modelos',
       ctaMatchJobs: 'Filtrar Vagas pelo CV',
       linkCvModels: 'Modelos de CV',
       linkRealExamples: 'Exemplos Reais',
@@ -460,12 +460,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Editar este modelo',
       metrics: [
         { value: '98.7%', label: 'Leitura limpa em parsers ATS' },
-        { value: '14 Modelos', label: 'Harvard, Finanças, Produto, Tech & UE' },
+        { value: '40+ Modelos', label: 'ATS, Moderno, Harvard, Tech & EU' },
         { value: 'Match Ao Vivo', label: 'Vagas filtradas direto do seu perfil' },
         { value: '5 Idiomas', label: 'EN · PT · ES · FR · DE em 1 clique' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '14 modelos ATS & Executivos em escala real' },
+        { code: 'CV A4', text: '40+ modelos ATS & Executivos em escala real' },
         { code: 'MATCH', text: 'Vagas filtradas por perfil, país e remoto/híbrido' },
         { code: 'ADAPTAR', text: 'Ajuste o CV à vaga selecionada em 1 clique' },
         { code: '5x IDIOMA', text: 'Tradução integral sem perder layout' },
@@ -479,7 +479,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'Crie ou Importe o CV ATS',
-          desc: 'Escolha entre 14 layouts internacionais em coluna única (Workday, Greenhouse, Taleo) ou importe PDF/LinkedIn.'
+          desc: 'Escolha entre mais de 40 layouts internacionais em coluna única (Workday, Greenhouse, Taleo) ou importe PDF/LinkedIn.'
         },
         {
           num: '02',
@@ -969,7 +969,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Pricing',
       showcaseCvHeader: 'Resumes (Free Preview)',
       showcaseModelsCv: 'CV Templates',
-      showcaseModelsCvDesc: '14 A4 ATS, Harvard, Finance, Product & Europass layouts',
+      showcaseModelsCvDesc: '40+ A4 ATS, Harvard, Finance, Product & Europass layouts',
       showcaseExamplesCv: 'CV Examples',
       showcaseExamplesCvDesc: 'Complete resumes by profession and industry',
       showcaseCoverHeader: 'Cover Letters',
@@ -1026,12 +1026,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Sign In / Register'
     },
     landing: {
-      heroKicker: 'ATS Resume Studio · Profile-Matched Jobs · Word & PDF',
-      heroTitle: 'Build an ATS-ready resume, match live jobs to your profile, and apply in minutes.',
+      heroKicker: 'AI Job Tailoring · Live ATS Score · PDF & Word',
+      heroTitle: 'AI that automatically tailors your CV to any job and boosts your interview chances.',
       heroSubtitle:
-        'Create resumes across 14 international layouts (Harvard, Wall Street, Product, Tech & Europass), filter live openings by work mode, country, and role fit based on your CV, and tailor every application in 1 click.',
-      ctaBuild: 'Build My Resume',
-      ctaExploreModels: 'Explore 14 Templates',
+        'Paste any job link, get an instant ATS compatibility score, and adapt your summary, achievements, and keywords in 1 click — ready to export in PDF or Word.',
+      ctaBuild: 'Tailor My CV with AI',
+      ctaExploreModels: 'Explore 40+ Templates',
       ctaMatchJobs: 'Match Jobs to My CV',
       linkCvModels: 'CV Templates',
       linkRealExamples: 'Real Examples',
@@ -1043,12 +1043,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Edit this template',
       metrics: [
         { value: '98.7%', label: 'Clean parsing across ATS readers' },
-        { value: '14 Layouts', label: 'Harvard, Finance, Product, Tech & EU' },
+        { value: '40+ Layouts', label: 'ATS, Modern, Harvard, Tech & EU' },
         { value: 'Live Match', label: 'Jobs filtered directly from your CV' },
         { value: '5 Languages', label: 'EN · PT · ES · FR · DE in 1 click' }
       ],
       deliverables: [
-        { code: 'A4 CV', text: '14 ATS & Executive layouts at real A4 scale' },
+        { code: 'A4 CV', text: '40+ ATS & Executive layouts at real A4 scale' },
         { code: 'JOB MATCH', text: 'Filter live openings by CV profile, mode & region' },
         { code: '1-CLICK FIT', text: 'Tailor CV keywords & apply directly to each role' },
         { code: '5x LANG', text: 'Full document translation keeping layout intact' },
@@ -1062,7 +1062,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'Build or Import ATS CV',
-          desc: 'Pick from 14 single-column international formats (Workday, Greenhouse, Taleo) or extract data from PDF & LinkedIn.'
+          desc: 'Pick from 40+ single-column international formats (Workday, Greenhouse, Taleo) or extract data from PDF & LinkedIn.'
         },
         {
           num: '02',
@@ -1552,7 +1552,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Planes',
       showcaseCvHeader: 'Currículums (Vista Libre)',
       showcaseModelsCv: 'Plantillas de CV',
-      showcaseModelsCvDesc: '14 diseños A4 ATS, Harvard, Finanzas, Producto y Europass',
+      showcaseModelsCvDesc: '40+ diseños A4 ATS, Harvard, Finanzas, Producto y Europass',
       showcaseExamplesCv: 'Ejemplos de CV',
       showcaseExamplesCvDesc: 'Currículums completos por profesión y sector',
       showcaseCoverHeader: 'Cartas de Presentación',
@@ -1608,12 +1608,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Entrar / Registro'
     },
     landing: {
-      heroKicker: 'Estudio ATS · Ofertas Compatibles por Perfil · Word & PDF',
-      heroTitle: 'Crea tu CV ATS, descubre vacantes compatibles con tu perfil y postúlate en minutos.',
+      heroKicker: 'IA para Postulaciones · Puntuación ATS · PDF y Word',
+      heroTitle: 'IA que adapta automáticamente tu CV a cualquier vacante y multiplica tus entrevistas.',
       heroSubtitle:
-        'Diseña currículums en 14 plantillas internacionales (Harvard, Wall Street, Producto, Tech y Europass), filtra ofertas en vivo por modalidad y región según tu CV y adapta cada candidatura en 1 clic.',
-      ctaBuild: 'Crear Mi Currículum',
-      ctaExploreModels: 'Explorar 14 Plantillas',
+        'Pega el enlace de cualquier oferta, mira tu compatibilidad ATS al instante y adapta tu resumen, logros y palabras clave en 1 clic — listo en PDF o Word.',
+      ctaBuild: 'Adaptar mi CV con IA',
+      ctaExploreModels: 'Explorar 40+ Plantillas',
       ctaMatchJobs: 'Filtrar Vacantes por CV',
       linkCvModels: 'Plantillas de CV',
       linkRealExamples: 'Ejemplos Reales',
@@ -1625,12 +1625,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Editar esta plantilla',
       metrics: [
         { value: '98.7%', label: 'Lectura limpia en parsers ATS' },
-        { value: '14 Diseños', label: 'Harvard, Finanzas, Producto, Tech y UE' },
+        { value: '40+ Diseños', label: 'ATS, Moderno, Harvard, Tech y UE' },
         { value: 'Match en Vivo', label: 'Ofertas filtradas desde tu perfil' },
         { value: '5 Idiomas', label: 'EN · PT · ES · FR · DE en 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '14 diseños ATS y Ejecutivos en formato real' },
+        { code: 'CV A4', text: '40+ diseños ATS y Ejecutivos en formato real' },
         { code: 'MATCH', text: 'Ofertas filtradas por perfil, país y remoto/híbrido' },
         { code: 'ADAPTAR', text: 'Ajusta el CV a la oferta elegida en 1 clic' },
         { code: '5x IDIOMA', text: 'Traducción integral sin perder el diseño' },
@@ -1644,7 +1644,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'Crea o Importa tu CV ATS',
-          desc: 'Elige entre 14 diseños internacionales de una columna (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
+          desc: 'Elige entre más de 40 diseños internacionales de una columna (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
         },
         {
           num: '02',
@@ -2130,7 +2130,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Tarifs',
       showcaseCvHeader: 'CV (Aperçu Gratuit)',
       showcaseModelsCv: 'Modèles de CV',
-      showcaseModelsCvDesc: '14 mises en page A4 ATS, Harvard, Finance, Produit & Europass',
+      showcaseModelsCvDesc: '40+ mises en page A4 ATS, Harvard, Finance, Produit & Europass',
       showcaseExamplesCv: 'Exemples de CV',
       showcaseExamplesCvDesc: 'CV complets par métier et secteur',
       showcaseCoverHeader: 'Lettres de Motivation',
@@ -2186,12 +2186,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Connexion / Inscription'
     },
     landing: {
-      heroKicker: 'Studio ATS · Offres Ciblées par Profil · Word & PDF',
-      heroTitle: 'Créez votre CV ATS, filtrez les offres adaptées à votre profil et postulez en minutes.',
+      heroKicker: 'IA de Candidature · Score ATS · PDF & Word',
+      heroTitle: 'L’IA qui adapte automatiquement votre CV à chaque offre et augmente vos chances d’entretien.',
       heroSubtitle:
-        'Concevez votre CV parmi 14 formats internationaux (Harvard, Wall Street, Produit, Tech & Europass), filtrez les offres en direct par mode de travail et région selon votre profil et adaptez votre candidature en 1 clic.',
-      ctaBuild: 'Créer Mon CV',
-      ctaExploreModels: 'Explorer les 14 Modèles',
+        'Collez le lien d’une offre, obtenez votre score ATS instantané et adaptez votre profil, réalisations et mots-clés en 1 clic — prêt en PDF ou Word.',
+      ctaBuild: 'Adapter mon CV avec l’IA',
+      ctaExploreModels: 'Explorer 40+ Modèles',
       ctaMatchJobs: 'Filtrer les Offres par CV',
       linkCvModels: 'Modèles de CV',
       linkRealExamples: 'Exemples Réels',
@@ -2203,12 +2203,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Modifier ce modèle',
       metrics: [
         { value: '98.7%', label: 'Lecture propre par les parseurs ATS' },
-        { value: '14 Formats', label: 'Harvard, Finance, Produit, Tech & UE' },
+        { value: '40+ Formats', label: 'ATS, Moderne, Harvard, Tech & UE' },
         { value: 'Match Direct', label: 'Offres filtrées depuis votre CV' },
         { value: '5 Langues', label: 'EN · PT · ES · FR · DE en 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '14 mises en page ATS & Exécutives A4' },
+        { code: 'CV A4', text: '40+ mises en page ATS & Exécutives A4' },
         { code: 'MATCH', text: 'Offres filtrées par profil, pays et télétravail' },
         { code: 'ADAPTER', text: 'Ajustez votre CV à l’offre choisie en 1 clic' },
         { code: '5x LANGUES', text: 'Traduction complète sans casser le design' },
@@ -2222,7 +2222,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'Créez ou Importez le CV ATS',
-          desc: 'Choisissez parmi 14 formats internationaux en colonne unique (Workday, Greenhouse, Taleo) ou importez PDF/LinkedIn.'
+          desc: 'Choisissez parmi plus de 40 formats internationaux en colonne unique (Workday, Greenhouse, Taleo) ou importez PDF/LinkedIn.'
         },
         {
           num: '02',
@@ -2708,7 +2708,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Preise',
       showcaseCvHeader: 'Lebensläufe (Freie Vorschau)',
       showcaseModelsCv: 'CV-Vorlagen',
-      showcaseModelsCvDesc: '14 A4-Layouts: ATS, Harvard, Finance, Product & Europass',
+      showcaseModelsCvDesc: '40+ A4-Layouts: ATS, Harvard, Finance, Product & Europass',
       showcaseExamplesCv: 'CV-Beispiele',
       showcaseExamplesCvDesc: 'Vollständige Lebensläufe nach Beruf & Branche',
       showcaseCoverHeader: 'Anschreiben',
@@ -2764,12 +2764,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Anmelden / Registrieren'
     },
     landing: {
-      heroKicker: 'ATS-Lebenslaufstudio · Passende Jobs nach Profil · Word & PDF',
-      heroTitle: 'ATS-Lebenslauf erstellen, passende Jobs nach Profil filtern & direkt bewerben.',
+      heroKicker: 'KI-Bewerbungsanpassung · ATS-Score · PDF & Word',
+      heroTitle: 'KI, die Ihren Lebenslauf automatisch an jede Stelle anpasst und Ihre Einladungsquote steigert.',
       heroSubtitle:
-        'Erstellen Sie Ihren Lebenslauf in 14 internationalen Vorlagen (Harvard, Wall Street, Product, Tech & Europass), filtern Sie Live-Stellen nach Arbeitsmodell & Region und passen Sie jede Bewerbung per Klick an.',
-      ctaBuild: 'Lebenslauf erstellen',
-      ctaExploreModels: '14 Vorlagen ansehen',
+        'Stellenlink einfügen, sofort ATS-Score prüfen und Profil, Erfolge sowie Keywords per 1-Klick anpassen — direkt als PDF oder Word.',
+      ctaBuild: 'CV mit KI anpassen',
+      ctaExploreModels: '40+ Vorlagen ansehen',
       ctaMatchJobs: 'Jobs nach Profil filtern',
       linkCvModels: 'CV-Vorlagen',
       linkRealExamples: 'Praxisbeispiele',
@@ -2781,12 +2781,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Vorlage bearbeiten',
       metrics: [
         { value: '98.7%', label: 'Sauberes Parsing in ATS-Systemen' },
-        { value: '14 Vorlagen', label: 'Harvard, Finance, Product, Tech & EU' },
+        { value: '40+ Vorlagen', label: 'ATS, Modern, Harvard, Tech & EU' },
         { value: 'Live-Match', label: 'Jobs direkt aus Ihrem CV gefiltert' },
         { value: '5 Sprachen', label: 'EN · PT · ES · FR · DE per Klick' }
       ],
       deliverables: [
-        { code: 'A4 CV', text: '14 ATS- & Executive-Layouts im A4-Maßstab' },
+        { code: 'A4 CV', text: '40+ ATS- & Executive-Layouts im A4-Maßstab' },
         { code: 'JOB MATCH', text: 'Stellen gefiltert nach Profil, Region & Remote' },
         { code: '1-KLICK-FIT', text: 'Keywords im CV direkt auf die Stelle abstimmen' },
         { code: '5x SPRACHE', text: 'Komplettübersetzung ohne Layoutverlust' },
@@ -2800,7 +2800,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'ATS-CV erstellen oder importieren',
-          desc: 'Wählen Sie aus 14 einspaltigen Formaten (Workday, Greenhouse, Taleo) oder importieren Sie PDF/LinkedIn.'
+          desc: 'Wählen Sie aus über 40 einspaltigen Formaten (Workday, Greenhouse, Taleo) oder importieren Sie PDF/LinkedIn.'
         },
         {
           num: '02',
@@ -3286,7 +3286,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       navPricing: 'Piani',
       showcaseCvHeader: 'Curriculum (Anteprima Gratuita)',
       showcaseModelsCv: 'Modelli di CV',
-      showcaseModelsCvDesc: '14 layout A4 ATS, Harvard, Finanza, Prodotto ed Europass',
+      showcaseModelsCvDesc: '40+ layout A4 ATS, Harvard, Finanza, Prodotto ed Europass',
       showcaseExamplesCv: 'Esempi di CV',
       showcaseExamplesCvDesc: 'Curriculum completi per ruolo e settore',
       showcaseCoverHeader: 'Lettere di Presentazione',
@@ -3342,12 +3342,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Accedi / Registrati'
     },
     landing: {
-      heroKicker: 'Studio ATS · Offerte Compatibili per Profilo · Word & PDF',
-      heroTitle: 'Crea il tuo CV ATS, filtra offerte compatibili col tuo profilo e candidati in pochi minuti.',
+      heroKicker: 'AI per Candidature · Punteggio ATS · PDF & Word',
+      heroTitle: 'L’AI che adatta automaticamente il tuo CV a qualsiasi offerta e aumenta i colloqui.',
       heroSubtitle:
-        'Progetta curriculum in 14 modelli internazionali (Harvard, Wall Street, Prodotto, Tech ed Europass), filtra posizioni dal vivo per modalità e area geografica dal tuo CV e adatta ogni candidatura in 1 clic.',
-      ctaBuild: 'Crea il Mio CV',
-      ctaExploreModels: 'Esplora 14 Modelli',
+        'Incolla il link di un annuncio, verifica subito la compatibilità ATS e adatta riepilogo, risultati e parole chiave in 1 clic — pronto in PDF o Word.',
+      ctaBuild: 'Adatta il CV con l’AI',
+      ctaExploreModels: 'Esplora 40+ Modelli',
       ctaMatchJobs: 'Filtra Offerte dal CV',
       linkCvModels: 'Modelli di CV',
       linkRealExamples: 'Esempi Reali',
@@ -3359,12 +3359,12 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       editThisModel: 'Modifica modello',
       metrics: [
         { value: '98.7%', label: 'Lettura pulita dai parser ATS' },
-        { value: '14 Modelli', label: 'Harvard, Finanza, Prodotto, Tech & UE' },
+        { value: '40+ Modelli', label: 'ATS, Moderno, Harvard, Tech & UE' },
         { value: 'Match Dal Vivo', label: 'Offerte filtrate dal tuo profilo CV' },
         { value: '5 Lingue', label: 'EN · PT · ES · FR · DE in 1 clic' }
       ],
       deliverables: [
-        { code: 'CV A4', text: '14 layout ATS ed Executive in scala A4 reale' },
+        { code: 'CV A4', text: '40+ layout ATS ed Executive in scala A4 reale' },
         { code: 'MATCH', text: 'Offerte filtrate per profilo, paese e remoto/ibrido' },
         { code: 'ADATTA', text: 'Allinea parole chiave al ruolo scelto in 1 clic' },
         { code: '5x LINGUE', text: 'Traduzione integrale mantenendo il layout' },
@@ -3378,7 +3378,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         {
           num: '01',
           title: 'Crea o Importa il CV ATS',
-          desc: 'Scegli tra 14 formati internazionali a colonna singola (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
+          desc: 'Scegli tra oltre 40 formati internazionali a colonna singola (Workday, Greenhouse, Taleo) o importa PDF/LinkedIn.'
         },
         {
           num: '02',

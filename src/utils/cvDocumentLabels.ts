@@ -1,5 +1,7 @@
 import { LanguageCode } from '../context/LanguageContext';
-import { TemplateStyle } from '../types/cv';
+import { CVData, CVSectionKey, TemplateStyle } from '../types/cv';
+import { DEFAULT_SECTION_ORDER } from './executivePhrasing';
+import { getTemplateById } from '../data/templateCatalog';
 
 export interface CVLocaleStrings {
   summary: string;
@@ -285,11 +287,149 @@ function getAdminLocaleOverride(lang: LanguageCode): Partial<Record<
   }
 }
 
+export interface ResolvedTemplateStyleProfile {
+  isClassic: boolean;
+  isHarvard: boolean;
+  isAts: boolean;
+  isStrictMonoAts: boolean;
+  isEuropass: boolean;
+  isCreative: boolean;
+  isTech: boolean;
+  isMinimalist: boolean;
+  isAcademic: boolean;
+  isAcademicLattes: boolean;
+  isModern: boolean;
+  isFinance: boolean;
+  isBoard: boolean;
+  isProduct: boolean;
+  isEditorial: boolean;
+  isBlueprint: boolean;
+  isSerifFamily: boolean;
+  supportsPhoto: boolean;
+}
+
+export function resolveTemplateStyleProfile(style: TemplateStyle): ResolvedTemplateStyleProfile {
+  const isClassic =
+    style === 'un_classic' ||
+    style === 'un_agency_cv' ||
+    style === 'ngo_humanitarian' ||
+    style === 'government_public';
+  const isHarvard =
+    style === 'executive_harvard' ||
+    style === 'consulting_style' ||
+    style === 'executive_resume';
+  const isStrictMonoAts = style === 'ats_compact';
+  const isAts =
+    style === 'ats_compact' ||
+    style === 'ats_professional' ||
+    style === 'reverse_chronological';
+  const isEuropass = style === 'european_europass';
+  const isCreative = style === 'creative_split' || style === 'creative_resume';
+  const isTech =
+    style === 'tech_modern' ||
+    style === 'tech_professional' ||
+    style === 'data_science_ai';
+  const isMinimalist =
+    style === 'hybrid_minimalist' ||
+    style === 'minimalist_professional' ||
+    style === 'skills_functional' ||
+    style === 'career_change_cv';
+  const isAcademicLattes = style === 'academic_lattes';
+  const isAcademic =
+    style === 'academic_lattes' ||
+    style === 'academic_cv' ||
+    style === 'research_cv';
+  const isModern =
+    style === 'european_modern' ||
+    style === 'modern_professional' ||
+    style === 'international_standard' ||
+    style === 'graduate_resume' ||
+    style === 'student_cv' ||
+    style === 'healthcare_professional' ||
+    style === 'sales_professional';
+  const isFinance = style === 'finance_wallstreet' || style === 'finance_banking';
+  const isBoard = style === 'executive_board';
+  const isProduct =
+    style === 'product_strategy' ||
+    style === 'product_manager' ||
+    style === 'business_analyst' ||
+    style === 'hybrid_combination' ||
+    style === 'project_based' ||
+    style === 'freelancer_consultant';
+  const isEditorial = style === 'modern_editorial' || style === 'marketing_professional';
+  const isBlueprint = style === 'engineering_blueprint' || style === 'engineering_resume';
+  const isSerifFamily = isClassic || isHarvard || isAcademic || isFinance || isBoard;
+
+  const meta = getTemplateById(style);
+  const supportsPhoto = meta.photoRule !== 'strictly_forbidden';
+
+  return {
+    isClassic,
+    isHarvard,
+    isAts,
+    isStrictMonoAts,
+    isEuropass,
+    isCreative,
+    isTech,
+    isMinimalist,
+    isAcademic,
+    isAcademicLattes,
+    isModern,
+    isFinance,
+    isBoard,
+    isProduct,
+    isEditorial,
+    isBlueprint,
+    isSerifFamily,
+    supportsPhoto
+  };
+}
+
+export function resolveEffectiveSectionOrder(cv: CVData): CVSectionKey[] {
+  const customOrder = cv.sectionOrder && cv.sectionOrder.length > 0 ? cv.sectionOrder : null;
+  const isUsingDefaultOrder =
+    !customOrder ||
+    (customOrder.length === DEFAULT_SECTION_ORDER.length &&
+      customOrder.every((k, idx) => k === DEFAULT_SECTION_ORDER[idx]));
+
+  if (!isUsingDefaultOrder && customOrder) {
+    return customOrder;
+  }
+
+  switch (cv.templateStyle) {
+    case 'reverse_chronological':
+    case 'executive_resume':
+    case 'consulting_style':
+    case 'finance_banking':
+    case 'finance_wallstreet':
+    case 'sales_professional':
+      return ['summary', 'experiences', 'competencies', 'educations', 'trainings', 'languages', 'references'];
+    case 'graduate_resume':
+    case 'student_cv':
+    case 'academic_cv':
+    case 'research_cv':
+    case 'academic_lattes':
+      return ['summary', 'educations', 'competencies', 'experiences', 'trainings', 'languages', 'references'];
+    case 'career_change_cv':
+      return ['summary', 'competencies', 'trainings', 'educations', 'experiences', 'languages', 'references'];
+    case 'skills_functional':
+      return ['summary', 'competencies', 'educations', 'trainings', 'experiences', 'languages', 'references'];
+    default:
+      return DEFAULT_SECTION_ORDER;
+  }
+}
+
 export function getResolvedSectionTitles(lang: LanguageCode, templateStyle: TemplateStyle) {
   const cur = SECTION_TITLES_BY_LANG[lang] || SECTION_TITLES_BY_LANG.en;
   const adminOverride = getAdminLocaleOverride(lang);
-  const isAcademic = templateStyle === 'academic_lattes';
-  const isClassic = templateStyle === 'un_classic';
+  const isAcademic =
+    templateStyle === 'academic_lattes' ||
+    templateStyle === 'academic_cv' ||
+    templateStyle === 'research_cv';
+  const isClassic =
+    templateStyle === 'un_classic' ||
+    templateStyle === 'un_agency_cv' ||
+    templateStyle === 'ngo_humanitarian';
 
   return {
     summary: adminOverride?.sectionSummary || (isAcademic ? cur.summaryAcademic : isClassic ? cur.summaryClassic : cur.summary),

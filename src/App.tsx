@@ -23,6 +23,13 @@ import { InterviewSimulator } from './components/InterviewSimulator';
 import { JobMatchesPanel } from './components/JobMatchesPanel';
 import { SystemNotificationBanner } from './components/SystemNotificationBanner';
 import { SupportChatModal } from './components/SupportChatModal';
+import { OnboardingGoalModal } from './components/OnboardingGoalModal';
+import {
+  OnboardingGoalId,
+  OnboardingGoalPreset,
+  getSavedOnboardingGoal,
+  saveOnboardingGoal
+} from './utils/onboardingGoals';
 import { useAuth } from './context/AuthContext';
 import { useToast } from './context/ToastContext';
 import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/LanguageContext';
@@ -70,7 +77,8 @@ import {
   Upload,
   MessageSquare,
   ChevronDown,
-  LayoutGrid
+  LayoutGrid,
+  Printer
 } from 'lucide-react';
 
 export default function App() {
@@ -266,6 +274,12 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
   const [planQuotas, setPlanQuotas] = useState(() => getStoredQuotasSync());
   const resumeStartedTrackedRef = useRef<boolean>(false);
+  const [selectedGoalId, setSelectedGoalId] = useState<OnboardingGoalId | null>(() =>
+    getSavedOnboardingGoal()
+  );
+  const [isOnboardingGoalModalOpen, setIsOnboardingGoalModalOpen] = useState<boolean>(false);
+  const hasPromptedGoalRef = useRef<boolean>(false);
+  const [mobileExportOpen, setMobileExportOpen] = useState<boolean>(false);
 
   // Hydrate Admin Governance, Editable Plans, Prompts, Templates, Locales & Banners from Firestore on app boot
   useEffect(() => {
@@ -946,6 +960,74 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     }
   };
 
+  const handleExportPdf = () => {
+    const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
+    if (requirePaidPlanForExport && !isAuthenticated) {
+      handleOpenAuth(appUi.authExportPrompt);
+      return;
+    }
+    if (requirePaidPlanForExport && !hasActivePlan) {
+      handleOpenPricingModal(appUi.planExportPrompt);
+      return;
+    }
+    void recordAuditLog({
+      actorUserId: user?.id,
+      actorEmail: user?.email,
+      actorRole: user?.role === 'admin' ? 'admin' : 'user',
+      action: 'cv_exported_pdf',
+      category: 'cv_export',
+      severity: 'info',
+      status: 'success',
+      targetResource: activeTab === 'cover' ? 'cover-letter/pdf' : `resumes/${cv.templateStyle}/pdf`,
+      details: `Exportação PDF via impressão oficial (${contentLanguage.toUpperCase()}).`,
+      metadata: { format: 'pdf', templateStyle: cv.templateStyle, language: contentLanguage }
+    });
+    window.print();
+  };
+
+  useEffect(() => {
+    if (
+      (activeTab === 'editor' || activeTab === 'raw') &&
+      !selectedGoalId &&
+      !hasPromptedGoalRef.current
+    ) {
+      hasPromptedGoalRef.current = true;
+      setIsOnboardingGoalModalOpen(true);
+    }
+  }, [activeTab, selectedGoalId]);
+
+  const handleSelectOnboardingGoal = useCallback(
+    (preset: OnboardingGoalPreset) => {
+      saveOnboardingGoal(preset.id);
+      setSelectedGoalId(preset.id);
+      setIsOnboardingGoalModalOpen(false);
+      updateCvWithCache((prev) => ({
+        ...prev,
+        templateStyle: preset.templateStyle,
+        accentColor: preset.accentColor,
+        sectionOrder: preset.sectionOrder,
+        personalDetails: {
+          ...prev.personalDetails,
+          showPhoto: preset.showPhoto
+        }
+      }));
+      trackFrontendTelemetry({ type: 'template_selected', templateStyle: preset.templateStyle });
+      if (
+        preset.suggestedLanguage !== 'keep' &&
+        preset.suggestedLanguage !== contentLanguage
+      ) {
+        if (isAuthenticated && hasActivePlan) {
+          void handleSwitchLanguage(preset.suggestedLanguage);
+        } else {
+          setContentLanguage(preset.suggestedLanguage);
+        }
+      }
+      const goalTitle = preset.labels[siteLanguage]?.title || preset.labels.en.title;
+      showSuccess(goalTitle, `${preset.templateName}`);
+    },
+    [contentLanguage, handleSwitchLanguage, hasActivePlan, isAuthenticated, showSuccess, siteLanguage, updateCvWithCache]
+  );
+
   const isShowcaseMode =
     activeTab === 'models-cv' ||
     activeTab === 'examples-cv' ||
@@ -1057,6 +1139,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onExportWord={handleExportWord}
+        onExportPdf={handleExportPdf}
         isExportingWord={isExportingWord}
         onOpenAuthModal={() => handleOpenAuth(undefined, 'login')}
         onOpenPricingModal={() => handleOpenPricingModal()}
@@ -1156,7 +1239,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 mobileViewMode === 'preview' ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {/* Ultra-Simple Studio Navigation Bar: 2 Core Modes + 1 Clean Tools Menu */}
+              {/* Ultra-Simple Studio Navigation Bar: 2 Core Modes (Editar CV + Aplicar a vagas) + Subtle Outras Ferramentas Menu */}
               <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2">
                 <div
                   role="tablist"
@@ -1185,45 +1268,57 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'raw'}
+                    aria-selected={activeTab === 'jobs'}
                     onClick={() => {
-                      setActiveTab('raw');
+                      setActiveTab('jobs');
                       setStudioToolsMenuOpen(false);
                     }}
-                    title={studioNav.tabs.raw.tooltip}
+                    title={studioNav.tabs.jobs.tooltip}
                     className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 ${
-                      activeTab === 'raw'
+                      activeTab === 'jobs'
                         ? 'bg-blue-600 text-white font-bold shadow-xs'
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
-                    <Upload className="w-3.5 h-3.5 shrink-0" />
-                    <span>{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
+                    <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      {siteLanguage === 'pt'
+                        ? 'Aplicar a vagas'
+                        : siteLanguage === 'es'
+                        ? 'Aplicar a vacantes'
+                        : siteLanguage === 'fr'
+                        ? 'Postuler'
+                        : siteLanguage === 'de'
+                        ? 'Bewerben'
+                        : siteLanguage === 'it'
+                        ? 'Candidati'
+                        : 'Apply to jobs'}
+                    </span>
                   </button>
                 </div>
 
-                {/* Single Clean Dropdown Menu for All Extra Tools */}
+                {/* Subtle Secondary Dropdown for Extra Tools (never competing with Editar CV / Aplicar a vagas) */}
                 <div ref={studioToolsMenuRef} className="relative shrink-0">
                   {(() => {
-                    const isExtraToolActive = ['cover', 'ai', 'ats', 'jobs', 'interview'].includes(activeTab);
+                    const isExtraToolActive = ['raw', 'cover', 'ai', 'ats', 'interview'].includes(activeTab);
                     const activeToolLabel =
-                      activeTab === 'cover'
+                      activeTab === 'raw'
+                        ? studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')
+                        : activeTab === 'cover'
                         ? studioNav.tabs.cover.shortLabel.replace(/^\d+\.\s*/, '')
                         : activeTab === 'ai'
                         ? studioNav.tabs.ai.label
                         : activeTab === 'ats'
                         ? studioNav.tabs.ats.label
-                        : activeTab === 'jobs'
-                        ? studioNav.tabs.jobs.label
                         : activeTab === 'interview'
                         ? studioNav.tabs.interview.label
                         : studioNav.toolsGroupLabel;
                     const menuItems = [
                       {
-                        id: 'cover' as const,
-                        label: studioNav.tabs.cover.shortLabel.replace(/^\d+\.\s*/, ''),
-                        desc: studioNav.tabs.cover.tooltip,
-                        icon: <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        id: 'raw' as const,
+                        label: studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, ''),
+                        desc: studioNav.tabs.raw.tooltip,
+                        icon: <Upload className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                       },
                       {
                         id: 'ai' as const,
@@ -1238,10 +1333,10 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                         icon: <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       },
                       {
-                        id: 'jobs' as const,
-                        label: studioNav.tabs.jobs.label,
-                        desc: studioNav.tabs.jobs.tooltip,
-                        icon: <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                        id: 'cover' as const,
+                        label: studioNav.tabs.cover.shortLabel.replace(/^\d+\.\s*/, ''),
+                        desc: studioNav.tabs.cover.tooltip,
+                        icon: <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
                       },
                       {
                         id: 'interview' as const,
@@ -1257,14 +1352,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                           type="button"
                           onClick={() => setStudioToolsMenuOpen((prev) => !prev)}
                           aria-expanded={studioToolsMenuOpen}
-                          className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                          className={`min-h-[34px] px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                             isExtraToolActive || studioToolsMenuOpen
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                           }`}
                         >
                           <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                          <span className="max-w-[140px] sm:max-w-[180px] truncate">{activeToolLabel}</span>
+                          <span className="max-w-[130px] sm:max-w-[170px] truncate">{activeToolLabel}</span>
                           <ChevronDown
                             className={`w-3.5 h-3.5 shrink-0 transition-transform ${
                               studioToolsMenuOpen ? 'rotate-180' : ''
@@ -1388,6 +1483,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       density={density}
                       onDensityChange={setDensity}
                       guideMode={studioMode}
+                      jobDescription={jobDescription}
+                      selectedGoalId={selectedGoalId}
+                      onOpenGoalModal={() => setIsOnboardingGoalModalOpen(true)}
                     />
                   )
                 )}
@@ -1429,6 +1527,10 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       setJobDescription(desc);
                       setActiveTab(tab);
                     }}
+                    onUpdateCV={updateCvWithCache}
+                    onSetJobDescription={setJobDescription}
+                    onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
+                    onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
                     guideMode={studioMode}
                   />
                 )}
@@ -1584,12 +1686,13 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
             </section>
           </main>
 
-          {/* Mobile Bottom Thumb Navigation (4 Clear Core Actions) */}
-          <nav className="no-print lg:hidden shrink-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-center gap-1.5 shadow-xs">
+          {/* Mobile Bottom Thumb Navigation (4 Clear Core Actions + Single Export Sheet) */}
+          <nav className="no-print lg:hidden shrink-0 relative z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-center gap-1.5 shadow-xs">
             <button
               type="button"
               onClick={() => {
-                if (mobileViewMode === 'preview' && activeTab !== 'raw') {
+                setMobileExportOpen(false);
+                if (mobileViewMode === 'preview' && activeTab === 'jobs') {
                   setMobileViewMode('controls');
                 } else {
                   setActiveTab('editor');
@@ -1597,7 +1700,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 }
               }}
               className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors relative touch-manipulation ${
-                activeTab !== 'raw' && mobileViewMode === 'controls'
+                activeTab !== 'jobs' && mobileViewMode === 'controls'
                   ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -1614,22 +1717,36 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
             <button
               type="button"
               onClick={() => {
-                setActiveTab('raw');
+                setMobileExportOpen(false);
+                setActiveTab('jobs');
                 setMobileViewMode('controls');
               }}
               className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors touch-manipulation ${
-                activeTab === 'raw' && mobileViewMode === 'controls'
+                activeTab === 'jobs' && mobileViewMode === 'controls'
                   ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Upload className="w-4 h-4" />
-              <span className="truncate w-full text-center">{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
+              <Briefcase className="w-4 h-4" />
+              <span className="truncate w-full text-center">
+                {siteLanguage === 'pt'
+                  ? 'Vagas'
+                  : siteLanguage === 'es'
+                  ? 'Vacantes'
+                  : siteLanguage === 'fr'
+                  ? 'Offres'
+                  : siteLanguage === 'de'
+                  ? 'Stellen'
+                  : siteLanguage === 'it'
+                  ? 'Offerte'
+                  : 'Jobs'}
+              </span>
             </button>
 
             <button
               type="button"
               onClick={() => {
+                setMobileExportOpen(false);
                 setMobileViewMode('preview');
               }}
               className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors touch-manipulation ${
@@ -1642,23 +1759,66 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
               <span className="truncate w-full text-center">{siteText.app.bottomViewA4}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleExportWord}
-              disabled={isExportingWord}
-              className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-2 rounded-lg text-[11px] font-bold transition-colors shadow-xs touch-manipulation ${
-                !hasActivePlan
-                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              {!hasActivePlan ? (
-                <Lock className="w-4 h-4 text-slate-950 shrink-0" />
-              ) : (
-                <Download className="w-4 h-4 text-white shrink-0" />
+            <div className="flex-1 min-w-0 relative">
+              <button
+                type="button"
+                onClick={() => setMobileExportOpen((prev) => !prev)}
+                disabled={isExportingWord}
+                className={`w-full min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-2 rounded-lg text-[11px] font-bold transition-colors shadow-xs touch-manipulation ${
+                  !hasActivePlan
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+              >
+                {!hasActivePlan ? (
+                  <Lock className="w-4 h-4 text-slate-950 shrink-0" />
+                ) : (
+                  <Download className="w-4 h-4 text-white shrink-0" />
+                )}
+                <span className="truncate w-full text-center">
+                  {isExportingWord
+                    ? studioText.docToolbar.generating
+                    : siteLanguage === 'pt'
+                    ? 'Exportar CV'
+                    : siteLanguage === 'es'
+                    ? 'Exportar CV'
+                    : siteLanguage === 'fr'
+                    ? 'Exporter CV'
+                    : siteLanguage === 'de'
+                    ? 'CV Export'
+                    : siteLanguage === 'it'
+                    ? 'Esporta CV'
+                    : 'Export CV'}
+                </span>
+              </button>
+
+              {mobileExportOpen && (
+                <div className="absolute right-0 bottom-14 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 py-1.5 z-50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileExportOpen(false);
+                      handleExportPdf();
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
+                  >
+                    <Printer className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>PDF (.pdf)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileExportOpen(false);
+                      void handleExportWord();
+                    }}
+                    className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 border-t border-slate-100 dark:border-slate-800"
+                  >
+                    <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Word (.docx)</span>
+                  </button>
+                </div>
               )}
-              <span className="truncate w-full text-center">{isExportingWord ? studioText.docToolbar.generating : !hasActivePlan ? appUi.wordBadgeLocked : appUi.wordBadgeOpen}</span>
-            </button>
+            </div>
           </nav>
         </>
       )}
@@ -1741,6 +1901,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         isOpen={isSupportChatOpen}
         onClose={() => setIsSupportChatOpen(false)}
         onUnreadCountChange={setSupportChatUnreadCount}
+      />
+
+      {/* Goal-Based Onboarding Modal ("Escolha seu objetivo") */}
+      <OnboardingGoalModal
+        isOpen={isOnboardingGoalModalOpen}
+        selectedGoalId={selectedGoalId}
+        onSelectGoal={handleSelectOnboardingGoal}
+        onClose={() => setIsOnboardingGoalModalOpen(false)}
       />
     </div>
   );

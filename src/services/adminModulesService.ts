@@ -712,12 +712,16 @@ export async function fetchAdminTemplates(): Promise<TemplateAdminItem[]> {
 
   const pub = await fetchPublicAdminConfig();
   if (Array.isArray(pub?.adminTemplates) && pub.adminTemplates.length > 0) {
-    const sorted = [...pub.adminTemplates].sort((a, b) => a.displayOrder - b.displayOrder);
+    const byId = new Map<string, TemplateAdminItem>(DEFAULT_ADMIN_TEMPLATES.map((t) => [t.id, t]));
+    pub.adminTemplates.forEach((item: TemplateAdminItem) => {
+      if (item?.id) byId.set(item.id, { ...(byId.get(item.id) || {}), ...item });
+    });
+    const sorted = Array.from(byId.values()).sort((a, b) => a.displayOrder - b.displayOrder);
     setStored('curriculopro_admin_templates', sorted);
     return sorted;
   }
 
-  return getStored('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES);
+  return getStoredTemplatesSync();
 }
 
 export async function saveAdminTemplate(tmpl: TemplateAdminItem): Promise<void> {
@@ -805,9 +809,22 @@ export function getStoredPromptsSync(): PromptTemplateConfig[] {
 }
 
 export function getStoredTemplatesSync(): TemplateAdminItem[] {
-  return getStored('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES).sort(
-    (a, b) => a.displayOrder - b.displayOrder
-  );
+  const stored = getStored<TemplateAdminItem[]>('curriculopro_admin_templates', DEFAULT_ADMIN_TEMPLATES);
+  const byId = new Map<string, TemplateAdminItem>(DEFAULT_ADMIN_TEMPLATES.map((t) => [t.id, t]));
+  if (Array.isArray(stored)) {
+    stored.forEach((item) => {
+      if (item?.id && byId.has(item.id)) {
+        const def = byId.get(item.id)!;
+        byId.set(item.id, {
+          ...def,
+          ...item,
+          displayOrder: def.displayOrder,
+          shortName: item.id === 'european_europass' ? def.shortName : item.shortName
+        });
+      }
+    });
+  }
+  return Array.from(byId.values()).sort((a, b) => a.displayOrder - b.displayOrder);
 }
 
 export function getStoredLocalesSync(): SystemLocaleTranslation[] {

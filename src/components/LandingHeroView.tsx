@@ -74,7 +74,7 @@ const HERO_PREVIEW_MODELS: Array<{
   },
   {
     id: 'european_europass',
-    label: 'Europass EU',
+    label: 'Europass CV',
     atsLabel: '88% ATS',
     ruleLabel: 'With Photo · European Union',
     accentColor: '#1d4ed8',

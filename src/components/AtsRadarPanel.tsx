@@ -152,6 +152,7 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
   // Genuine structural OCR & layout parseability assessment from real CV data
   const isTwoColumnTemplate =
     cv.templateStyle === 'creative_split' ||
+    cv.templateStyle === 'creative_resume' ||
     cv.templateStyle === 'european_modern' ||
     cv.templateStyle === 'european_europass';
   const hasPhotoEnabled = Boolean(cv.personalDetails.showPhoto && cv.personalDetails.photoUrl);

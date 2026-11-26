@@ -6,6 +6,9 @@ import portraitWomanImg from '../assets/images/portrait_executive_woman_17945714
 import { useLanguage } from '../context/LanguageContext';
 import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 
+import { resolveTemplateStyleProfile } from '../utils/cvDocumentLabels';
+import { getTemplateById } from '../data/templateCatalog';
+
 interface CVPreviewCardProps {
   kind: 'cv';
   templateStyle: TemplateStyle;
@@ -115,11 +118,6 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
                   {candidateTitle}
                 </p>
               </div>
-              {layoutStyle === 'europass_blue' && (
-                <span className={`${isLarge ? 'text-[10px] px-2.5 py-1' : 'text-[4.5px] px-1 py-0.5'} bg-white/15 font-bold uppercase tracking-wider rounded shrink-0`}>
-                  Europass
-                </span>
-              )}
             </div>
             <p className={`${isLarge ? 'text-[10px] mt-2.5' : 'text-[4.8px] mt-1'} text-white/80 font-mono truncate`}>
               {location} · {phone} · {email}
@@ -188,14 +186,10 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
   // KIND === 'cv'
   const cv = props.cvData || GENERIC_DEFAULT_CV;
   const style = props.templateStyle;
-  const accent = props.accentColor || cv.accentColor || '#0f172a';
-  const showPhoto =
-    props.hasPhoto ??
-    (style === 'european_europass' ||
-      style === 'creative_split' ||
-      style === 'hybrid_minimalist' ||
-      style === 'product_strategy' ||
-      style === 'modern_editorial');
+  const profile = resolveTemplateStyleProfile(style);
+  const templateMeta = getTemplateById(style);
+  const accent = props.accentColor || cv.accentColor || templateMeta.accentColor || '#0f172a';
+  const showPhoto = props.hasPhoto ?? templateMeta.hasPhoto;
   const photoSrc = cv.personalDetails.photoUrl || portraitWomanImg;
   const exp1 = cv.experiences[0];
   const exp2 = cv.experiences[1];
@@ -203,14 +197,9 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
   const comp1 = cv.competencies[0];
   const comp2 = cv.competencies[1];
 
-  const isSerif =
-    style === 'executive_harvard' ||
-    style === 'academic_lattes' ||
-    style === 'un_classic' ||
-    style === 'finance_wallstreet' ||
-    style === 'executive_board';
+  const isSerif = profile.isSerifFamily;
 
-  if (style === 'creative_split') {
+  if (profile.isCreative) {
     return (
       <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex overflow-hidden select-none font-sans">
         <div
@@ -299,7 +288,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
     );
   }
 
-  if (style === 'european_europass') {
+  if (profile.isEuropass) {
     return (
       <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none font-sans">
         <div
@@ -312,14 +301,9 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <p className={`${isLarge ? 'text-lg' : 'text-[7.5px]'} font-black uppercase tracking-tight truncate`}>
-                {cv.personalDetails.name}
-              </p>
-              <span className={`${isLarge ? 'text-[9px] px-2 py-0.5' : 'text-[4px] px-1 py-0.2'} bg-white/15 rounded font-bold uppercase shrink-0`}>
-                {ui.europassBadge}
-              </span>
-            </div>
+            <p className={`${isLarge ? 'text-lg' : 'text-[7.5px]'} font-black uppercase tracking-tight truncate`}>
+              {cv.personalDetails.name}
+            </p>
             <p className={`${isLarge ? 'text-xs mt-0.5' : 'text-[5px]'} text-white/90 truncate`}>{cv.personalDetails.title}</p>
             <p className={`${isLarge ? 'text-[10px] mt-1.5' : 'text-[4.4px] mt-0.5'} text-white/80 font-mono truncate`}>
               {cv.personalDetails.location} · {cv.personalDetails.phone} · {cv.personalDetails.email}
@@ -385,7 +369,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
     );
   }
 
-  if (style === 'modern_editorial') {
+  if (profile.isEditorial) {
     return (
       <div className="a4-paper-preserve w-full h-full bg-white text-slate-900 flex flex-col overflow-hidden select-none font-sans">
         <div
@@ -394,7 +378,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         >
           <div className="min-w-0 flex-1">
             <p className={`${isLarge ? 'text-[9px]' : 'text-[4px]'} uppercase tracking-widest text-white/70 font-semibold`}>
-              Editorial Portfolio
+              {style === 'marketing_professional' ? 'Growth & Brand Strategy' : 'Editorial Portfolio'}
             </p>
             <p className={`${isLarge ? 'text-xl mt-0.5' : 'text-[8px]'} font-black uppercase tracking-tight truncate`}>
               {cv.personalDetails.name}
@@ -457,14 +441,16 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
   }
 
   // Linear / Classic / Harvard / ATS / Tech / Minimalist / Academic / Modern / Finance / Board / Product / Blueprint
-  const isCenteredHeader = style === 'executive_harvard' || style === 'academic_lattes' || style === 'executive_board';
-  const isTech = style === 'tech_modern' || style === 'engineering_blueprint';
-  const isMinimalist = style === 'hybrid_minimalist' || style === 'engineering_blueprint';
-  const isModern = style === 'european_modern';
-  const isFinance = style === 'finance_wallstreet';
-  const isBoard = style === 'executive_board';
-  const isProduct = style === 'product_strategy';
-  const isBlueprint = style === 'engineering_blueprint';
+  const isCenteredHeader = profile.isHarvard || profile.isAcademic || profile.isBoard;
+  const isTech = profile.isTech;
+  const isMinimalist = profile.isMinimalist;
+  const isModern = profile.isModern;
+  const isFinance = profile.isFinance;
+  const isBoard = profile.isBoard;
+  const isProduct = profile.isProduct;
+  const isBlueprint = profile.isBlueprint;
+  const isMonoAts = profile.isStrictMonoAts;
+  const isDarkAccent = isMonoAts || isFinance || profile.isHarvard || profile.isAts;
 
   return (
     <div
@@ -477,13 +463,13 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
       <div
         className={`flex items-start justify-between gap-3 ${
           isCenteredHeader ? 'text-center flex-col items-center' : ''
-        } ${isLarge ? (isFinance ? 'pb-3 border-b-2' : 'pb-3 border-b-2') : 'pb-1.5 border-b'}`}
-        style={{ borderColor: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
+        } ${isLarge ? 'pb-3 border-b-2' : 'pb-1.5 border-b'}`}
+        style={{ borderColor: isMonoAts || isFinance ? '#0f172a' : accent }}
       >
         <div className="min-w-0 flex-1">
           <p
             className={`${isLarge ? 'text-xl' : 'text-[8px]'} font-black uppercase tracking-tight truncate`}
-            style={{ color: style === 'ats_compact' || style === 'executive_harvard' || isFinance ? '#0f172a' : accent }}
+            style={{ color: isDarkAccent ? '#0f172a' : accent }}
           >
             {cv.personalDetails.name}
           </p>
@@ -514,7 +500,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
       >
         <p
           className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider mb-0.5`}
-          style={{ color: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
+          style={{ color: isMonoAts || isFinance ? '#0f172a' : accent }}
         >
           {isBlueprint ? `01. ${ui.techSummary}` : isTech ? ui.techSummary : isMinimalist ? ui.minSummary : ui.stdSummary}
         </p>
@@ -528,7 +514,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div>
           <p
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
-            style={{ color: style === 'ats_compact' || isFinance ? '#0f172a' : accent }}
+            style={{ color: isMonoAts || isFinance ? '#0f172a' : accent }}
           >
             {isBlueprint ? `02. ${ui.techComp}` : isTech ? ui.techComp : isMinimalist ? ui.minComp : ui.stdComp}
           </p>
@@ -554,7 +540,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div>
           <p
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
-            style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
+            style={{ color: isMonoAts ? '#0f172a' : accent }}
           >
             {isTech ? ui.techExp : isMinimalist ? ui.minExp : ui.stdExp}
           </p>
@@ -587,7 +573,7 @@ export const DocumentMiniPreview: React.FC<DocumentMiniPreviewProps> = (props) =
         <div className="pt-0.5">
           <p
             className={`${isLarge ? 'text-[11px]' : 'text-[5px]'} font-bold uppercase tracking-wider border-b border-slate-200 pb-0.5 mb-1`}
-            style={{ color: style === 'ats_compact' ? '#0f172a' : accent }}
+            style={{ color: isMonoAts ? '#0f172a' : accent }}
           >
             {isTech ? ui.techEdu : isMinimalist ? ui.minEdu : ui.stdEdu}
           </p>
