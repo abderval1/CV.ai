@@ -517,33 +517,31 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
         </div>
 
         {/* Generate Button & Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleGenerateWithAI}
-              disabled={isGenerating}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-xs flex items-center gap-2"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>{ui.generatingBtn}</span>
-                </>
-              ) : (
-                <>
-                  <PenLine className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{ui.generateBtn}</span>
-                </>
-              )}
-            </button>
-          </div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
+          <button
+            type="button"
+            onClick={handleGenerateWithAI}
+            disabled={isGenerating}
+            className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-xs flex items-center justify-center gap-2 touch-manipulation"
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>{ui.generatingBtn}</span>
+              </>
+            ) : (
+              <>
+                <PenLine className="w-3.5 h-3.5 text-amber-400" />
+                <span>{ui.generateBtn}</span>
+              </>
+            )}
+          </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors"
+              className="flex-1 sm:flex-none min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors touch-manipulation"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copied ? ui.copiedBtn : ui.copyBtn}</span>
@@ -553,7 +551,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               type="button"
               onClick={handleDownloadWordLocal}
               disabled={isExportingWord}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap ${
+              className={`flex-1 sm:flex-none min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap touch-manipulation ${
                 !isAuthenticated || !hasActivePlan
                   ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
                   : 'bg-amber-400 hover:bg-amber-300 text-slate-900'

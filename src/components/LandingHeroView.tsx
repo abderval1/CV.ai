@@ -4,15 +4,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Check,
   FileText,
-  Activity,
-  Target,
-  SlidersHorizontal,
-  Minus,
-  Briefcase,
-  Lightbulb,
-  Zap
+  SlidersHorizontal
 } from 'lucide-react';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { GENERIC_DEFAULT_CV, GENERIC_DEFAULT_CV_PT } from '../data/initialCV';
@@ -20,7 +13,6 @@ import { TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
 import { useCurrency } from '../context/CurrencyContext';
 import { useLanguage } from '../context/LanguageContext';
 import { BillingCycle, CVData, SubscriptionPlan, TemplateStyle } from '../types/cv';
-import { CVHealthScoreOverview } from './CVHealthScoreOverview';
 import { DocumentMiniPreview } from './DocumentMiniPreview';
 import { ShowcaseMode } from './ShowcaseGalleryView';
 import {
@@ -47,87 +39,6 @@ interface LandingHeroViewProps {
   currentCV?: CVData;
   onNavigateTab?: (tab: 'raw' | 'editor' | 'ats' | 'ai' | 'cover' | 'interview' | 'jobs') => void;
 }
-
-const MARKETING_MODE_COPY = {
-  pt: {
-    chooseLabel: 'Escolha como prefere trabalhar:',
-    guidedTitle: 'Passo a Passo Guiado',
-    guidedSub: 'Lâmpadas numeradas mostram onde clicar em cada etapa',
-    soloTitle: 'Fazer Sozinho',
-    soloSub: 'Editor direto e rápido sem guias',
-    applyFunnel: [
-      { num: '1', title: 'Lê o seu CV automaticamente', desc: 'Extrai cargo, idiomas e competências chave do currículo.' },
-      { num: '2', title: 'Filtra vagas compatíveis', desc: 'Filtra por perfil, remoto/híbrido, país e contrato.' },
-      { num: '3', title: 'Adapta e Candidata-se em 1 Clique', desc: 'Ajusta palavras ATS para a vaga e acompanha a candidatura.' }
-    ],
-    applyQuickBtn: 'Candidatar-se'
-  },
-  en: {
-    chooseLabel: 'Choose how you want to build:',
-    guidedTitle: 'Step-by-Step Guided',
-    guidedSub: 'Numbered lightbulbs show exactly where to click next',
-    soloTitle: 'Do It Myself (Solo)',
-    soloSub: 'Direct self-service studio without prompts',
-    applyFunnel: [
-      { num: '1', title: 'Reads your CV automatically', desc: 'Matches your title, skills, and seniority across job boards.' },
-      { num: '2', title: 'Filters by profile & location', desc: 'Filter live roles by remote, hybrid, country, and match %.' },
-      { num: '3', title: 'Tailor & Apply in 1 Click', desc: 'Align ATS keywords and submit directly with tracked status.' }
-    ],
-    applyQuickBtn: 'Apply Now'
-  },
-  es: {
-    chooseLabel: 'Elige cómo prefieres crear tu CV:',
-    guidedTitle: 'Paso a Paso Guiado',
-    guidedSub: 'Bombillas numeradas muestran dónde hacer clic en cada paso',
-    soloTitle: 'Hacerlo Solo',
-    soloSub: 'Editor directo y ágil sin indicaciones',
-    applyFunnel: [
-      { num: '1', title: 'Lee tu CV automáticamente', desc: 'Detecta puesto, habilidades y experiencia al instante.' },
-      { num: '2', title: 'Filtra vacantes compatibles', desc: 'Filtra por perfil, remoto/híbrido, país y afinidad.' },
-      { num: '3', title: 'Adapta y Postula en 1 Clic', desc: 'Ajusta el CV al puesto y envía en el portal oficial.' }
-    ],
-    applyQuickBtn: 'Postular Ahora'
-  },
-  fr: {
-    chooseLabel: 'Choisissez votre mode de création :',
-    guidedTitle: 'Pas à Pas Guidé',
-    guidedSub: 'Ampoules numérotées indiquant où cliquer à chaque étape',
-    soloTitle: 'Faire Seul',
-    soloSub: 'Accès direct à l’éditeur complet',
-    applyFunnel: [
-      { num: '1', title: 'Lit votre CV automatiquement', desc: 'Extrait poste, compétences et séniorité en un instant.' },
-      { num: '2', title: 'Filtre les offres compatibles', desc: 'Tri par profil, télétravail, pays et score de compatibilité.' },
-      { num: '3', title: 'Adaptez & Postulez en 1 Clic', desc: 'Optimisez vos mots-clés ATS et suivez vos candidatures.' }
-    ],
-    applyQuickBtn: 'Postuler'
-  },
-  de: {
-    chooseLabel: 'Wählen Sie Ihren Arbeitsmodus:',
-    guidedTitle: 'Schritt-für-Schritt Geführt',
-    guidedSub: 'Nummerierte Glühbirnen zeigen jeden nächsten Klick',
-    soloTitle: 'Selbst Erstellen',
-    soloSub: 'Direkter Studio-Zugang ohne Hinweise',
-    applyFunnel: [
-      { num: '1', title: 'Liest Ihren CV automatisch', desc: 'Erkennt Position, Skills und Erfahrung sofort.' },
-      { num: '2', title: 'Filtert passende Stellen', desc: 'Nach Profil, Remote, Land und Match-Score filtern.' },
-      { num: '3', title: 'Anpassen & direkt Bewerben', desc: 'ATS-Keywords optimieren und Bewerbung verfolgen.' }
-    ],
-    applyQuickBtn: 'Bewerben'
-  },
-  it: {
-    chooseLabel: 'Scegli come preferisci creare:',
-    guidedTitle: 'Passo Dopo Passo Guidato',
-    guidedSub: 'Lampadine numerate mostrano dove cliccare in ogni fase',
-    soloTitle: 'Fai da Te',
-    soloSub: 'Editor diretto senza suggerimenti guidati',
-    applyFunnel: [
-      { num: '1', title: 'Legge il tuo CV in automatico', desc: 'Estrae ruolo, competenze ed esperienza all’istante.' },
-      { num: '2', title: 'Filtra le offerte compatibili', desc: 'Filtra per profilo, remoto/ibrido, paese e affinità.' },
-      { num: '3', title: 'Adatta e Candidati in 1 Clic', desc: 'Ottimizza le parole chiave ATS e traccia l’invio.' }
-    ],
-    applyQuickBtn: 'Candidati Ora'
-  }
-} as const;
 
 const HERO_PREVIEW_MODELS: Array<{
   id: TemplateStyle;
@@ -174,55 +85,24 @@ const HERO_PREVIEW_MODELS: Array<{
 export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   onStartCreating,
   onStartGuided,
-  onStartSolo,
   onOpenPricing,
   onSelectPlanForCheckout,
   onSelectTemplate,
   onOpenTemplateAdvisor,
-  onOpenShowcase,
-  currentCV,
-  onNavigateTab
+  onOpenShowcase
 }) => {
   const { currency, formatPrice, convertFromUSD } = useCurrency();
   const { siteText, siteLanguage } = useLanguage();
   const l = siteText.landing;
-  const mktMode = MARKETING_MODE_COPY[siteLanguage] || MARKETING_MODE_COPY.en;
   const cycles = siteText.billingCycles;
   const [heroModelIdx, setHeroModelIdx] = useState<number>(0);
   const [heroPreviewLang, setHeroPreviewLang] = useState<'en' | 'pt'>('en');
-  const [jobMatchProfile, setJobMatchProfile] = useState<'coo' | 'tech' | 'finance'>('coo');
-  const [jobMatchWorkplace, setJobMatchWorkplace] = useState<'all' | 'remote' | 'hybrid'>('all');
-  const [jobMatchRegion, setJobMatchRegion] = useState<'all' | 'us_global' | 'europe'>('all');
-  const [atsHubTab, setAtsHubTab] = useState<'health' | 'simulator'>('health');
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
   const [pricingCycle, setPricingCycle] = useState<BillingCycle>('yearly');
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [adminTemplates, setAdminTemplates] = useState(() => getStoredTemplatesSync());
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());
-
-  const [liveJobsByProfile, setLiveJobsByProfile] = useState<
-    Partial<
-      Record<
-        'coo' | 'tech' | 'finance',
-        Array<{
-          id: string;
-          profile: 'coo' | 'tech' | 'finance';
-          title: string;
-          company: string;
-          workplace: 'remote' | 'hybrid';
-          workplaceLabel: string;
-          region: 'us_global' | 'europe';
-          regionLabel: string;
-          contract: string;
-          matchScore: number;
-          matchedKeywords: string[];
-          applyUrl?: string;
-          sourceName?: string;
-        }>
-      >
-    >
-  >({});
 
   useEffect(() => {
     const refreshConfig = () => {
@@ -236,102 +116,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       window.removeEventListener('storage', refreshConfig);
     };
   }, []);
-
-  useEffect(() => {
-    if (liveJobsByProfile[jobMatchProfile]?.length) return;
-    let cancelled = false;
-    const profileQueries: Record<
-      'coo' | 'tech' | 'finance',
-      { title: string; skills: string; search: string }
-    > = {
-      coo: {
-        title: 'Chief Operating Officer VP Operations',
-        skills: 'Operations Strategy P&L Management Supply Chain KPIs OKRs',
-        search: 'operations'
-      },
-      tech: {
-        title: 'Senior Full Stack Engineer Cloud Architect',
-        skills: 'TypeScript React Node.js AWS Kubernetes PostgreSQL',
-        search: 'engineer'
-      },
-      finance: {
-        title: 'FP&A Director Financial Controller CFO',
-        skills: 'IFRS US GAAP Financial Modeling FP&A Treasury Audit',
-        search: 'finance'
-      }
-    };
-    const meta = profileQueries[jobMatchProfile];
-    fetch('/api/jobs/match', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        search: meta.search,
-        cv: {
-          personalDetails: { title: meta.title, location: 'Remote' },
-          summary: meta.skills,
-          competencies: [{ id: '1', category: 'Core', description: meta.skills }]
-        }
-      })
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        const rawJobs = Array.isArray(data?.matchedJobs)
-          ? data.matchedJobs
-          : Array.isArray(data?.jobs)
-          ? data.jobs
-          : [];
-        if (cancelled || rawJobs.length === 0) return;
-        const mapped = rawJobs.slice(0, 8).map((j: any) => {
-          const wpRaw = String(j.workplace || '').toLowerCase();
-          const workplace: 'remote' | 'hybrid' = wpRaw.includes('hybrid') ? 'hybrid' : 'remote';
-          const locJoined = [
-            ...(Array.isArray(j.locations) ? j.locations : []),
-            ...(Array.isArray(j.allowedCountries) ? j.allowedCountries : [])
-          ]
-            .join(' ')
-            .toLowerCase();
-          const isEurope =
-            /\b(europe|eu|uk|germany|france|spain|portugal|netherlands|berlin|london|paris|lisbon|madrid|emea)\b/.test(
-              locJoined
-            );
-          const region: 'us_global' | 'europe' = isEurope ? 'europe' : 'us_global';
-          return {
-            id: String(j.id || `live-${Math.random()}`),
-            profile: jobMatchProfile,
-            title: String(j.title || ''),
-            company: String(j.company || j.sourceName || 'Verified Employer'),
-            workplace,
-            workplaceLabel:
-              workplace === 'hybrid'
-                ? l.jobMatch.workplaceFilters.hybrid
-                : l.jobMatch.workplaceFilters.remote,
-            region,
-            regionLabel:
-              (Array.isArray(j.locations) && j.locations[0]) ||
-              (region === 'europe' ? l.jobMatch.regionFilters.europe : l.jobMatch.regionFilters.us_global),
-            contract: String(j.employmentType || j.sourceName || 'Full-time'),
-            matchScore: typeof j.matchScore === 'number' ? j.matchScore : 82,
-            matchedKeywords:
-              Array.isArray(j.matchedKeywords) && j.matchedKeywords.length > 0
-                ? j.matchedKeywords.slice(0, 4)
-                : Array.isArray(j.skills)
-                ? j.skills.slice(0, 4)
-                : [],
-            applyUrl: typeof j.applyUrl === 'string' ? j.applyUrl : undefined,
-            sourceName: typeof j.sourceName === 'string' ? j.sourceName : undefined
-          };
-        });
-        if (mapped.length > 0) {
-          setLiveJobsByProfile((prev) => ({ ...prev, [jobMatchProfile]: mapped }));
-        }
-      })
-      .catch(() => {
-        // Keep localized catalog gracefully when offline
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [jobMatchProfile, liveJobsByProfile, l.jobMatch.workplaceFilters, l.jobMatch.regionFilters]);
 
   const proPlan = adminPlans.find((p) => p.id === 'pro') || adminPlans[0];
   const execPlan = adminPlans.find((p) => p.id === 'executive') || adminPlans[1];
@@ -391,228 +175,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
     };
   }, [activeHeroModel, heroPreviewLang]);
 
-  const atsPresetsByLang = useMemo(() => {
-    const localized = {
-      pt: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'Governança P&L', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Responsável pela gestão da equipa, acompanhamento de metas operacionais e suporte à diretoria em relatórios semanais.',
-          optimizedText:
-            'Liderou reestruturação operacional abrangendo 4 subsidiárias e 140 colaboradores (Governança P&L & OKRs), reduzindo OPEX em 32%, implementando ISO 9001 e elevando a margem EBITDA em 8.4 p.p.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'Microserviços gRPC', 'DevSecOps', 'SLA 99.99%', 'Latência p99'],
-          defaultGenericText:
-            'Responsável pela infraestrutura cloud da empresa, suporte a equipas de desenvolvimento e revisão de arquitetura.',
-          optimizedText:
-            'Arquitetou plataforma em Kubernetes com Microserviços gRPC e pipeline DevSecOps processando $25M/mês, reduzindo Latência p99 de 420ms para 58ms com SLA 99.99%.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'Modelagem DCF', 'Hedging Cambial', 'SOX', 'Captação'],
-          defaultGenericText:
-            'Responsável pelo fecho contabilístico mensal, controlo orçamental e apresentações financeiras para o conselho.',
-          optimizedText:
-            'Conduziu Captação de dívida estruturada de €60M, auditoria IFRS / US GAAP com conformidade SOX, Hedging Cambial e Modelagem DCF em 3 transações de M&A (-24% custo financeiro).'
-        }
-      },
-      en: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'P&L Governance', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Responsible for managing the team, tracking operational targets, and supporting leadership with weekly reports.',
-          optimizedText:
-            'Led operational turnaround across 4 hubs and 140 staff (P&L Governance & OKRs), cutting OPEX by 32%, certifying ISO 9001, and expanding EBITDA margin by 8.4 pts.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'gRPC Microservices', 'DevSecOps', '99.99% SLA', 'p99 Latency'],
-          defaultGenericText:
-            'Responsible for company cloud infrastructure, developer support, and architecture reviews.',
-          optimizedText:
-            'Architected a Kubernetes platform with gRPC Microservices and DevSecOps pipelines processing $25M/mo, cutting p99 Latency from 420ms to 58ms at 99.99% SLA.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'DCF Modeling', 'FX Hedging', 'SOX', 'Capital Raise'],
-          defaultGenericText:
-            'Responsible for monthly accounting close, budget control, and financial presentations for the board.',
-          optimizedText:
-            'Directed €60M Capital Raise, IFRS / US GAAP & SOX audit compliance, FX Hedging, and DCF Modeling across 3 M&A deals (-24% financing cost).'
-        }
-      },
-      es: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'Gobernanza P&L', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Responsable de gestionar al equipo, dar seguimiento a metas operativas y apoyar a la dirección con informes semanales.',
-          optimizedText:
-            'Dirigió la reestructuración operativa en 4 sedes y 140 empleados (Gobernanza P&L y OKRs), reduciendo OPEX en 32%, certificando ISO 9001 y elevando EBITDA +8.4 pts.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'Microservicios gRPC', 'DevSecOps', 'SLA 99.99%', 'Latencia p99'],
-          defaultGenericText:
-            'Responsable de la infraestructura cloud, soporte a equipos de desarrollo y revisión de arquitectura.',
-          optimizedText:
-            'Arquitectó plataforma en Kubernetes con Microservicios gRPC y DevSecOps procesando $25M/mes, reduciendo Latencia p99 de 420ms a 58ms con SLA 99.99%.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'Modelado DCF', 'Cobertura Cambiaria', 'SOX', 'Financiación'],
-          defaultGenericText:
-            'Responsable del cierre contable mensual, control presupuestario y reportes financieros al comité.',
-          optimizedText:
-            'Lideró Financiación de €60M, auditoría IFRS / US GAAP con cumplimiento SOX, Cobertura Cambiaria y Modelado DCF en 3 operaciones de M&A (-24% coste financiero).'
-        }
-      },
-      fr: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'Gouvernance P&L', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Responsable du management d’équipe, du suivi des objectifs opérationnels et du reporting hebdomadaire.',
-          optimizedText:
-            'Piloté la restructuration de 4 filiales et 140 collaborateurs (Gouvernance P&L & OKRs), réduit l’OPEX de 32%, déployé ISO 9001 et haussé la marge EBITDA de 8,4 pts.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'Microservices gRPC', 'DevSecOps', 'SLA 99.99%', 'Latence p99'],
-          defaultGenericText:
-            'Responsable de l’infrastructure cloud, du support aux équipes de développement et de la revue d’architecture.',
-          optimizedText:
-            'Conçu une plateforme Kubernetes avec Microservices gRPC et pipeline DevSecOps traitant 25M$/mois, réduisant la Latence p99 de 420ms à 58ms avec un SLA 99.99%.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'Modélisation DCF', 'Couverture Change', 'SOX', 'Levée Dette'],
-          defaultGenericText:
-            'Responsable de la clôture comptable mensuelle, du contrôle budgétaire et des présentations au conseil.',
-          optimizedText:
-            'Dirigé une Levée Dette de 60M€, audit IFRS / US GAAP et conformité SOX, Couverture Change et Modélisation DCF sur 3 opérations M&A (-24% de coût financier).'
-        }
-      },
-      de: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'P&L-Governance', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Verantwortlich für Teamleitung, Überwachung operativer Ziele und wöchentliches Management-Reporting.',
-          optimizedText:
-            'Leitete die operative Neuausrichtung über 4 Standorte und 140 Mitarbeitende (P&L-Governance & OKRs), senkte OPEX um 32%, führte ISO 9001 ein und steigerte EBITDA um 8,4 Pkt.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'gRPC Microservices', 'DevSecOps', '99,99% SLA', 'p99-Latenz'],
-          defaultGenericText:
-            'Verantwortlich für die Cloud-Infrastruktur, Entwickler-Support und Architektur-Reviews.',
-          optimizedText:
-            'Entwarf Kubernetes-Plattform mit gRPC Microservices und DevSecOps für 25 Mio. $/Monat, reduzierte p99-Latenz von 420ms auf 58ms bei 99,99% SLA.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'DCF-Modellierung', 'Währungs-Hedging', 'SOX', 'Finanzierung'],
-          defaultGenericText:
-            'Verantwortlich für den Monatsabschluss, Budgetkontrolle und Finanzberichte an den Vorstand.',
-          optimizedText:
-            'Steuerte 60 Mio. € Finanzierung, IFRS / US GAAP & SOX-Compliance, Währungs-Hedging und DCF-Modellierung in 3 M&A-Transaktionen (-24% Zinskosten).'
-        }
-      },
-      it: {
-        coo: {
-          role: l.simRoles.coo,
-          missingKeywords: ['EBITDA', 'Governance P&L', 'OPEX', 'ISO 9001', 'OKRs'],
-          defaultGenericText:
-            'Responsabile della gestione del team, del monitoraggio obiettivi operativi e della reportistica settimanale.',
-          optimizedText:
-            'Guidato la ristrutturazione operativa di 4 sedi e 140 collaboratori (Governance P&L e OKRs), riducendo OPEX del 32%, certificando ISO 9001 e migliorando EBITDA di 8,4 pt.'
-        },
-        tech: {
-          role: l.simRoles.tech,
-          missingKeywords: ['Kubernetes', 'Microservizi gRPC', 'DevSecOps', 'SLA 99.99%', 'Latenza p99'],
-          defaultGenericText:
-            'Responsabile dell’infrastruttura cloud aziendale, supporto ai team dev e revisione dell’architettura.',
-          optimizedText:
-            'Progettato piattaforma Kubernetes con Microservizi gRPC e DevSecOps da 25M$/mese, riducendo la Latenza p99 da 420ms a 58ms con SLA 99.99%.'
-        },
-        cfo: {
-          role: l.simRoles.cfo,
-          missingKeywords: ['IFRS / US GAAP', 'Modelli DCF', 'Copertura FX', 'SOX', 'Raccolta Capitali'],
-          defaultGenericText:
-            'Responsabile della chiusura contabile mensile, controllo budget e presentazioni al consiglio.',
-          optimizedText:
-            'Diretto Raccolta Capitali da 60M€, audit IFRS / US GAAP conforme SOX, Copertura FX e Modelli DCF in 3 operazioni M&A (-24% oneri finanziari).'
-        }
-      }
-    };
-    return localized[siteLanguage] || localized.en;
-  }, [siteLanguage, l.simRoles]);
-
-  // Interactive Live ATS Quick-Checker State
-  const [atsPreset, setAtsPreset] = useState<'coo' | 'tech' | 'cfo'>('coo');
-  const [hasAppliedKeywords, setHasAppliedKeywords] = useState<boolean>(false);
-  const [isSimCustomEdited, setIsSimCustomEdited] = useState<boolean>(false);
-  const [customBulletInput, setCustomBulletInput] = useState<string>(
-    atsPresetsByLang.coo.defaultGenericText
-  );
-
-  useEffect(() => {
-    if (hasAppliedKeywords) {
-      setCustomBulletInput(atsPresetsByLang[atsPreset].optimizedText);
-    } else if (!isSimCustomEdited) {
-      setCustomBulletInput(atsPresetsByLang[atsPreset].defaultGenericText);
-    }
-  }, [siteLanguage, atsPreset, atsPresetsByLang, hasAppliedKeywords, isSimCustomEdited]);
-
-  const liveSimAnalysis = useMemo(() => {
-    const preset = atsPresetsByLang[atsPreset];
-    const sourceText = hasAppliedKeywords ? preset.optimizedText : customBulletInput;
-    const normalized = sourceText.toLowerCase();
-
-    const matchedKeywords = preset.missingKeywords.filter((kw) => {
-      const tokens = kw
-        .toLowerCase()
-        .split(/[\s/]+/)
-        .filter((tok) => tok.length >= 3);
-      return tokens.some((tok) => normalized.includes(tok));
-    });
-
-    const hasMetric = /\d+[%€$MkmK]?|\+\d+|-\d+|99[.,]/.test(sourceText);
-    const hasActionVerb = /^(liderou|arquitetou|conduziu|reduziu|escalou|geriu|implementou|estruturou|otimizou|entregou|expandiu|led|built|architected|scaled|reduced|managed|directed|delivered|dirigió|arquitectó|lideró|redujo|piloté|conçu|dirigé|réduit|leitete|entwarf|steuerte|reduzierte|guidato|progettato|diretto|ottimizzato)/i.test(
-      sourceText.trim()
-    );
-
-    const kwRatio = matchedKeywords.length / preset.missingKeywords.length;
-    const computedScore = hasAppliedKeywords
-      ? 98
-      : Math.min(98, Math.round(32 + kwRatio * 42 + (hasMetric ? 14 : 0) + (hasActionVerb ? 10 : 0)));
-
-    return {
-      matchedKeywords,
-      hasMetric,
-      hasActionVerb,
-      score: computedScore
-    };
-  }, [atsPreset, customBulletInput, hasAppliedKeywords, atsPresetsByLang]);
-
-  const handleApplyAtsKeywords = () => {
-    setHasAppliedKeywords(true);
-    setIsSimCustomEdited(false);
-    setCustomBulletInput(atsPresetsByLang[atsPreset].optimizedText);
-  };
-
-  const handleResetAtsSim = (preset: 'coo' | 'tech' | 'cfo') => {
-    setAtsPreset(preset);
-    setHasAppliedKeywords(false);
-    setIsSimCustomEdited(false);
-    setCustomBulletInput(atsPresetsByLang[preset].defaultGenericText);
-  };
-
   const activeMergedTemplates = useMemo(() => {
     const adminMap = new Map(adminTemplates.map((t) => [t.id, t]));
     const i18nMap = siteLanguage === 'pt' ? undefined : TEMPLATE_CATALOG_I18N[siteLanguage];
@@ -629,40 +191,11 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
           tagline: loc?.tagline || tmpl.tagline,
           badge: loc?.badge || cfg?.badge || tmpl.badge,
           atsScore: cfg?.atsScore ?? tmpl.atsScore,
-          tierRequired: cfg?.tierRequired || 'pro',
           displayOrder: cfg?.displayOrder ?? 99
         };
       })
       .sort((a, b) => a.displayOrder - b.displayOrder);
   }, [adminTemplates, siteLanguage]);
-
-  const activeJobProfileMeta = useMemo(
-    () => l.jobMatch.profiles.find((p) => p.id === jobMatchProfile) || l.jobMatch.profiles[0],
-    [l.jobMatch.profiles, jobMatchProfile]
-  );
-
-  const filteredMatchJobs = useMemo(() => {
-    const liveList = liveJobsByProfile[jobMatchProfile];
-    const sourceList = liveList && liveList.length > 0 ? liveList : l.jobMatch.jobs;
-    const matched = sourceList.filter((job) => {
-      if (job.profile !== jobMatchProfile) return false;
-      if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
-      if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
-      return true;
-    });
-    if (matched.length > 0) return matched.slice(0, 4);
-    if (liveList && liveList.length > 0) {
-      return l.jobMatch.jobs
-        .filter((job) => {
-          if (job.profile !== jobMatchProfile) return false;
-          if (jobMatchWorkplace !== 'all' && job.workplace !== jobMatchWorkplace) return false;
-          if (jobMatchRegion !== 'all' && job.region !== jobMatchRegion) return false;
-          return true;
-        })
-        .slice(0, 4);
-    }
-    return [];
-  }, [liveJobsByProfile, l.jobMatch.jobs, jobMatchProfile, jobMatchWorkplace, jobMatchRegion]);
 
   const filteredTemplates = activeMergedTemplates.filter((tmpl) => {
     if (templateFilter === 'without_photo') return !tmpl.hasPhoto;
@@ -707,15 +240,13 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
       ? execPlan.features
       : l.execFeatures;
 
-  const comparisonRows = l.matrixRows;
-
   return (
     <div className="theme-dual-native w-full max-w-full bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-white min-h-full overflow-x-hidden selection:bg-amber-400 selection:text-slate-950 transition-colors">
-      {/* 1. EDITORIAL ASYMMETRIC HERO + INTERACTIVE LIVE A4 STUDIO PREVIEW */}
-      <section className="relative pt-10 pb-10 lg:pt-16 lg:pb-14 border-b border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0B0F17]">
+      {/* 1. CLEAN FOCUSED HERO + LIVE A4 PREVIEW */}
+      <section className="relative pt-10 pb-12 lg:pt-16 lg:pb-16 border-b border-slate-200 dark:border-slate-800/80 bg-white dark:bg-[#0B0F17]">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
-            {/* Left Column: Positioning, Action Pair & Proof */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+            {/* Left Column: Clear Positioning & Primary Action */}
             <div className="lg:col-span-7 space-y-5 text-center lg:text-left">
               <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-amber-700 dark:text-amber-400">
                 {l.heroKicker}
@@ -728,12 +259,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 {l.heroTitle}
               </h1>
 
-              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl mx-auto lg:mx-0">
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0">
                 {l.heroSubtitle}
               </p>
 
-              {/* Focused Primary & Secondary Action Pair */}
-              <div className="pt-1 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
+              {/* Focused Action Pair */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center lg:items-start justify-center lg:justify-start gap-3">
                 <button
                   type="button"
                   onClick={onStartGuided || onStartCreating}
@@ -753,68 +284,8 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 </button>
               </div>
 
-              {/* 2-Path Creation Choice: Step-by-Step Lightbulb Guide vs Self-Service Solo */}
-              <div className="pt-1 space-y-1.5">
-                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                  {mktMode.chooseLabel}
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
-                  <button
-                    type="button"
-                    onClick={onStartGuided || onStartCreating}
-                    className="p-3 rounded-xl bg-amber-50/90 dark:bg-amber-500/10 hover:bg-amber-100/90 dark:hover:bg-amber-500/15 border border-amber-300/90 dark:border-amber-500/30 transition-colors flex items-start gap-2.5 group"
-                  >
-                    <span className="w-6 h-6 rounded-md bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 mt-0.5">
-                      <Lightbulb className="w-3.5 h-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-slate-950 dark:text-white flex items-center gap-1">
-                        <span>{mktMode.guidedTitle}</span>
-                        <ArrowRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
-                      </span>
-                      <span className="text-[11px] text-slate-600 dark:text-slate-300 block leading-snug mt-0.5">
-                        {mktMode.guidedSub}
-                      </span>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onStartSolo || onStartCreating}
-                    className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 transition-colors flex items-start gap-2.5 group"
-                  >
-                    <span className="w-6 h-6 rounded-md bg-slate-900 dark:bg-slate-700 text-white flex items-center justify-center shrink-0 mt-0.5">
-                      <Zap className="w-3.5 h-3.5" />
-                    </span>
-                    <div className="min-w-0">
-                      <span className="text-xs font-bold text-slate-950 dark:text-white flex items-center gap-1">
-                        <span>{mktMode.soloTitle}</span>
-                        <ArrowRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
-                      </span>
-                      <span className="text-[11px] text-slate-600 dark:text-slate-400 block leading-snug mt-0.5">
-                        {mktMode.soloSub}
-                      </span>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                <button
-                  type="button"
-                  onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
-                  className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4 font-medium text-slate-700 dark:text-slate-300"
-                >
-                  {l.ctaMatchJobs}
-                </button>
-                <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() => onOpenShowcase('models-cv')}
-                  className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4"
-                >
-                  {l.linkCvModels}
-                </button>
+              <div className="pt-1 flex flex-wrap items-center justify-center lg:justify-start gap-x-4 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <span>{l.trustEditableDocx}</span>
                 <span aria-hidden="true">·</span>
                 <button
                   type="button"
@@ -823,29 +294,12 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 >
                   {l.linkRealExamples}
                 </button>
-                <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={() => onOpenShowcase('models-cover')}
-                  className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4"
-                >
-                  {l.linkCoverModels}
-                </button>
-                <span aria-hidden="true">·</span>
-                <button
-                  type="button"
-                  onClick={onOpenPricing}
-                  className="hover:text-amber-700 dark:hover:text-amber-300 underline underline-offset-4"
-                >
-                  {l.linkPlansStarting} {formatPrice(proPlan?.priceMonthlyValue ?? 8)}{l.perMonth} · {l.cardAndPix}
-                </button>
               </div>
             </div>
 
-            {/* Right Column: Interactive Live A4 Studio Preview */}
+            {/* Right Column: Live A4 Preview */}
             <div className="lg:col-span-5">
               <div className="bg-slate-50 dark:bg-[#111724] border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-3 shadow-sm dark:shadow-none">
-                {/* Interactive Studio Controls Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-800">
                   <div className="flex flex-wrap items-center gap-1 p-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[11px]">
                     {HERO_PREVIEW_MODELS.map((m, idx) => (
@@ -882,7 +336,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   </div>
                 </div>
 
-                {/* Live A4 Paper Sheet */}
                 <div
                   onClick={() => onSelectTemplate(activeHeroModel.id)}
                   className="bg-slate-200/75 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-lg p-3.5 flex items-center justify-center cursor-pointer group"
@@ -899,12 +352,13 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   </div>
                 </div>
 
-                {/* Studio Caption & Quick Trigger */}
                 <div className="flex items-center justify-between gap-2 text-[11px] pt-0.5">
                   <div className="min-w-0">
-                    <p className="text-slate-900 dark:text-slate-200 font-semibold truncate">{activeHeroRuleLabel}</p>
+                    <p className="text-slate-900 dark:text-slate-200 font-semibold truncate">
+                      {activeHeroRuleLabel}
+                    </p>
                     <p className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      {l.atsCompatPrefix} {activeHeroModel.atsLabel} · .docx / PDF
+                      {activeHeroModel.atsLabel} · Word / PDF
                     </p>
                   </div>
                   <button
@@ -921,32 +375,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </div>
             </div>
           </div>
-
-          {/* Integrated 4-Metric Hairline Strip */}
-          <div className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-            {l.metrics.map((m) => (
-              <div key={m.label}>
-                <p className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
-                  {m.value}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{m.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Integrated 5-Deliverable Suite Bar */}
-          <div className="mt-8 pt-6 border-t border-slate-200/80 dark:border-slate-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-left text-xs">
-            {l.deliverables.map((item) => (
-              <div key={item.code} className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/90 rounded-lg px-3.5 py-2.5 space-y-0.5">
-                <span className="font-mono text-[10px] font-bold tracking-wider text-amber-700 dark:text-amber-400">{item.code}</span>
-                <p className="text-[11px] text-slate-700 dark:text-slate-300 leading-snug">{item.text}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* 2. MECHANISM: ENGENHARIA DE CANDIDATURA (01–04 Editorial Grid) */}
+      {/* 2. SIMPLE 4-STEP CREATION FLOW */}
       <section className="py-12 lg:py-14 bg-slate-50 dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
@@ -958,475 +390,29 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 {l.archTitle}
               </h2>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md">
-              {l.archDesc}
-            </p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md">{l.archDesc}</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 border border-slate-200 dark:border-slate-800 rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-slate-200 dark:divide-slate-800 bg-white dark:bg-[#0E131D] overflow-hidden shadow-xs dark:shadow-none">
             {l.archSteps.map((step) => (
               <div key={step.num} className="p-5 space-y-2.5">
-                <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400 tabular-nums">{step.num}</span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">{step.title}</h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{step.desc}</p>
+                <span className="font-mono text-xs font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                  {step.num}
+                </span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight">
+                  {step.title}
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {step.desc}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* 2B. PROFILE-BASED JOB DISCOVERY & SMART FILTER SHOWCASE */}
-      <section className="py-12 lg:py-14 bg-white dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800/80">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-            <div className="space-y-1 max-w-2xl">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">
-                {l.jobMatch.kicker}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {l.jobMatch.title}
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                {l.jobMatch.subtitle}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
-              className="px-4 py-2.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-2 self-start lg:self-auto whitespace-nowrap shrink-0"
-            >
-              <Briefcase className="w-3.5 h-3.5" />
-              <span>{l.jobMatch.browseJobsCta}</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Clear 3-Step Job Discovery & Application Funnel */}
-          <div className="grid grid-cols-1 md:grid-cols-3 border border-slate-200 dark:border-slate-800 rounded-xl divide-y md:divide-y-0 md:divide-x divide-slate-200 dark:divide-slate-800 bg-slate-50/70 dark:bg-[#0E131D] overflow-hidden">
-            {mktMode.applyFunnel.map((fStep) => (
-              <div key={fStep.num} className="p-4 flex items-start gap-3">
-                <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md bg-amber-400 text-slate-950 text-[11px] font-extrabold tabular-nums shrink-0 mt-0.5">
-                  <Lightbulb className="w-3 h-3" />
-                  <span>{fStep.num}</span>
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-950 dark:text-white leading-snug">
-                    {fStep.title}
-                  </p>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    {fStep.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-slate-50 dark:bg-[#0E131D] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 space-y-5 shadow-xs dark:shadow-none">
-            {/* CV Profile Switcher + Live Work-Mode & Region Filters */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-                  {l.jobMatch.profileLabel}
-                </span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {l.jobMatch.profiles.map((prof) => (
-                    <button
-                      key={prof.id}
-                      type="button"
-                      onClick={() => setJobMatchProfile(prof.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                        jobMatchProfile === prof.id
-                          ? 'bg-amber-400 text-slate-950'
-                          : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:text-slate-950 dark:hover:text-white'
-                      }`}
-                    >
-                      {prof.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 text-xs">
-                <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
-                  {(['all', 'remote', 'hybrid'] as const).map((wp) => (
-                    <button
-                      key={wp}
-                      type="button"
-                      onClick={() => setJobMatchWorkplace(wp)}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap shrink-0 ${
-                        jobMatchWorkplace === wp
-                          ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                      }`}
-                    >
-                      {l.jobMatch.workplaceFilters[wp]}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
-                  {(['all', 'us_global', 'europe'] as const).map((rg) => (
-                    <button
-                      key={rg}
-                      type="button"
-                      onClick={() => setJobMatchRegion(rg)}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-colors whitespace-nowrap shrink-0 ${
-                        jobMatchRegion === rg
-                          ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                      }`}
-                    >
-                      {l.jobMatch.regionFilters[rg]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Active CV Extracted Profile Strip */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-300">
-              <p className="font-medium text-slate-800 dark:text-slate-200">{activeJobProfileMeta.headline}</p>
-              <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                {activeJobProfileMeta.skills.join(' · ')}
-              </p>
-            </div>
-
-            {/* Matched Openings Grid */}
-            {filteredMatchJobs.length === 0 ? (
-              <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-lg p-6 text-center text-xs text-slate-500 dark:text-slate-400">
-                {l.jobMatch.emptyState}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredMatchJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between gap-4 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
-                  >
-                    <div className="space-y-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-snug">
-                            {job.title}
-                          </h3>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                            {job.company} · {job.workplaceLabel} · {job.regionLabel} · {job.contract}
-                          </p>
-                        </div>
-                        <span className="font-mono text-xs font-bold tabular-nums text-emerald-700 dark:text-emerald-400 shrink-0">
-                          {job.matchScore}% {l.jobMatch.matchSuffix}
-                        </span>
-                      </div>
-
-                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[11px] text-slate-500 dark:text-slate-400">
-                        <span className="font-medium text-slate-700 dark:text-slate-300">
-                          {l.jobMatch.keywordsMatchedLabel}{' '}
-                        </span>
-                        <span className="font-mono">{job.matchedKeywords.join(' · ')}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800/80 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => (onNavigateTab ? onNavigateTab('ai') : onStartCreating())}
-                        className="font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 inline-flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <span>{l.jobMatch.tailorCta}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => (onNavigateTab ? onNavigateTab('jobs') : onStartCreating())}
-                        className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold rounded-md transition-colors whitespace-nowrap inline-flex items-center gap-1"
-                      >
-                        <span>{mktMode.applyQuickBtn}</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* 3. CENTRAL INTERATIVA ATS + PROVA REAL (Antes vs. Depois & Casos) */}
-      <section className="py-14 lg:py-16 bg-slate-100/70 dark:bg-[#0E131D] border-b border-slate-200 dark:border-slate-800/80">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div className="space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">
-                {l.atsHubKicker}
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-                {l.atsHubTitle}
-              </h2>
-            </div>
-
-            <div className="inline-flex items-center p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl self-start md:self-auto text-xs shadow-xs dark:shadow-none">
-              <button
-                type="button"
-                onClick={() => setAtsHubTab('health')}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  atsHubTab === 'health'
-                    ? 'bg-slate-900 dark:bg-slate-800 text-white'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-slate-200'
-                }`}
-              >
-                <Activity className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-                <span>{l.tabHealth}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAtsHubTab('simulator')}
-                className={`px-3.5 py-1.5 rounded-lg font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                  atsHubTab === 'simulator'
-                    ? 'bg-slate-900 dark:bg-slate-800 text-white'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-slate-200'
-                }`}
-              >
-                <Target className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-                <span>{l.tabSimulator}</span>
-              </button>
-            </div>
-          </div>
-
-          {atsHubTab === 'health' ? (
-            <CVHealthScoreOverview
-              embedded
-              currentCV={currentCV}
-              onNavigateTab={onNavigateTab}
-              onOpenPricing={onOpenPricing}
-            />
-          ) : (
-            <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-7 space-y-6 shadow-xs dark:shadow-none">
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800 text-xs">
-                <span className="text-slate-600 dark:text-slate-400 font-medium">{l.simSelectRole}</span>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleResetAtsSim('coo')}
-                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
-                      atsPreset === 'coo'
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800'
-                    }`}
-                  >
-                    {l.simRoles.coo}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleResetAtsSim('tech')}
-                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
-                      atsPreset === 'tech'
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800'
-                    }`}
-                  >
-                    {l.simRoles.tech}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleResetAtsSim('cfo')}
-                    className={`px-3 py-1.5 rounded-md font-semibold transition-colors ${
-                      atsPreset === 'cfo'
-                        ? 'bg-amber-400 text-slate-950'
-                        : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800'
-                    }`}
-                  >
-                    {l.simRoles.cfo}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                <div className="md:col-span-4 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 pb-5 md:pb-0 md:pr-6 text-center space-y-2.5">
-                  <p className="text-[11px] uppercase font-mono tracking-wider text-slate-500 dark:text-slate-400">
-                    {l.simCompatLabel}
-                  </p>
-                  <p
-                    className={`text-5xl font-bold font-mono tabular-nums tracking-tight transition-colors ${
-                      liveSimAnalysis.score >= 85
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-amber-600 dark:text-amber-400'
-                    }`}
-                  >
-                    {liveSimAnalysis.score}%
-                  </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    {liveSimAnalysis.score >= 85 ? l.simApproved : l.simRisk}
-                  </p>
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 grid grid-cols-2 gap-2 text-[11px] text-left">
-                    <div className="px-2.5 py-1.5 rounded bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 dark:text-slate-400 block text-[10px]">{l.simActionVerb}</span>
-                      <span
-                        className={
-                          liveSimAnalysis.hasActionVerb
-                            ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                            : 'text-rose-600 dark:text-rose-400 font-semibold'
-                        }
-                      >
-                        {liveSimAnalysis.hasActionVerb ? l.simPresent : l.simMissing}
-                      </span>
-                    </div>
-                    <div className="px-2.5 py-1.5 rounded bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800">
-                      <span className="text-slate-500 dark:text-slate-400 block text-[10px]">{l.simMetricLabel}</span>
-                      <span
-                        className={
-                          liveSimAnalysis.hasMetric
-                            ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-                            : 'text-rose-600 dark:text-rose-400 font-semibold'
-                        }
-                      >
-                        {liveSimAnalysis.hasMetric ? l.simQuantified : l.simNoNumbers}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="md:col-span-8 space-y-4">
-                  <div className="space-y-1.5 text-xs">
-                    <span className="font-medium text-slate-600 dark:text-slate-400">
-                      {l.simRequiredKeywords} {atsPresetsByLang[atsPreset].role}:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {atsPresetsByLang[atsPreset].missingKeywords.map((kw, i) => {
-                        const isMatched = liveSimAnalysis.matchedKeywords.includes(kw);
-                        return (
-                          <span
-                            key={i}
-                            className={`px-2 py-0.5 rounded text-[11px] font-mono transition-colors ${
-                              isMatched
-                                ? 'bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1'
-                                : 'bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {isMatched && <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
-                            {kw}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 bg-slate-50 dark:bg-slate-900/70 rounded-lg border border-slate-200 dark:border-slate-800 text-xs space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <label htmlFor="landing-ats-tester" className="font-semibold text-slate-700 dark:text-slate-300">
-                        {hasAppliedKeywords ? l.simOptimizedLabel : l.simTestLabel}
-                      </label>
-                      {customBulletInput !== atsPresetsByLang[atsPreset].defaultGenericText && (
-                        <button
-                          type="button"
-                          onClick={() => handleResetAtsSim(atsPreset)}
-                          className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white underline"
-                        >
-                          {l.simResetExample}
-                        </button>
-                      )}
-                    </div>
-                    <textarea
-                      id="landing-ats-tester"
-                      rows={3}
-                      value={customBulletInput}
-                      onChange={(e) => {
-                        setHasAppliedKeywords(false);
-                        setIsSimCustomEdited(true);
-                        setCustomBulletInput(e.target.value);
-                      }}
-                      placeholder={l.simPlaceholder}
-                      className="w-full bg-white dark:bg-slate-950/80 border border-slate-300 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-900 dark:text-slate-200 leading-relaxed focus:outline-none focus:border-amber-500 dark:focus:border-amber-400"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    {!hasAppliedKeywords && (
-                      <button
-                        type="button"
-                        onClick={handleApplyAtsKeywords}
-                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{l.simApplyXyz}</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={onStartCreating}
-                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center gap-1.5"
-                    >
-                      <span>{hasAppliedKeywords ? l.simApplyToCv : l.simFixInStudio}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Proof: Before / After Contrast + Documented Outcomes */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
-            {/* Before vs After Quantitative Rewrite */}
-            <div className="lg:col-span-5 bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs dark:shadow-none">
-              <div className="space-y-1 border-b border-slate-200 dark:border-slate-800 pb-3">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  {l.proofContrastKicker}
-                </span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {l.proofContrastTitle}
-                </h3>
-              </div>
-
-              <div className="space-y-3 text-xs">
-                <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] font-mono uppercase font-bold text-rose-600 dark:text-rose-400">
-                    {l.proofBeforeBadge}
-                  </span>
-                  <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                    {l.proofBeforeQuote}
-                  </p>
-                </div>
-
-                <div className="p-3 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-500/35 dark:border-emerald-500/30 space-y-1">
-                  <span className="text-[10px] font-mono uppercase font-bold text-emerald-700 dark:text-emerald-400">
-                    {l.proofAfterBadge}
-                  </span>
-                  <p className="text-slate-800 dark:text-slate-200 leading-relaxed">
-                    {l.proofAfterQuote}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* 3 Attributable Candidate Results */}
-            <div className="lg:col-span-7 bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-4 shadow-xs dark:shadow-none">
-              <div className="space-y-1 border-b border-slate-200 dark:border-slate-800 pb-3">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                  {l.proofCasesKicker}
-                </span>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {l.proofCasesTitle}
-                </h3>
-              </div>
-
-              <div className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
-                {l.proofCases.map((item) => (
-                  <div key={item.role} className="py-3 first:pt-1 last:pb-0 space-y-1">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">{item.role}</p>
-                    <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{item.detail}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. MODELOS INTERNACIONAIS (Hairline Bento Grid) */}
-      <section className="py-14 lg:py-16 bg-white dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800/80">
+      {/* 3. CLEAN TEMPLATES SHOWCASE (NO E-COMMERCE PRICE TAGS ON CARDS) */}
+      <section className="py-12 lg:py-16 bg-white dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4">
             <div>
@@ -1441,55 +427,55 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
-                <button
-                  type="button"
-                  onClick={() => setTemplateFilter('all')}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    templateFilter === 'all'
-                      ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  {l.filterAll} ({activeMergedTemplates.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTemplateFilter('without_photo')}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    templateFilter === 'without_photo'
-                      ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  {l.filterNoPhoto}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTemplateFilter('with_photo')}
-                  className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    templateFilter === 'with_photo'
-                      ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
-                  }`}
-                >
-                  {l.filterWithPhoto}
-                </button>
-              </div>
+            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
+              <button
+                type="button"
+                onClick={() => setTemplateFilter('all')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
+                  templateFilter === 'all'
+                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                }`}
+              >
+                {l.filterAll} ({activeMergedTemplates.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTemplateFilter('without_photo')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
+                  templateFilter === 'without_photo'
+                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                }`}
+              >
+                {l.filterNoPhoto}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTemplateFilter('with_photo')}
+                className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
+                  templateFilter === 'with_photo'
+                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                }`}
+              >
+                {l.filterWithPhoto}
+              </button>
             </div>
           </div>
 
-          {/* Visual A4 Bento Grid Container */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs dark:shadow-none">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {displayedTemplates.map((tmpl) => (
               <div
                 key={tmpl.id}
-                className="bg-white dark:bg-[#0B0F17] p-5 flex flex-col justify-between hover:bg-slate-50 dark:hover:bg-slate-900/90 transition-colors group"
+                className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between hover:border-slate-400 dark:hover:border-slate-700 transition-colors group"
               >
                 <div className="space-y-3">
                   <div
-                    onClick={() => onOpenShowcase('models-cv')}
+                    onClick={() => {
+                      trackFrontendTelemetry({ type: 'template_selected', templateStyle: tmpl.id });
+                      onSelectTemplate(tmpl.id);
+                    }}
                     className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex items-center justify-center cursor-pointer overflow-hidden"
                   >
                     <div className="a4-paper-preserve w-full max-w-[165px] aspect-[210/297] bg-white shadow-lg rounded-xs overflow-hidden transition-transform duration-200 group-hover:scale-[1.02]">
@@ -1504,7 +490,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1">
                       <span className="font-medium text-slate-700 dark:text-slate-300">
                         {tmpl.hasPhoto ? l.badgeWithPhoto : l.badgeNoPhotoAts}
                       </span>
@@ -1521,14 +507,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between text-xs">
-                  <span className="text-[11px] text-slate-500">
-                    {l.previewFreePrefix} ·{' '}
-                    <span className="text-slate-800 dark:text-slate-300 font-medium">
-                      {tmpl.tierRequired === 'executive'
-                        ? `VIP (${formatPrice(execPlan?.priceMonthlyValue ?? 12)})`
-                        : `Pro (${formatPrice(proPlan?.priceMonthlyValue ?? 8)})`}
-                    </span>
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    {tmpl.regions.slice(0, 2).join(' · ')}
                   </span>
                   <button
                     type="button"
@@ -1536,7 +517,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       trackFrontendTelemetry({ type: 'template_selected', templateStyle: tmpl.id });
                       onSelectTemplate(tmpl.id);
                     }}
-                    className="font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 inline-flex items-center gap-1"
+                    className="font-semibold text-amber-700 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 inline-flex items-center gap-1 whitespace-nowrap shrink-0"
                   >
                     <span>{l.useModel}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -1574,10 +555,9 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
         </div>
       </section>
 
-      {/* 5. PLANOS INTERATIVOS, MATRIZ COMPARATIVA & FAQ */}
-      <section className="py-14 lg:py-20 bg-slate-50 dark:bg-[#0E131D]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-14">
-          {/* Pricing Block */}
+      {/* 4. SIMPLE PLANS & FAQ */}
+      <section className="py-12 lg:py-16 bg-slate-50 dark:bg-[#0E131D]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
           <div className="space-y-8">
             <div className="text-center max-w-2xl mx-auto space-y-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400">
@@ -1590,7 +570,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 {l.pricingSubtitle}
               </p>
 
-              {/* Interactive 4-Cycle Billing Toggle */}
               <div className="pt-2 inline-flex flex-wrap items-center justify-center gap-1 p-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs shadow-xs dark:shadow-none">
                 {BILLING_CYCLES.map((cycle) => {
                   const meta = BILLING_CYCLE_META[cycle];
@@ -1612,7 +591,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                           className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
                             isActive
                               ? 'bg-slate-950/15 text-slate-950'
-                              : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                              : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'
                           }`}
                         >
                           {meta.badgeText}
@@ -1624,7 +603,6 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </div>
             </div>
 
-            {/* 3 Plan Cards: Gratuito | Pro | Executivo VIP */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
               {/* Free Visual Tier */}
               <div className="bg-white dark:bg-[#0B0F17] p-6 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-xs dark:shadow-none">
@@ -1760,122 +738,10 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 </button>
               </div>
             </div>
-
-            {/* ROI Economics Comparison: Agency vs Platform */}
-            <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-5 sm:p-6 shadow-xs dark:shadow-none">
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pb-4 border-b border-slate-200 dark:border-slate-800">
-                <div>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                    {l.roiKicker}
-                  </span>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight mt-0.5">
-                    {l.roiTitle}
-                  </h3>
-                </div>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {l.roiSavings}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 text-xs">
-                <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-slate-800 dark:text-slate-300">{l.roiAgencyTitle}</span>
-                    <span className="font-mono font-bold text-slate-500 dark:text-slate-400 tabular-nums">{l.roiAgencyPrice}</span>
-                  </div>
-                  <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
-                    {l.roiAgencyPoints.map((pt) => (
-                      <li key={pt}>• {pt}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="p-4 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-500/35 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-emerald-700 dark:text-emerald-300">{l.roiPlatformTitle}</span>
-                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                      {l.roiPlatformPricePrefix} {formatPrice(proPlan?.priceMonthlyValue ?? 8)}{l.perMonth}
-                    </span>
-                  </div>
-                  <ul className="space-y-1.5 text-slate-800 dark:text-slate-200">
-                    {l.roiPlatformPoints.map((pt) => (
-                      <li key={pt}>• {pt}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Trust & Risk-Reversal Guarantee Strip */}
-            <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl px-5 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-slate-700 dark:text-slate-300 shadow-xs dark:shadow-none">
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>{l.trustNoLockIn}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>{l.trustEditableDocx}</span>
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span>{l.trustCardPix}</span>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleCheckoutTrigger('pro')}
-                className="text-amber-700 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 font-semibold whitespace-nowrap inline-flex items-center gap-1 shrink-0"
-              >
-                <span>{l.trustStartNow}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Clean Feature Comparison Table */}
-            <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs dark:shadow-none">
-              <div className="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200">
-                  {l.matrixTitle}
-                </h3>
-                <span className="text-[11px] text-slate-500">{l.matrixSubtitle}</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 dark:bg-slate-900/70 text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                    <tr>
-                      <th className="py-3 px-5">{l.matrixCapabilityCol}</th>
-                      <th className="py-3 px-4 text-center">{l.matrixFreeCol}</th>
-                      <th className="py-3 px-4 text-center text-amber-700 dark:text-amber-400">{l.matrixProCol}</th>
-                      <th className="py-3 px-4 text-center text-slate-900 dark:text-slate-100">{l.matrixExecCol}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800/80 text-slate-700 dark:text-slate-300">
-                    {comparisonRows.map((row) => (
-                      <tr key={row.feature} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
-                        <td className="py-3 px-5 font-medium text-slate-900 dark:text-slate-200">{row.feature}</td>
-                        {(['free', 'pro', 'exec'] as const).map((tierKey) => {
-                          const val = row[tierKey];
-                          return (
-                            <td key={tierKey} className="py-3 px-4 text-center">
-                              {val ? (
-                                <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mx-auto" />
-                              ) : (
-                                <Minus className="w-4 h-4 text-slate-300 dark:text-slate-600 mx-auto" />
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
 
-          {/* Hairline Grouped FAQ */}
-          <div className="space-y-5 pt-4 border-t border-slate-200 dark:border-slate-800/80">
+          {/* Compact FAQ */}
+          <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800/80">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">{l.faqTitle}</h3>
               <span className="text-xs text-slate-500">{l.faqRightNote}</span>
@@ -1906,7 +772,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             </div>
           </div>
 
-          {/* Closing Conversion Call-to-Action */}
+          {/* Closing CTA */}
           <div className="bg-white dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 rounded-xl p-6 sm:p-8 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 shadow-xs dark:shadow-none">
             <div className="space-y-1.5 max-w-xl">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
@@ -1922,7 +788,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0">
               <button
                 type="button"
-                onClick={onStartCreating}
+                onClick={onStartGuided || onStartCreating}
                 className="min-h-[44px] px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
               >
                 <span>{l.closingCtaBuild}</span>
@@ -1940,7 +806,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
         </div>
       </section>
 
-      {/* Quiet Interactive Footer */}
+      {/* Quiet Footer */}
       <footer className="border-t border-slate-200 dark:border-slate-800/80 py-7 text-center text-xs text-slate-500 bg-white dark:bg-[#0B0F17]">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>© {new Date().getFullYear()} {siteText.brandName}. {l.footerRights}</p>
@@ -1974,7 +840,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               onClick={onOpenPricing}
               className="hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
             >
-              {siteText.header.navPricing} · {l.cardAndPix}
+              {siteText.header.navPricing}
             </button>
           </div>
         </div>

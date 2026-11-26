@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { CVData, TemplateStyle, CVSectionKey } from '../types/cv';
 import { DEFAULT_SECTION_ORDER } from '../utils/executivePhrasing';
 import {
@@ -16,6 +16,7 @@ import {
   Globe,
   ExternalLink,
   ChevronRight,
+  ChevronDown,
   UserCheck,
   Lock,
   AlertTriangle,
@@ -91,8 +92,72 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
   const [customizationMenuOpen, setCustomizationMenuOpen] = useState<boolean>(false);
+  const [customizationPos, setCustomizationPos] = useState<{ top: number; left: number; width: number }>({
+    top: 64,
+    left: 12,
+    width: 304
+  });
+  const [langMenuOpen, setLangMenuOpen] = useState<boolean>(false);
+  const customizationBtnRef = useRef<HTMLButtonElement>(null);
+  const customizationMenuRef = useRef<HTMLDivElement>(null);
+  const langMenuRef = useRef<HTMLDivElement>(null);
   const [, setAdminConfigVersion] = useState<number>(0);
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
+
+  const updateCustomizationPos = useCallback(() => {
+    if (!customizationBtnRef.current) return;
+    const rect = customizationBtnRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 12;
+    const width = Math.min(312, vw - margin * 2);
+    const left = Math.max(margin, Math.min(rect.left, vw - width - margin));
+    const top = Math.max(margin, Math.min(rect.bottom + 6, vh - 220));
+    setCustomizationPos({ top, left, width });
+  }, []);
+
+  useEffect(() => {
+    if (!customizationMenuOpen && !langMenuOpen) return;
+    if (customizationMenuOpen) {
+      updateCustomizationPos();
+    }
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setCustomizationMenuOpen(false);
+        setLangMenuOpen(false);
+      }
+    };
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (langMenuOpen && langMenuRef.current && !langMenuRef.current.contains(target)) {
+        setLangMenuOpen(false);
+      }
+      if (
+        customizationMenuOpen &&
+        customizationMenuRef.current &&
+        !customizationMenuRef.current.contains(target) &&
+        customizationBtnRef.current &&
+        !customizationBtnRef.current.contains(target)
+      ) {
+        setCustomizationMenuOpen(false);
+      }
+    };
+    const handleReposition = () => {
+      if (customizationMenuOpen) updateCustomizationPos();
+    };
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    document.addEventListener('keydown', handleEsc);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+      document.removeEventListener('keydown', handleEsc);
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [customizationMenuOpen, langMenuOpen, updateCustomizationPos]);
 
   useEffect(() => {
     const syncHandler = () => {
@@ -520,14 +585,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           {/* Unified Document Customization & Layout Popover (Ajustes) */}
           <div className="relative">
             <button
+              ref={customizationBtnRef}
               type="button"
-              onClick={() => setCustomizationMenuOpen(!customizationMenuOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+              onClick={() => setCustomizationMenuOpen((prev) => !prev)}
+              aria-expanded={customizationMenuOpen}
+              className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap touch-manipulation ${
                 customizationMenuOpen
                   ? 'bg-slate-900 text-white border-slate-900'
                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
-              title="Ajustes de Fotografia, Cor, Espaçamento, Zoom, Edição Direta e Backup"
+              title="Ajustes de foto, cor, tamanho do texto, espaçamento e cópia"
             >
               <Sliders className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">Ajustes</span>
@@ -540,16 +607,20 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             {customizationMenuOpen && (
               <>
                 <div
-                  className="fixed inset-0 z-40"
+                  className="fixed inset-0 z-50 bg-slate-950/15 sm:bg-transparent"
                   onClick={() => setCustomizationMenuOpen(false)}
                 />
-                <div className="absolute left-0 sm:left-auto sm:right-0 lg:left-0 mt-1.5 w-76 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-1 space-y-3">
+                <div
+                  ref={customizationMenuRef}
+                  style={{ top: customizationPos.top, left: customizationPos.left, width: customizationPos.width }}
+                  className="fixed z-60 max-h-[75dvh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-200 p-3 animate-in fade-in slide-in-from-top-1 space-y-3"
+                >
                   {/* Layout: Density & Zoom */}
                   <div className="pb-2.5 border-b border-slate-100 space-y-2">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                      Enquadramento &amp; Visualização
+                      Espaço e Tamanho
                     </div>
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs text-slate-700 font-medium">{studioText.docToolbar.density}</span>
                       <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5">
                         <button
@@ -561,13 +632,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                             }
                             if (!hasActivePlan) {
                               onOpenPricingModal?.(
-                                'A calibração inteligente de espaçamento para ajuste em 1 página é exclusiva dos assinantes Pro ou Executivo VIP.'
+                                'O ajuste de espaçamento para caber em 1 página é exclusivo dos assinantes Pro ou Executivo VIP.'
                               );
                               return;
                             }
                             setDensity('compact');
                           }}
-                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                          className={`px-2 py-1.5 text-[11px] rounded-md transition-colors whitespace-nowrap ${
                             density === 'compact'
                               ? 'bg-white text-slate-950 font-semibold shadow-2xs'
                               : 'text-slate-600 hover:text-slate-900'
@@ -584,13 +655,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                             }
                             if (!hasActivePlan) {
                               onOpenPricingModal?.(
-                                'O ajuste de densidade e espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
+                                'O ajuste de espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
                               );
                               return;
                             }
                             setDensity('normal');
                           }}
-                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                          className={`px-2 py-1.5 text-[11px] rounded-md transition-colors whitespace-nowrap ${
                             density === 'normal'
                               ? 'bg-white text-slate-950 font-semibold shadow-2xs'
                               : 'text-slate-600 hover:text-slate-900'
@@ -607,13 +678,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                             }
                             if (!hasActivePlan) {
                               onOpenPricingModal?.(
-                                'O ajuste de densidade e espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
+                                'O ajuste de espaçamento do currículo é exclusivo dos assinantes Pro ou Executivo VIP.'
                               );
                               return;
                             }
                             setDensity('relaxed');
                           }}
-                          className={`px-2 py-1 text-[11px] rounded-md transition-colors whitespace-nowrap ${
+                          className={`px-2 py-1.5 text-[11px] rounded-md transition-colors whitespace-nowrap ${
                             density === 'relaxed'
                               ? 'bg-white text-slate-950 font-semibold shadow-2xs'
                               : 'text-slate-600 hover:text-slate-900'
@@ -625,12 +696,12 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs text-slate-700 font-medium">Zoom A4</span>
+                      <span className="text-xs text-slate-700 font-medium">Tamanho na tela</span>
                       <div className="flex items-center gap-0.5 border border-slate-200 rounded-lg bg-slate-50 p-0.5">
                         <button
                           type="button"
                           onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
-                          className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+                          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
                           title={studioText.docToolbar.zoomOut}
                         >
                           <ZoomOut className="w-3.5 h-3.5" />
@@ -646,7 +717,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setZoomLevel((z) => Math.min(140, z + 10))}
-                          className="p-1 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
+                          className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-white rounded"
                           title={studioText.docToolbar.zoomIn}
                         >
                           <ZoomIn className="w-3.5 h-3.5" />
@@ -658,7 +729,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   {/* Photo Management Section */}
                   <div className="pb-2.5 border-b border-slate-100">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Fotografia Executiva
+                      Foto no Currículo
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -668,7 +739,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                             ? shouldRenderPhoto
                               ? 'Foto ativa'
                               : 'Foto oculta'
-                            : 'Sem foto carregada'}
+                            : 'Sem foto'}
                         </span>
                       </div>
                       <button
@@ -676,18 +747,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         onClick={() => {
                           setCustomizationMenuOpen(false);
                           if (!isAuthenticated) {
-                            onOpenAuthModal?.('Inicie sessão ou crie uma conta para carregar a sua fotografia profissional.');
+                            onOpenAuthModal?.('Inicie sessão ou crie uma conta para adicionar a sua foto.');
                             return;
                           }
                           if (!hasActivePlan) {
                             onOpenPricingModal?.(
-                              'O upload e gestão de fotografia executiva é exclusivo para assinantes dos planos Pro ou Executivo VIP.'
+                              'Adicionar e gerir foto no currículo é exclusivo para assinantes dos planos Pro ou Executivo VIP.'
                             );
                             return;
                           }
                           setIsPhotoModalOpen(true);
                         }}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                        className="px-3 py-1.5 text-[11px] font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
                       >
                         {hasUserPhoto ? 'Alterar' : 'Adicionar'}
                       </button>
@@ -697,7 +768,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   {/* Accent Color Section */}
                   <div className="pb-2.5 border-b border-slate-100">
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Cor de Destaque
+                      Cor do Currículo
                     </div>
                     <div className="grid grid-cols-7 gap-1.5 pt-0.5">
                       {ACCENT_COLORS.map((col) => (
@@ -705,7 +776,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           key={col.id}
                           type="button"
                           onClick={() => setAccentColor(col.hex)}
-                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 relative ${
+                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 relative ${
                             currentAccent === col.hex ? 'ring-2 ring-slate-900 ring-offset-2 scale-105' : ''
                           }`}
                           style={{ backgroundColor: col.hex }}
@@ -723,18 +794,18 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       type="button"
                       onClick={() => {
                         if (!isAuthenticated) {
-                          onOpenAuthModal?.('Inicie sessão ou crie uma conta para editar diretamente o seu currículo.');
+                          onOpenAuthModal?.('Inicie sessão ou crie uma conta para editar diretamente na folha.');
                           return;
                         }
                         if (!hasActivePlan) {
                           onOpenPricingModal?.(
-                            'A edição direta no documento A4 é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
+                            'A edição direta na folha é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
                           );
                           return;
                         }
                         setIsInlineEditing(!isInlineEditing);
                       }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg border text-xs font-medium transition-colors ${
                         isInlineEditing
                           ? 'bg-amber-50 border-amber-300 text-amber-950 font-semibold'
                           : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -742,13 +813,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     >
                       <span className="flex items-center gap-2">
                         {isInlineEditing ? <Eye className="w-3.5 h-3.5 text-amber-700" /> : <Edit3 className="w-3.5 h-3.5 text-slate-600" />}
-                        <span>{isInlineEditing ? 'Edição Direta: Ativa' : 'Editar Clicando no A4'}</span>
+                        <span>{isInlineEditing ? 'Edição na folha: Ativa' : 'Editar direto na folha'}</span>
                       </span>
                       <span className={`w-2 h-2 rounded-full ${isInlineEditing ? 'bg-amber-500' : 'bg-slate-300'}`} />
                     </button>
                   </div>
 
-                  {/* Utilities: Plain Text & JSON Backup */}
+                  {/* Utilities: Plain Text & Copy Backup */}
                   <div className="space-y-1.5">
                     <button
                       type="button"
@@ -756,7 +827,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         handleCopyPlainText();
                         setCustomizationMenuOpen(false);
                       }}
-                      className="w-full flex items-center justify-between px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors"
+                      className="w-full flex items-center justify-between px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-md transition-colors"
                     >
                       <span className="flex items-center gap-2">
                         <Copy className="w-3.5 h-3.5 text-slate-500" />
@@ -772,7 +843,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           handleExportJSON();
                           setCustomizationMenuOpen(false);
                         }}
-                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
                       >
                         <Download className="w-3 h-3 text-slate-500" />
                         <span>{studioText.docToolbar.jsonBackup}</span>
@@ -783,10 +854,10 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           fileInputRef.current?.click();
                           setCustomizationMenuOpen(false);
                         }}
-                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-2 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors"
                       >
                         <Download className="w-3 h-3 text-slate-500 rotate-180" />
-                        <span>Restaurar</span>
+                        <span>Abrir Cópia</span>
                       </button>
                     </div>
                   </div>
@@ -794,37 +865,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               </>
             )}
           </div>
-
-          {/* Direct Inline Edit A4 Quick Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              if (!isAuthenticated) {
-                onOpenAuthModal?.('Inicie sessão ou crie uma conta para editar diretamente o seu currículo.');
-                return;
-              }
-              if (!hasActivePlan) {
-                onOpenPricingModal?.(
-                  'A edição direta no documento A4 é uma funcionalidade exclusiva dos assinantes Pro ou Executivo VIP.'
-                );
-                return;
-              }
-              setIsInlineEditing((prev) => !prev);
-            }}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
-              isInlineEditing
-                ? 'bg-amber-50 border-amber-300 text-amber-950'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-            }`}
-            title={isInlineEditing ? 'Desativar edição direta no A4' : 'Clicar nos textos do A4 para editar'}
-          >
-            {isInlineEditing ? (
-              <Eye className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-            ) : (
-              <Edit3 className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-            )}
-            <span className="hidden xl:inline">{isInlineEditing ? studioText.docToolbar.doneEdit : studioText.docToolbar.inlineEdit}</span>
-          </button>
         </div>
 
         {/* Hidden JSON file input */}
@@ -836,53 +876,104 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           className="hidden"
         />
 
-        {/* Right Side: Document Language & Clean Export Actions */}
+        {/* Right Side: Single Clean Language Menu + PDF & Word Export */}
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {/* Document Language Toggle (PT / EN / ES / FR / DE) */}
-          <div className="flex items-center gap-1 shrink-0">
-            <div
-              className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 shrink-0"
+          {/* Document Language & Multi-language Pack Dropdown */}
+          <div ref={langMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              disabled={isTranslatingContent}
+              onClick={() => setLangMenuOpen((v) => !v)}
+              className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap disabled:opacity-60 touch-manipulation ${
+                langMenuOpen
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
               title={studioText.docToolbar.cvContentLangTooltip}
+              aria-expanded={langMenuOpen}
             >
-              {(['pt', 'en', 'es', 'fr', 'de'] as const).map((lang) => {
-                const isTargetLoading = isTranslatingContent && translatingTargetLang === lang;
-                return (
+              {isTranslatingContent ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              ) : (
+                <Globe className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>{docLang.toUpperCase()}</span>
+              <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${langMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {langMenuOpen && (
+              <div className="absolute right-0 mt-1.5 w-56 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 p-1.5 z-60 animate-in fade-in slide-in-from-top-1 space-y-0.5">
+                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {studioText.docToolbar.cvContentLangTooltip}
+                </div>
+                {(
+                  [
+                    { code: 'pt', label: 'Português (PT)' },
+                    { code: 'en', label: 'English (EN)' },
+                    { code: 'es', label: 'Español (ES)' },
+                    { code: 'fr', label: 'Français (FR)' },
+                    { code: 'de', label: 'Deutsch (DE)' }
+                  ] as const
+                ).map((item) => {
+                  const isActive = docLang === item.code;
+                  const isTargetLoading = isTranslatingContent && translatingTargetLang === item.code;
+                  return (
+                    <button
+                      key={item.code}
+                      type="button"
+                      disabled={isTranslatingContent}
+                      onClick={() => {
+                        setLangMenuOpen(false);
+                        if (!isAuthenticated) {
+                          onOpenAuthModal?.('Inicie sessão ou crie uma conta para traduzir o seu currículo em 5 idiomas.');
+                          return;
+                        }
+                        if (!hasActivePlan) {
+                          onOpenPricingModal?.(
+                            'A tradução completa do currículo e carta para Inglês, Espanhol, Francês ou Alemão é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
+                          );
+                          return;
+                        }
+                        setDocLang(item.code);
+                        onSelectLanguage?.(item.code);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
+                        isActive
+                          ? 'bg-slate-900 text-white font-semibold'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {isTargetLoading && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
+                        <span>{item.label}</span>
+                      </span>
+                      {isActive && <Check className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+
+                <div className="pt-1 mt-1 border-t border-slate-100">
                   <button
-                    key={lang}
                     type="button"
-                    disabled={isTranslatingContent}
                     onClick={() => {
+                      setLangMenuOpen(false);
                       if (!isAuthenticated) {
-                        onOpenAuthModal?.('Inicie sessão ou crie uma conta para traduzir o seu currículo em 5 idiomas.');
+                        onOpenAuthModal?.('Inicie sessão ou crie uma conta para baixar noutro idioma.');
                         return;
                       }
                       if (!hasActivePlan) {
-                        onOpenPricingModal?.(
-                          'A tradução integral do currículo e carta para Inglês, Espanhol, Francês ou Alemão é exclusiva para assinantes Pro ($8/mês) ou Executivo VIP ($12/mês).'
-                        );
+                        onOpenPricingModal?.('Baixar o currículo traduzido noutro idioma requer um plano Pro ou Executivo VIP ativo.');
                         return;
                       }
-                      setDocLang(lang);
-                      onSelectLanguage?.(lang);
+                      setIsMultiLangModalOpen(true);
                     }}
-                    className={`px-1.5 py-1 text-[10px] sm:text-[11px] font-bold rounded-md transition-colors flex items-center gap-1 disabled:opacity-60 ${
-                      docLang === lang
-                        ? 'bg-white text-slate-950 shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-900'
-                    }`}
-                    title={`${studioText.docToolbar.cvContentLangTooltip} (${lang.toUpperCase()})`}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
                   >
-                    {isTargetLoading && <Loader2 className="w-2.5 h-2.5 animate-spin text-slate-700" />}
-                    <span>{lang.toUpperCase()}</span>
+                    <Download className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <span className="truncate">{studioText.docToolbar.otherLangs}</span>
                   </button>
-                );
-              })}
-            </div>
-            {isTranslatingContent && (
-              <span className="text-[10px] font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md flex items-center gap-1 whitespace-nowrap">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span className="hidden sm:inline">{currentTitles.translatingLabel}</span>
-              </span>
+                </div>
+              </div>
             )}
           </div>
 
@@ -890,7 +981,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+            className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap touch-manipulation ${
               !isAuthenticated || !hasActivePlan
                 ? 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
                 : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
@@ -916,29 +1007,29 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             type="button"
             onClick={() => {
               if (!isAuthenticated) {
-                onOpenAuthModal?.('O registo é obrigatório para descarregar o currículo em formato Word (.docx).');
+                onOpenAuthModal?.('O registo é obrigatório para descarregar o currículo em Word (.docx).');
                 return;
               }
               if (!hasActivePlan) {
                 onOpenPricingModal?.(
-                  'O download oficial do currículo em formato Microsoft Word (.docx) requer a ativação de um plano Pro ou Executive.'
+                  'O download do currículo em Word (.docx) requer a ativação de um plano Pro ou Executive.'
                 );
                 return;
               }
               onExportWord();
             }}
             disabled={isExportingWord}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
+            className={`min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap touch-manipulation ${
               !isAuthenticated || !hasActivePlan
                 ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
                 : 'bg-slate-900 hover:bg-slate-800 text-white'
             }`}
             title={
               !isAuthenticated
-                ? 'Registo obrigatório para exportar em formato Word (.docx)'
+                ? 'Registo obrigatório para descarregar em Word (.docx)'
                 : !hasActivePlan
                 ? 'Requer ativação de Plano (Pro ou Executive) para descarregar Word (.docx)'
-                : 'Exportar documento no formato nativo Microsoft Word (.docx)'
+                : 'Baixar documento editável no Microsoft Word (.docx)'
             }
           >
             {!isAuthenticated || !hasActivePlan ? (
@@ -948,46 +1039,25 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             )}
             <span>{isExportingWord ? studioText.docToolbar.generating : studioText.docToolbar.wordBtn}</span>
           </button>
-
-          {/* Multi-Language Pack Download Trigger */}
-          <button
-            type="button"
-            onClick={() => {
-              if (!isAuthenticated) {
-                onOpenAuthModal?.('Inicie sessão ou crie uma conta para gerar o pacote multi-idioma.');
-                return;
-              }
-              if (!hasActivePlan) {
-                onOpenPricingModal?.('O pacote de tradução e descarga multi-idioma requer um plano Pro ou Executivo VIP ativo.');
-                return;
-              }
-              setIsMultiLangModalOpen(true);
-            }}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold rounded-lg transition-colors bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 whitespace-nowrap"
-            title={t('doc.downloadMultilangDesc', studioText.docToolbar.otherLangs)}
-          >
-            <Globe className="w-3.5 h-3.5 text-slate-700 shrink-0" />
-            <span className="hidden 2xl:inline">{studioText.docToolbar.otherLangs}</span>
-          </button>
         </div>
       </div>
 
       {/* Strategic Educational Banner when photo is suppressed in strict ATS models */}
       {isPhotoSuppressedForAts && (
-        <div className="no-print bg-slate-900 text-white px-4 py-2 text-xs flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2">
+        <div className="no-print bg-slate-900 text-white px-3 sm:px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-b border-slate-800">
+          <div className="flex items-center gap-2 min-w-0">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="text-[11px] text-slate-300">
-              <strong className="text-white">Proteção ATS Ativa:</strong> O modelo{' '}
-              <strong className="text-white">{currentTemplate.name}</strong> oculta a foto para garantir 100% de aprovação nas triagens dos EUA/UK e Workday.
+              <strong className="text-white">Modo Sem Foto:</strong> O modelo{' '}
+              <strong className="text-white">{currentTemplate.name}</strong> oculta a foto para evitar rejeição nos sistemas automáticos (EUA/UK).
             </span>
           </div>
           <button
             type="button"
             onClick={() => setStyle('european_europass')}
-            className="text-[11px] font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 shrink-0 ml-2"
+            className="text-[11px] font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 shrink-0 sm:ml-2"
           >
-            Mudar para Modelo Europeu (Com Foto) →
+            Mudar para Modelo com Foto →
           </button>
         </div>
       )}
@@ -1467,7 +1537,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
 
                     <div
-                      className={`text-xs sm:text-[13px] mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 ${
+                      className={`text-xs sm:text-[13px] mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 break-words ${
                         isEditorial ? 'text-white/85' : 'text-slate-600'
                       } ${isClassic || isBoard ? 'justify-center' : 'justify-start'}`}
                     >
@@ -1477,14 +1547,14 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
                       <a
                         href={`mailto:${cv.personalDetails.email}`}
-                        className={`hover:underline ${isEditorial ? 'text-white' : 'text-slate-800'}`}
+                        className={`hover:underline break-all sm:break-normal ${isEditorial ? 'text-white' : 'text-slate-800'}`}
                       >
                         {cv.personalDetails.email}
                       </a>
                       {cv.personalDetails.linkedin && (
                         <>
                           <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
-                          <span>{cv.personalDetails.linkedin}</span>
+                          <span className="break-all sm:break-normal">{cv.personalDetails.linkedin}</span>
                         </>
                       )}
                       {cv.personalDetails.website && (
@@ -1495,13 +1565,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                               href={getSafeHttpUrl(cv.personalDetails.website)!}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="hover:underline font-semibold"
+                              className="hover:underline font-semibold break-all sm:break-normal"
                               style={{ color: isEditorial ? '#ffffff' : currentAccent }}
                             >
                               {cv.personalDetails.website}
                             </a>
                           ) : (
-                            <span className="font-semibold" style={{ color: isEditorial ? '#ffffff' : currentAccent }}>
+                            <span className="font-semibold break-all sm:break-normal" style={{ color: isEditorial ? '#ffffff' : currentAccent }}>
                               {cv.personalDetails.website}
                             </span>
                           )}
@@ -1814,7 +1884,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         {getSectionPrefix(secIdx)}
                         <span>{sectionTitles.references}</span>
                       </h2>
-                      <div className="border border-slate-300 overflow-hidden text-left text-[12.5px] sm:text-[13px] rounded-xs">
+                      <div className="border border-slate-300 overflow-x-auto text-left text-[12.5px] sm:text-[13px] rounded-xs">
                         <table className="w-full border-collapse">
                           <thead>
                             <tr className="bg-slate-50 border-b border-slate-300 text-slate-900">

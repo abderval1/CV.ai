@@ -469,9 +469,9 @@ export const InterviewSimulator: React.FC<InterviewSimulatorProps> = ({
 
               {/* Answer Workspace */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-slate-700" />
+                    <MessageSquare className="w-3.5 h-3.5 text-slate-700 shrink-0" />
                     <span>{ui.yourAnswerLabel}</span>
                   </label>
 

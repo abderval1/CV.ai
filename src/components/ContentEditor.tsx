@@ -43,9 +43,10 @@ import {
   Type,
   RotateCcw,
   LayoutTemplate,
-  Lightbulb
+  MoreHorizontal,
+  Target
 } from 'lucide-react';
-import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
+import { StudioCreationMode } from './StudioGuideSystem';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -149,6 +150,31 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const [showClusterPicker, setShowClusterPicker] = useState<boolean>(false);
   const [newTrainingDraft, setNewTrainingDraft] = useState<string>('');
   const [showReferencesBlock, setShowReferencesBlock] = useState<boolean>(false);
+  const [advancedDesignOpen, setAdvancedDesignOpen] = useState<boolean>(false);
+  const [sectionsOrderOpen, setSectionsOrderOpen] = useState<boolean>(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const editorRootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenMenuId(null);
+    };
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-editor-menu="true"]')) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [openMenuId]);
 
   // Undo / Redo history stack
   const [undoStack, setUndoStack] = useState<CVData[]>([]);
@@ -461,24 +487,6 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     setVerbPickerExpIdx(null);
   };
 
-  const handleMoveHighlight = (expIndex: number, hIndex: number, direction: 'up' | 'down') => {
-    const exp = cv.experiences[expIndex];
-    const targetIdx = direction === 'up' ? hIndex - 1 : hIndex + 1;
-    if (!exp || targetIdx < 0 || targetIdx >= exp.highlights.length) return;
-    const updatedHighlights = [...exp.highlights];
-    const [moved] = updatedHighlights.splice(hIndex, 1);
-    updatedHighlights.splice(targetIdx, 0, moved);
-    commitChange(
-      {
-        ...cv,
-        experiences: cv.experiences.map((item, idx) =>
-          idx === expIndex ? { ...item, highlights: updatedHighlights } : item
-        )
-      },
-      true
-    );
-  };
-
   const handleUpdateHighlight = (expIndex: number, hIndex: number, text: string) => {
     const exp = cv.experiences[expIndex];
     const updatedHighlights = [...exp.highlights];
@@ -514,15 +522,6 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
       gpaOrHonors: ''
     };
     commitChange({ ...cv, educations: [...cv.educations, newEdu] }, true);
-  };
-
-  const handleMoveEducation = (index: number, direction: 'up' | 'down') => {
-    const targetIdx = direction === 'up' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= cv.educations.length) return;
-    const list = [...cv.educations];
-    const [moved] = list.splice(index, 1);
-    list.splice(targetIdx, 0, moved);
-    commitChange({ ...cv, educations: list }, true);
   };
 
   const handleUpdateEducation = (index: number, updated: Education) => {
@@ -596,15 +595,6 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         .replace('{count}', String(toAdd.length))
         .replace('{name}', clusterTitle)
     );
-  };
-
-  const handleMoveCompetency = (index: number, direction: 'up' | 'down') => {
-    const targetIdx = direction === 'up' ? index - 1 : index + 1;
-    if (targetIdx < 0 || targetIdx >= cv.competencies.length) return;
-    const list = [...cv.competencies];
-    const [moved] = list.splice(index, 1);
-    list.splice(targetIdx, 0, moved);
-    commitChange({ ...cv, competencies: list }, true);
   };
 
   const handleUpdateCompetency = (index: number, updated: Competency) => {
@@ -743,52 +733,89 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const emailTrimmed = cv.personalDetails.email?.trim() || '';
   const isEmailValid = !emailTrimmed || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed);
 
+  const optionsMenuLabel =
+    siteLanguage === 'en'
+      ? 'Options'
+      : siteLanguage === 'es'
+      ? 'Opciones'
+      : siteLanguage === 'fr'
+      ? 'Options'
+      : siteLanguage === 'de'
+      ? 'Optionen'
+      : siteLanguage === 'it'
+      ? 'Opzioni'
+      : 'Opções';
+
+  const assistantMenuLabel =
+    siteLanguage === 'en'
+      ? 'Assistant'
+      : siteLanguage === 'es'
+      ? 'Asistente'
+      : siteLanguage === 'fr'
+      ? 'Assistant'
+      : siteLanguage === 'de'
+      ? 'Assistent'
+      : siteLanguage === 'it'
+      ? 'Assistente'
+      : 'Assistente';
+
+  const typographyDensityLabel =
+    siteLanguage === 'en'
+      ? 'Font & Page Spacing'
+      : siteLanguage === 'es'
+      ? 'Tipografía y Espaciado'
+      : siteLanguage === 'fr'
+      ? 'Police et Espacement'
+      : siteLanguage === 'de'
+      ? 'Schrift & Abstand'
+      : siteLanguage === 'it'
+      ? 'Carattere e Spaziatura'
+      : 'Fonte e Espaçamento';
+
+  void guideMode;
+
   return (
     <div
+      ref={editorRootRef}
       onKeyDown={handleEditorKeyDown}
       className="flex flex-col flex-1 min-h-0 h-full bg-slate-50/60"
     >
-      {/* 1. SINGLE STREAMLINED STEPPER + UNDO/REDO + SAVE BAR */}
+      {/* 1. CLEAN 4-STEP TAB BAR + SINGLE OPTIONS MENU + SAVE */}
       <div className="shrink-0 z-20 bg-white border-b border-slate-200">
-        <div className="flex items-stretch justify-between">
-          <div className="grid grid-cols-4 flex-1 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-stretch justify-between">
+          <div className="grid grid-cols-4 flex-1 min-w-0 order-2 sm:order-1 border-t border-slate-100 sm:border-t-0">
             {STEPS.map((step, idx) => {
               const isActive = currentStepIndex === idx;
               return (
                 <button
                   key={step.id}
                   type="button"
-                  onClick={() => setCurrentStepIndex(idx)}
+                  onClick={() => {
+                    setCurrentStepIndex(idx);
+                    setOpenMenuId(null);
+                  }}
                   title={guides.stepTabsTitle[step.id]}
-                  className={`flex items-center justify-center gap-1.5 px-1.5 sm:px-2.5 py-2.5 text-[11px] sm:text-xs transition-colors border-b-2 whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900 ${
+                  className={`min-h-[42px] sm:min-h-0 flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-2.5 py-2.5 text-[11px] sm:text-xs transition-colors border-b-2 whitespace-nowrap min-w-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900 ${
                     isActive
                       ? 'bg-white border-slate-900 text-slate-950 font-semibold'
                       : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/80 font-medium'
                   }`}
                 >
-                  {guideMode === 'guided' ? (
-                    <LightbulbStepBadge
-                      step={idx + 1}
-                      active={isActive}
-                      completed={step.isCompleted && !isActive}
-                    />
-                  ) : (
-                    <span
-                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                        isActive
-                          ? 'bg-slate-900 text-white'
-                          : step.isCompleted
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {step.isCompleted && !isActive ? (
-                        <Check className="w-2.5 h-2.5 stroke-[2.75]" />
-                      ) : (
-                        idx + 1
-                      )}
-                    </span>
-                  )}
+                  <span
+                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                      isActive
+                        ? 'bg-slate-900 text-white'
+                        : step.isCompleted
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-200 text-slate-600'
+                    }`}
+                  >
+                    {step.isCompleted && !isActive ? (
+                      <Check className="w-2.5 h-2.5 stroke-[2.75]" />
+                    ) : (
+                      idx + 1
+                    )}
+                  </span>
                   <span className="truncate sm:hidden">{step.mobileLabel}</span>
                   <span className="truncate hidden sm:inline">{step.shortLabel}</span>
                 </button>
@@ -796,65 +823,128 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
             })}
           </div>
 
-          {/* ATS Checklist + Undo / Redo & Save Action Cluster */}
-          <div className="flex items-center gap-1 px-2 sm:px-3 border-l border-slate-100 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowDiagnostics((prev) => !prev)}
-              title={`${guides.readinessTooltip} — ${guides.checklistTooltip} (${completedCriteria}/${cvMetrics.completenessChecklist.length})`}
-              className={`px-2 py-1 rounded-lg text-[11px] font-mono tabular-nums font-bold flex items-center gap-1 whitespace-nowrap transition-colors ${
-                showDiagnostics
-                  ? 'bg-slate-900 text-white'
-                  : cvMetrics.strengthScore >= 85
-                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                  : cvMetrics.strengthScore >= 60
-                  ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                  : 'text-rose-700 bg-rose-50 hover:bg-rose-100'
-              }`}
-            >
-              <span>ATS {cvMetrics.strengthScore}%</span>
-              {showDiagnostics ? (
-                <ChevronUp className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3" />
-              )}
-            </button>
+          {/* Tucked Actions: Single Options Menu + Save */}
+          <div className="flex items-center justify-between sm:justify-end gap-1.5 px-3 py-1.5 sm:py-0 sm:px-3 sm:border-l border-slate-100 shrink-0 order-1 sm:order-2">
+            <span className="text-[11px] font-semibold text-slate-500 sm:hidden">
+              {ui.footer.stepOf
+                .replace('{current}', String(currentStepIndex + 1))
+                .replace('{total}', String(STEPS.length))}
+            </span>
 
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={undoStack.length === 0}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-              title={ui.undoTitle}
-              aria-label={ui.undoAria}
-            >
-              <Undo2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 disabled:opacity-25 disabled:pointer-events-none transition-colors"
-              title={ui.redoTitle}
-              aria-label={ui.redoAria}
-            >
-              <Redo2 className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <div className="relative" data-editor-menu="true">
+                <button
+                  type="button"
+                  onClick={() => setOpenMenuId((prev) => (prev === 'top-options' ? null : 'top-options'))}
+                  aria-expanded={openMenuId === 'top-options'}
+                  title={optionsMenuLabel}
+                  className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors whitespace-nowrap touch-manipulation ${
+                    openMenuId === 'top-options' || showDiagnostics
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
+                  <span className="sm:hidden md:inline">{optionsMenuLabel}</span>
+                </button>
 
-            <button
-              type="button"
-              onClick={handleSaveProgress}
-              disabled={isSaving}
-              className="ml-0.5 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors whitespace-nowrap"
-              title={ui.saveTitle}
-            >
-              {isSaving ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Save className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden sm:inline">{isSaving ? ui.saving : ui.save}</span>
-            </button>
+                {openMenuId === 'top-options' && (
+                  <div className="absolute right-0 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] overflow-y-auto bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <button
+                      type="button"
+                      disabled={undoStack.length === 0}
+                      onClick={() => {
+                        handleUndo();
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Undo2 className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{ui.undoTitle}</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Ctrl+Z</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={redoStack.length === 0}
+                      onClick={() => {
+                        handleRedo();
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-between gap-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Redo2 className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{ui.redoTitle}</span>
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Ctrl+Y</span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDiagnostics((prev) => !prev);
+                        setOpenMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center justify-between gap-2"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Target className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{guides.checklistTooltip}</span>
+                      </span>
+                      <span className="text-[11px] font-mono tabular-nums font-bold text-slate-900">
+                        {cvMetrics.strengthScore}%
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        onOpenAiTailor();
+                      }}
+                      className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    >
+                      <Wand2 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{ui.stage1.aiOptimizeBtn}</span>
+                    </button>
+
+                    {onOpenCoverLetter && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onOpenCoverLetter();
+                        }}
+                        className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Mail className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{ui.stage4.coverCtaTitle}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveProgress}
+                disabled={isSaving}
+                className="min-h-[36px] flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors whitespace-nowrap touch-manipulation"
+                title={ui.saveTitle}
+              >
+                {isSaving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                <span>{isSaving ? ui.saving : ui.save}</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -866,15 +956,26 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           />
         </div>
 
-        {/* Collapsible Live ATS Checklist Drawer */}
+        {/* Collapsible Live ATS Checklist Drawer (Opened from Options Menu) */}
         {showDiagnostics && (
           <div className="px-3.5 sm:px-5 py-3 bg-white border-t border-slate-200 divide-y divide-slate-100 max-h-64 overflow-y-auto">
-            <div className="pb-2 mb-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500 font-mono tabular-nums">
-              <span>{cvMetrics.totalWords} {ui.words}</span>
-              <span aria-hidden="true" className="text-slate-300">·</span>
-              <span>~{cvMetrics.estimatedPages} {ui.pagesA4}</span>
-              <span aria-hidden="true" className="text-slate-300">·</span>
-              <span>{ui.reading} {cvMetrics.readingTimeFormatted}</span>
+            <div className="pb-2 mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 font-mono tabular-nums">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold text-slate-900">ATS {cvMetrics.strengthScore}%</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span>{cvMetrics.totalWords} {ui.words}</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span>~{cvMetrics.estimatedPages} {ui.pagesA4}</span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span>{completedCriteria}/{cvMetrics.completenessChecklist.length}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDiagnostics(false)}
+                className="text-slate-500 hover:text-slate-900 font-sans font-semibold"
+              >
+                {ui.stage1.close}
+              </button>
             </div>
             {cvMetrics.completenessChecklist.map((item, idx) => {
               const localizedCheck = ui.checklistItems[idx] || item;
@@ -922,25 +1023,6 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
       {/* 2. SCROLLABLE STEP CONTENT AREA */}
       <div className="p-3.5 sm:p-5 space-y-4 flex-1 min-h-0 overflow-y-auto">
-        {guideMode === 'guided' && (
-          <div className="px-3 py-2 bg-amber-50/90 border border-amber-200 rounded-lg flex items-center justify-between gap-2 text-[11px] text-slate-800">
-            <div className="flex items-center gap-2 min-w-0">
-              <Lightbulb className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-              <span className="truncate font-medium">
-                {guides.stepTabsTitle[currentStep.id]}
-              </span>
-            </div>
-            {currentStepIndex < STEPS.length - 1 && (
-              <button
-                type="button"
-                onClick={goToNextStep}
-                className="font-bold text-amber-800 hover:underline whitespace-nowrap shrink-0"
-              >
-                {ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].mobileLabel} →
-              </button>
-            )}
-          </div>
-        )}
         {/* ========================================================================= */}
         {/* STAGE 1: PERFIL, CONTACTOS & RESUMO EXECUTIVO */}
         {/* ========================================================================= */}
@@ -956,54 +1038,26 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   </h3>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {cv.personalDetails.photoUrl && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        commitChange(
-                          {
-                            ...cv,
-                            personalDetails: {
-                              ...cv.personalDetails,
-                              showPhoto: cv.personalDetails.showPhoto === false ? true : false
-                            }
-                          },
-                          true
-                        )
-                      }
-                      title={guides.photoToggleTooltip}
-                      aria-label={guides.photoToggleTooltip}
-                      className="text-[11px] font-medium text-slate-500 hover:text-slate-900 p-1.5 rounded-md hover:bg-slate-100 transition-colors"
-                    >
-                      {cv.personalDetails.showPhoto !== false ? (
-                        <Eye className="w-3.5 h-3.5" />
-                      ) : (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPhotoModalOpen(true)}
+                  title={guides.photoManageTooltip}
+                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                >
+                  {cv.personalDetails.photoUrl ? (
+                    <img
+                      src={cv.personalDetails.photoUrl}
+                      alt={cv.personalDetails.name}
+                      className="w-4 h-4 rounded-full object-cover"
+                    />
+                  ) : (
+                    <Camera className="w-3.5 h-3.5 text-slate-600" />
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setIsPhotoModalOpen(true)}
-                    title={guides.photoManageTooltip}
-                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                  >
-                    {cv.personalDetails.photoUrl ? (
-                      <img
-                        src={cv.personalDetails.photoUrl}
-                        alt={cv.personalDetails.name}
-                        className="w-4 h-4 rounded-full object-cover"
-                      />
-                    ) : (
-                      <Camera className="w-3.5 h-3.5 text-slate-600" />
-                    )}
-                    <span>{cv.personalDetails.photoUrl ? ui.stage1.photoLabel : ui.stage1.addPhoto}</span>
-                  </button>
-                </div>
+                  <span>{cv.personalDetails.photoUrl ? ui.stage1.photoLabel : ui.stage1.addPhoto}</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-3.5">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                     {ui.stage1.fullName} <span className="text-rose-500">*</span>
@@ -1024,7 +1078,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
                 <div>
                   <div className="flex items-center justify-between gap-1 mb-1">
-                    <label className="text-[11px] font-semibold text-slate-600">
+                    <label className="block text-[11px] font-semibold text-slate-600">
                       {ui.stage1.jobTitle} <span className="text-rose-500">*</span>
                     </label>
                     <ExpertTip
@@ -1136,7 +1190,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 </div>
 
                 {showWebsiteField || cv.personalDetails.website ? (
-                  <div className="sm:col-span-2">
+                  <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                       {ui.stage1.website}
                     </label>
@@ -1154,7 +1208,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     />
                   </div>
                 ) : (
-                  <div className="sm:col-span-2">
+                  <div>
                     <button
                       type="button"
                       onClick={() => setShowWebsiteField(true)}
@@ -1183,27 +1237,47 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   />
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {snippets.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowSnippetPicker((prev) => !prev)}
-                      title={guides.examplesTooltip}
-                      className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
-                    >
-                      <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                      <span>{ui.stage1.examplesBtn} ({snippets.length})</span>
-                    </button>
-                  )}
+                {/* Single Assistant Menu for Examples & AI Optimize */}
+                <div className="relative shrink-0" data-editor-menu="true">
                   <button
                     type="button"
-                    onClick={onOpenAiTailor}
-                    title={guides.aiOptimizeTooltip}
-                    className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                    onClick={() => setOpenMenuId((prev) => (prev === 'summary-assist' ? null : 'summary-assist'))}
+                    aria-expanded={openMenuId === 'summary-assist'}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                   >
-                    <Wand2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{ui.stage1.aiOptimizeBtn}</span>
+                    <Wand2 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{assistantMenuLabel}</span>
+                    <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${openMenuId === 'summary-assist' ? 'rotate-180' : ''}`} />
                   </button>
+
+                  {openMenuId === 'summary-assist' && (
+                    <div className="absolute right-0 mt-1.5 w-52 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onOpenAiTailor();
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>{ui.stage1.aiOptimizeBtn}</span>
+                      </button>
+                      {snippets.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setShowSnippetPicker((prev) => !prev);
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span>{ui.stage1.examplesBtn} ({snippets.length})</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1298,16 +1372,31 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
               <div className="flex items-center gap-1.5 shrink-0">
                 {snippets.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSnippetPicker((prev) => !prev)}
-                    title={guides.achievementTemplatesTooltip}
-                    className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap"
-                  >
-                    <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                    <span className="hidden sm:inline">{ui.stage2.achievementTemplatesDesktop}</span>
-                    <span className="sm:hidden">{ui.stage2.achievementTemplatesMobile}</span>
-                  </button>
+                  <div className="relative" data-editor-menu="true">
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId((prev) => (prev === 'career-more' ? null : 'career-more'))}
+                      title={guides.achievementTemplatesTooltip}
+                      className="p-1.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
+                    >
+                      <MoreHorizontal className="w-4 h-4" />
+                    </button>
+                    {openMenuId === 'career-more' && (
+                      <div className="absolute right-0 mt-1.5 w-52 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setShowSnippetPicker((prev) => !prev);
+                          }}
+                          className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span>{ui.stage2.achievementTemplatesDesktop}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
                 <button
                   type="button"
@@ -1411,42 +1500,72 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                           </div>
                         </button>
 
-                        <div className="flex items-center gap-0.5 shrink-0">
-                          <div className="flex items-center gap-0.5 sm:opacity-25 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 shrink-0">
+                          <div className="relative" data-editor-menu="true">
                             <button
                               type="button"
-                              onClick={() => handleMoveExperience(expIdx, 'up')}
-                              disabled={expIdx === 0}
-                              className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded-md hover:bg-slate-100 transition-colors"
-                              title={ui.stage2.moveUpTitle}
-                            >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMoveExperience(expIdx, 'down')}
-                              disabled={expIdx === cv.experiences.length - 1}
-                              className="p-1.5 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded-md hover:bg-slate-100 transition-colors"
-                              title={ui.stage2.moveDownTitle}
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDuplicateExperience(expIdx)}
+                              onClick={() =>
+                                setOpenMenuId((prev) =>
+                                  prev === `exp-${expIdx}` ? null : `exp-${expIdx}`
+                                )
+                              }
                               className="p-1.5 text-slate-400 hover:text-slate-800 rounded-md hover:bg-slate-100 transition-colors"
-                              title={ui.stage2.duplicateTitle}
+                              title={optionsMenuLabel}
                             >
-                              <Copy className="w-3.5 h-3.5" />
+                              <MoreHorizontal className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteExperience(expIdx)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors"
-                              title={ui.stage2.deleteRoleTitle}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+
+                            {openMenuId === `exp-${expIdx}` && (
+                              <div className="absolute right-0 mt-1 w-48 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50">
+                                <button
+                                  type="button"
+                                  disabled={expIdx === 0}
+                                  onClick={() => {
+                                    handleMoveExperience(expIdx, 'up');
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-35 disabled:pointer-events-none flex items-center gap-2"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>{ui.stage2.moveUpTitle}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={expIdx === cv.experiences.length - 1}
+                                  onClick={() => {
+                                    handleMoveExperience(expIdx, 'down');
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-35 disabled:pointer-events-none flex items-center gap-2"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>{ui.stage2.moveDownTitle}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleDuplicateExperience(expIdx);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                                >
+                                  <Copy className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>{ui.stage2.duplicateTitle}</span>
+                                </button>
+                                <div className="my-1 border-t border-slate-100" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleDeleteExperience(expIdx);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>{ui.stage2.deleteRoleTitle}</span>
+                                </button>
+                              </div>
+                            )}
                           </div>
                           <button
                             type="button"
@@ -1466,7 +1585,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       {/* Expanded Body */}
                       {!isCollapsed && (
                         <div className="px-4 sm:px-5 pb-4 pt-3 bg-slate-50/40 space-y-3.5 border-t border-slate-100">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="space-y-3.5">
                             <div>
                               <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                                 {ui.stage2.roleLabel}
@@ -1531,7 +1650,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                             </div>
 
                             {showDonor ? (
-                              <div className="sm:col-span-2">
+                              <div>
                                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                                   {ui.stage2.donorLabel}
                                 </label>
@@ -1549,7 +1668,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                 />
                               </div>
                             ) : (
-                              <div className="sm:col-span-2">
+                              <div>
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1646,27 +1765,6 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                 const hasMetric = METRIC_REGEX.test(h);
                                 return (
                                   <div key={hIdx} className="group/bullet flex items-start gap-1.5">
-                                    <div className="flex flex-col items-center pt-1.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover/bullet:opacity-100 sm:group-focus-within/bullet:opacity-100 transition-opacity">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMoveHighlight(expIdx, hIdx, 'up')}
-                                        disabled={hIdx === 0}
-                                        className="p-0.5 text-slate-400 hover:text-slate-800 disabled:opacity-20"
-                                        title={ui.stage2.movePointUpTitle}
-                                      >
-                                        <ArrowUp className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleMoveHighlight(expIdx, hIdx, 'down')}
-                                        disabled={hIdx === exp.highlights.length - 1}
-                                        className="p-0.5 text-slate-400 hover:text-slate-800 disabled:opacity-20"
-                                        title={ui.stage2.movePointDownTitle}
-                                      >
-                                        <ArrowDown className="w-3 h-3" />
-                                      </button>
-                                    </div>
-
                                     <div className="flex-1 space-y-1">
                                       <textarea
                                         rows={2}
@@ -1675,7 +1773,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                           handleUpdateHighlight(expIdx, hIdx, e.target.value)
                                         }
                                         placeholder={ui.stage2.highlightPh}
-                                        className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:border-slate-700 focus:ring-2 focus:ring-slate-900/10 resize-none"
+                                        className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:border-slate-700 focus:ring-2 focus:ring-slate-900/10 resize-none"
                                       />
                                       {h.trim().length > 12 && (
                                         <div className="hidden group-hover/bullet:flex group-focus-within/bullet:flex text-[10px] font-medium items-center justify-between px-0.5">
@@ -1724,30 +1822,30 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         {currentStep.id === 'credentials' && (
           <div className="space-y-3.5 animate-in fade-in duration-150">
             {/* Sub-Group Switcher */}
-            <div className="grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl text-xs">
+            <div className="grid grid-cols-2 p-1 bg-slate-200/70 rounded-xl text-xs gap-1">
               <button
                 type="button"
                 onClick={() => setCredentialsTab('academic')}
-                className={`py-2 px-3 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
+                className={`min-w-0 py-2 px-2 sm:px-3 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
                   credentialsTab === 'academic'
                     ? 'bg-white text-slate-950 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <GraduationCap className="w-3.5 h-3.5" />
-                <span>{ui.stage3.tabAcademic} ({cv.educations.length + cv.trainings.length})</span>
+                <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{ui.stage3.tabAcademic} ({cv.educations.length + cv.trainings.length})</span>
               </button>
               <button
                 type="button"
                 onClick={() => setCredentialsTab('skills')}
-                className={`py-2 px-3 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
+                className={`min-w-0 py-2 px-2 sm:px-3 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
                   credentialsTab === 'skills'
                     ? 'bg-white text-slate-950 shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Award className="w-3.5 h-3.5" />
-                <span>{ui.stage3.tabSkills} ({cv.competencies.length + cv.languages.length})</span>
+                <Award className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{ui.stage3.tabSkills} ({cv.competencies.length + cv.languages.length})</span>
               </button>
             </div>
 
@@ -1832,34 +1930,14 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-0.5 mt-5 shrink-0 sm:opacity-30 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                              <button
-                                type="button"
-                                onClick={() => handleMoveEducation(eduIdx, 'up')}
-                                disabled={eduIdx === 0}
-                                className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded"
-                                title={ui.stage3.moveUp}
-                              >
-                                <ArrowUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMoveEducation(eduIdx, 'down')}
-                                disabled={eduIdx === cv.educations.length - 1}
-                                className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded"
-                                title={ui.stage3.moveDown}
-                              >
-                                <ArrowDown className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEducation(eduIdx)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
-                                title={ui.stage3.deleteEdu}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEducation(eduIdx)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded mt-5 shrink-0 sm:opacity-30 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+                              title={ui.stage3.deleteEdu}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
 
                           {Boolean(edu.gpaOrHonors?.trim()) || Boolean(honorsOpen[eduIdx]) ? (
@@ -1975,15 +2053,31 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setShowClusterPicker((prev) => !prev)}
-                        title={guides.clustersTooltip}
-                        className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{ui.stage3.clustersBtn}</span>
-                      </button>
+                      <div className="relative" data-editor-menu="true">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuId((prev) => (prev === 'skills-more' ? null : 'skills-more'))}
+                          title={guides.clustersTooltip}
+                          className="p-1.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </button>
+                        {openMenuId === 'skills-more' && (
+                          <div className="absolute right-0 mt-1.5 w-56 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOpenMenuId(null);
+                                setShowClusterPicker((prev) => !prev);
+                              }}
+                              className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>{ui.stage3.clustersBtn}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={handleAddCompetency}
@@ -2049,34 +2143,14 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                               placeholder={ui.stage3.compCatPh}
                               className={`${INPUT_CLASS} font-bold`}
                             />
-                            <div className="flex items-center gap-0.5 shrink-0 sm:opacity-30 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                              <button
-                                type="button"
-                                onClick={() => handleMoveCompetency(compIdx, 'up')}
-                                disabled={compIdx === 0}
-                                className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded"
-                                title={ui.stage3.moveUp}
-                              >
-                                <ArrowUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMoveCompetency(compIdx, 'down')}
-                                disabled={compIdx === cv.competencies.length - 1}
-                                className="p-1 text-slate-400 hover:text-slate-800 disabled:opacity-25 rounded"
-                                title={ui.stage3.moveDown}
-                              >
-                                <ArrowDown className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteCompetency(compIdx)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
-                                title={ui.stage3.deleteComp}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCompetency(compIdx)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded shrink-0 sm:opacity-30 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+                              title={ui.stage3.deleteComp}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
 
                           <textarea
@@ -2122,7 +2196,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   ) : (
                     <div className="space-y-2">
                       {cv.languages.map((lang, langIdx) => (
-                        <div key={langIdx} className="group flex items-center gap-2">
+                        <div key={langIdx} className="group flex items-center gap-1.5 sm:gap-2 min-w-0">
                           <input
                             type="text"
                             value={lang.language}
@@ -2130,7 +2204,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                               handleUpdateLanguage(langIdx, { ...lang, language: e.target.value })
                             }
                             placeholder={ui.stage3.langPh}
-                            className="text-xs font-semibold px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 w-32 sm:w-40 focus:outline-hidden focus:border-slate-700 focus:ring-2 focus:ring-slate-900/10"
+                            className="text-xs font-semibold px-2.5 sm:px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 w-24 sm:w-40 min-w-0 focus:outline-hidden focus:border-slate-700 focus:ring-2 focus:ring-slate-900/10"
                           />
 
                           <select
@@ -2138,7 +2212,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                             onChange={(e) =>
                               handleUpdateLanguage(langIdx, { ...lang, level: e.target.value })
                             }
-                            className={`flex-1 ${INPUT_CLASS}`}
+                            className={`flex-1 min-w-0 ${INPUT_CLASS}`}
                           >
                             {!ui.stage3.cefrLevels.includes(lang.level) && lang.level && (
                               <option value={lang.level}>{lang.level}</option>
@@ -2153,7 +2227,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDeleteLanguage(langIdx)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded shrink-0 sm:opacity-35 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
+                            className="p-2 text-slate-400 hover:text-rose-600 rounded shrink-0 sm:opacity-35 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity"
                             title={ui.stage3.deleteLang}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -2220,175 +2294,195 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   </div>
                 </div>
 
-                {/* Font Family Selector */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+                {/* Typography & Density Collapsed Drawer */}
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setAdvancedDesignOpen((prev) => !prev)}
+                    className="w-full flex items-center justify-between py-1 text-xs font-semibold text-slate-700 hover:text-slate-950"
+                  >
+                    <span className="flex items-center gap-1.5">
                       <Type className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{ui.stage4.typographyLabel}</span>
+                      <span>{typographyDensityLabel}</span>
                     </span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                    {FONT_IDS.map((fontId) => {
-                      const fontMeta = ui.stage4.fonts[fontId || 'default'] || {
-                        label: fontId,
-                        hint: ''
-                      };
-                      const activeFont = cv.fontFamily || 'default';
-                      const isSelected = activeFont === fontId;
-                      return (
-                        <button
-                          key={fontId}
-                          type="button"
-                          onClick={() =>
-                            commitChange(
-                              {
-                                ...cv,
-                                fontFamily: fontId === 'default' ? undefined : fontId
-                              },
-                              true
-                            )
-                          }
-                          title={`${fontMeta.label} — ${fontMeta.hint}`}
-                          className={`px-2 py-1.5 rounded-lg border text-center transition-colors text-[11px] font-bold truncate ${
-                            isSelected
-                              ? 'bg-slate-900 border-slate-900 text-white'
-                              : 'bg-slate-50/70 border-slate-200 text-slate-800 hover:bg-slate-100'
-                          }`}
-                        >
-                          {fontMeta.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${advancedDesignOpen ? 'rotate-180' : ''}`} />
+                  </button>
 
-                {/* Page Density / Fit Controls */}
-                {onDensityChange && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
-                    <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                      <LayoutTemplate className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{ui.stage4.densityLabel}</span>
-                    </span>
-                    <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg text-[11px]">
-                      {(
-                        [
-                          { id: 'compact', label: ui.stage4.densityCompact },
-                          { id: 'normal', label: ui.stage4.densityNormal },
-                          { id: 'relaxed', label: ui.stage4.densityRelaxed }
-                        ] as const
-                      ).map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => onDensityChange(opt.id)}
-                          title={guides.densityTooltips[opt.id]}
-                          className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
-                            density === opt.id
-                              ? 'bg-white text-slate-950 shadow-2xs'
-                              : 'text-slate-600 hover:text-slate-900'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                  {advancedDesignOpen && (
+                    <div className="pt-3 space-y-3">
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-medium text-slate-500 block">
+                          {ui.stage4.typographyLabel}
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                          {FONT_IDS.map((fontId) => {
+                            const fontMeta = ui.stage4.fonts[fontId || 'default'] || {
+                              label: fontId,
+                              hint: ''
+                            };
+                            const activeFont = cv.fontFamily || 'default';
+                            const isSelected = activeFont === fontId;
+                            return (
+                              <button
+                                key={fontId}
+                                type="button"
+                                onClick={() =>
+                                  commitChange(
+                                    {
+                                      ...cv,
+                                      fontFamily: fontId === 'default' ? undefined : fontId
+                                    },
+                                    true
+                                  )
+                                }
+                                title={`${fontMeta.label} — ${fontMeta.hint}`}
+                                className={`px-2 py-1.5 rounded-lg border text-center transition-colors text-[11px] font-bold truncate ${
+                                  isSelected
+                                    ? 'bg-slate-900 border-slate-900 text-white'
+                                    : 'bg-slate-50/70 border-slate-200 text-slate-800 hover:bg-slate-100'
+                                }`}
+                              >
+                                {fontMeta.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {onDensityChange && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                          <span className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+                            <LayoutTemplate className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{ui.stage4.densityLabel}</span>
+                          </span>
+                          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg text-[11px]">
+                            {(
+                              [
+                                { id: 'compact', label: ui.stage4.densityCompact },
+                                { id: 'normal', label: ui.stage4.densityNormal },
+                                { id: 'relaxed', label: ui.stage4.densityRelaxed }
+                              ] as const
+                            ).map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => onDensityChange(opt.id)}
+                                title={guides.densityTooltips[opt.id]}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                                  density === opt.id
+                                    ? 'bg-white text-slate-950 shadow-2xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
-              {/* Section Ordering & Visibility */}
+              {/* Collapsible Section Ordering & Visibility */}
               <div className="p-4 sm:p-5 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2" title={guides.sectionOrderInstruction}>
+                <button
+                  type="button"
+                  onClick={() => setSectionsOrderOpen((prev) => !prev)}
+                  className="w-full flex items-center justify-between gap-2 text-left"
+                >
+                  <div className="flex items-center gap-2">
                     <Sliders className="w-4 h-4 text-slate-700" />
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
                       {ui.stage4.sectionsTitle}
                     </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={resetSectionOrder}
-                    className="text-[11px] font-semibold text-slate-600 hover:text-slate-950 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors shrink-0"
-                    title={ui.stage4.resetOrderTitle}
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>{ui.stage4.resetOrderBtn}</span>
-                  </button>
-                </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${sectionsOrderOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
-                  {sectionOrder.map((sectionKey, index) => {
-                    const meta = SECTION_METADATA[sectionKey];
-                    const sectionLabel = ui.stage4.sectionNames[sectionKey] || meta?.name || sectionKey;
-                    const isVisible = cv.sectionVisibility?.[sectionKey] !== false;
-
-                    return (
-                      <div
-                        key={sectionKey}
-                        className="group flex items-center justify-between px-3.5 py-2.5 bg-white hover:bg-slate-50/70 transition-colors text-xs"
+                {sectionsOrderOpen && (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={resetSectionOrder}
+                        className="text-[11px] font-semibold text-slate-600 hover:text-slate-950 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors"
                       >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[11px] text-slate-400 font-mono tabular-nums w-4">
-                            {index + 1}.
-                          </span>
-                          <span
-                            className={
-                              isVisible
-                                ? 'font-semibold text-slate-900'
-                                : 'font-medium text-slate-400 line-through'
-                            }
-                          >
-                            {sectionLabel}
-                          </span>
-                        </div>
+                        <RotateCcw className="w-3 h-3" />
+                        <span>{ui.stage4.resetOrderBtn}</span>
+                      </button>
+                    </div>
 
-                        <div className="flex items-center gap-1">
-                          <div className="flex items-center gap-1 sm:opacity-35 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
-                            <button
-                              type="button"
-                              onClick={() => moveSection(index, 'up')}
-                              disabled={index === 0}
-                              aria-label={`${ui.stage3.moveUp}: ${sectionLabel}`}
-                              className="p-1 text-slate-500 hover:text-slate-900 disabled:opacity-25 rounded hover:bg-slate-100"
-                              title={`${ui.stage3.moveUp}: ${sectionLabel}`}
-                            >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveSection(index, 'down')}
-                              disabled={index === sectionOrder.length - 1}
-                              aria-label={`${ui.stage3.moveDown}: ${sectionLabel}`}
-                              className="p-1 text-slate-500 hover:text-slate-900 disabled:opacity-25 rounded hover:bg-slate-100"
-                              title={`${ui.stage3.moveDown}: ${sectionLabel}`}
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleSectionVisibility(sectionKey)}
-                            aria-label={`${isVisible ? ui.stage4.hideSectionTitle : ui.stage4.showSectionTitle}: ${sectionLabel}`}
-                            aria-pressed={isVisible}
-                            className={`p-1 rounded hover:bg-slate-100 transition-opacity ${
-                              isVisible
-                                ? 'text-slate-700 hover:text-slate-950 sm:opacity-45 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100'
-                                : 'text-amber-600 hover:text-amber-800 opacity-100'
-                            }`}
-                            title={isVisible ? ui.stage4.hideSectionTitle : ui.stage4.showSectionTitle}
+                    <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden">
+                      {sectionOrder.map((sectionKey, index) => {
+                        const meta = SECTION_METADATA[sectionKey];
+                        const sectionLabel = ui.stage4.sectionNames[sectionKey] || meta?.name || sectionKey;
+                        const isVisible = cv.sectionVisibility?.[sectionKey] !== false;
+
+                        return (
+                          <div
+                            key={sectionKey}
+                            className="group flex items-center justify-between px-3.5 py-2.5 bg-white hover:bg-slate-50/70 transition-colors text-xs"
                           >
-                            {isVisible ? (
-                              <Eye className="w-3.5 h-3.5" />
-                            ) : (
-                              <EyeOff className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-[11px] text-slate-400 font-mono tabular-nums w-4">
+                                {index + 1}.
+                              </span>
+                              <span
+                                className={
+                                  isVisible
+                                    ? 'font-semibold text-slate-900'
+                                    : 'font-medium text-slate-400 line-through'
+                                }
+                              >
+                                {sectionLabel}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => moveSection(index, 'up')}
+                                disabled={index === 0}
+                                aria-label={`${ui.stage3.moveUp}: ${sectionLabel}`}
+                                className="p-1 text-slate-500 hover:text-slate-900 disabled:opacity-25 rounded hover:bg-slate-100"
+                              >
+                                <ArrowUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveSection(index, 'down')}
+                                disabled={index === sectionOrder.length - 1}
+                                aria-label={`${ui.stage3.moveDown}: ${sectionLabel}`}
+                                className="p-1 text-slate-500 hover:text-slate-900 disabled:opacity-25 rounded hover:bg-slate-100"
+                              >
+                                <ArrowDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleSectionVisibility(sectionKey)}
+                                aria-label={`${isVisible ? ui.stage4.hideSectionTitle : ui.stage4.showSectionTitle}: ${sectionLabel}`}
+                                aria-pressed={isVisible}
+                                className={`p-1 rounded hover:bg-slate-100 ${
+                                  isVisible
+                                    ? 'text-slate-700 hover:text-slate-950'
+                                    : 'text-amber-600 hover:text-amber-800'
+                                }`}
+                              >
+                                {isVisible ? (
+                                  <Eye className="w-3.5 h-3.5" />
+                                ) : (
+                                  <EyeOff className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* References (Collapsed cleanly when empty unless user wants to add) */}
@@ -2436,7 +2530,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     <div className="divide-y divide-slate-100">
                       {cv.references.map((ref, refIdx) => (
                         <div key={ref.id || refIdx} className="group py-2.5 first:pt-1 last:pb-0 flex items-start gap-2">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
+                          <div className="space-y-2 flex-1">
                             <input
                               type="text"
                               value={ref.name}
@@ -2482,42 +2576,18 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   )}
                 </div>
               )}
-
-              {/* Clean Next Step Action: Cover Letter */}
-              {onOpenCoverLetter && (
-                <div
-                  title={ui.stage4.coverCtaSubtitle}
-                  className="px-4 sm:px-5 py-3 bg-slate-50/70 flex items-center justify-between gap-3 rounded-b-xl"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Mail className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span className="text-xs font-bold text-slate-900 truncate">
-                      {ui.stage4.coverCtaTitle}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onOpenCoverLetter}
-                    title={ui.stage4.coverCtaSubtitle}
-                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-                  >
-                    <span>{ui.stage4.coverCtaBtn}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
       </div>
 
       {/* 3. FIXED STEP FOOTER */}
-      <div className="shrink-0 z-20 bg-white border-t border-slate-200 px-3.5 sm:px-5 py-2.5 flex items-center justify-between gap-2">
+      <div className="shrink-0 z-20 bg-white border-t border-slate-200 px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={goToPreviousStep}
           disabled={currentStepIndex === 0}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none transition-colors flex items-center gap-1 whitespace-nowrap"
+          className="min-h-[38px] px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 touch-manipulation"
         >
           <ChevronLeft className="w-4 h-4" />
           <span>{ui.footer.prev}</span>
@@ -2529,23 +2599,23 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
             .replace('{total}', String(STEPS.length))}
         </span>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
           {currentStepIndex < STEPS.length - 1 ? (
             <button
               type="button"
               onClick={goToNextStep}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1 whitespace-nowrap"
+              className="min-h-[38px] max-w-full px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1 whitespace-nowrap min-w-0 touch-manipulation"
             >
-              <span>{ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].shortLabel}</span>
-              <ChevronRight className="w-4 h-4" />
+              <span className="truncate">{ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].shortLabel}</span>
+              <ChevronRight className="w-4 h-4 shrink-0" />
             </button>
           ) : (
             <button
               type="button"
               onClick={handleSaveProgress}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap"
+              className="min-h-[38px] px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
             >
-              <Check className="w-4 h-4" />
+              <Check className="w-4 h-4 shrink-0" />
               <span>{ui.footer.finishSave}</span>
             </button>
           )}

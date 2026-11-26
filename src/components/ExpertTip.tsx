@@ -40,11 +40,17 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
   };
 
   const openOnHover = () => {
+    if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(hover: hover)').matches) {
+      return;
+    }
     clearHoverTimer();
     setIsOpen(true);
   };
 
   const scheduleCloseOnLeave = () => {
+    if (typeof window !== 'undefined' && window.matchMedia && !window.matchMedia('(hover: hover)').matches) {
+      return;
+    }
     clearHoverTimer();
     hoverTimerRef.current = window.setTimeout(() => {
       setIsOpen(false);
@@ -74,7 +80,7 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
     if (!isOpen) return;
     updatePosition();
 
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       const target = event.target as Node;
       if (
         containerRef.current &&
@@ -94,11 +100,13 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
     const handleReposition = () => updatePosition();
 
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
     window.addEventListener('resize', handleReposition);
     window.addEventListener('scroll', handleReposition, true);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('resize', handleReposition);
       window.removeEventListener('scroll', handleReposition, true);
@@ -126,12 +134,12 @@ export const ExpertTip: React.FC<ExpertTipProps> = ({
         title={`${title} — ${tip}`}
         className={
           compact
-            ? `inline-flex items-center justify-center w-5 h-5 rounded-md transition-colors cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
+            ? `inline-flex items-center justify-center w-7 h-7 sm:w-6 sm:h-6 -m-1 sm:m-0 rounded-md transition-colors cursor-pointer select-none touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
                 isOpen
                   ? 'bg-slate-900 text-amber-300'
                   : 'text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800'
               }`
-            : `inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer select-none whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
+            : `inline-flex items-center gap-1 px-2 py-1 sm:px-1.5 sm:py-0.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer select-none whitespace-nowrap touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${
                 isOpen
                   ? 'bg-slate-900 text-amber-300'
                   : 'text-slate-500 hover:text-amber-700 hover:bg-amber-50 dark:text-slate-400 dark:hover:bg-slate-800'

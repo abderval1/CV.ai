@@ -127,133 +127,133 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
   pt: {
     gates: {
       raw: {
-        title: 'Criação & Importação Estruturada de CV',
+        title: 'Importar e Criar Currículo',
         subtitleAuth:
-          'A criação de novos currículos e importação estruturada (LinkedIn, PDF e Word) é exclusiva para assinantes dos planos Pro ou Executivo VIP. Ative o seu plano para desbloquear.',
+          'Criar novos currículos e importar dados do LinkedIn, PDF ou Word é exclusivo para assinantes Pro ou Executivo VIP. Ative o seu plano para desbloquear.',
         subtitleVisitor:
-          'A criação de currículos e extração de dados do LinkedIn ou documentos é restrita a assinantes da plataforma. Crie a sua conta e ative o seu plano para continuar.',
+          'Criar currículos e importar dados do LinkedIn ou documentos requer uma conta com plano ativo. Crie a sua conta e ative o plano para continuar.',
         benefits: [
-          'Importação inteligente de LinkedIn, PDF e Word (.docx)',
-          'Estruturação nos padrões internacionais de recrutamento',
-          'Acesso total aos modelos Harvard, Tech e Executivo',
-          'Exportações ilimitadas na nuvem'
+          'Importação rápida de LinkedIn, PDF e Word (.docx)',
+          'Organização automática em modelos profissionais',
+          'Acesso completo aos 14 modelos do site',
+          'Guarda e edições ilimitadas na nuvem'
         ]
       },
       editor: {
-        title: 'Editor Estratégico de Currículo & Construtor ATS',
+        title: 'Editor de Currículo Passo a Passo',
         subtitleAuth:
-          'A edição de campos, preenchimento guiado e estruturação do currículo passo a passo é exclusiva para assinantes Pro e Executivo VIP. Ative o seu plano para começar a editar o seu currículo e salvá-lo na nuvem.',
+          'Editar todos os campos do currículo e guardar alterações na nuvem é exclusivo para assinantes Pro e Executivo VIP. Ative o seu plano para editar.',
         subtitleVisitor:
-          'Crie a sua conta e ative o plano Pro ou Executivo VIP para aceder ao editor oficial, personalizar experiências com a fórmula Google XYZ e salvar na nuvem.',
+          'Crie a sua conta e ative o plano Pro ou Executivo VIP para editar o seu currículo passo a passo e guardar na nuvem.',
         benefits: [
-          'Preenchimento guiado passo a passo de todas as secções',
-          'Dicas de especialistas e verbos de ação para aprovação em robôs ATS',
-          'Formulação de impactos com a metodologia Google XYZ',
-          'Armazenamento seguro em tempo real na nuvem',
-          'Exportação oficial sem marcas de água em Word (.docx) e PDF'
+          'Preenchimento simples passo a passo',
+          'Dicas práticas e exemplos prontos para cada secção',
+          'Ajuda para descrever conquistas com resultados claros',
+          'Guarda automática na nuvem',
+          'Download em Word (.docx) e PDF sem marca de água'
         ]
       },
       atsVisitor: {
-        title: 'Vaga & Radar ATS Semântico',
+        title: 'Verificador de Currículo para Vagas',
         subtitle:
-          'Análise profunda de compatibilidade com sistemas de recrutamento ATS (Workday, Taleo, Greenhouse e SAP SuccessFactors).',
+          'Veja se o seu currículo tem as palavras importantes da vaga e passa nos filtros automáticos das empresas.',
         benefits: [
-          'Diagnóstico de pontuação ATS com cálculo de densidade',
-          'Mapeamento de palavras-chave críticas da vaga',
-          'Sugestão de termos executivos ausentes no currículo',
-          'Sincronização com os seus currículos salvos'
+          'Nota de compatibilidade com a vaga',
+          'Lista de palavras importantes que faltam no CV',
+          'Sugestões fáceis para adicionar com 1 toque',
+          'Ligado diretamente aos seus currículos guardados'
         ]
       },
       atsPro: {
-        title: 'Radar ATS Avançado & Análise Semântica',
+        title: 'Verificador Completo de Compatibilidade',
         subtitle:
-          'O Radar ATS avançado compara o seu perfil diretamente contra a descrição da vaga com inteligência artificial para garantir que o seu currículo passe pelos filtros robóticos.',
+          'Compara o seu currículo diretamente com a descrição da vaga para garantir que não fica de fora nos sistemas de seleção das empresas.',
         benefits: [
-          'Cálculo de compatibilidade percentual e densidade de palavras-chave',
-          'Extração inteligente de competências solicitadas pelo recrutador',
-          'Destaque de métricas quantificáveis ausentes',
-          'Otimizações ilimitadas no Plano Profissional Pro'
+          'Cálculo rápido de compatibilidade com a vaga',
+          'Identificação automática do que a empresa mais procura',
+          'Dicas para reforçar resultados e números',
+          'Verificações ilimitadas no Plano Profissional Pro'
         ]
       },
       aiVisitor: {
-        title: 'Otimizador IA de Conquistas',
-        subtitle: 'Reescreva as suas experiências utilizando a metodologia Google XYZ e verbos de ação executivos.',
+        title: 'Melhorar Conquistas com IA',
+        subtitle: 'Reescreve as suas experiências para mostrar resultados reais e chamar a atenção dos recrutadores.',
         benefits: [
-          'Geração de realizações e balas orientadas a métricas',
-          'Ajuste de tom formal para padrões corporativos globais',
-          'Remoção automática de chavões e termos fracos',
+          'Frases mais fortes focadas em resultados',
+          'Linguagem profissional clara e direta',
+          'Remove expressões vagas ou repetidas',
           'Incluído nos planos Pro ($8/mês) e Executivo VIP ($12/mês)'
         ]
       },
       aiPro: {
-        title: 'Otimizador IA de Conquistas & Balas Executivas',
+        title: 'Adaptar Currículo à Vaga com IA',
         subtitle:
-          'Desbloqueie reescritas de alta precisão calibradas para vagas sênior, com verbos de ação executivos e fórmulas de impacto mensurável.',
+          'Reescreve o seu resumo e experiências para destacar exatamente o que a empresa procura na vaga.',
         benefits: [
-          'Otimizações ilimitadas de experiências profissionais',
-          'Sugestões automáticas baseadas na descrição da vaga',
-          'Calibração de impacto financeiro (P&L, EBITDA, OPEX)',
-          'Exportação em Word (.docx) sem restrições'
+          'Melhoria rápida das suas experiências profissionais',
+          'Adaptação automática ao anúncio da vaga',
+          'Sugestões com números e resultados concretos',
+          'Download imediato em Word (.docx)'
         ]
       },
       interviewVisitor: {
-        title: 'Simulador de Entrevista (IA)',
+        title: 'Treino de Entrevista com IA',
         subtitle:
-          'Simule entrevistas reais com perguntas personalizadas para a vaga e receba notas no padrão STAR.',
+          'Pratique as perguntas mais prováveis para a sua vaga e receba conselhos simples para responder melhor.',
         benefits: [
-          '5 perguntas técnicas e comportamentais personalizadas',
-          'Gravação e transcrição de áudio por voz em tempo real',
-          'Avaliação de pontos fortes e respostas recomendadas',
-          'Treino sem estresse antes da entrevista real'
+          '5 perguntas personalizadas para a sua vaga',
+          'Pode responder escrevendo ou falando ao microfone',
+          'Feedback claro sobre pontos fortes e o que melhorar',
+          'Exemplos de boas respostas para estudar antes da entrevista'
         ]
       },
       interviewExec: {
-        title: 'Simulador de Entrevista STAR com IA & Áudio',
+        title: 'Treino de Entrevista por Texto e Voz',
         subtitle:
-          'A sala de simulação de entrevistas com perguntas personalizadas e avaliação STAR é exclusiva dos assinantes Executivo VIP.',
+          'O treino completo de entrevistas com perguntas personalizadas e avaliação por IA é exclusivo para assinantes Executivo VIP.',
         benefits: [
-          'Geração de 5 perguntas comportamentais e técnicas pela IA',
-          'Ditado por voz com reconhecimento de fala Web Speech',
-          'Scoring STAR com nota de 0 a 100 e resposta modelo',
-          'Treino ilimitado para qualquer descrição de vaga'
+          '5 perguntas personalizadas para qualquer vaga',
+          'Pode ditar a resposta usando o microfone',
+          'Nota de 0 a 100 e exemplo de boa resposta',
+          'Treino ilimitado antes das suas entrevistas'
         ]
       },
       coverVisitor: {
-        title: 'Carta de Apresentação Estratégica',
-        subtitle: 'Crie cartas de motivação executivas sob medida para a empresa e vaga desejada.',
+        title: 'Carta de Apresentação',
+        subtitle: 'Crie cartas de apresentação claras e personalizadas para acompanhar o seu currículo.',
         benefits: [
-          'Estrutura formal para comitês de seleção',
-          'Conexão com os pontos fortes do seu currículo',
-          'Exportação direta em Microsoft Word (.docx)'
+          'Estrutura formal pronta a enviar',
+          'Liga os seus pontos fortes ao que a empresa precisa',
+          'Download em Word (.docx) e PDF'
         ]
       },
       coverPro: {
-        title: 'Carta de Apresentação com Inteligência Artificial',
+        title: 'Carta de Apresentação Automática',
         subtitle:
-          'Elabore cartas de apresentação persuasivas e personalizadas para cada candidatura, alinhadas à cultura corporativa.',
+          'Crie cartas de apresentação personalizadas para cada candidatura em poucos segundos.',
         benefits: [
-          'Geração ilimitada de cartas estratégicas',
-          'Customização para cargos de liderança e especialistas',
-          'Exportação instantânea em Word (.docx) e PDF'
+          'Cartas ilimitadas adaptadas a cada vaga',
+          'Tradução fácil para 5 idiomas',
+          'Download imediato em Word (.docx) e PDF'
         ]
       }
     },
     docToolbar: {
-      cvContentLangTooltip: 'Traduzir conteúdo completo do currículo e carta de apresentação',
-      coverContentLangTooltip: 'Traduzir conteúdo da carta e currículo',
+      cvContentLangTooltip: 'Traduzir currículo e carta de apresentação',
+      coverContentLangTooltip: 'Traduzir carta e currículo',
       copy: 'Copiar',
       copied: 'Copiado!',
-      zoomOut: 'Diminuir Zoom',
-      zoomIn: 'Aumentar Zoom',
-      density: 'Espaçamento',
+      zoomOut: 'Diminuir texto',
+      zoomIn: 'Aumentar texto',
+      density: 'Espaço na folha',
       compact: 'Compacto',
       normal: 'Normal',
-      relaxed: 'Arejado',
+      relaxed: 'Folha ampla',
       photo: 'Foto',
       inlineEdit: 'Editar Texto',
       doneEdit: 'Concluir',
-      jsonBackup: 'Backup JSON',
-      otherLangs: 'Baixar em Idiomas',
+      jsonBackup: 'Guardar Cópia',
+      otherLangs: 'Baixar noutro idioma',
       advisor: 'Modelos',
       wordBtn: 'Word (.docx)',
       pdfBtn: 'PDF',
@@ -261,57 +261,57 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
     },
     healthCriteria: {
       contact: {
-        title: 'Identificação & Contactos',
+        title: 'Nome e Contactos',
         category: 'Cabeçalho',
-        passed: 'Cabeçalho completo com nome, cargo e contacto profissional.',
-        warning: 'Falta LinkedIn ou indicativo internacional de telefone.',
-        missing: 'Campos de identificação essenciais ausentes.',
-        rec: 'Sistemas ATS exigem nome completo, cargo pretendido, e-mail, telefone com código do país e LinkedIn.',
+        passed: 'Cabeçalho completo com nome, cargo e contactos.',
+        warning: 'Falta LinkedIn ou indicativo do país no telefone.',
+        missing: 'Faltam contactos essenciais.',
+        rec: 'Inclua nome completo, cargo desejado, e-mail, telefone com indicativo e LinkedIn.',
         action: 'Completar Contactos'
       },
       summary: {
-        title: 'Resumo Executivo',
-        category: 'Posicionamento',
-        passed: 'Resumo conciso com foco em senioridade e valor entregue.',
-        warning: 'Resumo curto (< 140 caracteres); amplie para melhor indexação ATS.',
-        missing: 'Resumo ausente. Recrutadores analisam o topo em 6 segundos.',
-        rec: 'Use 3 a 5 linhas com anos de experiência, especialidade e resultados mensuráveis.',
-        action: 'Otimizar Resumo'
+        title: 'Resumo / Sobre Mim',
+        category: 'Apresentação',
+        passed: 'Resumo claro com experiência e valor entregue.',
+        warning: 'Resumo muito curto; escreva mais 2 ou 3 frases para destacar o seu perfil.',
+        missing: 'Resumo em falta. Ajuda os recrutadores a conhecê-lo rapidamente.',
+        rec: 'Escreva 3 a 5 linhas com anos de experiência, área principal e conquistas.',
+        action: 'Melhorar Resumo'
       },
       experience: {
-        title: 'Experiência & Métricas (Google XYZ)',
-        category: 'Impacto',
-        passedSuffix: 'conquistas quantificadas com métricas ou percentuais.',
-        warning: 'Experiências descritas sem métricas numéricas suficientes.',
-        missing: 'Nenhum cargo registado na secção de experiência.',
-        rec: 'Aplique a fórmula Google XYZ: "Atingiu [X resultado], medido por [Y], através de [Z ação]".',
-        action: 'Otimizar Realizações'
+        title: 'Experiência e Resultados',
+        category: 'Resultados',
+        passedSuffix: 'conquistas com números ou resultados claros.',
+        warning: 'Tente incluir mais números ou resultados reais nas experiências.',
+        missing: 'Nenhuma experiência profissional adicionada.',
+        rec: 'Explique o que fez, quanto melhorou (em % ou números) e como conseguiu.',
+        action: 'Melhorar Experiências'
       },
       competencies: {
-        title: 'Competências & Palavras-Chave ATS',
-        category: 'Indexação',
-        passedSuffix: 'grupos de competências estruturados para leitura ATS.',
-        warning: 'Poucas competências listadas para corresponder aos filtros da vaga.',
+        title: 'Competências e Palavras da Vaga',
+        category: 'Competências',
+        passedSuffix: 'grupos de competências bem organizados.',
+        warning: 'Poucas competências listadas; adicione ferramentas e conhecimentos da sua área.',
         missing: 'Nenhuma competência adicionada.',
-        rec: 'Mapeie ferramentas, metodologias e competências técnicas exatamente como pedidas na vaga.',
-        action: 'Auditar no Radar ATS'
+        rec: 'Liste ferramentas, programas e competências que correspondam às vagas da sua área.',
+        action: 'Verificar Competências'
       },
       education: {
-        title: 'Formação Académica',
-        category: 'Credenciais',
-        passed: 'Graus e instituições académicas devidamente estruturados.',
-        warning: 'Formação com nome da instituição ou período incompleto.',
-        missing: 'Nenhuma formação académica registada.',
-        rec: 'Informe grau completo, instituição reconhecida e período de conclusão.',
-        action: 'Preencher Formação'
+        title: 'Estudos e Formação',
+        category: 'Estudos',
+        passed: 'Cursos e escolas bem preenchidos.',
+        warning: 'Falta o nome da escola ou o ano em alguma formação.',
+        missing: 'Nenhuma formação adicionada.',
+        rec: 'Indique o nome do curso, a escola/universidade e os anos.',
+        action: 'Preencher Estudos'
       },
       global: {
-        title: 'Idiomas & Certificações',
-        category: 'Diferencial',
-        passed: 'Idiomas na escala CEFR e certificações profissionais incluídas.',
-        warning: 'Adicione certificações ou segundo idioma com nível CEFR.',
-        missing: 'Nenhum idioma ou certificação declarada.',
-        rec: 'Use níveis CEFR padronizados (C2, C1, B2) e siglas oficiais de certificações.',
+        title: 'Idiomas e Certificados',
+        category: 'Extra',
+        passed: 'Idiomas com nível claro e cursos ou certificados incluídos.',
+        warning: 'Adicione um certificado ou outro idioma com o seu nível (ex: Básico, Intermédio, Avançado).',
+        missing: 'Nenhum idioma ou certificado adicionado.',
+        rec: 'Indique os idiomas que fala, o nível em cada um e os seus certificados.',
         action: 'Adicionar Idiomas'
       }
     },

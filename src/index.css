@@ -467,6 +467,14 @@ html.dark .page-break-line span {
   }
 
   /* Reset scale wrapper so zoom doesn't alter print dimensions */
+  .cv-scale-outer {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   .cv-scale-wrapper {
     transform: none !important;
     width: 100% !important;

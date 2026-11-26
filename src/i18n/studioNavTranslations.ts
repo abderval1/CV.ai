@@ -55,83 +55,83 @@ export interface StudioNavDictionary {
 
 export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictionary> = {
   pt: {
-    primaryGroupLabel: 'Fluxo principal',
-    toolsGroupLabel: 'Melhorar e candidatar',
+    primaryGroupLabel: 'Principal',
+    toolsGroupLabel: 'Mais ferramentas',
     tabs: {
       raw: {
         label: '1. Importar',
         shortLabel: '1. Importar',
         tooltip: 'Comece aqui: importe do LinkedIn, envie um PDF ou cole o seu texto para preencher o currículo automaticamente.',
-        guideText: 'Passo 1: Cole o link do LinkedIn, envie um PDF ou escreva os seus dados — o sistema cria o currículo organizado automaticamente.'
+        guideText: 'Passo 1: Cole o link do LinkedIn, envie um PDF ou escreva os seus dados — o sistema organiza o currículo automaticamente.'
       },
       editor: {
         label: '2. Editar CV',
         shortLabel: '2. Editar CV',
-        tooltip: 'Ajuste os seus dados pessoais, experiências profissionais, formação, competências e o visual do currículo.',
-        guideText: 'Passo 2: Preencha ou refine cada secção do currículo. Passe o rato sobre qualquer botão para ver o que faz.'
+        tooltip: 'Edite os seus dados pessoais, experiências de trabalho, estudos, competências e o visual do currículo.',
+        guideText: 'Passo 2: Preencha ou ajuste cada secção do currículo. Toque nas dicas para ver exemplos.'
       },
       cover: {
         label: '3. Carta',
         shortLabel: '3. Carta',
-        tooltip: 'Gere e edite uma carta de apresentação personalizada com base no seu currículo e na vaga.',
-        guideText: 'Passo 3: Crie uma carta de apresentação alinhada ao seu currículo e pronta a descarregar em PDF ou Word.'
+        tooltip: 'Crie uma carta de apresentação personalizada a partir do seu currículo e da vaga.',
+        guideText: 'Passo 3: Crie uma carta de apresentação pronta a enviar em PDF ou Word.'
       },
       ai: {
-        label: 'Otimizar IA',
-        shortLabel: 'Otimizar IA',
-        tooltip: 'Reescreve e adapta o currículo à descrição de uma vaga específica com palavras-chave estratégicas.',
-        guideText: 'Cole a descrição da vaga para adaptar automaticamente o resumo, conquistas e competências com IA.'
+        label: 'Adaptar à Vaga',
+        shortLabel: 'Adaptar à Vaga',
+        tooltip: 'Melhora o texto do seu currículo automaticamente para combinar com uma vaga específica.',
+        guideText: 'Cole a descrição da vaga para ajustar automaticamente o resumo, conquistas e competências.'
       },
       ats: {
-        label: 'ATS Radar',
-        shortLabel: 'ATS Radar',
-        tooltip: 'Verifica se o currículo passa nos sistemas automáticos de triagem (ATS) usados pelos recrutadores.',
-        guideText: 'Analise a compatibilidade do seu currículo com os filtros automáticos de RH e veja o que melhorar.'
+        label: 'Verificador CV',
+        shortLabel: 'Verificador CV',
+        tooltip: 'Verifica se o seu currículo está claro e passa nos filtros automáticos das empresas.',
+        guideText: 'Veja se falta alguma palavra importante da vaga e o que melhorar no currículo.'
       },
       jobs: {
         label: 'Vagas',
         shortLabel: 'Vagas',
-        tooltip: 'Descubra oportunidades compatíveis com o seu perfil e alinhe o currículo à vaga escolhida.',
-        guideText: 'Explore sugestões de vagas alinhadas ao seu perfil e aplique os requisitos diretamente no seu CV.'
+        tooltip: 'Veja vagas que combinam com o seu currículo e candidate-se diretamente.',
+        guideText: 'Explore vagas compatíveis com o seu perfil e adapte o currículo com um toque.'
       },
       interview: {
         label: 'Entrevista',
         shortLabel: 'Entrevista',
-        tooltip: 'Simulador de entrevista com perguntas prováveis da vaga e sugestões de resposta baseadas no seu CV.',
-        guideText: 'Treine perguntas reais de entrevista personalizadas para o seu currículo e a vaga pretendida.'
+        tooltip: 'Treine perguntas de entrevista prováveis para a vaga com sugestões de resposta.',
+        guideText: 'Pratique perguntas reais de entrevista baseadas no seu currículo e na vaga.'
       }
     },
     editorGuides: {
       step1: 'Comece pelo nome, contactos e um resumo curto de 3 a 4 linhas.',
-      step2: 'Adicione os seus cargos mais recentes e foque em resultados concretos.',
-      step3: 'Inclua formação académica, certificados, competências e idiomas.',
+      step2: 'Adicione os seus trabalhos mais recentes e destaque o que conseguiu alcançar.',
+      step3: 'Inclua estudos, cursos, o que sabe fazer e idiomas.',
       step4: 'Escolha o modelo, cor, tipo de letra e a ordem das secções.',
       stepTabsTitle: {
-        profile: 'Passo 1: Dados pessoais, contactos, foto e resumo profissional',
-        career: 'Passo 2: Histórico profissional, cargos e conquistas principais',
-        credentials: 'Passo 3: Formação académica, certificações, competências e idiomas',
-        structure: 'Passo 4: Modelo visual, cor, tipografia, espaçamento e ordem das secções'
+        profile: 'Passo 1: Dados pessoais, contactos, foto e resumo',
+        career: 'Passo 2: Trabalhos anteriores, cargos e resultados',
+        credentials: 'Passo 3: Estudos, cursos, competências e idiomas',
+        structure: 'Passo 4: Modelo visual, cor, letra, espaço e ordem'
       },
-      readinessTooltip: 'Pontuação estimada de prontidão do currículo para sistemas ATS',
-      checklistTooltip: 'Abrir lista do que falta preencher para deixar o currículo completo',
-      photoToggleTooltip: 'Mostrar ou ocultar a foto no documento final (modelos ATS internacionais costumam omitir foto)',
-      photoManageTooltip: 'Carregar nova foto, escolher avatar ou ajustar a imagem do currículo',
+      readinessTooltip: 'Nota estimada do seu currículo (quanto maior, melhor)',
+      checklistTooltip: 'Ver o que falta preencher para concluir o currículo',
+      photoToggleTooltip: 'Mostrar ou esconder a sua foto (nos EUA/Reino Unido costuma usar-se sem foto)',
+      photoManageTooltip: 'Carregar ou alterar a foto do seu currículo',
       examplesTooltip: 'Inserir um exemplo de resumo pronto para a sua área e editar depois',
-      aiOptimizeTooltip: 'Abrir o assistente de IA para adaptar o texto à vaga pretendida',
-      addRoleTooltip: 'Criar uma nova entrada de experiência profissional',
-      achievementTemplatesTooltip: 'Inserir exemplos prontos de conquistas com métricas por área',
-      actionVerbsTooltip: 'Escolher um verbo de impacto (ex.: Liderou, Reduziu, Implementou) para iniciar o ponto',
-      addBulletTooltip: 'Adicionar nova linha de conquista ou responsabilidade neste cargo',
-      clustersTooltip: 'Adicionar rapidamente um conjunto de competências da sua área',
+      aiOptimizeTooltip: 'Melhorar o texto automaticamente para combinar com a vaga',
+      addRoleTooltip: 'Adicionar um novo trabalho ou experiência',
+      achievementTemplatesTooltip: 'Inserir frases prontas com exemplos da sua área',
+      actionVerbsTooltip: 'Escolher uma boa palavra para começar a frase (ex.: Liderou, Reduziu, Criou)',
+      addBulletTooltip: 'Adicionar mais uma conquista ou tarefa neste trabalho',
+      clustersTooltip: 'Adicionar várias competências prontas da sua área',
       densityTooltips: {
-        compact: 'Espaçamento compacto: reduz margens para caber em menos páginas (ideal para 1 página A4)',
-        normal: 'Espaçamento normal: equilíbrio padrão entre leitura confortável e densidade',
-        relaxed: 'Espaçamento amplo: mais respiro visual entre secções'
+        compact: 'Compacto: menos espaço entre linhas para tentar caber em 1 página',
+        normal: 'Normal: espaço equilibrado para leitura fácil',
+        relaxed: 'Espaçoso: mais espaço livre entre as secções'
       },
       addOptionalRefBtn: 'Adicionar referência profissional (opcional)',
-      optionalRefTooltip: 'Opcional: hoje só se incluem referências quando o recrutador solicita expressamente',
-      step4Instruction: 'Todas as alterações visuais aparecem ao vivo na folha ao lado.',
-      sectionOrderInstruction: 'Use as setas para reordenar ou o ícone de olho para mostrar/ocultar uma secção.'
+      optionalRefTooltip: 'Opcional: normalmente só se coloca quando a empresa pede',
+      step4Instruction: 'Todas as alterações aparecem logo na folha ao lado.',
+      sectionOrderInstruction: 'Use as setas para mudar a ordem ou o olho para esconder uma secção.'
     }
   },
   en: {

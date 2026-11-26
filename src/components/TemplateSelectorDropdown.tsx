@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TemplateStyle } from '../types/cv';
 import { CV_TEMPLATES, getTemplateById } from '../data/templateCatalog';
 import { getStoredTemplatesSync, trackFrontendTelemetry } from '../services/adminModulesService';
@@ -7,10 +7,7 @@ import {
   Camera,
   ShieldCheck,
   FileText,
-  HelpCircle,
-  Check,
-  Briefcase,
-  Lock
+  Check
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { EDITOR_UI_TRANSLATIONS, TEMPLATE_CATALOG_I18N } from '../i18n/editorUiTranslations';
@@ -29,7 +26,13 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
   className = ''
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number }>({
+    top: 64,
+    left: 12,
+    width: 340
+  });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { siteLanguage } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).dropdown;
   const tplMetaMap = TEMPLATE_CATALOG_I18N[siteLanguage];
@@ -49,7 +52,6 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
 
   const adminConfigMap = new Map(adminCatalog.map((t) => [t.id, t]));
 
-  // Active templates ordered according to admin backoffice
   const allTemplates = CV_TEMPLATES.filter((t) => {
     const config = adminConfigMap.get(t.id);
     return config ? config.isActive : true;
@@ -59,224 +61,178 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
     return ordA - ordB;
   });
 
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight;
+    const margin = 12;
+    const menuWidth = Math.min(360, viewportW - margin * 2);
+    const left = Math.max(margin, Math.min(rect.left, viewportW - menuWidth - margin));
+    const maxMenuH = Math.min(440, viewportH - margin * 2);
+    const top =
+      rect.bottom + 6 + maxMenuH > viewportH - margin && rect.top - 6 - maxMenuH >= margin
+        ? rect.top - 6 - maxMenuH
+        : Math.min(rect.bottom + 6, viewportH - margin - 200);
+    setMenuPos({ top: Math.max(margin, top), left, width: menuWidth });
+  }, []);
+
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    if (!isOpen) return;
+    updatePosition();
+    const handleOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, updatePosition]);
 
   const photoTemplates = allTemplates.filter((t) => t.category === 'with_photo' || t.category === 'hybrid');
   const withoutPhotoTemplates = allTemplates.filter((t) => t.category === 'without_photo');
 
-  return (
-    <div className={`relative inline-block text-left ${className}`} ref={dropdownRef}>
-      {/* Trigger Button */}
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 transition-all shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-400"
-          title={ui.triggerTitle}
-        >
-          <div className="flex items-center gap-1.5">
-            {currentTemplate.hasPhoto ? (
-              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
-            ) : (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            )}
-            <span className="font-bold text-slate-900 truncate max-w-[110px] sm:max-w-none">{currentTemplate.shortName}</span>
-            <span
-              className={`hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] font-bold whitespace-nowrap ${
-                currentTemplate.hasPhoto
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              }`}
-            >
-              {currentTemplate.hasPhoto ? ui.withPhotoTag : ui.noPhotoTag}
+  const renderTemplateButton = (rawItem: typeof allTemplates[number], isPhotoGroup: boolean) => {
+    const item = getTplMeta(rawItem);
+    const isSelected = currentStyle === item.id;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        onClick={() => {
+          trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
+          onSelectStyle(item.id);
+          setIsOpen(false);
+        }}
+        className={`w-full text-left px-2.5 py-2 rounded-lg transition-colors flex items-center justify-between gap-2 min-h-[44px] touch-manipulation ${
+          isSelected
+            ? isPhotoGroup
+              ? 'bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 text-blue-950 dark:text-blue-100'
+              : 'bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100'
+            : 'hover:bg-slate-50 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
+        }`}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-900 dark:text-white truncate">
+              {item.name}
+            </span>
+            <span className="text-[10px] font-mono tabular-nums text-slate-500 dark:text-slate-400 shrink-0">
+              {item.atsScore}% ATS
             </span>
           </div>
-          <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        {/* Quick Guide Trigger Button */}
-        <button
-          type="button"
-          onClick={onOpenAdvisorModal}
-          className="px-2 py-1.5 text-xs font-medium text-slate-600 hover:text-blue-700 hover:bg-blue-50 border border-slate-200 bg-white rounded-lg transition-colors flex items-center gap-1 shrink-0"
-          title={ui.whereToUseTitle}
-        >
-          <HelpCircle className="w-3.5 h-3.5 text-blue-600" />
-          <span className="hidden md:inline text-[11px] font-semibold">{ui.whereToUseBtn}</span>
-        </button>
-      </div>
-
-      {/* Dropdown Menu */}
-      {isOpen && (
-        <div className="absolute left-0 mt-1.5 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] rounded-xl bg-white shadow-2xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-          <div className="p-3 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-            <div>
-              <div className="text-xs font-bold flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-amber-400" />
-                <span>{ui.menuTitle}</span>
-              </div>
-              <p className="text-[10px] text-slate-300 mt-0.5">
-                {ui.menuSubtitle}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onOpenAdvisorModal();
-              }}
-              className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white font-bold px-2 py-1 rounded transition-colors"
-            >
-              {ui.fullGuideBtn}
-            </button>
-          </div>
-
-          <div className="max-h-[380px] overflow-y-auto p-2 space-y-3 divide-y divide-slate-100">
-            {/* Group 1: With Photo */}
-            <div>
-              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1">
-                <Camera className="w-3 h-3 text-blue-600" />
-                <span>{ui.photoGroupTitle}</span>
-              </div>
-              <div className="space-y-1 mt-1">
-                {photoTemplates.map((rawItem) => {
-                  const item = getTplMeta(rawItem);
-                  const isSelected = currentStyle === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
-                        onSelectStyle(item.id);
-                        setIsOpen(false);
-                      }}
-                      className={`w-full text-left p-2 rounded-lg transition-colors flex items-start justify-between gap-2 ${
-                        isSelected
-                          ? 'bg-blue-50 border border-blue-200 text-blue-900'
-                          : 'hover:bg-slate-50 text-slate-800'
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {item.name}
-                          </span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-blue-100 text-blue-800">
-                            {item.atsScore}% ATS
-                          </span>
-                          {adminConfigMap.get(item.id)?.tierRequired && (
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
-                              adminConfigMap.get(item.id)?.tierRequired === 'executive'
-                                ? 'bg-slate-900 text-amber-400'
-                                : adminConfigMap.get(item.id)?.tierRequired === 'pro'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : 'Pro'}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {item.regions.join(' · ')}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          🎯 {item.bestForIndustries[0]}
-                        </p>
-                      </div>
-                      {isSelected && <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Group 2: Without Photo / ATS */}
-            <div className="pt-2">
-              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1">
-                <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                <span>{ui.noPhotoGroupTitle}</span>
-              </div>
-              <div className="space-y-1 mt-1">
-                {withoutPhotoTemplates.map((rawItem) => {
-                  const item = getTplMeta(rawItem);
-                  const isSelected = currentStyle === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => {
-                        trackFrontendTelemetry({ type: 'template_selected', templateStyle: item.id });
-                        onSelectStyle(item.id);
-                        setIsOpen(false);
-                      }}
-                      className={`w-full text-left p-2 rounded-lg transition-colors flex items-start justify-between gap-2 ${
-                        isSelected
-                          ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
-                          : 'hover:bg-slate-50 text-slate-800'
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {item.name}
-                          </span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-emerald-100 text-emerald-800">
-                            {item.atsScore}% ATS
-                          </span>
-                          {adminConfigMap.get(item.id)?.tierRequired && (
-                            <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase tracking-wider ${
-                              adminConfigMap.get(item.id)?.tierRequired === 'executive'
-                                ? 'bg-slate-900 text-amber-400'
-                                : adminConfigMap.get(item.id)?.tierRequired === 'pro'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {adminConfigMap.get(item.id)?.tierRequired === 'executive' ? 'VIP' : 'Pro'}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {item.regions.join(' · ')}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          🎯 {item.bestForIndustries[0]}
-                        </p>
-                      </div>
-                      {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Guide Callout */}
-          <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-            <span className="text-[11px] text-slate-600">
-              {ui.footerPrompt}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                onOpenAdvisorModal();
-              }}
-              className="text-xs font-bold text-blue-600 hover:text-blue-800 underline underline-offset-2 flex items-center gap-1"
-            >
-              <span>{ui.footerLink}</span>
-              <span>→</span>
-            </button>
-          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+            {item.regions.slice(0, 2).join(' · ')}
+          </p>
         </div>
+        {isSelected && (
+          <Check
+            className={`w-4 h-4 shrink-0 ${
+              isPhotoGroup ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'
+            }`}
+          />
+        )}
+      </button>
+    );
+  };
+
+  return (
+    <div className={`relative inline-block text-left ${className}`}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className="min-h-[38px] flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 touch-manipulation"
+        title={ui.triggerTitle}
+      >
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            currentTemplate.hasPhoto ? 'bg-blue-500' : 'bg-emerald-500'
+          }`}
+        />
+        <span className="font-bold text-slate-900 dark:text-white truncate max-w-[125px] sm:max-w-[180px]">
+          {currentTemplate.shortName}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform shrink-0 ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-slate-950/15 sm:bg-transparent"
+            onClick={() => setIsOpen(false)}
+          />
+          <div
+            ref={menuRef}
+            role="listbox"
+            style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+            className="fixed z-60 rounded-xl bg-white dark:bg-slate-900 shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="px-3 py-2.5 bg-slate-900 text-white flex items-center justify-between gap-2 border-b border-slate-800">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="text-xs font-bold truncate">{ui.menuTitle}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenAdvisorModal();
+                }}
+                className="text-[11px] bg-white/10 hover:bg-white/20 text-white font-semibold px-2.5 py-1 rounded-md transition-colors whitespace-nowrap shrink-0"
+              >
+                {ui.whereToUseBtn}
+              </button>
+            </div>
+
+            <div className="max-h-[62dvh] sm:max-h-[380px] overflow-y-auto p-2 space-y-2.5 divide-y divide-slate-100 dark:divide-slate-800">
+              <div>
+                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3 shrink-0" />
+                  <span>{ui.noPhotoGroupTitle}</span>
+                </div>
+                <div className="space-y-0.5 mt-1">
+                  {withoutPhotoTemplates.map((rawItem) => renderTemplateButton(rawItem, false))}
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                  <Camera className="w-3 h-3 shrink-0" />
+                  <span>{ui.photoGroupTitle}</span>
+                </div>
+                <div className="space-y-0.5 mt-1">
+                  {photoTemplates.map((rawItem) => renderTemplateButton(rawItem, true))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

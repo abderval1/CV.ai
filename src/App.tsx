@@ -53,15 +53,25 @@ import {
 } from './services/adminModulesService';
 import { applyPageSeo, getPathnameForTab, getTabFromPathname } from './utils/seoManager';
 import { STUDIO_NAV_TRANSLATIONS } from './i18n/studioNavTranslations';
+import { StudioCreationMode, loadStudioModePrefs, saveStudioModePrefs } from './components/StudioGuideSystem';
 import {
-  StudioGuideBar,
-  LightbulbStepBadge,
-  StudioCreationMode,
-  StudioGuideTab,
-  loadStudioModePrefs,
-  saveStudioModePrefs
-} from './components/StudioGuideSystem';
-import { FileText, SlidersHorizontal, Check, Edit3, Target, Download, Wand2, Lock, Mail, ShieldAlert, LogOut, Wrench, Briefcase, Upload, MessageSquare } from 'lucide-react';
+  FileText,
+  Check,
+  Edit3,
+  Target,
+  Download,
+  Wand2,
+  Lock,
+  Mail,
+  ShieldAlert,
+  LogOut,
+  Wrench,
+  Briefcase,
+  Upload,
+  MessageSquare,
+  ChevronDown,
+  LayoutGrid
+} from 'lucide-react';
 
 export default function App() {
   const { user, isAuthenticated, isPro, isExecutive, hasActivePlan, isImpersonating, stopImpersonating, authRedirectError, incrementCvGenerated } = useAuth();
@@ -71,11 +81,31 @@ export default function App() {
   const studioNav = STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en;
   const [contentLanguage, setContentLanguage] = useState<LanguageCode>('en');
   const [studioMode, setStudioMode] = useState<StudioCreationMode>(() => loadStudioModePrefs().mode);
-  const [hasChosenStudioMode, setHasChosenStudioMode] = useState<boolean>(() => loadStudioModePrefs().chosen);
+  const [studioToolsMenuOpen, setStudioToolsMenuOpen] = useState<boolean>(false);
+  const studioToolsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!studioToolsMenuOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStudioToolsMenuOpen(false);
+    };
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (studioToolsMenuRef.current && !studioToolsMenuRef.current.contains(e.target as Node)) {
+        setStudioToolsMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [studioToolsMenuOpen]);
 
   const handleSelectStudioMode = useCallback((nextMode: StudioCreationMode) => {
     setStudioMode(nextMode);
-    setHasChosenStudioMode(true);
     saveStudioModePrefs(nextMode, true);
   }, []);
 
@@ -1041,11 +1071,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
       {/* Word Export Floating Toast Notification */}
       {wordSuccessNotification && (
-        <div className="no-print fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-slate-800 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="no-print fixed bottom-20 lg:bottom-6 right-3 left-3 sm:left-auto sm:right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 border border-slate-800 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
             <Check className="w-4 h-4" />
           </div>
-          <div className="text-xs">
+          <div className="text-xs min-w-0">
             <p className="font-semibold">{wordNotificationMessage || appUi.wordToastDefault}</p>
             <p className="text-slate-300">{appUi.wordToastSub}</p>
           </div>
@@ -1118,38 +1148,6 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         </main>
       ) : (
         <>
-          {/* Mobile Toggle Bar for Studio */}
-          <div className="no-print shrink-0 lg:hidden bg-white border-b border-slate-200 px-3 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-full">
-              <button
-                type="button"
-                onClick={() => setMobileViewMode('controls')}
-                title={studioNav.tabs.editor.tooltip}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
-                  mobileViewMode === 'controls'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
-                    : 'text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                <span>{siteText.app.mobileEditorTab}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setMobileViewMode('preview')}
-                title={activeTab === 'cover' ? studioNav.tabs.cover.tooltip : studioNav.tabs.editor.tooltip}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap ${
-                  mobileViewMode === 'preview'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs font-semibold'
-                    : 'text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span>{activeTab === 'cover' ? siteText.app.mobileViewA4Cover : siteText.app.mobileViewA4Cv}</span>
-              </button>
-            </div>
-          </div>
-
           {/* Main Studio Dual-Pane Layout (Bounded cleanly via flex-1 min-h-0 so footers never clip) */}
           <main className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
             {/* Left Side: Control Deck / Tool Tabs */}
@@ -1158,147 +1156,158 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 mobileViewMode === 'preview' ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {/* Step-by-Step Lightbulb Guide vs Self-Service Solo Bar */}
-              <StudioGuideBar
-                mode={studioMode}
-                hasChosenMode={hasChosenStudioMode}
-                onSelectMode={handleSelectStudioMode}
-                activeTab={activeTab as StudioGuideTab}
-                onNavigateTab={(t) => setActiveTab(t)}
-                onExportFinal={handleExportWord}
-              />
-
-              {/* Studio Compact 2-Row Mode Switcher (Importar First, Zero Hidden Tabs) */}
-              <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 min-w-0 px-3 sm:px-4 py-1.5 space-y-1">
-                {/* Tier 1: Core 1-2-3 Creation Flow */}
+              {/* Ultra-Simple Studio Navigation Bar: 2 Core Modes + 1 Clean Tools Menu */}
+              <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
                 <div
                   role="tablist"
                   aria-label={studioNav.primaryGroupLabel}
-                  className="grid grid-cols-3 gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg"
+                  className="flex items-center gap-1 p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg min-w-0"
                 >
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'raw'}
-                    onClick={() => setActiveTab('raw')}
-                    title={studioNav.tabs.raw.tooltip}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'raw'
-                        ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white font-bold shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
-                    }`}
-                  >
-                    {studioMode === 'guided' && <LightbulbStepBadge step={1} active={activeTab === 'raw'} />}
-                    <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.raw.label}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={activeTab === 'editor'}
-                    onClick={() => setActiveTab('editor')}
+                    onClick={() => {
+                      setActiveTab('editor');
+                      setStudioToolsMenuOpen(false);
+                    }}
                     title={studioNav.tabs.editor.tooltip}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
                       activeTab === 'editor'
                         ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white font-bold shadow-2xs'
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
-                    {studioMode === 'guided' && <LightbulbStepBadge step={2} active={activeTab === 'editor'} />}
-                    <FileText className="w-3.5 h-3.5 text-slate-700 dark:text-slate-300 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.editor.label}</span>
+                    <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                    <span>{studioNav.tabs.editor.shortLabel.replace(/^\d+\.\s*/, '')}</span>
                   </button>
 
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={activeTab === 'cover'}
-                    onClick={() => setActiveTab('cover')}
-                    title={studioNav.tabs.cover.tooltip}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'cover'
+                    aria-selected={activeTab === 'raw'}
+                    onClick={() => {
+                      setActiveTab('raw');
+                      setStudioToolsMenuOpen(false);
+                    }}
+                    title={studioNav.tabs.raw.tooltip}
+                    className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
+                      activeTab === 'raw'
                         ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white font-bold shadow-2xs'
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
-                    {studioMode === 'guided' && <LightbulbStepBadge step={5} active={activeTab === 'cover'} />}
-                    <Mail className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.cover.label}</span>
+                    <Upload className="w-3.5 h-3.5 shrink-0" />
+                    <span>{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
                   </button>
                 </div>
 
-                {/* Tier 2: Optimization & Job Application Tools (All Visible, Zero Scroll Clipping) */}
-                <div
-                  role="tablist"
-                  aria-label={studioNav.toolsGroupLabel}
-                  className="grid grid-cols-2 sm:grid-cols-4 gap-1"
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'ai'}
-                    onClick={() => setActiveTab('ai')}
-                    title={studioNav.tabs.ai.tooltip}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'ai'
-                        ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 font-bold'
-                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {studioMode === 'guided' && <LightbulbStepBadge step={3} active={activeTab === 'ai'} />}
-                    <Wand2 className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.ai.label}</span>
-                  </button>
+                {/* Single Clean Dropdown Menu for All Extra Tools */}
+                <div ref={studioToolsMenuRef} className="relative shrink-0">
+                  {(() => {
+                    const isExtraToolActive = ['cover', 'ai', 'ats', 'jobs', 'interview'].includes(activeTab);
+                    const activeToolLabel =
+                      activeTab === 'cover'
+                        ? studioNav.tabs.cover.shortLabel.replace(/^\d+\.\s*/, '')
+                        : activeTab === 'ai'
+                        ? studioNav.tabs.ai.label
+                        : activeTab === 'ats'
+                        ? studioNav.tabs.ats.label
+                        : activeTab === 'jobs'
+                        ? studioNav.tabs.jobs.label
+                        : activeTab === 'interview'
+                        ? studioNav.tabs.interview.label
+                        : studioNav.toolsGroupLabel;
+                    const menuItems = [
+                      {
+                        id: 'cover' as const,
+                        label: studioNav.tabs.cover.shortLabel.replace(/^\d+\.\s*/, ''),
+                        desc: studioNav.tabs.cover.tooltip,
+                        icon: <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      },
+                      {
+                        id: 'ai' as const,
+                        label: studioNav.tabs.ai.label,
+                        desc: studioNav.tabs.ai.tooltip,
+                        icon: <Wand2 className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      },
+                      {
+                        id: 'ats' as const,
+                        label: studioNav.tabs.ats.label,
+                        desc: studioNav.tabs.ats.tooltip,
+                        icon: <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      },
+                      {
+                        id: 'jobs' as const,
+                        label: studioNav.tabs.jobs.label,
+                        desc: studioNav.tabs.jobs.tooltip,
+                        icon: <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                      },
+                      {
+                        id: 'interview' as const,
+                        label: studioNav.tabs.interview.label,
+                        desc: studioNav.tabs.interview.tooltip,
+                        icon: <MessageSquare className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                      }
+                    ];
 
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'ats'}
-                    onClick={() => setActiveTab('ats')}
-                    title={studioNav.tabs.ats.tooltip}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'ats'
-                        ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 font-bold'
-                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Target className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.ats.label}</span>
-                  </button>
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setStudioToolsMenuOpen((prev) => !prev)}
+                          aria-expanded={studioToolsMenuOpen}
+                          className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                            isExtraToolActive || studioToolsMenuOpen
+                              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 border-slate-900 dark:border-slate-100'
+                              : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                          <span className="max-w-[105px] sm:max-w-[150px] truncate">{activeToolLabel}</span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                              studioToolsMenuOpen ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
 
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'jobs'}
-                    onClick={() => setActiveTab('jobs')}
-                    title={studioNav.tabs.jobs.tooltip}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'jobs'
-                        ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 font-bold'
-                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    {studioMode === 'guided' && <LightbulbStepBadge step={4} active={activeTab === 'jobs'} />}
-                    <Briefcase className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.jobs.label}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'interview'}
-                    onClick={() => setActiveTab('interview')}
-                    title={studioNav.tabs.interview.tooltip}
-                    className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors whitespace-nowrap min-w-0 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
-                      activeTab === 'interview'
-                        ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 font-bold'
-                        : 'bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <MessageSquare className="w-3 h-3 text-violet-600 dark:text-violet-400 shrink-0" />
-                    <span className="truncate">{studioNav.tabs.interview.label}</span>
-                  </button>
+                        {studioToolsMenuOpen && (
+                          <div className="absolute right-0 mt-1.5 w-72 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] overflow-y-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+                            {menuItems.map((item) => {
+                              const isCurrent = activeTab === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab(item.id);
+                                    setStudioToolsMenuOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
+                                    isCurrent
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-950 dark:text-white'
+                                      : 'hover:bg-slate-50 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
+                                  }`}
+                                >
+                                  <span className="mt-0.5">{item.icon}</span>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-xs font-semibold truncate">{item.label}</span>
+                                      {isCurrent && <Check className="w-3.5 h-3.5 text-slate-900 dark:text-amber-400 shrink-0" />}
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+                                      {item.desc}
+                                    </p>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1570,34 +1579,20 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
             </section>
           </main>
 
-          {/* Mobile Bottom Thumb Navigation (Shrink-0 flex child so it never covers sticky editor footers) */}
-          <nav className="no-print lg:hidden shrink-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-1.5 py-1.5 flex items-center justify-around shadow-xs">
+          {/* Mobile Bottom Thumb Navigation (4 Clear Core Actions) */}
+          <nav className="no-print lg:hidden shrink-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-xs">
             <button
               type="button"
               onClick={() => {
-                setActiveTab('raw');
-                setMobileViewMode('controls');
+                if (mobileViewMode === 'preview' && activeTab !== 'raw') {
+                  setMobileViewMode('controls');
+                } else {
+                  setActiveTab('editor');
+                  setMobileViewMode('controls');
+                }
               }}
-              title={studioNav.tabs.raw.tooltip}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors ${
-                activeTab === 'raw' && mobileViewMode === 'controls'
-                  ? 'text-slate-950 dark:text-white font-bold'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <Upload className="w-4 h-4 text-amber-600" />
-              <span className="truncate max-w-[64px]">{studioNav.tabs.raw.shortLabel}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('editor');
-                setMobileViewMode('controls');
-              }}
-              title={studioNav.tabs.editor.tooltip}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors relative ${
-                activeTab === 'editor' && mobileViewMode === 'controls'
+              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors relative touch-manipulation ${
+                activeTab !== 'raw' && mobileViewMode === 'controls'
                   ? 'text-slate-950 dark:text-white font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -1608,24 +1603,23 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                   <Lock className="w-2.5 h-2.5 text-amber-700 absolute -top-1 -right-2" />
                 )}
               </div>
-              <span className="truncate max-w-[64px]">{studioNav.tabs.editor.shortLabel}</span>
+              <span className="truncate max-w-[72px]">{studioNav.tabs.editor.shortLabel.replace(/^\d+\.\s*/, '')}</span>
             </button>
 
             <button
               type="button"
               onClick={() => {
-                setActiveTab('cover');
+                setActiveTab('raw');
                 setMobileViewMode('controls');
               }}
-              title={studioNav.tabs.cover.tooltip}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors ${
-                activeTab === 'cover' && mobileViewMode === 'controls'
+              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors touch-manipulation ${
+                activeTab === 'raw' && mobileViewMode === 'controls'
                   ? 'text-slate-950 dark:text-white font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Mail className="w-4 h-4 text-amber-600" />
-              <span className="truncate max-w-[64px]">{studioNav.tabs.cover.shortLabel}</span>
+              <Upload className="w-4 h-4" />
+              <span className="truncate max-w-[72px]">{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
             </button>
 
             <button
@@ -1633,23 +1627,21 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
               onClick={() => {
                 setMobileViewMode('preview');
               }}
-              title={siteText.app.mobileViewA4Cv}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-semibold transition-colors ${
+              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors touch-manipulation ${
                 mobileViewMode === 'preview'
                   ? 'text-blue-600 dark:text-blue-400 font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <FileText className="w-4 h-4" />
-              <span>{siteText.app.bottomViewA4}</span>
+              <span className="truncate max-w-[76px]">{siteText.app.bottomViewA4}</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportWord}
               disabled={isExportingWord}
-              title={siteText.header.downloadWord}
-              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition-colors ${
+              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-bold transition-colors touch-manipulation ${
                 !hasActivePlan
                   ? 'text-amber-800 dark:text-amber-400 hover:text-amber-900'
                   : 'text-slate-900 dark:text-slate-100 hover:text-slate-950'

@@ -29,9 +29,11 @@ import {
   Lightbulb,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  Sliders,
   Zap
 } from 'lucide-react';
-import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
+import { StudioCreationMode } from './StudioGuideSystem';
 
 interface LinkedInExtractionReport {
   directFetchStatus: string;
@@ -79,31 +81,31 @@ const LINKEDIN_DEEP_COPY: Record<
   pt: {
     subtitle:
       'Cole o URL do seu perfil (ou anexe o PDF do LinkedIn) para importar 100% dos cargos, conquistas, competências, formações, certificações, projetos e idiomas num CV bonito.',
-    extractAllBtn: 'Puxar Tudo do LinkedIn',
+    extractAllBtn: 'Importar Perfil',
     uploadPdfBtn: 'PDF do LinkedIn',
-    uploadPdfTitle: 'No LinkedIn, clique em "Mais → Guardar como PDF" e anexe aqui para importar 100% mesmo se o perfil for privado',
-    privateTipTitle: 'LinkedIn ocultou secções privadas via URL público',
+    uploadPdfTitle: 'No LinkedIn, clique em "Mais → Guardar como PDF" e anexe aqui para importar tudo mesmo se o perfil for privado',
+    privateTipTitle: 'Algumas partes do LinkedIn estão ocultas no link público',
     privateTipBody:
-      'Extraímos os dados públicos indexados, mas para puxar 100% de todos os seus cargos, competências e certificações, abra o seu LinkedIn → "Mais" → "Guardar como PDF" e anexe o ficheiro aqui ou cole o texto abaixo.',
-    privateTipCta: 'Anexar PDF do LinkedIn Agora',
-    completenessLabel: 'Cobertura do Perfil',
+      'Importámos os dados públicos, mas para trazer todos os seus cargos, competências e certificados, abra o seu LinkedIn → "Mais" → "Guardar como PDF" e anexe o ficheiro aqui.',
+    privateTipCta: 'Enviar PDF do LinkedIn',
+    completenessLabel: 'Dados Encontrados',
     photoFoundBadge: 'Foto importada',
     highlightsLabel: 'Conquistas',
     certsLabel: 'Certificados & Projetos',
     langsLabel: 'Idiomas',
-    chooseStyleLabel: 'Escolha o layout bonito do seu CV:',
-    accentColorLabel: 'Cor de destaque:',
-    showPhotoLabel: 'Incluir foto no CV',
-    applyAndViewBtn: 'Aplicar Tudo e Abrir CV Bonito',
+    chooseStyleLabel: 'Escolha o estilo do seu currículo:',
+    accentColorLabel: 'Cor principal:',
+    showPhotoLabel: 'Incluir foto no currículo',
+    applyAndViewBtn: 'Aplicar Tudo e Ver Currículo',
     sourcesLabel: 'Fontes públicas verificadas:',
-    helperPdfTip: 'Dica Pro: Se o seu LinkedIn for privado, vá ao seu perfil → "Mais" → "Guardar como PDF" e clique em "PDF do LinkedIn" acima para puxar literalmente tudo.',
+    helperPdfTip: 'Dica: Se o seu LinkedIn for privado, abra o perfil → "Mais" → "Guardar como PDF" e clique em "PDF do LinkedIn" acima para importar tudo.',
     styleOptions: [
-      { id: 'executive_harvard', label: 'Harvard Executivo' },
-      { id: 'tech_modern', label: 'Tech Moderno' },
-      { id: 'creative_split', label: 'Criativo Split' },
+      { id: 'executive_harvard', label: 'Clássico Executivo' },
+      { id: 'tech_modern', label: 'Moderno Tecnologia' },
+      { id: 'creative_split', label: 'Moderno 2 Colunas' },
       { id: 'un_classic', label: 'Corporativo' },
-      { id: 'european_europass', label: 'Europass' },
-      { id: 'ats_compact', label: 'ATS Puro' }
+      { id: 'european_europass', label: 'Europeu (Com Foto)' },
+      { id: 'ats_compact', label: 'Simples (Sem Foto)' }
     ]
   },
   en: {
@@ -693,7 +695,7 @@ export const RawInputGenerator: React.FC<RawInputGeneratorProps> = ({
   );
   const [linkedInUrl, setLinkedInUrl] = useState<string>('');
   const [showLinkedInHelper, setShowLinkedInHelper] = useState<boolean>(false);
-  const [showPresets, setShowPresets] = useState<boolean>(false);
+  const [showImportOptions, setShowImportOptions] = useState<boolean>(false);
   const [isLinkedInExtracting, setIsLinkedInExtracting] = useState<boolean>(false);
   const lkUi = LINKEDIN_DEEP_COPY[siteLanguage] || LINKEDIN_DEEP_COPY.en;
   const [linkedInJobState, setLinkedInJobState] = useState<{
@@ -1420,9 +1422,8 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              {guideMode === 'guided' && <LightbulbStepBadge step={1} active size="sm" />}
-              <span>{wizUi.entryTitle}</span>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+              {wizUi.entryTitle}
             </h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               {wizUi.entrySubtitle}
@@ -1487,7 +1488,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                   key={sNum}
                   type="button"
                   onClick={() => setWizardStep(sNum)}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold transition-colors ${
+                  className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold transition-colors ${
                     wizardStep === sNum
                       ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
                       : wizardStep > sNum
@@ -1495,7 +1496,7 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
                   }`}
                 >
-                  <LightbulbStepBadge step={sNum} active={wizardStep === sNum} completed={wizardStep > sNum} />
+                  {wizardStep > sNum ? <Check className="w-3 h-3" /> : sNum}
                 </button>
               ))}
             </div>
@@ -1793,12 +1794,10 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
         </div>
       ) : (
         <>
-          {/* PATH B: EXISTING IMPORT LINKEDIN / PDF / RAW TEXT */}
-          {/* Compact Header & Mode / Standard Controls */}
+          {/* PATH B: CLEAN IMPORT LINKEDIN / PDF / RAW TEXT */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                {guideMode === 'guided' && <LightbulbStepBadge step={1} active />}
                 <FileText className="w-4 h-4 text-slate-800 dark:text-slate-200 shrink-0" />
                 <h2 className="text-sm font-bold text-slate-900 dark:text-white truncate">
                   {ui.title}
@@ -1806,136 +1805,142 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
-                {/* Compact Mode Switcher */}
-                <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setShowImportOptions((prev) => !prev)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition-colors whitespace-nowrap ${
+                    showImportOptions
+                      ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                  aria-expanded={showImportOptions}
+                >
+                  <Sliders className="w-3.5 h-3.5 shrink-0" />
+                  <span>{siteLanguage === 'pt' ? 'Opções' : 'Options'}</span>
+                  <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${showImportOptions ? 'rotate-180' : ''}`} />
+                </button>
+
+                {candidateRawText && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setGenerationMode('standard');
-                  setErrorMessage(null);
-                }}
-                title={ui.modeStandardDesc}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
-                  generationMode === 'standard'
-                    ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {ui.modeStandardTitle}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setGenerationMode('tailored');
-                  setErrorMessage(null);
-                }}
-                title={ui.modeTailoredDesc}
-                className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
-                  generationMode === 'tailored'
-                    ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {ui.modeTailoredTitle}
-              </button>
+                    onClick={handleClearAll}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 bg-slate-50 dark:bg-slate-800 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
+                    title={ui.clearTitle}
+                    aria-label={ui.clearBtn}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowPresets((prev) => !prev)}
-              title={ui.presetsLabel}
-              className={`px-2 py-1 text-[11px] font-semibold rounded-lg border transition-colors whitespace-nowrap ${
-                showPresets
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              {ui.presetsLabel}
-            </button>
+            {showImportOptions && (
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-2.5 animate-in fade-in slide-in-from-top-1">
+                {/* Mode & Presets Row */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGenerationMode('standard');
+                        setErrorMessage(null);
+                      }}
+                      title={ui.modeStandardDesc}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                        generationMode === 'standard'
+                          ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {ui.modeStandardTitle}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGenerationMode('tailored');
+                        setErrorMessage(null);
+                      }}
+                      title={ui.modeTailoredDesc}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-colors whitespace-nowrap ${
+                        generationMode === 'tailored'
+                          ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {ui.modeTailoredTitle}
+                    </button>
+                  </div>
 
-            {candidateRawText && (
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="p-1.5 text-slate-400 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
-                title={ui.clearTitle}
-                aria-label={ui.clearBtn}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-slate-500 font-medium">{ui.presetsLabel}:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleLoadExecutiveProfile();
+                        setShowImportOptions(false);
+                      }}
+                      className="px-2 py-1 bg-slate-50 dark:bg-slate-800 hover:bg-slate-900 hover:text-white border border-slate-200 dark:border-slate-700 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+                      title={ui.presetExecTitle}
+                    >
+                      {ui.presetExec}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleLoadTechLeadProfile();
+                        setShowImportOptions(false);
+                      }}
+                      className="px-2 py-1 bg-slate-50 dark:bg-slate-800 hover:bg-slate-900 hover:text-white border border-slate-200 dark:border-slate-700 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+                      title={ui.presetTechTitle}
+                    >
+                      {ui.presetTech}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleLoadFinanceProfile();
+                        setShowImportOptions(false);
+                      }}
+                      className="px-2 py-1 bg-slate-50 dark:bg-slate-800 hover:bg-slate-900 hover:text-white border border-slate-200 dark:border-slate-700 rounded-md text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors"
+                      title={ui.presetFinTitle}
+                    >
+                      {ui.presetFin}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Target Standard Selector */}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[11px] text-slate-500 font-medium">{ui.targetLabel}</span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {(
+                      [
+                        { id: 'onu', label: ui.stdOnu, title: ui.stdOnuTitle },
+                        { id: 'tech', label: ui.stdTech, title: ui.stdTechTitle },
+                        { id: 'harvard', label: ui.stdHarvard, title: ui.stdHarvardTitle },
+                        { id: 'europass', label: ui.stdEuropass, title: ui.stdEuropassTitle },
+                        { id: 'ats', label: ui.stdAts, title: ui.stdAtsTitle }
+                      ] as const
+                    ).map((std) => (
+                      <button
+                        key={std.id}
+                        type="button"
+                        onClick={() => setTargetStandard(std.id)}
+                        title={std.title}
+                        className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
+                          targetStandard === std.id
+                            ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-950'
+                        }`}
+                      >
+                        {std.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-        </div>
-
-        {/* Collapsible Career Presets */}
-        {showPresets && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5 text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                handleLoadExecutiveProfile();
-                setShowPresets(false);
-              }}
-              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
-              title={ui.presetExecTitle}
-            >
-              {ui.presetExec}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleLoadTechLeadProfile();
-                setShowPresets(false);
-              }}
-              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
-              title={ui.presetTechTitle}
-            >
-              {ui.presetTech}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleLoadFinanceProfile();
-                setShowPresets(false);
-              }}
-              className="px-2.5 py-1 bg-slate-50 hover:bg-slate-900 hover:text-white border border-slate-200 rounded-md text-[11px] font-semibold text-slate-700 transition-colors"
-              title={ui.presetFinTitle}
-            >
-              {ui.presetFin}
-            </button>
-          </div>
-        )}
-
-        {/* Compact Target Standard Selector */}
-        <div className="flex flex-wrap items-center gap-1.5 text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
-          <span className="text-[11px] text-slate-500 font-medium">{ui.targetLabel}</span>
-          <div className="flex flex-wrap items-center gap-1">
-            {(
-              [
-                { id: 'onu', label: ui.stdOnu, title: ui.stdOnuTitle },
-                { id: 'tech', label: ui.stdTech, title: ui.stdTechTitle },
-                { id: 'harvard', label: ui.stdHarvard, title: ui.stdHarvardTitle },
-                { id: 'europass', label: ui.stdEuropass, title: ui.stdEuropassTitle },
-                { id: 'ats', label: ui.stdAts, title: ui.stdAtsTitle }
-              ] as const
-            ).map((std) => (
-              <button
-                key={std.id}
-                type="button"
-                onClick={() => setTargetStandard(std.id)}
-                title={std.title}
-                className={`px-2 py-0.5 text-[11px] font-semibold rounded-md transition-colors ${
-                  targetStandard === std.id
-                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-950'
-                }`}
-              >
-                {std.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
 
       {/* Dynamic Layout: Full Width in Standard Mode, 2-Column Split in Tailored Mode */}
       <div className={`grid grid-cols-1 ${generationMode === 'tailored' ? 'xl:grid-cols-2' : ''} gap-5`}>
@@ -2019,32 +2024,32 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
                   placeholder={ui.linkedinPlaceholder}
                   className="flex-1 text-xs px-3 py-2 bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600/30 focus:border-blue-600 text-slate-800 placeholder:text-slate-400"
                 />
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={() => linkedInPdfInputRef.current?.click()}
                     disabled={isLinkedInExtracting}
                     title={lkUi.uploadPdfTitle}
-                    className="px-3 py-2 text-xs font-semibold text-blue-800 bg-white hover:bg-blue-100/60 border border-blue-300 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-1.5"
+                    className="min-h-[40px] px-3 py-2 text-xs font-semibold text-blue-800 bg-white hover:bg-blue-100/60 border border-blue-300 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap flex items-center justify-center gap-1.5 touch-manipulation"
                   >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>{lkUi.uploadPdfBtn}</span>
+                    <Upload className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{lkUi.uploadPdfBtn}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => void handleExtractLinkedInBackgroundJob()}
                     disabled={isLinkedInExtracting}
-                    className="px-3.5 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 shadow-xs flex items-center justify-center gap-1.5"
+                    className="min-h-[40px] px-3.5 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 shadow-xs flex items-center justify-center gap-1.5 touch-manipulation"
                   >
                     {isLinkedInExtracting ? (
                       <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>{ui.linkedinExtracting}</span>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                        <span className="truncate">{ui.linkedinExtracting}</span>
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                        <span>{lkUi.extractAllBtn}</span>
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                        <span className="truncate">{lkUi.extractAllBtn}</span>
                       </>
                     )}
                   </button>
@@ -2466,7 +2471,6 @@ IFRS, Controladoria, Modelagem Financeira, SAP ERP, Auditoria, Governação Corp
               disabled={isGenerating}
               className="w-full sm:w-auto px-6 py-3 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg whitespace-nowrap shrink-0"
             >
-              {guideMode === 'guided' && !isGenerating && <LightbulbStepBadge step={2} active />}
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-amber-400" />

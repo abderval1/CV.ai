@@ -224,31 +224,31 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
   return (
     <div className="space-y-4">
       {/* Mode Switcher Tabs */}
-      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
+      <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200">
         <button
           type="button"
           onClick={() => setPanelMode('full')}
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+          className={`min-w-0 min-h-[38px] py-2 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 text-center leading-tight ${
             panelMode === 'full'
               ? 'bg-white text-slate-950 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600" />
-          <span>{ui.tabFull}</span>
+          <SlidersHorizontal className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+          <span className="truncate">{ui.tabFull}</span>
         </button>
 
         <button
           type="button"
           onClick={() => setPanelMode('xyz')}
-          className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+          className={`min-w-0 min-h-[38px] py-2 px-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 text-center leading-tight ${
             panelMode === 'xyz'
               ? 'bg-white text-slate-950 shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Wand2 className="w-3.5 h-3.5 text-slate-700" />
-          <span>{ui.tabXyz}</span>
+          <Wand2 className="w-3.5 h-3.5 text-slate-700 shrink-0" />
+          <span className="truncate">{ui.tabXyz}</span>
         </button>
       </div>
 
@@ -480,8 +480,8 @@ export const AiTailorPanel: React.FC<AiTailorPanelProps> = ({
           {/* Tailoring Results & Diff Preview */}
           {tailoredResult && (
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div className="min-w-0">
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                     {ui.proposalTitle}
                   </h3>
