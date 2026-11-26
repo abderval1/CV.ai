@@ -73,6 +73,8 @@ export interface StudioTexts {
     otherLangs: string;
     advisor: string;
     wordBtn: string;
+    coverBtn: string;
+    settingsBtn: string;
     pdfBtn: string;
     generating: string;
   };
@@ -255,7 +257,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'Guardar Cópia',
       otherLangs: 'Baixar noutro idioma',
       advisor: 'Modelos',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Baixar CV',
+      coverBtn: 'Baixar Carta',
+      settingsBtn: 'Ajustes',
       pdfBtn: 'PDF',
       generating: 'A Gerar...'
     },
@@ -481,7 +485,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'JSON Backup',
       otherLangs: 'Other Languages',
       advisor: 'Templates',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Download Resume',
+      coverBtn: 'Download Letter',
+      settingsBtn: 'Settings',
       pdfBtn: 'PDF',
       generating: 'Exporting...'
     },
@@ -707,7 +713,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'Respaldo JSON',
       otherLangs: 'Otros Idiomas',
       advisor: 'Plantillas',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Descargar Currículum',
+      coverBtn: 'Descargar Carta',
+      settingsBtn: 'Ajustes',
       pdfBtn: 'PDF',
       generating: 'Generando...'
     },
@@ -931,7 +939,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'Backup JSON',
       otherLangs: 'Autres Langues',
       advisor: 'Modèles',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Télécharger CV',
+      coverBtn: 'Télécharger Lettre',
+      settingsBtn: 'Réglages',
       pdfBtn: 'PDF',
       generating: 'Exportation...'
     },
@@ -1150,7 +1160,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'JSON-Backup',
       otherLangs: 'Andere Sprachen',
       advisor: 'Vorlagen',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Lebenslauf laden',
+      coverBtn: 'Brief laden',
+      settingsBtn: 'Anpassen',
       pdfBtn: 'PDF',
       generating: 'Export...'
     },
@@ -1371,7 +1383,9 @@ export const STUDIO_TRANSLATIONS: Record<SiteLanguageCode, StudioTexts> = {
       jsonBackup: 'Backup JSON',
       otherLangs: 'Altre Lingue',
       advisor: 'Modelli',
-      wordBtn: 'Word (.docx)',
+      wordBtn: 'Scarica CV',
+      coverBtn: 'Scarica Lettera',
+      settingsBtn: 'Opzioni',
       pdfBtn: 'PDF',
       generating: 'Esportazione...'
     },

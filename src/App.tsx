@@ -1088,14 +1088,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           <LandingHeroView
             onStartCreating={() =>
               handleUseShowcaseItem({
-                targetTab: 'raw',
+                targetTab: 'editor',
                 label: appUi.resumeBuilderLabel
               })
             }
             onStartGuided={() => {
               handleSelectStudioMode('guided');
               handleUseShowcaseItem({
-                targetTab: 'raw',
+                targetTab: 'editor',
                 label: appUi.resumeBuilderLabel
               });
             }}
@@ -1157,7 +1157,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
               }`}
             >
               {/* Ultra-Simple Studio Navigation Bar: 2 Core Modes + 1 Clean Tools Menu */}
-              <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 px-3 sm:px-4 py-2 flex items-center justify-between gap-2">
+              <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2">
                 <div
                   role="tablist"
                   aria-label={studioNav.primaryGroupLabel}
@@ -1172,9 +1172,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       setStudioToolsMenuOpen(false);
                     }}
                     title={studioNav.tabs.editor.tooltip}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
+                    className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 ${
                       activeTab === 'editor'
-                        ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white font-bold shadow-2xs'
+                        ? 'bg-blue-600 text-white font-bold shadow-xs'
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
@@ -1191,9 +1191,9 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       setStudioToolsMenuOpen(false);
                     }}
                     title={studioNav.tabs.raw.tooltip}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 dark:focus-visible:outline-slate-100 ${
+                    className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 ${
                       activeTab === 'raw'
-                        ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white font-bold shadow-2xs'
+                        ? 'bg-blue-600 text-white font-bold shadow-xs'
                         : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
@@ -1257,14 +1257,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                           type="button"
                           onClick={() => setStudioToolsMenuOpen((prev) => !prev)}
                           aria-expanded={studioToolsMenuOpen}
-                          className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
+                          className={`min-h-[36px] px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition-colors whitespace-nowrap ${
                             isExtraToolActive || studioToolsMenuOpen
-                              ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-950 border-slate-900 dark:border-slate-100'
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                               : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
                           }`}
                         >
                           <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                          <span className="max-w-[105px] sm:max-w-[150px] truncate">{activeToolLabel}</span>
+                          <span className="max-w-[140px] sm:max-w-[180px] truncate">{activeToolLabel}</span>
                           <ChevronDown
                             className={`w-3.5 h-3.5 shrink-0 transition-transform ${
                               studioToolsMenuOpen ? 'rotate-180' : ''
@@ -1286,7 +1286,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                                   }}
                                   className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 transition-colors ${
                                     isCurrent
-                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-950 dark:text-white'
+                                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-100'
                                       : 'hover:bg-slate-50 dark:hover:bg-slate-800/70 text-slate-800 dark:text-slate-200'
                                   }`}
                                 >
@@ -1294,7 +1294,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="text-xs font-semibold truncate">{item.label}</span>
-                                      {isCurrent && <Check className="w-3.5 h-3.5 text-slate-900 dark:text-amber-400 shrink-0" />}
+                                      {isCurrent && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />}
                                     </div>
                                     <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 mt-0.5">
                                       {item.desc}
@@ -1378,6 +1378,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                       onChange={updateCvWithCache}
                       onOpenAiTailor={() => setActiveTab('ai')}
                       onOpenCoverLetter={() => setActiveTab('cover')}
+                      onOpenJobs={() => {
+                        setActiveTab('jobs');
+                        setMobileViewMode('controls');
+                      }}
+                      onExportCv={handleExportWord}
                       onOpenAuthModal={(prompt) => handleOpenAuth(prompt)}
                       onOpenPricingModal={(msg) => handleOpenPricingModal(msg)}
                       density={density}
@@ -1580,7 +1585,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           </main>
 
           {/* Mobile Bottom Thumb Navigation (4 Clear Core Actions) */}
-          <nav className="no-print lg:hidden shrink-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-center justify-around shadow-xs">
+          <nav className="no-print lg:hidden shrink-0 z-30 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex items-center gap-1.5 shadow-xs">
             <button
               type="button"
               onClick={() => {
@@ -1591,19 +1596,19 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                   setMobileViewMode('controls');
                 }
               }}
-              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors relative touch-manipulation ${
+              className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors relative touch-manipulation ${
                 activeTab !== 'raw' && mobileViewMode === 'controls'
-                  ? 'text-slate-950 dark:text-white font-bold'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <div className="relative">
                 <Edit3 className="w-4 h-4" />
                 {!hasActivePlan && (
-                  <Lock className="w-2.5 h-2.5 text-amber-700 absolute -top-1 -right-2" />
+                  <Lock className="w-2.5 h-2.5 text-amber-600 absolute -top-1 -right-2" />
                 )}
               </div>
-              <span className="truncate max-w-[72px]">{studioNav.tabs.editor.shortLabel.replace(/^\d+\.\s*/, '')}</span>
+              <span className="truncate w-full text-center">{studioNav.tabs.editor.shortLabel.replace(/^\d+\.\s*/, '')}</span>
             </button>
 
             <button
@@ -1612,14 +1617,14 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                 setActiveTab('raw');
                 setMobileViewMode('controls');
               }}
-              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors touch-manipulation ${
+              className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors touch-manipulation ${
                 activeTab === 'raw' && mobileViewMode === 'controls'
-                  ? 'text-slate-950 dark:text-white font-bold'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Upload className="w-4 h-4" />
-              <span className="truncate max-w-[72px]">{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
+              <span className="truncate w-full text-center">{studioNav.tabs.raw.shortLabel.replace(/^\d+\.\s*/, '')}</span>
             </button>
 
             <button
@@ -1627,32 +1632,32 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
               onClick={() => {
                 setMobileViewMode('preview');
               }}
-              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-colors touch-manipulation ${
+              className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-1.5 rounded-lg text-[11px] font-semibold transition-colors touch-manipulation ${
                 mobileViewMode === 'preview'
-                  ? 'text-blue-600 dark:text-blue-400 font-bold'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <FileText className="w-4 h-4" />
-              <span className="truncate max-w-[76px]">{siteText.app.bottomViewA4}</span>
+              <span className="truncate w-full text-center">{siteText.app.bottomViewA4}</span>
             </button>
 
             <button
               type="button"
               onClick={handleExportWord}
               disabled={isExportingWord}
-              className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-3 rounded-lg text-[10px] font-bold transition-colors touch-manipulation ${
+              className={`flex-1 min-w-0 min-h-[48px] flex flex-col items-center justify-center gap-0.5 py-1 px-2 rounded-lg text-[11px] font-bold transition-colors shadow-xs touch-manipulation ${
                 !hasActivePlan
-                  ? 'text-amber-800 dark:text-amber-400 hover:text-amber-900'
-                  : 'text-slate-900 dark:text-slate-100 hover:text-slate-950'
+                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
               {!hasActivePlan ? (
-                <Lock className="w-4 h-4 text-amber-700" />
+                <Lock className="w-4 h-4 text-slate-950 shrink-0" />
               ) : (
-                <Download className="w-4 h-4 text-slate-900 dark:text-slate-100" />
+                <Download className="w-4 h-4 text-white shrink-0" />
               )}
-              <span>{isExportingWord ? studioText.docToolbar.generating : !hasActivePlan ? appUi.wordBadgeLocked : appUi.wordBadgeOpen}</span>
+              <span className="truncate w-full text-center">{isExportingWord ? studioText.docToolbar.generating : !hasActivePlan ? appUi.wordBadgeLocked : appUi.wordBadgeOpen}</span>
             </button>
           </nav>
         </>

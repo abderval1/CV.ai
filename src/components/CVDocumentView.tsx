@@ -35,6 +35,7 @@ import { getTemplateById } from '../data/templateCatalog';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useLanguage, LanguageCode } from '../context/LanguageContext';
+import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { SECTION_TITLES_BY_LANG, getResolvedSectionTitles } from '../utils/cvDocumentLabels';
 import { getStoredPlatformSettingsSync, logGenerationError } from '../services/adminModulesService';
 import { recordAuditLog } from '../services/auditLogService';
@@ -81,7 +82,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
-  const { studioText, t } = useLanguage();
+  const { studioText, siteLanguage, t } = useLanguage();
+  const appUi = (TOOLS_UI_TRANSLATIONS[siteLanguage] || TOOLS_UI_TRANSLATIONS.en).app;
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
@@ -591,13 +593,13 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               aria-expanded={customizationMenuOpen}
               className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap touch-manipulation ${
                 customizationMenuOpen
-                  ? 'bg-slate-900 text-white border-slate-900'
+                  ? 'bg-blue-600 text-white border-blue-600'
                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
               title="Ajustes de foto, cor, tamanho do texto, espaçamento e cópia"
             >
               <Sliders className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Ajustes</span>
+              <span>{studioText.docToolbar.settingsBtn}</span>
               <span
                 className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
                 style={{ backgroundColor: currentAccent }}
@@ -886,7 +888,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               onClick={() => setLangMenuOpen((v) => !v)}
               className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap disabled:opacity-60 touch-manipulation ${
                 langMenuOpen
-                  ? 'bg-slate-900 text-white border-slate-900'
+                  ? 'bg-blue-600 text-white border-blue-600'
                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
               }`}
               title={studioText.docToolbar.cvContentLangTooltip}
@@ -939,7 +941,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       }}
                       className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
                         isActive
-                          ? 'bg-slate-900 text-white font-semibold'
+                          ? 'bg-blue-600 text-white font-semibold'
                           : 'text-slate-700 hover:bg-slate-100'
                       }`}
                     >
@@ -1002,34 +1004,32 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             <span>{studioText.docToolbar.pdfBtn}</span>
           </button>
 
-          {/* Word Export Button */}
+          {/* Localized CV / Resume Export Button */}
           <button
             type="button"
             onClick={() => {
               if (!isAuthenticated) {
-                onOpenAuthModal?.('O registo é obrigatório para descarregar o currículo em Word (.docx).');
+                onOpenAuthModal?.(appUi.authExportPrompt);
                 return;
               }
               if (!hasActivePlan) {
-                onOpenPricingModal?.(
-                  'O download do currículo em Word (.docx) requer a ativação de um plano Pro ou Executive.'
-                );
+                onOpenPricingModal?.(appUi.planExportPrompt);
                 return;
               }
               onExportWord();
             }}
             disabled={isExportingWord}
-            className={`min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap touch-manipulation ${
+            className={`min-h-[38px] flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap shadow-xs touch-manipulation ${
               !isAuthenticated || !hasActivePlan
                 ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
             title={
               !isAuthenticated
-                ? 'Registo obrigatório para descarregar em Word (.docx)'
+                ? appUi.authExportPrompt
                 : !hasActivePlan
-                ? 'Requer ativação de Plano (Pro ou Executive) para descarregar Word (.docx)'
-                : 'Baixar documento editável no Microsoft Word (.docx)'
+                ? appUi.planExportPrompt
+                : studioText.docToolbar.wordBtn
             }
           >
             {!isAuthenticated || !hasActivePlan ? (
@@ -1092,7 +1092,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
         >
           {/* CASE 1: Creative Split Two-Column Layout */}
           {isCreative ? (
-            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[1120px] flex flex-col md:flex-row relative overflow-hidden ${
+            <article className={`cv-a4-sheet cv-creative-split bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[580px] md:min-h-[1120px] flex flex-col md:flex-row relative overflow-hidden ${
               cv.fontFamily ? resolvedFontClass : 'font-jakarta'
             } ${
               density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
@@ -1128,7 +1128,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
                       })
                     }
-                    className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white leading-tight"
+                    className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white leading-tight break-words"
                   >
                     {cv.personalDetails.name || 'SEU NOME'}
                   </h1>
@@ -1399,7 +1399,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   }`}
                 >
                   {/* Left / Main text details */}
-                  <div className={`flex-1 ${isClassic || isBoard ? 'text-center' : 'text-left'}`}>
+                  <div className={`flex-1 min-w-0 ${isClassic || isBoard ? 'text-center' : 'text-left'}`}>
                     {/* European flag/official indicator in Europass */}
                     {isEuropass && (
                       <div className="flex items-center gap-2 mb-2">
@@ -1498,7 +1498,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
                         })
                       }
-                      className={`font-bold tracking-tight uppercase ${
+                      className={`font-bold tracking-tight uppercase break-words ${
                         isHarvard || isFinance || isBoard
                           ? 'text-2xl sm:text-3xl tracking-wide font-serif-cv'
                           : isClassic

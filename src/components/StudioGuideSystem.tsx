@@ -77,7 +77,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Começar',
-        clickHint: 'Escolha o Assistente Guiado abaixo ou cole o seu LinkedIn/PDF e clique em Gerar CV.',
+        clickHint: 'Envie um PDF/Word (.docx), importe o LinkedIn ou cole o texto para preencher o editor.',
         nextLabel: 'Ir para Passo 2: Editar'
       },
       {
@@ -105,7 +105,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finalizar',
-        clickHint: 'Gere a Carta de Apresentação ou clique em Exportar Word / PDF no topo.',
+        clickHint: 'Gere a Carta de Apresentação ou clique em Baixar CV / PDF no topo.',
         nextLabel: 'Exportar CV Final'
       }
     ],
@@ -131,7 +131,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Start',
-        clickHint: 'Use the 4-question Step-by-Step Builder below, or paste LinkedIn/PDF and generate.',
+        clickHint: 'Upload a PDF/Word (.docx) file, pull LinkedIn, or paste text to prefill the editor.',
         nextLabel: 'Go to Step 2: Edit'
       },
       {
@@ -159,7 +159,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finish',
-        clickHint: 'Generate your Cover Letter or export your finished CV in Word / PDF at the top.',
+        clickHint: 'Generate your Cover Letter or download your finished resume / PDF at the top.',
         nextLabel: 'Export Final CV'
       }
     ],
@@ -185,7 +185,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Empezar',
-        clickHint: 'Usa el asistente de 4 preguntas abajo o pega tu LinkedIn/PDF y genera el CV.',
+        clickHint: 'Sube un PDF/Word (.docx), importa LinkedIn o pega tu texto para rellenar el editor.',
         nextLabel: 'Ir al Paso 2: Editar'
       },
       {
@@ -213,7 +213,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finalizar',
-        clickHint: 'Genera tu Carta de Presentación o exporta tu CV en Word / PDF arriba.',
+        clickHint: 'Genera tu Carta de Presentación o descarga tu currículum / PDF arriba.',
         nextLabel: 'Exportar CV Final'
       }
     ],
@@ -239,7 +239,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Démarrer',
-        clickHint: 'Utilisez l’assistant en 4 questions ci-dessous ou importez votre LinkedIn/PDF.',
+        clickHint: 'Importez un fichier PDF/Word (.docx), votre LinkedIn ou collez votre texte pour remplir l’éditeur.',
         nextLabel: 'Aller à l’Étape 2 : Éditer'
       },
       {
@@ -267,7 +267,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finaliser',
-        clickHint: 'Générez votre Lettre de Motivation ou exportez votre CV en Word / PDF en haut.',
+        clickHint: 'Générez votre Lettre de Motivation ou téléchargez votre CV / PDF en haut.',
         nextLabel: 'Exporter le CV Final'
       }
     ],
@@ -293,7 +293,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Starten',
-        clickHint: 'Nutzen Sie den 4-Schritte-Assistenten unten oder importieren Sie LinkedIn/PDF.',
+        clickHint: 'Laden Sie eine PDF/Word-Datei (.docx) hoch, importieren Sie LinkedIn oder fügen Sie Text ein.',
         nextLabel: 'Zu Schritt 2: Bearbeiten'
       },
       {
@@ -321,7 +321,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Abschließen',
-        clickHint: 'Anschreiben generieren oder fertigen Lebenslauf oben als Word / PDF exportieren.',
+        clickHint: 'Anschreiben generieren oder fertigen Lebenslauf / PDF oben herunterladen.',
         nextLabel: 'Finalen CV Exportieren'
       }
     ],
@@ -347,7 +347,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 1,
         tab: 'raw',
         label: 'Inizia',
-        clickHint: 'Usa la procedura guidata a 4 domande qui sotto o importa LinkedIn/PDF.',
+        clickHint: 'Carica un PDF/Word (.docx), importa LinkedIn o incolla il testo per compilare l’editor.',
         nextLabel: 'Vai al Passo 2: Modifica'
       },
       {
@@ -375,7 +375,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Completa',
-        clickHint: 'Genera la Lettera di Presentazione o esporta in Word / PDF in alto.',
+        clickHint: 'Genera la Lettera di Presentazione o scarica il tuo CV / PDF in alto.',
         nextLabel: 'Esporta CV Finale'
       }
     ],

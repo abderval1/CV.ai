@@ -268,7 +268,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <button
                   type="button"
                   onClick={onStartGuided || onStartCreating}
-                  className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-semibold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation shadow-xs"
+                  className="w-full sm:w-auto min-h-[46px] px-7 py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center justify-center gap-2 group whitespace-nowrap touch-manipulation shadow-sm"
                 >
                   <span>{l.ctaBuild}</span>
                   <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
@@ -309,7 +309,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                         onClick={() => setHeroModelIdx(idx)}
                         className={`px-2 py-1 rounded-md font-semibold transition-colors whitespace-nowrap shrink-0 ${
                           heroModelIdx === idx
-                            ? 'bg-amber-400 text-slate-950'
+                            ? 'bg-blue-600 text-white'
                             : 'text-slate-600 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white'
                         }`}
                       >
@@ -326,7 +326,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                         onClick={() => setHeroPreviewLang(lng)}
                         className={`px-2 py-1 rounded-md font-bold uppercase transition-colors ${
                           heroPreviewLang === lng
-                            ? 'bg-slate-900 dark:bg-slate-800 text-amber-300'
+                            ? 'bg-blue-600 text-white'
                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                         }`}
                       >
@@ -358,7 +358,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       {activeHeroRuleLabel}
                     </p>
                     <p className="text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                      {activeHeroModel.atsLabel} · Word / PDF
+                      {activeHeroModel.atsLabel} · Word (.docx) · PDF
                     </p>
                   </div>
                   <button
@@ -367,7 +367,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                       trackFrontendTelemetry({ type: 'template_selected', templateStyle: activeHeroModel.id });
                       onSelectTemplate(activeHeroModel.id);
                     }}
-                    className="px-3 py-1.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-amber-300 font-semibold rounded-md transition-colors whitespace-nowrap shrink-0"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 shadow-xs"
                   >
                     {l.editThisModel}
                   </button>
@@ -427,13 +427,13 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
+            <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs">
               <button
                 type="button"
                 onClick={() => setTemplateFilter('all')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
                   templateFilter === 'all'
-                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    ? 'bg-blue-600 text-white font-semibold shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
                 }`}
               >
@@ -444,7 +444,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 onClick={() => setTemplateFilter('without_photo')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
                   templateFilter === 'without_photo'
-                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    ? 'bg-blue-600 text-white font-semibold shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
                 }`}
               >
@@ -455,7 +455,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 onClick={() => setTemplateFilter('with_photo')}
                 className={`px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap ${
                   templateFilter === 'with_photo'
-                    ? 'bg-slate-900 dark:bg-slate-800 text-white font-semibold'
+                    ? 'bg-blue-600 text-white font-semibold shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
                 }`}
               >
@@ -731,7 +731,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleCheckoutTrigger('executive')}
-                  className="mt-6 w-full min-h-[44px] py-2.5 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 border border-slate-900 dark:border-slate-700 text-white font-semibold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 touch-manipulation"
+                  className="mt-6 w-full min-h-[44px] py-2.5 bg-blue-600 hover:bg-blue-700 border border-blue-600 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs touch-manipulation"
                 >
                   <span>{l.execCtaPrefix} {execDisplayName}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -789,7 +789,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
               <button
                 type="button"
                 onClick={onStartGuided || onStartCreating}
-                className="min-h-[44px] px-6 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold text-xs rounded-lg transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
+                className="min-h-[44px] px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors inline-flex items-center justify-center gap-1.5 whitespace-nowrap shadow-xs"
               >
                 <span>{l.closingCtaBuild}</span>
                 <ArrowRight className="w-3.5 h-3.5" />

@@ -49,10 +49,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Gerar Carta Adaptada ao Perfil',
     copyBtn: 'Copiar Texto',
     copiedBtn: 'Copiado!',
-    wordBtn: 'Descarregar Carta Word (.docx)',
+    wordBtn: 'Baixar Carta',
     bodyLabel: 'Conteúdo da Carta de Apresentação (Editável)',
     wordsLabel: 'palavras',
-    editHint: 'Pode editar qualquer parágrafo diretamente antes de exportar para Word (.docx).',
+    editHint: 'Pode editar qualquer parágrafo diretamente antes de baixar a carta.',
     printBtn: 'Imprimir A4'
   },
   en: {
@@ -65,10 +65,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Generate Profile-Tailored Letter',
     copyBtn: 'Copy Text',
     copiedBtn: 'Copied!',
-    wordBtn: 'Download Word Letter (.docx)',
+    wordBtn: 'Download Letter',
     bodyLabel: 'Cover Letter Body (Editable)',
     wordsLabel: 'words',
-    editHint: 'You can edit any paragraph directly before exporting to Microsoft Word (.docx).',
+    editHint: 'You can edit any paragraph directly before downloading your letter.',
     printBtn: 'Print A4'
   },
   es: {
@@ -81,10 +81,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Generar Carta Adaptada al Perfil',
     copyBtn: 'Copiar Texto',
     copiedBtn: '¡Copiado!',
-    wordBtn: 'Descargar Carta Word (.docx)',
+    wordBtn: 'Descargar Carta',
     bodyLabel: 'Contenido de la Carta (Editable)',
     wordsLabel: 'palabras',
-    editHint: 'Puedes editar cualquier párrafo directamente antes de exportar a Word (.docx).',
+    editHint: 'Puedes editar cualquier párrafo directamente antes de descargar la carta.',
     printBtn: 'Imprimir A4'
   },
   fr: {
@@ -97,10 +97,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Générer une Lettre Sur Mesure',
     copyBtn: 'Copier le Texte',
     copiedBtn: 'Copié !',
-    wordBtn: 'Télécharger en Word (.docx)',
+    wordBtn: 'Télécharger Lettre',
     bodyLabel: 'Contenu de la Lettre (Modifiable)',
     wordsLabel: 'mots',
-    editHint: 'Modifiez tout paragraphe avant l’exportation officielle en Word (.docx).',
+    editHint: 'Modifiez tout paragraphe avant de télécharger votre lettre.',
     printBtn: 'Imprimer A4'
   },
   de: {
@@ -113,10 +113,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Profilbasiertes Anschreiben erstellen',
     copyBtn: 'Text kopieren',
     copiedBtn: 'Kopiert!',
-    wordBtn: 'Word-Anschreiben (.docx) laden',
+    wordBtn: 'Anschreiben laden',
     bodyLabel: 'Inhalt des Anschreibens (Bearbeitbar)',
     wordsLabel: 'Wörter',
-    editHint: 'Sie können jeden Absatz vor dem Export in Microsoft Word (.docx) direkt bearbeiten.',
+    editHint: 'Sie können jeden Absatz vor dem Herunterladen direkt bearbeiten.',
     printBtn: 'A4 Drucken'
   },
   it: {
@@ -129,10 +129,10 @@ const COVER_PANEL_UI = {
     generateBtn: 'Genera Lettera Su Misura',
     copyBtn: 'Copia Testo',
     copiedBtn: 'Copiato!',
-    wordBtn: 'Scarica Lettera Word (.docx)',
+    wordBtn: 'Scarica Lettera',
     bodyLabel: 'Contenuto della Lettera (Modificabile)',
     wordsLabel: 'parole',
-    editHint: 'Puoi modificare qualsiasi paragrafo prima dell’esportazione in Word (.docx).',
+    editHint: 'Puoi modificare qualsiasi paragrafo prima di scaricare la lettera.',
     printBtn: 'Stampa A4'
   }
 } as const;
@@ -522,7 +522,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
             type="button"
             onClick={handleGenerateWithAI}
             disabled={isGenerating}
-            className="w-full sm:w-auto min-h-[40px] px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-xs flex items-center justify-center gap-2 touch-manipulation"
+            className="w-full sm:w-auto min-h-[42px] px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-all shadow-xs flex items-center justify-center gap-2 touch-manipulation"
           >
             {isGenerating ? (
               <>
@@ -531,17 +531,17 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               </>
             ) : (
               <>
-                <PenLine className="w-3.5 h-3.5 text-amber-400" />
+                <PenLine className="w-3.5 h-3.5 text-amber-300" />
                 <span>{ui.generateBtn}</span>
               </>
             )}
           </button>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={handleCopy}
-              className="flex-1 sm:flex-none min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors touch-manipulation"
+              className="flex-1 sm:flex-none min-h-[40px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors touch-manipulation"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copied ? ui.copiedBtn : ui.copyBtn}</span>
@@ -551,10 +551,10 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               type="button"
               onClick={handleDownloadWordLocal}
               disabled={isExportingWord}
-              className={`flex-1 sm:flex-none min-h-[38px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors shadow-2xs whitespace-nowrap touch-manipulation ${
+              className={`flex-1 sm:flex-none min-h-[40px] flex items-center justify-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors shadow-xs whitespace-nowrap touch-manipulation ${
                 !isAuthenticated || !hasActivePlan
-                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
-                  : 'bg-amber-400 hover:bg-amber-300 text-slate-900'
+                  ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
               {!isAuthenticated || !hasActivePlan ? (

@@ -431,9 +431,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Terminar Sessão',
       signIn: 'Entrar',
       downloadCoverShort: 'Carta',
-      downloadWordShort: 'Word',
-      downloadCover: 'Baixar Carta (.docx)',
-      downloadWord: 'Baixar Word (.docx)',
+      downloadWordShort: 'Baixar CV',
+      downloadCover: 'Baixar Carta',
+      downloadWord: 'Baixar CV',
       exporting: 'A Gerar...',
       mobileWorkspace: 'Área de Trabalho',
       mobileShowcaseTitle: 'Modelos & Exemplos (Visualização Livre)',
@@ -933,9 +933,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Pré-visualização: Veja como fica o modelo. Para editar, guardar e baixar em Word ou PDF sem marca, crie a sua conta e ative um plano.',
+        'Pré-visualização: Veja como fica o modelo. Para editar, guardar e baixar o seu currículo ou PDF sem marca, crie a sua conta e ative um plano.',
       previewFreeNotice:
-        'Plano Gratuito: Para editar campos, personalizar o currículo e baixar em Word ou PDF sem marca, ative o plano Pro ou Executivo.',
+        'Plano Gratuito: Para editar campos, personalizar o currículo e baixar o seu currículo ou PDF sem marca, ative o plano Pro ou Executivo.',
       createAccountBtn: 'Criar Conta',
       activateProBtn: 'Ativar Plano Pro',
       mobileEditorTab: 'Editar',
@@ -1014,9 +1014,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Sign Out',
       signIn: 'Sign In',
       downloadCoverShort: 'Letter',
-      downloadWordShort: 'Word',
-      downloadCover: 'Download Letter (.docx)',
-      downloadWord: 'Download Word (.docx)',
+      downloadWordShort: 'Get Resume',
+      downloadCover: 'Download Letter',
+      downloadWord: 'Download Resume',
       exporting: 'Generating...',
       mobileWorkspace: 'Workspace',
       mobileShowcaseTitle: 'Templates & Examples (Free Preview)',
@@ -1516,9 +1516,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Preview Mode: Live A4 layout inspection. Editing fields, data import, and clean Word (.docx) & PDF downloads require a Pro or Executive VIP plan.',
+        'Preview Mode: Live A4 layout inspection. Editing fields, data import, and clean Resume & PDF downloads require a Pro or Executive VIP plan.',
       previewFreeNotice:
-        'Free Plan: Live A4 layout preview. Editing sections, customization, and clean Word (.docx) & PDF downloads require upgrading to Pro or Executive VIP.',
+        'Free Plan: Live A4 layout preview. Editing sections, customization, and clean Resume & PDF downloads require upgrading to Pro or Executive VIP.',
       createAccountBtn: 'Create Account',
       activateProBtn: 'Activate Pro Plan',
       mobileEditorTab: 'Editor & Tools',
@@ -1596,9 +1596,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Cerrar Sesión',
       signIn: 'Entrar',
       downloadCoverShort: 'Carta',
-      downloadWordShort: 'Word',
-      downloadCover: 'Descargar Carta (.docx)',
-      downloadWord: 'Descargar Word (.docx)',
+      downloadWordShort: 'Bajar CV',
+      downloadCover: 'Descargar Carta',
+      downloadWord: 'Descargar Currículum',
       exporting: 'Generando...',
       mobileWorkspace: 'Área de Trabajo',
       mobileShowcaseTitle: 'Plantillas & Ejemplos (Vista Libre)',
@@ -2094,9 +2094,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Modo Vista Previa: Inspección visual A4. La edición, importación y descargas en Word (.docx) y PDF requieren un plan Pro o Ejecutivo VIP.',
+        'Modo Vista Previa: Inspección visual A4. La edición, importación y descargas en Currículum y PDF requieren un plan Pro o Ejecutivo VIP.',
       previewFreeNotice:
-        'Plan Gratuito: Vista previa A4. La edición de campos y descargas oficiales en Word (.docx) y PDF requieren suscripción activa.',
+        'Plan Gratuito: Vista previa A4. La edición de campos y descargas oficiales en Currículum y PDF requieren suscripción activa.',
       createAccountBtn: 'Crear Cuenta',
       activateProBtn: 'Activar Plan Pro',
       mobileEditorTab: 'Editor y Panel',
@@ -2174,9 +2174,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Déconnexion',
       signIn: 'Connexion',
       downloadCoverShort: 'Lettre',
-      downloadWordShort: 'Word',
-      downloadCover: 'Télécharger Lettre (.docx)',
-      downloadWord: 'Télécharger Word (.docx)',
+      downloadWordShort: 'Télécharger CV',
+      downloadCover: 'Télécharger Lettre',
+      downloadWord: 'Télécharger CV',
       exporting: 'Génération...',
       mobileWorkspace: 'Espace de Travail',
       mobileShowcaseTitle: 'Modèles & Exemples (Aperçu Libre)',
@@ -2672,9 +2672,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Mode Aperçu : Prévisualisation A4. L’édition, l’importation et les exports Word (.docx) / PDF propres requièrent un forfait Pro ou Exécutif VIP.',
+        'Mode Aperçu : Prévisualisation A4. L’édition, l’importation et les exports CV / PDF propres requièrent un forfait Pro ou Exécutif VIP.',
       previewFreeNotice:
-        'Forfait Gratuit : Aperçu A4. L’édition des champs et les téléchargements Word (.docx) / PDF sans filigrane requièrent un abonnement actif.',
+        'Forfait Gratuit : Aperçu A4. L’édition des champs et les téléchargements CV / PDF sans filigrane requièrent un abonnement actif.',
       createAccountBtn: 'Créer un Compte',
       activateProBtn: 'Activer Forfait Pro',
       mobileEditorTab: 'Éditeur & Outils',
@@ -2752,9 +2752,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Abmelden',
       signIn: 'Anmelden',
       downloadCoverShort: 'Brief',
-      downloadWordShort: 'Word',
-      downloadCover: 'Anschreiben (.docx) laden',
-      downloadWord: 'Word (.docx) laden',
+      downloadWordShort: 'CV laden',
+      downloadCover: 'Anschreiben laden',
+      downloadWord: 'Lebenslauf laden',
       exporting: 'Wird erstellt...',
       mobileWorkspace: 'Arbeitsbereich',
       mobileShowcaseTitle: 'Vorlagen & Beispiele (Gratis)',
@@ -3250,7 +3250,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Vorschau-Modus: A4-Ansicht. Bearbeitung, Import und saubere Word- (.docx) & PDF-Exporte erfordern Pro oder Executive VIP.',
+        'Vorschau-Modus: A4-Ansicht. Bearbeitung, Import und saubere Lebenslauf- & PDF-Exporte erfordern Pro oder Executive VIP.',
       previewFreeNotice:
         'Kostenloser Tarif: A4-Vorschau. Bearbeitung und Exporte ohne Wasserzeichen erfordern ein aktives Abo.',
       createAccountBtn: 'Konto erstellen',
@@ -3330,9 +3330,9 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       signOut: 'Esci',
       signIn: 'Accedi',
       downloadCoverShort: 'Lettera',
-      downloadWordShort: 'Word',
-      downloadCover: 'Scarica Lettera (.docx)',
-      downloadWord: 'Scarica Word (.docx)',
+      downloadWordShort: 'Scarica CV',
+      downloadCover: 'Scarica Lettera',
+      downloadWord: 'Scarica CV',
       exporting: 'Esportazione...',
       mobileWorkspace: 'Area di Lavoro',
       mobileShowcaseTitle: 'Modelli & Esempi (Gratis)',
@@ -3828,7 +3828,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     },
     app: {
       previewGuestNotice:
-        'Modalità Anteprima: Visualizzazione A4. Modifica, importazione e download Word (.docx) / PDF puliti richiedono un piano Pro o Executive VIP.',
+        'Modalità Anteprima: Visualizzazione A4. Modifica, importazione e download CV / PDF puliti richiedono un piano Pro o Executive VIP.',
       previewFreeNotice:
         'Piano Gratuito: Anteprima A4. Modifica ed esportazioni senza filigrana richiedono un abbonamento attivo.',
       createAccountBtn: 'Crea Account',

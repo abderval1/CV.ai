@@ -179,7 +179,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
             <button
               type="submit"
               disabled={!newTitle.trim() || isSaving}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors whitespace-nowrap shadow-xs flex items-center gap-1.5"
+              className="min-h-[38px] px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors whitespace-nowrap shadow-xs flex items-center gap-1.5"
             >
               {saveSuccess ? (
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -230,7 +230,7 @@ export const MyResumesModal: React.FC<MyResumesModalProps> = ({
                 className="p-3.5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-all shadow-2xs flex items-center justify-between gap-3 group"
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors">
+                  <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 text-slate-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <FileText className="w-4 h-4" />
                   </div>
                   <div className="truncate">

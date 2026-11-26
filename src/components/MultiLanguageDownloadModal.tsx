@@ -408,32 +408,38 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Word Button */}
+              {/* Editable CV/Resume Button */}
               <button
                 type="button"
                 disabled={isExportingWord}
                 onClick={() => handleDownloadWord(activeDoc || cv, selectedLang)}
                 className={`flex items-center justify-between p-3.5 rounded-lg border text-left transition-colors shadow-2xs ${
                   !isAuthenticated || !hasActivePlan
-                    ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 text-amber-950'
-                    : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-900'
+                    ? 'border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-950'
+                    : 'border-blue-600 bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-md bg-blue-50 text-blue-700 flex items-center justify-center font-semibold">
+                  <div className={`w-8 h-8 rounded-md flex items-center justify-center font-semibold ${
+                    !isAuthenticated || !hasActivePlan
+                      ? 'bg-amber-200/80 text-amber-900'
+                      : 'bg-blue-500 text-white'
+                  }`}>
                     <FileText className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xs font-semibold">
+                    <div className="text-xs font-bold">
                       {isExportingWord ? ui.downloading : ui.downloadDocx}
                     </div>
-                    <div className="text-[10px] text-slate-500">{ui.openXmlSub}</div>
+                    <div className={`text-[10px] ${!isAuthenticated || !hasActivePlan ? 'text-amber-800' : 'text-blue-100'}`}>
+                      {ui.openXmlSub}
+                    </div>
                   </div>
                 </div>
                 {!isAuthenticated || !hasActivePlan ? (
                   <Lock className="w-3.5 h-3.5 text-amber-700" />
                 ) : (
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <Download className="w-3.5 h-3.5 text-white" />
                 )}
               </button>
 
@@ -444,18 +450,22 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
                 className={`flex items-center justify-between p-3.5 rounded-lg border text-left transition-colors shadow-2xs ${
                   !isAuthenticated || !hasActivePlan
                     ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-100/60 text-amber-950'
-                    : 'border-slate-900 bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'border-slate-300 bg-white hover:bg-slate-50 text-slate-900'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-md bg-slate-800 text-white flex items-center justify-center font-semibold">
+                  <div className={`w-8 h-8 rounded-md flex items-center justify-center font-semibold ${
+                    !isAuthenticated || !hasActivePlan
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
                     <Printer className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-xs font-semibold">
+                    <div className="text-xs font-bold">
                       {ui.downloadPdf}
                     </div>
-                    <div className="text-[10px] text-slate-300">{ui.vectorA4Sub}</div>
+                    <div className="text-[10px] text-slate-500">{ui.vectorA4Sub}</div>
                   </div>
                 </div>
                 {!isAuthenticated || !hasActivePlan ? (

@@ -529,11 +529,11 @@ export const TOOLS_UI_TRANSLATIONS: Record<SiteLanguageCode, ToolsUiDictionary> 
       onlineDesc: 'A ligação à internet foi recuperada.',
       offlineTitle: 'Modo Offline',
       offlineDesc: 'Sem internet. O seu trabalho continua guardado no navegador.',
-      wordToastDefault: 'Ficheiro Word (.docx) Descarregado!',
-      wordToastLetter: 'Carta de Apresentação em Word (.docx) Oficial Descarregada!',
-      wordToastCvPrefix: 'Currículo Word (',
-      wordToastCvSuffix: ') Oficial Descarregado com Sucesso!',
-      wordToastSub: 'Formatado segundo o padrão internacional de tipografia e margens.',
+      wordToastDefault: 'Currículo Descarregado com Sucesso!',
+      wordToastLetter: 'Carta de Apresentação Descarregada!',
+      wordToastCvPrefix: 'Currículo (',
+      wordToastCvSuffix: ') Descarregado com Sucesso!',
+      wordToastSub: 'Formatado e pronto para enviar às empresas ou editar quando quiser.',
       pricingDefaultPrompt:
         'Para descarregar o seu currículo em Microsoft Word (.docx) ou PDF limpo sem marcas de água, ative um plano Pro ou Executivo VIP.',
       checkoutConfirmedPrompt:
@@ -587,8 +587,8 @@ export const TOOLS_UI_TRANSLATIONS: Record<SiteLanguageCode, ToolsUiDictionary> 
       resumeBuilderLabel: 'Criador de Currículo',
       modelLabelPrefix: 'Modelo ',
       authCreateSavePrompt: 'Crie a sua conta gratuita para guardar e baixar os seus currículos.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Baixar CV',
+      wordBadgeOpen: 'Baixar CV'
     },
     multiLangModal: {
       modalTitle: 'Baixar Currículo Noutro Idioma',
@@ -613,8 +613,8 @@ export const TOOLS_UI_TRANSLATIONS: Record<SiteLanguageCode, ToolsUiDictionary> 
       previewTranslated: 'Pré-visualização do Currículo Traduzido',
       exportOptionsLabel: 'Como quer baixar:',
       downloading: 'A preparar...',
-      downloadDocx: 'Baixar Word (.docx)',
-      openXmlSub: 'Ficheiro Word editável',
+      downloadDocx: 'Baixar CV',
+      openXmlSub: 'Ficheiro editável (.docx)',
       downloadPdf: 'Baixar / Imprimir PDF',
       vectorA4Sub: 'PDF limpo pronto a enviar',
       continueEditingPrompt: 'Quer continuar a editar este currículo no idioma selecionado?',
@@ -1124,11 +1124,11 @@ COMPETÊNCIAS:
       onlineDesc: 'Your internet connection is back.',
       offlineTitle: 'Offline Mode',
       offlineDesc: 'No internet connection. Your work remains saved locally.',
-      wordToastDefault: 'Word File (.docx) Downloaded!',
-      wordToastLetter: 'Official Cover Letter (.docx) Downloaded!',
-      wordToastCvPrefix: 'Official Word Resume (',
+      wordToastDefault: 'Resume Downloaded!',
+      wordToastLetter: 'Cover Letter Downloaded!',
+      wordToastCvPrefix: 'Resume (',
       wordToastCvSuffix: ') Downloaded!',
-      wordToastSub: 'Formatted to international typography and margin standards.',
+      wordToastSub: 'Formatted cleanly and ready to send or edit anytime.',
       pricingDefaultPrompt:
         'Activate a Pro or Executive VIP plan to export clean Microsoft Word (.docx) and high-resolution PDF files without watermarks.',
       checkoutConfirmedPrompt:
@@ -1181,8 +1181,8 @@ COMPETÊNCIAS:
       resumeBuilderLabel: 'Resume Builder',
       modelLabelPrefix: 'Template ',
       authCreateSavePrompt: 'Create your free account to save and export your resumes.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Get Resume',
+      wordBadgeOpen: 'Get Resume'
     },
     multiLangModal: {
       modalTitle: 'Download Resume in Another Language',
@@ -1207,8 +1207,8 @@ COMPETÊNCIAS:
       previewTranslated: 'Translated Document Preview',
       exportOptionsLabel: 'Export Options:',
       downloading: 'Exporting...',
-      downloadDocx: 'Download Word (.docx)',
-      openXmlSub: 'Native OpenXML formatting',
+      downloadDocx: 'Download Resume',
+      openXmlSub: 'Editable document (.docx)',
       downloadPdf: 'Download / Print PDF',
       vectorA4Sub: 'Watermark-free vector A4 layout',
       continueEditingPrompt: 'Want to keep editing this resume in the selected language?',
@@ -1705,11 +1705,11 @@ SKILLS:
       onlineDesc: 'Se ha recuperado la conexión a internet.',
       offlineTitle: 'Modo Sin Conexión',
       offlineDesc: 'Sin internet. Tu trabajo sigue guardado en el navegador.',
-      wordToastDefault: '¡Archivo Word (.docx) Descargado!',
-      wordToastLetter: '¡Carta de Presentación Oficial en Word (.docx) Descargada!',
-      wordToastCvPrefix: '¡Currículum Word (',
-      wordToastCvSuffix: ') Oficial Descargado con Éxito!',
-      wordToastSub: 'Formateado según estándares internacionales de tipografía y márgenes.',
+      wordToastDefault: '¡Currículum Descargado!',
+      wordToastLetter: '¡Carta de Presentación Descargada!',
+      wordToastCvPrefix: '¡Currículum (',
+      wordToastCvSuffix: ') Descargado con Éxito!',
+      wordToastSub: 'Formateado y listo para enviar o editar cuando quieras.',
       pricingDefaultPrompt:
         'Para descargar tu currículum en Microsoft Word (.docx) o PDF limpio sin marcas de agua, activa un plan Pro o Ejecutivo VIP.',
       checkoutConfirmedPrompt:
@@ -1762,8 +1762,8 @@ SKILLS:
       resumeBuilderLabel: 'Constructor de Currículum',
       modelLabelPrefix: 'Plantilla ',
       authCreateSavePrompt: 'Crea tu cuenta gratuita para guardar y exportar tus currículums.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Bajar CV',
+      wordBadgeOpen: 'Bajar CV'
     },
     multiLangModal: {
       modalTitle: 'Descargar CV en Otro Idioma',
@@ -1788,8 +1788,8 @@ SKILLS:
       previewTranslated: 'Vista Previa del Documento Traducido',
       exportOptionsLabel: 'Opciones de Exportación:',
       downloading: 'Exportando...',
-      downloadDocx: 'Descargar Word (.docx)',
-      openXmlSub: 'Formato nativo OpenXML',
+      downloadDocx: 'Descargar Currículum',
+      openXmlSub: 'Documento editable (.docx)',
       downloadPdf: 'Descargar / Imprimir PDF',
       vectorA4Sub: 'Diseño A4 vectorial sin marcas',
       continueEditingPrompt: '¿Deseas seguir editando este currículum en el idioma seleccionado?',
@@ -2286,11 +2286,11 @@ COMPETENCIAS:
       onlineDesc: 'La connexion internet est rétablie.',
       offlineTitle: 'Mode Hors Ligne',
       offlineDesc: 'Pas de connexion. Votre travail reste enregistré dans le navigateur.',
-      wordToastDefault: 'Fichier Word (.docx) Téléchargé !',
-      wordToastLetter: 'Lettre de Motivation Officielle (.docx) Téléchargée !',
-      wordToastCvPrefix: 'CV Word Officiel (',
+      wordToastDefault: 'CV Téléchargé !',
+      wordToastLetter: 'Lettre de Motivation Téléchargée !',
+      wordToastCvPrefix: 'CV (',
       wordToastCvSuffix: ') Téléchargé avec Succès !',
-      wordToastSub: 'Formaté selon les normes internationales de typographie et de marges.',
+      wordToastSub: 'Prêt à être envoyé ou modifié à tout moment.',
       pricingDefaultPrompt:
         'Activez un forfait Pro ou Exécutif VIP pour exporter en Microsoft Word (.docx) et PDF haute résolution sans filigrane.',
       checkoutConfirmedPrompt:
@@ -2343,8 +2343,8 @@ COMPETENCIAS:
       resumeBuilderLabel: 'Créateur de CV',
       modelLabelPrefix: 'Modèle ',
       authCreateSavePrompt: 'Créez votre compte gratuit pour enregistrer et exporter vos CV.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Télécharger CV',
+      wordBadgeOpen: 'Télécharger CV'
     },
     multiLangModal: {
       modalTitle: 'Télécharger le CV dans une Autre Langue',
@@ -2369,8 +2369,8 @@ COMPETENCIAS:
       previewTranslated: 'Aperçu du Document Traduit',
       exportOptionsLabel: 'Options d’Exportation :',
       downloading: 'Exportation...',
-      downloadDocx: 'Télécharger Word (.docx)',
-      openXmlSub: 'Format natif OpenXML',
+      downloadDocx: 'Télécharger CV',
+      openXmlSub: 'Document modifiable (.docx)',
       downloadPdf: 'Télécharger / Imprimer PDF',
       vectorA4Sub: 'Mise en page A4 vectorielle sans filigrane',
       continueEditingPrompt: 'Souhaitez-vous continuer à modifier ce CV dans cette langue ?',
@@ -2867,11 +2867,11 @@ COMPÉTENCES :
       onlineDesc: 'Ihre Internetverbindung ist wieder aktiv.',
       offlineTitle: 'Offline-Modus',
       offlineDesc: 'Keine Internetverbindung. Ihre Änderungen bleiben lokal gespeichert.',
-      wordToastDefault: 'Word-Datei (.docx) Heruntergeladen!',
-      wordToastLetter: 'Offizielles Anschreiben (.docx) Heruntergeladen!',
-      wordToastCvPrefix: 'Offizieller Word-Lebenslauf (',
+      wordToastDefault: 'Lebenslauf Heruntergeladen!',
+      wordToastLetter: 'Anschreiben Heruntergeladen!',
+      wordToastCvPrefix: 'Lebenslauf (',
       wordToastCvSuffix: ') Heruntergeladen!',
-      wordToastSub: 'Nach internationalen Typografie- und Seitenrandstandards formatiert.',
+      wordToastSub: 'Sauber formatiert und sofort versandfertig.',
       pricingDefaultPrompt:
         'Aktivieren Sie einen Pro- oder Executive-VIP-Plan, um wasserzeichenfreie Word- (.docx) und PDF-Dokumente zu exportieren.',
       checkoutConfirmedPrompt:
@@ -2924,8 +2924,8 @@ COMPÉTENCES :
       resumeBuilderLabel: 'Lebenslauf-Editor',
       modelLabelPrefix: 'Vorlage ',
       authCreateSavePrompt: 'Erstellen Sie ein kostenloses Konto zum Speichern und Exportieren.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Lebenslauf',
+      wordBadgeOpen: 'Lebenslauf'
     },
     multiLangModal: {
       modalTitle: 'Lebenslauf in Anderer Sprache Herunterladen',
@@ -2950,8 +2950,8 @@ COMPÉTENCES :
       previewTranslated: 'Vorschau des Übersetzten Dokuments',
       exportOptionsLabel: 'Exportoptionen:',
       downloading: 'Exportiere...',
-      downloadDocx: 'Word (.docx) Laden',
-      openXmlSub: 'Natives OpenXML-Format',
+      downloadDocx: 'Lebenslauf Laden',
+      openXmlSub: 'Bearbeitbares Dokument (.docx)',
       downloadPdf: 'PDF Laden / Drucken',
       vectorA4Sub: 'Wasserzeichenfreies A4-Vektorlayout',
       continueEditingPrompt: 'Möchten Sie diesen Lebenslauf in dieser Sprache weiterbearbeiten?',
@@ -3447,11 +3447,11 @@ KOMPETENZEN:
       onlineDesc: 'La connessione internet è di nuovo attiva.',
       offlineTitle: 'Modalità Offline',
       offlineDesc: 'Nessuna connessione. Il tuo lavoro resta salvato nel browser.',
-      wordToastDefault: 'File Word (.docx) Scaricato!',
-      wordToastLetter: 'Lettera di Presentazione Ufficiale (.docx) Scaricata!',
-      wordToastCvPrefix: 'Curriculum Word Ufficiale (',
+      wordToastDefault: 'Curriculum Scaricato!',
+      wordToastLetter: 'Lettera di Presentazione Scaricata!',
+      wordToastCvPrefix: 'Curriculum (',
       wordToastCvSuffix: ') Scaricato!',
-      wordToastSub: 'Formattato secondo standard internazionali di tipografia e margini.',
+      wordToastSub: 'Formattato con cura e pronto per essere inviato o modificato.',
       pricingDefaultPrompt:
         'Attiva un piano Pro o Executive VIP per esportare in Microsoft Word (.docx) e PDF pulito senza filigrana.',
       checkoutConfirmedPrompt:
@@ -3504,8 +3504,8 @@ KOMPETENZEN:
       resumeBuilderLabel: 'Creatore di Curriculum',
       modelLabelPrefix: 'Modello ',
       authCreateSavePrompt: 'Crea il tuo account gratuito per salvare ed esportare i curriculum.',
-      wordBadgeLocked: 'Word 🔒',
-      wordBadgeOpen: 'Word'
+      wordBadgeLocked: 'Scarica CV',
+      wordBadgeOpen: 'Scarica CV'
     },
     multiLangModal: {
       modalTitle: 'Scarica il CV in un’Altra Lingua',
@@ -3530,8 +3530,8 @@ KOMPETENZEN:
       previewTranslated: 'Anteprima del Documento Tradotto',
       exportOptionsLabel: 'Opzioni di Esportazione:',
       downloading: 'Esportazione...',
-      downloadDocx: 'Scarica Word (.docx)',
-      openXmlSub: 'Formattazione nativa OpenXML',
+      downloadDocx: 'Scarica CV',
+      openXmlSub: 'Documento modificabile (.docx)',
       downloadPdf: 'Scarica / Stampa PDF',
       vectorA4Sub: 'Layout A4 vettoriale senza filigrana',
       continueEditingPrompt: 'Vuoi continuare a modificare questo CV nella lingua selezionata?',

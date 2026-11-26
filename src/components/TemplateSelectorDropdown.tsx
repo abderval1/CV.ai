@@ -163,7 +163,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
-        className="min-h-[38px] flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 touch-manipulation"
+        className="min-h-[38px] flex items-center gap-2 px-2.5 sm:px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 touch-manipulation"
         title={ui.triggerTitle}
       >
         <span
@@ -171,7 +171,7 @@ export const TemplateSelectorDropdown: React.FC<TemplateSelectorDropdownProps> =
             currentTemplate.hasPhoto ? 'bg-blue-500' : 'bg-emerald-500'
           }`}
         />
-        <span className="font-bold text-slate-900 dark:text-white truncate max-w-[125px] sm:max-w-[180px]">
+        <span className="font-bold text-slate-900 dark:text-white truncate max-w-[155px] sm:max-w-[200px]">
           {currentTemplate.shortName}
         </span>
         <ChevronDown

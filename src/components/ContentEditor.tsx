@@ -44,12 +44,14 @@ import {
   RotateCcw,
   LayoutTemplate,
   MoreHorizontal,
-  Target
+  Target,
+  Download,
+  Search
 } from 'lucide-react';
 import { StudioCreationMode } from './StudioGuideSystem';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { useLanguage } from '../context/LanguageContext';
+import { useLanguage, SiteLanguageCode } from '../context/LanguageContext';
 import { EDITOR_UI_TRANSLATIONS } from '../i18n/editorUiTranslations';
 import { STUDIO_NAV_TRANSLATIONS } from '../i18n/studioNavTranslations';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
@@ -66,11 +68,123 @@ import {
 import { getStoredSnippetsSync, trackFrontendTelemetry } from '../services/adminModulesService';
 import { ProfessionSnippetExample } from '../types/adminModules';
 
+const COMPLETION_EVAL_COPY: Record<
+  SiteLanguageCode,
+  {
+    sectionTitle: string;
+    scoreLabel: string;
+    strongTitle: string;
+    strongDesc: string;
+    mediumTitle: string;
+    mediumDesc: string;
+    weakTitle: string;
+    weakDesc: string;
+    allClearText: string;
+    improveHint: string;
+    nextStepTitle: string;
+    jobsHint: string;
+    jobsBtn: string;
+  }
+> = {
+  pt: {
+    sectionTitle: 'Avaliação do seu Currículo',
+    scoreLabel: 'Pontuação',
+    strongTitle: 'Currículo forte — pronto para enviar',
+    strongDesc: 'Tem contacto completo, experiências claras e boa estrutura para recrutadores e sistemas ATS.',
+    mediumTitle: 'Bom ponto de partida — pode ficar ainda melhor',
+    mediumDesc: 'Complete os pontos abaixo para aumentar a sua pontuação antes de se candidatar.',
+    weakTitle: 'Ainda incompleto — faltam informações essenciais',
+    weakDesc: 'Preencha os itens em falta abaixo para evitar ser descartado automaticamente.',
+    allClearText: 'Todos os critérios essenciais estão preenchidos.',
+    improveHint: 'O que melhorar agora:',
+    nextStepTitle: 'Próximo passo recomendado',
+    jobsHint: 'Com o currículo pronto, procure vagas compatíveis com o seu perfil e cargo.',
+    jobsBtn: 'Procurar Vagas Compatíveis'
+  },
+  en: {
+    sectionTitle: 'Resume Quality Check',
+    scoreLabel: 'Score',
+    strongTitle: 'Strong resume — ready to apply',
+    strongDesc: 'Your contact details, work history, and structure are well balanced for recruiters and ATS.',
+    mediumTitle: 'Good foundation — easy wins available',
+    mediumDesc: 'Finish the missing items below to boost your score before applying.',
+    weakTitle: 'Incomplete — key details are missing',
+    weakDesc: 'Fill in the missing items below so recruiters have everything they need.',
+    allClearText: 'All essential resume criteria are complete.',
+    improveHint: 'Quick improvements:',
+    nextStepTitle: 'Recommended next step',
+    jobsHint: 'Now that your resume is taking shape, explore job openings tailored to your profile.',
+    jobsBtn: 'Browse Matching Jobs'
+  },
+  es: {
+    sectionTitle: 'Evaluación de tu Currículum',
+    scoreLabel: 'Puntuación',
+    strongTitle: 'Currículum sólido — listo para enviar',
+    strongDesc: 'Tus datos, experiencia y estructura están bien equilibrados para reclutadores y ATS.',
+    mediumTitle: 'Buena base — aún puedes mejorarlo',
+    mediumDesc: 'Completa los puntos pendientes abajo para subir tu puntuación.',
+    weakTitle: 'Incompleto — faltan datos clave',
+    weakDesc: 'Añade los apartados pendientes abajo para destacar mejor tu perfil.',
+    allClearText: 'Todos los criterios esenciales están completos.',
+    improveHint: 'Qué mejorar ahora:',
+    nextStepTitle: 'Siguiente paso recomendado',
+    jobsHint: 'Con tu currículum listo, busca vacantes compatibles con tu perfil profesional.',
+    jobsBtn: 'Buscar Vacantes Compatibles'
+  },
+  fr: {
+    sectionTitle: 'Évaluation de votre CV',
+    scoreLabel: 'Score',
+    strongTitle: 'CV solide — prêt à postuler',
+    strongDesc: 'Vos coordonnées, expériences et structure sont bien équilibrées pour les recruteurs et ATS.',
+    mediumTitle: 'Bonne base — améliorations faciles',
+    mediumDesc: 'Complétez les éléments ci-dessous pour renforcer votre score.',
+    weakTitle: 'Incomplet — informations clés manquantes',
+    weakDesc: 'Ajoutez les éléments manquants ci-dessous avant d’envoyer votre CV.',
+    allClearText: 'Tous les critères essentiels sont remplis.',
+    improveHint: 'À améliorer maintenant :',
+    nextStepTitle: 'Prochaine étape recommandée',
+    jobsHint: 'Votre CV est prêt ? Découvrez les offres d’emploi adaptées à votre profil.',
+    jobsBtn: 'Chercher des Offres'
+  },
+  de: {
+    sectionTitle: 'Lebenslauf-Bewertung',
+    scoreLabel: 'Punkte',
+    strongTitle: 'Starker Lebenslauf — bereit für Bewerbungen',
+    strongDesc: 'Kontaktdaten, Berufserfahrung und Struktur sind ideal für Recruiter und ATS.',
+    mediumTitle: 'Gute Basis — noch ausbaufähig',
+    mediumDesc: 'Ergänzen Sie die offenen Punkte unten für ein noch besseres Ergebnis.',
+    weakTitle: 'Noch unvollständig — wichtige Angaben fehlen',
+    weakDesc: 'Füllen Sie die fehlenden Punkte unten aus, um Ihre Chancen zu erhöhen.',
+    allClearText: 'Alle wichtigen Kriterien sind erfüllt.',
+    improveHint: 'Jetzt verbessern:',
+    nextStepTitle: 'Empfohlener nächster Schritt',
+    jobsHint: 'Mit Ihrem fertigen Lebenslauf können Sie direkt passende Stellenangebote suchen.',
+    jobsBtn: 'Passende Stellen Suchen'
+  },
+  it: {
+    sectionTitle: 'Valutazione del tuo CV',
+    scoreLabel: 'Punteggio',
+    strongTitle: 'CV efficace — pronto per candidarti',
+    strongDesc: 'Recapiti, esperienze e struttura sono ben bilanciati per recruiter e sistemi ATS.',
+    mediumTitle: 'Buona base — migliorabile con poco',
+    mediumDesc: 'Completa i punti qui sotto per alzare il tuo punteggio prima di inviare il CV.',
+    weakTitle: 'Incompleto — mancano dati essenziali',
+    weakDesc: 'Aggiungi gli elementi mancanti qui sotto per rendere il CV più competitivo.',
+    allClearText: 'Tutti i criteri essenziali sono completi.',
+    improveHint: 'Cosa migliorare subito:',
+    nextStepTitle: 'Prossimo passo consigliato',
+    jobsHint: 'Ora che il CV è pronto, cerca offerte di lavoro in linea con il tuo profilo.',
+    jobsBtn: 'Cerca Offerte Compatibili'
+  }
+};
+
 interface ContentEditorProps {
   cv: CVData;
   onChange: (cv: CVData) => void;
   onOpenAiTailor: () => void;
   onOpenCoverLetter?: () => void;
+  onOpenJobs?: () => void;
+  onExportCv?: () => void;
   onOpenAuthModal?: (prompt?: string) => void;
   onOpenPricingModal?: (prompt?: string) => void;
   density?: 'compact' | 'normal' | 'relaxed';
@@ -120,6 +234,8 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   onChange,
   onOpenAiTailor,
   onOpenCoverLetter,
+  onOpenJobs,
+  onExportCv,
   onOpenAuthModal,
   onOpenPricingModal,
   density = 'normal',
@@ -253,9 +369,10 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
   const { saveCurrentResume, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { siteLanguage } = useLanguage();
+  const { siteLanguage, studioText } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).editor;
   const guides = (STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en).editorGuides;
+  const evalUi = COMPLETION_EVAL_COPY[siteLanguage] || COMPLETION_EVAL_COPY.en;
 
   // Live readiness metrics
   const cvMetrics = useMemo(() => calculateCVMetrics(cv), [cv]);
@@ -783,7 +900,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
       {/* 1. CLEAN 4-STEP TAB BAR + SINGLE OPTIONS MENU + SAVE */}
       <div className="shrink-0 z-20 bg-white border-b border-slate-200">
         <div className="flex flex-col sm:flex-row sm:items-stretch justify-between">
-          <div className="grid grid-cols-4 flex-1 min-w-0 order-2 sm:order-1 border-t border-slate-100 sm:border-t-0">
+          <div className="grid grid-cols-2 sm:grid-cols-4 flex-1 min-w-0 order-2 sm:order-1 border-t border-slate-100 sm:border-t-0">
             {STEPS.map((step, idx) => {
               const isActive = currentStepIndex === idx;
               return (
@@ -795,16 +912,16 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     setOpenMenuId(null);
                   }}
                   title={guides.stepTabsTitle[step.id]}
-                  className={`min-h-[42px] sm:min-h-0 flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-2.5 py-2.5 text-[11px] sm:text-xs transition-colors border-b-2 whitespace-nowrap min-w-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900 ${
+                  className={`min-h-[44px] sm:min-h-0 flex items-center justify-center gap-1.5 px-2 sm:px-2.5 py-2.5 text-xs transition-colors border-b-2 whitespace-nowrap min-w-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600 ${
                     isActive
-                      ? 'bg-white border-slate-900 text-slate-950 font-semibold'
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/80 font-medium'
+                      ? 'bg-blue-50/80 dark:bg-blue-950/50 border-blue-600 text-blue-900 dark:text-blue-100 font-bold'
+                      : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50/80 font-medium'
                   }`}
                 >
                   <span
                     className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
                       isActive
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-blue-600 text-white'
                         : step.isCompleted
                         ? 'bg-emerald-600 text-white'
                         : 'bg-slate-200 text-slate-600'
@@ -816,8 +933,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       idx + 1
                     )}
                   </span>
-                  <span className="truncate sm:hidden">{step.mobileLabel}</span>
-                  <span className="truncate hidden sm:inline">{step.shortLabel}</span>
+                  <span className="truncate">{step.shortLabel}</span>
                 </button>
               );
             })}
@@ -838,14 +954,14 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   onClick={() => setOpenMenuId((prev) => (prev === 'top-options' ? null : 'top-options'))}
                   aria-expanded={openMenuId === 'top-options'}
                   title={optionsMenuLabel}
-                  className={`min-h-[36px] px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors whitespace-nowrap touch-manipulation ${
+                  className={`min-h-[38px] px-2.5 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-colors whitespace-nowrap touch-manipulation ${
                     openMenuId === 'top-options' || showDiagnostics
-                      ? 'bg-slate-900 text-white border-slate-900'
+                      ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   <MoreHorizontal className="w-3.5 h-3.5 shrink-0" />
-                  <span className="sm:hidden md:inline">{optionsMenuLabel}</span>
+                  <span>{optionsMenuLabel}</span>
                 </button>
 
                 {openMenuId === 'top-options' && (
@@ -949,9 +1065,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
         </div>
 
         {/* Progress hairline */}
-        <div className="w-full h-0.5 bg-slate-100">
+        <div className="w-full h-1 bg-slate-100">
           <div
-            className="h-full bg-slate-900 transition-all duration-300 ease-out"
+            className="h-full bg-blue-600 transition-all duration-300 ease-out"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -1372,37 +1488,26 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
               <div className="flex items-center gap-1.5 shrink-0">
                 {snippets.length > 0 && (
-                  <div className="relative" data-editor-menu="true">
-                    <button
-                      type="button"
-                      onClick={() => setOpenMenuId((prev) => (prev === 'career-more' ? null : 'career-more'))}
-                      title={guides.achievementTemplatesTooltip}
-                      className="p-1.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                    {openMenuId === 'career-more' && (
-                      <div className="absolute right-0 mt-1.5 w-52 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpenMenuId(null);
-                            setShowSnippetPicker((prev) => !prev);
-                          }}
-                          className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
-                        >
-                          <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span>{ui.stage2.achievementTemplatesDesktop}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSnippetPicker((prev) => !prev)}
+                    title={guides.achievementTemplatesTooltip}
+                    className={`min-h-[38px] px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                      showSnippetPicker
+                        ? 'bg-slate-900 text-white border-slate-900'
+                        : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden sm:inline">{ui.stage2.achievementTemplatesDesktop}</span>
+                    <span className="sm:hidden">{ui.stage2.achievementTemplatesMobile}</span>
+                  </button>
                 )}
                 <button
                   type="button"
                   onClick={handleAddExperience}
                   title={guides.addRoleTooltip}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                  className="min-h-[38px] px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-xs touch-manipulation"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>{ui.stage2.addRole}</span>
@@ -1449,7 +1554,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 <button
                   type="button"
                   onClick={handleAddExperience}
-                  className="mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors"
+                  className="mt-4 min-h-[40px] px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors shadow-xs touch-manipulation"
                 >
                   {ui.stage2.addFirstRole}
                 </button>
@@ -1864,7 +1969,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     <button
                       type="button"
                       onClick={handleAddEducation}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                      className="min-h-[38px] px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-xs touch-manipulation"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>{ui.stage3.addBtn}</span>
@@ -2053,36 +2158,24 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      <div className="relative" data-editor-menu="true">
-                        <button
-                          type="button"
-                          onClick={() => setOpenMenuId((prev) => (prev === 'skills-more' ? null : 'skills-more'))}
-                          title={guides.clustersTooltip}
-                          className="p-1.5 text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                        {openMenuId === 'skills-more' && (
-                          <div className="absolute right-0 mt-1.5 w-56 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setOpenMenuId(null);
-                                setShowClusterPicker((prev) => !prev);
-                              }}
-                              className="w-full text-left px-3 py-2.5 text-xs font-medium text-slate-800 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                              <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>{ui.stage3.clustersBtn}</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowClusterPicker((prev) => !prev)}
+                        title={guides.clustersTooltip}
+                        className={`min-h-[38px] px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                          showClusterPicker
+                            ? 'bg-slate-900 text-white border-slate-900'
+                            : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border-slate-200'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span className="hidden sm:inline">{ui.stage3.clustersBtn}</span>
+                      </button>
                       <button
                         type="button"
                         onClick={handleAddCompetency}
                         title={ui.stage3.compTitle}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1.5 whitespace-nowrap"
+                        className="min-h-[38px] px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1.5 whitespace-nowrap shadow-xs touch-manipulation"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>{ui.stage3.addBtn}</span>
@@ -2338,7 +2431,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                                 title={`${fontMeta.label} — ${fontMeta.hint}`}
                                 className={`px-2 py-1.5 rounded-lg border text-center transition-colors text-[11px] font-bold truncate ${
                                   isSelected
-                                    ? 'bg-slate-900 border-slate-900 text-white'
+                                    ? 'bg-blue-600 border-blue-600 text-white'
                                     : 'bg-slate-50/70 border-slate-200 text-slate-800 hover:bg-slate-100'
                                 }`}
                               >
@@ -2577,6 +2670,149 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 </div>
               )}
             </div>
+
+            {/* CV Quality Evaluation & Recommended Next Steps (Jobs + Download) */}
+            {(() => {
+              const score = cvMetrics.strengthScore;
+              const isStrong = score >= 80;
+              const isMedium = score >= 55 && score < 80;
+              const missingItems = cvMetrics.completenessChecklist
+                .map((item, idx) => ({ item, idx }))
+                .filter((entry) => !entry.item.completed);
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+                  {/* Quality Score Summary */}
+                  <div className="p-4 sm:p-5 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Target className="w-4 h-4 text-slate-700 shrink-0" />
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                          {evalUi.sectionTitle}
+                        </h3>
+                      </div>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-md text-xs font-mono font-bold tabular-nums border ${
+                          isStrong
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : isMedium
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-rose-50 text-rose-800 border-rose-200'
+                        }`}
+                      >
+                        {evalUi.scoreLabel}: {score}/100
+                      </span>
+                    </div>
+
+                    <div
+                      className={`p-3 rounded-lg border text-xs space-y-1 ${
+                        isStrong
+                          ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
+                          : isMedium
+                          ? 'bg-amber-50/70 border-amber-200 text-amber-900'
+                          : 'bg-rose-50/70 border-rose-200 text-rose-900'
+                      }`}
+                    >
+                      <p className="font-bold flex items-center gap-1.5">
+                        {isStrong ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                        )}
+                        <span>
+                          {isStrong
+                            ? evalUi.strongTitle
+                            : isMedium
+                            ? evalUi.mediumTitle
+                            : evalUi.weakTitle}
+                        </span>
+                      </p>
+                      <p className="text-[11px] opacity-90 leading-relaxed">
+                        {isStrong
+                          ? evalUi.strongDesc
+                          : isMedium
+                          ? evalUi.mediumDesc
+                          : evalUi.weakDesc}
+                      </p>
+                    </div>
+
+                    {missingItems.length === 0 ? (
+                      <p className="text-[11px] font-medium text-emerald-700 flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5 shrink-0" />
+                        <span>{evalUi.allClearText}</span>
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-semibold text-slate-600">
+                          {evalUi.improveHint}
+                        </p>
+                        <div className="space-y-1.5">
+                          {missingItems.slice(0, 3).map(({ item, idx }) => {
+                            const localizedCheck = ui.checklistItems[idx] || item;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                              >
+                                <span className="text-[11px] font-medium text-slate-700 truncate">
+                                  {localizedCheck.label}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => jumpToDiagnosticTarget(idx)}
+                                  className="px-2.5 py-1 rounded-md bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-800 shrink-0"
+                                >
+                                  {ui.completeAction}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Next Steps: Download + Job Search Suggestion */}
+                  {(onOpenJobs || onExportCv) && (
+                    <div className="p-4 sm:p-5 bg-slate-50/50 space-y-3">
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                          {evalUi.nextStepTitle}
+                        </h4>
+                        {onOpenJobs && (
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
+                            {evalUi.jobsHint}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        {onExportCv && (
+                          <button
+                            type="button"
+                            onClick={onExportCv}
+                            className="flex-1 min-h-[44px] px-4 py-2.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center justify-center gap-2 shadow-xs touch-manipulation"
+                          >
+                            <Download className="w-4 h-4 shrink-0" />
+                            <span>{studioText.docToolbar.wordBtn}</span>
+                          </button>
+                        )}
+                        {onOpenJobs && (
+                          <button
+                            type="button"
+                            onClick={onOpenJobs}
+                            className="flex-1 min-h-[44px] px-4 py-2.5 rounded-lg text-xs font-bold bg-white hover:bg-slate-100 text-slate-900 border border-slate-300 transition-colors flex items-center justify-center gap-2 touch-manipulation"
+                          >
+                            <Search className="w-4 h-4 text-blue-600 shrink-0" />
+                            <span>{evalUi.jobsBtn}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -2587,7 +2823,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           type="button"
           onClick={goToPreviousStep}
           disabled={currentStepIndex === 0}
-          className="min-h-[38px] px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 touch-manipulation"
+          className="min-h-[42px] px-3.5 py-2 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-30 disabled:pointer-events-none transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 touch-manipulation"
         >
           <ChevronLeft className="w-4 h-4" />
           <span>{ui.footer.prev}</span>
@@ -2604,7 +2840,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
             <button
               type="button"
               onClick={goToNextStep}
-              className="min-h-[38px] max-w-full px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors flex items-center gap-1 whitespace-nowrap min-w-0 touch-manipulation"
+              className="min-h-[42px] max-w-full px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap min-w-0 touch-manipulation"
             >
               <span className="truncate">{ui.footer.nextPrefix} {STEPS[currentStepIndex + 1].shortLabel}</span>
               <ChevronRight className="w-4 h-4 shrink-0" />
@@ -2613,7 +2849,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
             <button
               type="button"
               onClick={handleSaveProgress}
-              className="min-h-[38px] px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
+              className="min-h-[42px] px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
             >
               <Check className="w-4 h-4 shrink-0" />
               <span>{ui.footer.finishSave}</span>

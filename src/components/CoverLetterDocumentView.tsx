@@ -368,7 +368,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
             title={studioText.docToolbar.copy}
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-            <span className="hidden sm:inline">{copied ? studioText.docToolbar.copied : studioText.docToolbar.copy}</span>
+            <span>{copied ? studioText.docToolbar.copied : studioText.docToolbar.copy}</span>
           </button>
 
           {/* Print / Save PDF */}
@@ -390,15 +390,15 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
             <span>{studioText.docToolbar.pdfBtn}</span>
           </button>
 
-          {/* Download Word (.docx) */}
+          {/* Download Letter */}
           <button
             type="button"
             onClick={handleDownloadWord}
             disabled={isExportingWord || isExportingLocal}
-            className={`min-h-[38px] flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors shadow-xs whitespace-nowrap touch-manipulation ${
+            className={`min-h-[38px] flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors shadow-xs whitespace-nowrap touch-manipulation ${
               !isAuthenticated || !hasActivePlan
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold shadow-sm'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                ? 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
             }`}
           >
             {!isAuthenticated || !hasActivePlan ? (
@@ -409,7 +409,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
             <span>
               {isExportingWord || isExportingLocal
                 ? studioText.docToolbar.generating
-                : studioText.docToolbar.wordBtn}
+                : studioText.docToolbar.coverBtn}
             </span>
           </button>
         </div>
@@ -423,7 +423,7 @@ export const CoverLetterDocumentView: React.FC<CoverLetterDocumentViewProps> = (
         >
           {/* Printable A4 Paper Sheet */}
           <article
-            className="cover-a4-sheet w-full max-w-[210mm] md:w-[210mm] min-h-[700px] sm:min-h-[297mm] bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] p-6 sm:p-12 md:p-[22mm] md:px-[25mm] rounded-xs border border-slate-300/70 relative flex flex-col justify-between"
+            className="cover-a4-sheet w-full max-w-[210mm] md:w-[210mm] min-h-[520px] sm:min-h-[297mm] bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] p-5 sm:p-12 md:p-[22mm] md:px-[25mm] rounded-xs border border-slate-300/70 relative flex flex-col justify-between"
             style={{ boxSizing: 'border-box' }}
           >
             <div>

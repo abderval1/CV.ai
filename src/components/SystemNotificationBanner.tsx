@@ -93,12 +93,12 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
 
   return (
     <div
-      className={`no-print w-full border-b px-4 py-2 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200 ${getStyle()}`}
+      className={`no-print w-full border-b px-3 sm:px-4 py-2 text-xs flex items-center justify-between gap-2.5 animate-in fade-in duration-200 ${getStyle()}`}
     >
-      <div className="flex items-center gap-2 min-w-0 max-w-5xl mx-auto flex-1 justify-center text-center sm:text-left">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 max-w-5xl mx-auto flex-1 justify-center sm:justify-start text-center sm:text-left">
         {getIcon()}
-        <span className="font-bold truncate">{current.title}:</span>
-        <span className="truncate hidden sm:inline opacity-90">{current.message}</span>
+        <span className="font-bold">{current.title}:</span>
+        <span className="opacity-90 line-clamp-2 sm:line-clamp-1">{current.message}</span>
         {current.actionLabel && (
           <button
             type="button"
@@ -107,7 +107,7 @@ export const SystemNotificationBanner: React.FC<SystemNotificationBannerProps> =
               else if (current.actionUrl === '#templates' && onNavigateTab) onNavigateTab('editor');
               else if (onOpenPricing) onOpenPricing();
             }}
-            className="ml-2 font-bold underline underline-offset-2 flex items-center gap-1 shrink-0 hover:opacity-80"
+            className="font-bold underline underline-offset-2 flex items-center gap-1 shrink-0 hover:opacity-80"
           >
             <span>{current.actionLabel}</span>
             <ArrowRight className="w-3 h-3" />

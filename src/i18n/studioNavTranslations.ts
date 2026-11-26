@@ -59,16 +59,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Mais ferramentas',
     tabs: {
       raw: {
-        label: '1. Importar',
-        shortLabel: '1. Importar',
-        tooltip: 'Comece aqui: importe do LinkedIn, envie um PDF ou cole o seu texto para preencher o currículo automaticamente.',
-        guideText: 'Passo 1: Cole o link do LinkedIn, envie um PDF ou escreva os seus dados — o sistema organiza o currículo automaticamente.'
+        label: 'Importar CV',
+        shortLabel: 'Importar CV',
+        tooltip: 'Já tem um currículo? Envie o PDF/Word, ligue o LinkedIn ou cole o texto para preencher tudo automaticamente.',
+        guideText: 'Já tem currículo? Envie o ficheiro PDF/Word ou LinkedIn para preencher o editor em segundos.'
       },
       editor: {
-        label: '2. Editar CV',
-        shortLabel: '2. Editar CV',
-        tooltip: 'Edite os seus dados pessoais, experiências de trabalho, estudos, competências e o visual do currículo.',
-        guideText: 'Passo 2: Preencha ou ajuste cada secção do currículo. Toque nas dicas para ver exemplos.'
+        label: 'Criar / Editar CV',
+        shortLabel: 'Editar CV',
+        tooltip: 'Construa o seu currículo passo a passo (Dados, Experiência, Estudos e Visual) com pré-visualização ao lado.',
+        guideText: 'Preencha passo a passo de forma simples e veja o currículo pronto ao lado.'
       },
       cover: {
         label: '3. Carta',
@@ -139,16 +139,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Enhance & apply',
     tabs: {
       raw: {
-        label: '1. Import',
-        shortLabel: '1. Import',
-        tooltip: 'Start here: import your LinkedIn profile, upload a PDF, or paste existing text to build your CV automatically.',
-        guideText: 'Step 1: Paste your LinkedIn URL, upload a PDF, or type your background — we organize everything into your CV.'
+        label: 'Import Resume',
+        shortLabel: 'Import CV',
+        tooltip: 'Already have a resume? Upload PDF/Word, connect LinkedIn, or paste text to auto-fill the editor.',
+        guideText: 'Already have a resume? Upload your PDF/Word file or LinkedIn profile to prefill everything in seconds.'
       },
       editor: {
-        label: '2. Edit CV',
-        shortLabel: '2. Edit CV',
-        tooltip: 'Edit personal details, work experience, education, skills, and visual styling.',
-        guideText: 'Step 2: Review or edit each section. Hover over any button for a quick explanation.'
+        label: 'Build Resume',
+        shortLabel: 'Edit Resume',
+        tooltip: 'Build your resume step by step (Profile, Experience, Education & Design) with live A4 preview.',
+        guideText: 'Complete each step linearly and watch your formatted resume update live beside you.'
       },
       cover: {
         label: '3. Letter',
@@ -219,16 +219,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Mejorar y postular',
     tabs: {
       raw: {
-        label: '1. Importar',
-        shortLabel: '1. Importar',
-        tooltip: 'Empieza aquí: importa tu LinkedIn, sube un PDF o pega tu texto para crear el CV automáticamente.',
-        guideText: 'Paso 1: Pega tu enlace de LinkedIn, sube un PDF o escribe tu perfil — organizamos todo en tu CV.'
+        label: 'Importar CV',
+        shortLabel: 'Importar CV',
+        tooltip: '¿Ya tienes un CV? Sube un PDF/Word, conecta LinkedIn o pega el texto para rellenar todo al instante.',
+        guideText: '¿Ya tienes currículum? Sube tu archivo PDF/Word o LinkedIn para rellenar el editor en segundos.'
       },
       editor: {
-        label: '2. Editar CV',
-        shortLabel: '2. Editar CV',
-        tooltip: 'Edita tus datos personales, experiencia, formación, habilidades y diseño visual.',
-        guideText: 'Paso 2: Completa o ajusta cada sección. Pasa el ratón sobre cualquier botón para ver su función.'
+        label: 'Crear / Editar CV',
+        shortLabel: 'Editar CV',
+        tooltip: 'Completa paso a paso tus datos, experiencia, formación y diseño con vista previa en vivo.',
+        guideText: 'Completa cada paso de forma sencilla y mira tu currículum listo al instante.'
       },
       cover: {
         label: '3. Carta',
@@ -299,16 +299,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Optimiser et postuler',
     tabs: {
       raw: {
-        label: '1. Importer',
-        shortLabel: '1. Importer',
-        tooltip: 'Commencez ici : importez votre LinkedIn, un PDF ou collez votre texte pour générer votre CV.',
-        guideText: 'Étape 1 : Collez votre lien LinkedIn, importez un PDF ou saisissez votre parcours — tout est structuré automatiquement.'
+        label: 'Importer CV',
+        shortLabel: 'Importer CV',
+        tooltip: 'Vous avez déjà un CV ? Importez un PDF/Word, LinkedIn ou collez votre texte pour préremplir l’éditeur.',
+        guideText: 'Vous avez déjà un CV ? Importez votre PDF/Word ou profil LinkedIn pour tout préremplir en quelques secondes.'
       },
       editor: {
-        label: '2. Éditer CV',
-        shortLabel: '2. Éditer CV',
-        tooltip: 'Modifiez vos coordonnées, expériences, formations, compétences et mise en page.',
-        guideText: 'Étape 2 : Complétez ou ajustez chaque rubrique. Survolez un bouton pour voir son explication.'
+        label: 'Créer / Éditer CV',
+        shortLabel: 'Éditer CV',
+        tooltip: 'Rédigez votre CV étape par étape (Profil, Expériences, Études et Design) avec aperçu en direct.',
+        guideText: 'Complétez chaque étape simplement et voyez votre CV prendre forme à côté.'
       },
       cover: {
         label: '3. Lettre',
@@ -379,16 +379,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Optimieren & Bewerben',
     tabs: {
       raw: {
-        label: '1. Import',
-        shortLabel: '1. Import',
-        tooltip: 'Hier starten: LinkedIn-Profil, PDF hochladen oder Text einfügen, um den Lebenslauf automatisch zu erstellen.',
-        guideText: 'Schritt 1: LinkedIn-Link, PDF oder Text eingeben — wir strukturieren Ihren Lebenslauf automatisch.'
+        label: 'Importieren',
+        shortLabel: 'Importieren',
+        tooltip: 'Schon einen Lebenslauf? Laden Sie PDF/Word hoch, verbinden Sie LinkedIn oder fügen Sie Text ein.',
+        guideText: 'Lebenslauf vorhanden? Laden Sie PDF/Word oder LinkedIn hoch, um alles automatisch auszufüllen.'
       },
       editor: {
-        label: '2. Lebenslauf',
-        shortLabel: '2. Editor',
-        tooltip: 'Kontaktdaten, Berufserfahrung, Ausbildung, Skills und Design bearbeiten.',
-        guideText: 'Schritt 2: Jede Sektion prüfen oder anpassen. Fahren Sie mit der Maus über Buttons für Hinweise.'
+        label: 'Lebenslauf',
+        shortLabel: 'Lebenslauf',
+        tooltip: 'Erstellen Sie Ihren Lebenslauf Schritt für Schritt mit Live-Vorschau daneben.',
+        guideText: 'Füllen Sie jeden Schritt einfach aus und sehen Sie die Live-Vorschau sofort.'
       },
       cover: {
         label: '3. Anschreiben',
@@ -459,16 +459,16 @@ export const STUDIO_NAV_TRANSLATIONS: Record<SiteLanguageCode, StudioNavDictiona
     toolsGroupLabel: 'Ottimizza e candidati',
     tabs: {
       raw: {
-        label: '1. Importa',
-        shortLabel: '1. Importa',
-        tooltip: 'Inizia qui: importa da LinkedIn, carica un PDF o incolla il tuo testo per generare il CV.',
-        guideText: 'Passo 1: Incolla il link LinkedIn, carica un PDF o scrivi il tuo profilo — organizziamo tutto nel CV.'
+        label: 'Importa CV',
+        shortLabel: 'Importa CV',
+        tooltip: 'Hai già un CV? Carica un PDF/Word, collega LinkedIn o incolla il testo per compilare tutto subito.',
+        guideText: 'Hai già un curriculum? Carica il tuo PDF/Word o profilo LinkedIn per compilare l’editor in pochi secondi.'
       },
       editor: {
-        label: '2. Modifica CV',
-        shortLabel: '2. Modifica',
-        tooltip: 'Modifica dati personali, esperienze, formazione, competenze e stile grafico.',
-        guideText: 'Passo 2: Compila o rifinisci ogni sezione. Passa il mouse sui pulsanti per i suggerimenti.'
+        label: 'Crea / Modifica CV',
+        shortLabel: 'Modifica CV',
+        tooltip: 'Compila il tuo CV passo dopo passo (Dati, Esperienze, Istruzione e Stile) con anteprima dal vivo.',
+        guideText: 'Compila ogni passaggio in modo semplice e guarda il curriculum aggiornarsi accanto a te.'
       },
       cover: {
         label: '3. Lettera',
