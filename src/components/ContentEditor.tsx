@@ -48,7 +48,8 @@ import {
   Search,
   Loader2,
   Star,
-  Square
+  Square,
+  Save
 } from 'lucide-react';
 import { StudioCreationMode } from './StudioGuideSystem';
 import { useAuth } from '../context/AuthContext';
@@ -188,11 +189,15 @@ const EDITOR_V2_COPY: Record<
   SiteLanguageCode,
   {
     steps: { profile: string; career: string; credentials: string; structure: string };
-    autoSaved: string;
-    syncing: string;
-    lastSyncNow: string;
-    lastSyncMinPrefix: string;
-    lastSyncMinSuffix: string;
+    saveBtn: string;
+    savingBtn: string;
+    savedStatus: string;
+    unsavedStatus: string;
+    lastSavedPrefix: string;
+    savedSuccessTitle: string;
+    savedSuccessMsg: string;
+    saveErrorTitle: string;
+    saveErrorMsg: string;
     improveAiBtn: string;
     improvingAiBtn: string;
     aiUpdatedTitle: string;
@@ -222,11 +227,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Educação',
       structure: 'Finalizar'
     },
-    autoSaved: 'Salvado automaticamente',
-    syncing: 'A sincronizar…',
-    lastSyncNow: 'Última sincronização: agora mesmo',
-    lastSyncMinPrefix: 'Última sincronização: há ',
-    lastSyncMinSuffix: ' min',
+    saveBtn: 'Guardar',
+    savingBtn: 'A guardar…',
+    savedStatus: 'Guardado',
+    unsavedStatus: 'Alterações por guardar',
+    lastSavedPrefix: 'Guardado às ',
+    savedSuccessTitle: 'Currículo Guardado!',
+    savedSuccessMsg: 'A versão "{title}" foi guardada na sua conta.',
+    saveErrorTitle: 'Erro ao Guardar',
+    saveErrorMsg: 'Não foi possível guardar o currículo. Tente novamente.',
     improveAiBtn: 'Melhorar com IA',
     improvingAiBtn: 'A melhorar…',
     aiUpdatedTitle: 'Melhorado com IA',
@@ -255,11 +264,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Education',
       structure: 'Finish'
     },
-    autoSaved: 'Auto-saved',
-    syncing: 'Syncing…',
-    lastSyncNow: 'Last sync: just now',
-    lastSyncMinPrefix: 'Last sync: ',
-    lastSyncMinSuffix: 'm ago',
+    saveBtn: 'Save',
+    savingBtn: 'Saving…',
+    savedStatus: 'Saved',
+    unsavedStatus: 'Unsaved changes',
+    lastSavedPrefix: 'Saved at ',
+    savedSuccessTitle: 'Resume Saved!',
+    savedSuccessMsg: '"{title}" was saved to your account.',
+    saveErrorTitle: 'Save Error',
+    saveErrorMsg: 'Could not save your resume. Please try again.',
     improveAiBtn: 'Improve with AI',
     improvingAiBtn: 'Improving…',
     aiUpdatedTitle: 'Improved with AI',
@@ -288,11 +301,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Educación',
       structure: 'Finalizar'
     },
-    autoSaved: 'Guardado automáticamente',
-    syncing: 'Sincronizando…',
-    lastSyncNow: 'Última sincronización: ahora mismo',
-    lastSyncMinPrefix: 'Última sincronización: hace ',
-    lastSyncMinSuffix: ' min',
+    saveBtn: 'Guardar',
+    savingBtn: 'Guardando…',
+    savedStatus: 'Guardado',
+    unsavedStatus: 'Cambios sin guardar',
+    lastSavedPrefix: 'Guardado a las ',
+    savedSuccessTitle: '¡Currículum Guardado!',
+    savedSuccessMsg: 'La versión "{title}" se guardó en tu cuenta.',
+    saveErrorTitle: 'Error al Guardar',
+    saveErrorMsg: 'No se pudo guardar el currículum. Inténtalo de nuevo.',
     improveAiBtn: 'Mejorar con IA',
     improvingAiBtn: 'Mejorando…',
     aiUpdatedTitle: 'Mejorado con IA',
@@ -321,11 +338,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Formation',
       structure: 'Finaliser'
     },
-    autoSaved: 'Enregistré automatiquement',
-    syncing: 'Synchronisation…',
-    lastSyncNow: 'Dernière synchro : à l’instant',
-    lastSyncMinPrefix: 'Dernière synchro : il y a ',
-    lastSyncMinSuffix: ' min',
+    saveBtn: 'Enregistrer',
+    savingBtn: 'Enregistrement…',
+    savedStatus: 'Enregistré',
+    unsavedStatus: 'Modifications non enregistrées',
+    lastSavedPrefix: 'Enregistré à ',
+    savedSuccessTitle: 'CV Enregistré !',
+    savedSuccessMsg: 'La version « {title} » a été enregistrée.',
+    saveErrorTitle: 'Erreur d’enregistrement',
+    saveErrorMsg: 'Impossible d’enregistrer le CV. Réessayez.',
     improveAiBtn: 'Améliorer avec l’IA',
     improvingAiBtn: 'Amélioration…',
     aiUpdatedTitle: 'Amélioré par l’IA',
@@ -354,11 +375,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Ausbildung',
       structure: 'Abschließen'
     },
-    autoSaved: 'Automatisch gespeichert',
-    syncing: 'Synchronisiere…',
-    lastSyncNow: 'Letzte Synchro: gerade eben',
-    lastSyncMinPrefix: 'Letzte Synchro: vor ',
-    lastSyncMinSuffix: ' Min.',
+    saveBtn: 'Speichern',
+    savingBtn: 'Speichere…',
+    savedStatus: 'Gespeichert',
+    unsavedStatus: 'Ungespeicherte Änderungen',
+    lastSavedPrefix: 'Gespeichert um ',
+    savedSuccessTitle: 'Lebenslauf gespeichert!',
+    savedSuccessMsg: '"{title}" wurde in Ihrem Konto gespeichert.',
+    saveErrorTitle: 'Fehler beim Speichern',
+    saveErrorMsg: 'Lebenslauf konnte nicht gespeichert werden.',
     improveAiBtn: 'Mit KI verbessern',
     improvingAiBtn: 'Verbessere…',
     aiUpdatedTitle: 'Mit KI optimiert',
@@ -387,11 +412,15 @@ const EDITOR_V2_COPY: Record<
       credentials: 'Istruzione',
       structure: 'Completa'
     },
-    autoSaved: 'Salvato automaticamente',
-    syncing: 'Sincronizzazione…',
-    lastSyncNow: 'Ultima sincronizzazione: adesso',
-    lastSyncMinPrefix: 'Ultima sincronizzazione: ',
-    lastSyncMinSuffix: ' min fa',
+    saveBtn: 'Salva',
+    savingBtn: 'Salvataggio…',
+    savedStatus: 'Salvato',
+    unsavedStatus: 'Modifiche non salvate',
+    lastSavedPrefix: 'Salvato alle ',
+    savedSuccessTitle: 'Curriculum Salvato!',
+    savedSuccessMsg: 'La versione "{title}" è stata salvata.',
+    saveErrorTitle: 'Errore di Salvataggio',
+    saveErrorMsg: 'Impossibile salvare il curriculum. Riprova.',
     improveAiBtn: 'Migliora con IA',
     improvingAiBtn: 'Miglioramento…',
     aiUpdatedTitle: 'Migliorato con IA',
@@ -501,9 +530,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     });
     return initial;
   });
-  const [syncState, setSyncState] = useState<'saved' | 'saving'>('saved');
-  const [lastSyncedAt, setLastSyncedAt] = useState<number>(() => Date.now());
-  const [syncClockTick, setSyncClockTick] = useState<number>(0);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [isSavingManual, setIsSavingManual] = useState<boolean>(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [improvingFieldKey, setImprovingFieldKey] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<ProfessionSnippetExample[]>(() => getStoredSnippetsSync());
   const [showSnippetPicker, setShowSnippetPicker] = useState<boolean>(false);
@@ -516,7 +545,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const [sectionsOrderOpen, setSectionsOrderOpen] = useState<boolean>(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const editorRootRef = useRef<HTMLDivElement>(null);
-  const hasMountedAutoSaveRef = useRef<boolean>(false);
+  const hasMountedEditorRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (!openMenuId) return;
@@ -614,7 +643,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     };
   }, []);
 
-  const { saveCurrentResume, isAuthenticated, hasActivePlan } = useAuth();
+  const { saveCurrentResume, isAuthenticated, hasActivePlan, user } = useAuth();
   const { showSuccess, showError } = useToast();
   const { siteLanguage } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).editor;
@@ -646,17 +675,12 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   );
   const completedCriteria = cvMetrics.completenessChecklist.filter((c) => c.completed).length;
 
-  useEffect(() => {
-    const interval = setInterval(() => setSyncClockTick((t) => t + 1), 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  void syncClockTick;
-  const syncMinutesAgo = Math.floor((Date.now() - lastSyncedAt) / 60000);
-  const syncTimeText =
-    syncMinutesAgo < 1
-      ? v2.lastSyncNow
-      : `${v2.lastSyncMinPrefix}${syncMinutesAgo}${v2.lastSyncMinSuffix}`;
+  const saveTimeLabel = lastSavedAt
+    ? `${v2.lastSavedPrefix}${new Date(lastSavedAt).toLocaleTimeString(siteLanguage, {
+        hour: '2-digit',
+        minute: '2-digit'
+      })}`
+    : null;
 
   const handleApplySnippetSummary = (snip: ProfessionSnippetExample) => {
     commitChange(
@@ -710,42 +734,42 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     );
   };
 
-  // Silent debounced Auto-Save (updates local timestamp immediately & syncs cloud when signed in)
+  // Track unsaved edits strictly without auto-saving to cloud or triggering notifications
   useEffect(() => {
-    if (!hasMountedAutoSaveRef.current) {
-      hasMountedAutoSaveRef.current = true;
+    if (!hasMountedEditorRef.current) {
+      hasMountedEditorRef.current = true;
       return;
     }
-    setSyncState('saving');
-    const localTimer = setTimeout(() => {
-      setLastSyncedAt(Date.now());
-      if (!isAuthenticated || !hasActivePlan || !cv.personalDetails.name?.trim()) {
-        setSyncState('saved');
-      }
-    }, 450);
+    setHasUnsavedChanges(true);
+  }, [cv]);
 
-    let cloudTimer: ReturnType<typeof setTimeout> | undefined;
-    if (isAuthenticated && hasActivePlan && cv.personalDetails.name?.trim()) {
-      cloudTimer = setTimeout(async () => {
-        try {
-          const name = cv.personalDetails.name.trim();
-          const role = cv.personalDetails.title?.trim() || ui.toasts.defaultCvTitle;
-          const title = name ? `${name} - ${role}` : ui.toasts.defaultCvTitle;
-          await saveCurrentResume(cv, title, cv.personalDetails.title);
-          setLastSyncedAt(Date.now());
-        } catch (err) {
-          console.warn('Auto-sync cloud warning:', err);
-        } finally {
-          setSyncState('saved');
-        }
-      }, 3200);
+  const handleManualSave = async () => {
+    if (isSavingManual) return;
+    if (!isAuthenticated) {
+      onOpenAuthModal?.(ui.toasts.authPromptSave);
+      return;
     }
-
-    return () => {
-      clearTimeout(localTimer);
-      if (cloudTimer) clearTimeout(cloudTimer);
-    };
-  }, [cv, isAuthenticated, hasActivePlan, saveCurrentResume, ui.toasts.defaultCvTitle]);
+    if (!hasActivePlan && user?.role !== 'admin') {
+      onOpenPricingModal?.(ui.toasts.pricingPromptSave);
+      return;
+    }
+    setIsSavingManual(true);
+    try {
+      const name = cv.personalDetails.name?.trim();
+      const role = cv.personalDetails.title?.trim() || ui.toasts.defaultCvTitle;
+      const title = name ? `${name} - ${role}` : ui.toasts.defaultCvTitle;
+      await saveCurrentResume(cv, title, cv.personalDetails.title);
+      setHasUnsavedChanges(false);
+      setLastSavedAt(Date.now());
+      showSuccess(v2.savedSuccessTitle, v2.savedSuccessMsg.replace('{title}', title));
+    } catch (err: any) {
+      console.error('Erro ao guardar currículo:', err);
+      const msg = String(err?.message || '');
+      showError(v2.saveErrorTitle, msg || v2.saveErrorMsg);
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
 
   // Discreet inline 1-click AI field enhancement
   const handleImproveFieldWithAi = async (
@@ -1283,19 +1307,33 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           })}
         </div>
 
-        {/* Calm Auto-Save Strip + Live ATS Score Pill + Options */}
+        {/* Explicit Manual Save Bar + Live ATS Score Pill + Options */}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-1.5 bg-slate-50/70">
           <div className="flex items-center gap-2 min-w-0 text-[11px] text-slate-600">
-            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 shrink-0">
-              {syncState === 'saving' ? (
-                <Loader2 className="w-3 h-3 animate-spin text-blue-600 shrink-0" />
+            <button
+              type="button"
+              onClick={() => void handleManualSave()}
+              disabled={isSavingManual}
+              className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 shadow-2xs touch-manipulation ${
+                hasUnsavedChanges
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
+              } disabled:opacity-60`}
+            >
+              {isSavingManual ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
               ) : (
-                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                <Save className="w-3.5 h-3.5 shrink-0" />
               )}
-              <span>{syncState === 'saving' ? v2.syncing : v2.autoSaved}</span>
+              <span>{isSavingManual ? v2.savingBtn : v2.saveBtn}</span>
+            </button>
+            <span
+              className={`truncate font-medium hidden sm:inline ${
+                hasUnsavedChanges ? 'text-amber-700' : 'text-emerald-700'
+              }`}
+            >
+              {hasUnsavedChanges ? v2.unsavedStatus : saveTimeLabel || v2.savedStatus}
             </span>
-            <span aria-hidden="true" className="text-slate-300 hidden sm:inline">·</span>
-            <span className="text-slate-500 truncate hidden sm:inline">{syncTimeText}</span>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -2919,30 +2957,85 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                   />
                 </div>
 
-                {/* Accent Color */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-xs font-medium text-slate-600">{ui.stage4.accentColorLabel}</span>
-                  <div className="flex items-center gap-2">
-                    {ACCENT_HEX_LIST.map((hex) => {
-                      const colorName = ui.stage4.accentColors[hex] || hex;
-                      const isSelected = (cv.accentColor || '#0f172a') === hex;
-                      return (
-                        <button
-                          key={hex}
-                          type="button"
-                          onClick={() => commitChange({ ...cv, accentColor: hex }, true)}
-                          aria-label={`${ui.stage4.selectColorAria} ${colorName}`}
-                          aria-pressed={isSelected}
-                          className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform ${
-                            isSelected ? 'ring-2 ring-slate-900 ring-offset-2 scale-105' : 'hover:scale-105'
-                          }`}
-                          style={{ backgroundColor: hex }}
-                          title={colorName}
-                        >
-                          {isSelected && <Check className="w-3 h-3 text-white" />}
-                        </button>
-                      );
-                    })}
+                {/* Accent, Header & Bar Colors */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-slate-600">{ui.stage4.accentColorLabel}</span>
+                    <div className="flex items-center gap-2">
+                      {ACCENT_HEX_LIST.map((hex) => {
+                        const colorName = ui.stage4.accentColors[hex] || hex;
+                        const isSelected = (cv.accentColor || '#0f172a').toLowerCase() === hex.toLowerCase();
+                        return (
+                          <button
+                            key={hex}
+                            type="button"
+                            onClick={() => commitChange({ ...cv, accentColor: hex }, true)}
+                            aria-label={`${ui.stage4.selectColorAria} ${colorName}`}
+                            aria-pressed={isSelected}
+                            className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform ${
+                              isSelected ? 'ring-2 ring-slate-900 ring-offset-2 scale-105' : 'hover:scale-105'
+                            }`}
+                            style={{ backgroundColor: hex }}
+                            title={colorName}
+                          >
+                            {isSelected && <Check className="w-3 h-3 text-white" />}
+                          </button>
+                        );
+                      })}
+                      <input
+                        type="color"
+                        value={cv.accentColor || '#0f172a'}
+                        onChange={(e) => commitChange({ ...cv, accentColor: e.target.value }, true)}
+                        className="w-6 h-6 rounded-full border border-slate-300 cursor-pointer bg-transparent p-0"
+                        title="Cor personalizada"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                    <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[11px] font-medium text-slate-700">Cor do Cabeçalho</span>
+                      <div className="flex items-center gap-1.5">
+                        {cv.headerColor && (
+                          <button
+                            type="button"
+                            onClick={() => commitChange({ ...cv, headerColor: undefined }, true)}
+                            className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 underline"
+                          >
+                            Padrão
+                          </button>
+                        )}
+                        <input
+                          type="color"
+                          value={cv.headerColor || '#f1f3f5'}
+                          onChange={(e) => commitChange({ ...cv, headerColor: e.target.value }, true)}
+                          className="w-6 h-5 rounded border border-slate-200 cursor-pointer bg-transparent p-0"
+                          aria-label="Cor do cabeçalho"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                      <span className="text-[11px] font-medium text-slate-700">Cor das Barras / Lateral</span>
+                      <div className="flex items-center gap-1.5">
+                        {cv.barColor && (
+                          <button
+                            type="button"
+                            onClick={() => commitChange({ ...cv, barColor: undefined }, true)}
+                            className="text-[10px] font-semibold text-slate-500 hover:text-slate-900 underline"
+                          >
+                            Padrão
+                          </button>
+                        )}
+                        <input
+                          type="color"
+                          value={cv.barColor || cv.accentColor || '#0f172a'}
+                          onChange={(e) => commitChange({ ...cv, barColor: e.target.value }, true)}
+                          className="w-6 h-5 rounded border border-slate-200 cursor-pointer bg-transparent p-0"
+                          aria-label="Cor das barras e lateral"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 

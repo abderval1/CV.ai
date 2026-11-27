@@ -12,6 +12,13 @@ import Stripe from 'stripe';
 import mammoth from 'mammoth';
 import type { WebSocket } from 'ws';
 import firebaseAppletConfig from './firebase-applet-config.json';
+import {
+  resolveCountryEntry,
+  buildCountryMatchHints,
+  extractProvinceSearchTerm,
+  getCountrySpecificPortals,
+  normalizeLocationToken
+} from './src/data/worldLocations.ts';
 
 dotenv.config();
 
@@ -831,8 +838,8 @@ export function createApiApp() {
     const configuredTimeout = Number(serverRouting.timeoutMs);
     const timeoutMs =
       Number.isFinite(configuredTimeout) && configuredTimeout >= 5000
-        ? Math.min(60000, configuredTimeout)
-        : 25000;
+        ? Math.min(60000, Math.max(30000, configuredTimeout))
+        : 35000;
 
     let lastError: any = null;
 
@@ -1958,7 +1965,8 @@ Respond STRICTLY in valid JSON:
         es: 'Español (Estándar Ejecutivo Internacional)',
         fr: 'Français (Norme Internationale des Cadres Dirigeants)',
         de: 'Deutsch (Internationaler Führungs- und Akademikerstandard)',
-        pt: 'Português (Padrão Corporativo de Alta Liderança)'
+        pt: 'Português (Padrão Corporativo de Alta Liderança)',
+        it: 'Italiano (Standard Esecutivo Internazionale)'
       };
 
       const langKey = String(targetLanguage || 'en').toLowerCase();
@@ -2099,6 +2107,8 @@ Respond STRICTLY in valid JSON matching the exact CVData schema at top-level (wi
           : cvData.references,
         templateStyle: cvData.templateStyle,
         accentColor: cvData.accentColor,
+        headerColor: cvData.headerColor,
+        barColor: cvData.barColor,
         fontFamily: cvData.fontFamily,
         sectionOrder: cvData.sectionOrder,
         sectionVisibility: cvData.sectionVisibility
@@ -9674,94 +9684,143 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       });
   }
 
-  const COUNTRY_PREFERENCE_RULES: Record<
-    string,
-    {
-      label: string;
-      linkedInLocation: string;
-      indeedUrl: string;
-      hints: string[];
-      countryCodes: string[];
-    }
-  > = {
-    remoto_global: {
-      label: 'Remoto Global',
-      linkedInLocation: '',
-      indeedUrl: 'https://www.indeed.com/jobs',
-      hints: ['worldwide', 'anywhere', 'global', 'remote'],
-      countryCodes: []
-    },
-    brasil: {
-      label: 'Brasil',
-      linkedInLocation: 'Brazil',
-      indeedUrl: 'https://br.indeed.com/jobs',
-      hints: ['br', 'brazil', 'brasil', 'sao paulo', 'rio de janeiro', 'belo horizonte', 'curitiba', 'latam', 'south america', 'americas'],
-      countryCodes: ['br']
-    },
-    portugal: {
-      label: 'Portugal',
-      linkedInLocation: 'Portugal',
-      indeedUrl: 'https://pt.indeed.com/jobs',
-      hints: ['pt', 'portugal', 'lisboa', 'lisbon', 'porto', 'coimbra', 'braga', 'europe', 'eu', 'emea'],
-      countryCodes: ['pt']
-    },
-    angola: {
-      label: 'Angola',
-      linkedInLocation: 'Angola',
-      indeedUrl: 'https://www.indeed.com/jobs',
-      hints: ['ao', 'angola', 'luanda', 'benguela', 'africa', 'emea'],
-      countryCodes: ['ao']
-    },
-    espanha: {
-      label: 'Espanha',
-      linkedInLocation: 'Spain',
-      indeedUrl: 'https://es.indeed.com/jobs',
-      hints: ['es', 'spain', 'espanha', 'madrid', 'barcelona', 'europe', 'eu', 'emea'],
-      countryCodes: ['es']
-    },
-    reino_unido: {
-      label: 'Reino Unido',
-      linkedInLocation: 'United Kingdom',
-      indeedUrl: 'https://uk.indeed.com/jobs',
-      hints: ['gb', 'uk', 'united kingdom', 'reino unido', 'london', 'manchester', 'england', 'scotland', 'europe', 'emea'],
-      countryCodes: ['gb', 'uk']
-    },
-    alemanha: {
-      label: 'Alemanha',
-      linkedInLocation: 'Germany',
-      indeedUrl: 'https://de.indeed.com/jobs',
-      hints: ['de', 'germany', 'alemanha', 'berlin', 'munich', 'frankfurt', 'hamburg', 'europe', 'eu', 'emea'],
-      countryCodes: ['de']
-    },
-    franca: {
-      label: 'França',
-      linkedInLocation: 'France',
-      indeedUrl: 'https://fr.indeed.com/jobs',
-      hints: ['fr', 'france', 'franca', 'paris', 'lyon', 'europe', 'eu', 'emea'],
-      countryCodes: ['fr']
-    },
-    estados_unidos: {
-      label: 'Estados Unidos',
-      linkedInLocation: 'United States',
-      indeedUrl: 'https://www.indeed.com/jobs',
-      hints: ['us', 'usa', 'united states', 'estados unidos', 'new york', 'san francisco', 'austin', 'north america', 'americas'],
-      countryCodes: ['us']
-    },
-    canada: {
-      label: 'Canadá',
-      linkedInLocation: 'Canada',
-      indeedUrl: 'https://ca.indeed.com/jobs',
-      hints: ['ca', 'canada', 'toronto', 'vancouver', 'montreal', 'north america', 'americas'],
-      countryCodes: ['ca']
-    },
-    europa: {
-      label: 'União Europeia',
-      linkedInLocation: 'European Union',
-      indeedUrl: 'https://pt.indeed.com/jobs',
-      hints: ['eu', 'europe', 'europa', 'emea', 'portugal', 'spain', 'germany', 'france', 'netherlands', 'ireland', 'poland', 'italy', 'uk'],
-      countryCodes: ['pt', 'es', 'de', 'fr', 'nl', 'ie', 'pl', 'it', 'be', 'at', 'se', 'fi', 'dk']
-    }
-  };
+  async function fetchReliefWebJobs(searchTerm?: string, countryNameEn?: string): Promise<any[]> {
+    const queryParts = [searchTerm, countryNameEn].filter((v) => v && v.trim()).join(' ').trim();
+    const qParam = queryParts ? `&query[value]=${encodeURIComponent(queryParts)}` : '';
+    const url = `https://api.reliefweb.int/v1/jobs?appname=cv-studio&limit=40&preset=latest${qParam}`;
+    const data = await fetchCachedExternal(`reliefweb:${queryParts}`, url, 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data?.data) ? data.data : [];
+    return list.map((item: any) => {
+      const f = item?.fields || {};
+      const countries = Array.isArray(f.country) ? f.country.map((c: any) => String(c?.name || '')).filter(Boolean) : [];
+      const cities = Array.isArray(f.city) ? f.city.map((c: any) => String(c?.name || '')).filter(Boolean) : [];
+      const sources = Array.isArray(f.source) ? f.source.map((s: any) => String(s?.shortname || s?.name || '')).filter(Boolean) : [];
+      const types = Array.isArray(f.type) ? f.type.map((t: any) => String(t?.name || '')).filter(Boolean) : [];
+      const themes = Array.isArray(f.theme) ? f.theme.map((t: any) => String(t?.name || '')).filter(Boolean) : [];
+      const titleStr = String(f.title || '');
+      const desc = stripHtmlTags(String(f.body || f['body-html'] || '')).slice(0, 2400);
+      const isRem = /remote|home[- ]based|telecommuting/i.test(`${titleStr} ${desc.slice(0, 400)}`);
+      const locs = [...cities, ...countries];
+      return {
+        id: `reliefweb:${item.id}`,
+        title: titleStr,
+        company: sources[0] || 'ReliefWeb / UN & NGO',
+        workplace: isRem ? 'remote' : 'onsite',
+        locations: locs.length > 0 ? locs : ['International'],
+        allowedCountries: countries.map((c: string) => c.toLowerCase()),
+        category: themes.join(', ') || null,
+        seniority: null,
+        employmentType: detectNormalizedContractType(types, titleStr, desc),
+        salary: null,
+        skills: themes,
+        tags: types,
+        descriptionSnippet: desc,
+        sourcePortal: 'reliefweb',
+        sourceName: 'ReliefWeb',
+        postedAt: f.date?.created || null,
+        applyUrl: String(f.url || `https://reliefweb.int/job/${item.id}`),
+        portalUrl: String(f.url || `https://reliefweb.int/job/${item.id}`)
+      };
+    });
+  }
+
+  async function fetchHimalayasJobs(): Promise<any[]> {
+    const data = await fetchCachedExternal('himalayas:p1', 'https://himalayas.app/jobs/api?limit=60', 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data?.jobs) ? data.jobs : [];
+    return list.map((j: any) => {
+      const desc = stripHtmlTags(String(j.description || j.excerpt || '')).slice(0, 2400);
+      const cats = Array.isArray(j.categories) ? j.categories.map((c: any) => String(c)) : [];
+      const locs = Array.isArray(j.locationRestrictions) ? j.locationRestrictions.map((l: any) => String(l)).filter(Boolean) : [];
+      const titleStr = String(j.title || '');
+      return {
+        id: `himalayas:${j.guid || j.id || encodeURIComponent(titleStr.slice(0, 40))}`,
+        title: titleStr,
+        company: String(j.companyName || ''),
+        workplace: 'remote',
+        locations: locs.length > 0 ? locs : ['Worldwide'],
+        allowedCountries: locs.map((l: string) => l.toLowerCase()),
+        category: cats.join(', ') || null,
+        seniority: Array.isArray(j.seniority) && j.seniority[0] ? String(j.seniority[0]).toLowerCase() : null,
+        employmentType: detectNormalizedContractType([j.employmentType], titleStr, desc),
+        salary: formatSalaryField({ min: j.minSalary, max: j.maxSalary, currency: j.currency, period: 'year' }),
+        skills: cats,
+        tags: cats,
+        descriptionSnippet: desc,
+        sourcePortal: 'himalayas',
+        sourceName: 'Himalayas',
+        postedAt: typeof j.pubDate === 'number' ? new Date(j.pubDate * 1000).toISOString() : j.pubDate || null,
+        applyUrl: String(j.applicationLink || j.guid || 'https://himalayas.app/jobs'),
+        portalUrl: String(j.guid || j.applicationLink || 'https://himalayas.app/jobs')
+      };
+    });
+  }
+
+  async function fetchTheMuseJobs(): Promise<any[]> {
+    const data = await fetchCachedExternal('themuse:p1', 'https://www.themuse.com/api/public/jobs?page=1', 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data?.results) ? data.results.slice(0, 50) : [];
+    return list.map((j: any) => {
+      const locs = Array.isArray(j.locations) ? j.locations.map((l: any) => String(l?.name || '')).filter(Boolean) : [];
+      const cats = Array.isArray(j.categories) ? j.categories.map((c: any) => String(c?.name || '')).filter(Boolean) : [];
+      const levels = Array.isArray(j.levels) ? j.levels.map((l: any) => String(l?.name || '')).filter(Boolean) : [];
+      const desc = stripHtmlTags(String(j.contents || '')).slice(0, 2400);
+      const isRem = locs.some((l: string) => /remote|flexible|anywhere/i.test(l));
+      const titleStr = String(j.name || '');
+      return {
+        id: `themuse:${j.id}`,
+        title: titleStr,
+        company: String(j.company?.name || ''),
+        workplace: isRem ? 'remote' : 'onsite',
+        locations: locs.length > 0 ? locs : ['International'],
+        allowedCountries: [],
+        category: cats.join(', ') || null,
+        seniority: levels[0] ? levels[0].toLowerCase() : null,
+        employmentType: detectNormalizedContractType([], titleStr, desc),
+        salary: null,
+        skills: cats,
+        tags: levels,
+        descriptionSnippet: desc,
+        sourcePortal: 'themuse',
+        sourceName: 'The Muse',
+        postedAt: j.publication_date || null,
+        applyUrl: String(j.refs?.landing_page || 'https://www.themuse.com/jobs'),
+        portalUrl: String(j.refs?.landing_page || 'https://www.themuse.com/jobs')
+      };
+    });
+  }
+
+  async function fetchWorkingNomadsJobs(): Promise<any[]> {
+    const data = await fetchCachedExternal('workingnomads:all', 'https://www.workingnomads.com/api/exposed_jobs/', 'json', 5 * 60 * 1000, 6000);
+    const list = Array.isArray(data) ? data.slice(0, 80) : [];
+    return list.map((j: any) => {
+      const desc = stripHtmlTags(String(j.description || '')).slice(0, 2400);
+      const tags = String(j.tags || '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const titleStr = String(j.title || '');
+      const locStr = String(j.location || 'Worldwide').trim();
+      return {
+        id: `workingnomads:${encodeURIComponent(String(j.url || titleStr).slice(0, 90))}`,
+        title: titleStr,
+        company: String(j.company_name || ''),
+        workplace: 'remote',
+        locations: locStr ? [locStr] : ['Worldwide'],
+        allowedCountries: [],
+        category: j.category_name ? String(j.category_name) : null,
+        seniority: null,
+        employmentType: detectNormalizedContractType(tags, titleStr, desc),
+        salary: null,
+        skills: tags,
+        tags,
+        descriptionSnippet: desc,
+        sourcePortal: 'workingnomads',
+        sourceName: 'Working Nomads',
+        postedAt: j.pub_date || null,
+        applyUrl: String(j.url || 'https://www.workingnomads.com/jobs'),
+        portalUrl: String(j.url || 'https://www.workingnomads.com/jobs')
+      };
+    });
+  }
 
   app.post('/api/jobs/match', async (req, res) => {
     try {
@@ -9781,6 +9840,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         source?: string;
         preferences?: {
           countries?: string[];
+          provinces?: string[];
           targetRoles?: string[];
           contractTypes?: string[];
         };
@@ -9788,6 +9848,9 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
       const prefCountries = Array.isArray(preferences?.countries)
         ? preferences!.countries.map((c) => String(c).trim()).filter(Boolean)
+        : [];
+      const prefProvinces = Array.isArray(preferences?.provinces)
+        ? preferences!.provinces.map((p) => String(p).trim()).filter(Boolean)
         : [];
       const prefRoles = Array.isArray(preferences?.targetRoles)
         ? preferences!.targetRoles.map((r) => String(r).trim()).filter(Boolean)
@@ -9901,52 +9964,61 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       const wpParam =
         workplace && workplace !== 'all' ? `&workplace=${encodeURIComponent(workplace)}` : '';
 
-      // Detect location preferences (explicit preferences override/enhance CV location)
+      // Global Country & Province Resolution (all ~195 countries + provinces/states)
       const locationNorm = normalizeTextToken(personalLocation);
       const userCountryHints: string[] = [];
-      const selectedSpecificCountries = prefCountries.filter((c) => c !== 'remoto_global');
-      const allowGlobalRemote = prefCountries.length === 0 || prefCountries.includes('remoto_global');
+      const userProvinceHints: string[] = [];
+      const normalizedCountryEntries = prefCountries
+        .map((c) => resolveCountryEntry(c))
+        .filter((e): e is NonNullable<typeof e> => Boolean(e));
+
+      const selectedSpecificEntries = normalizedCountryEntries.filter((e) => e.code !== 'remoto_global');
+      const allowGlobalRemote =
+        prefCountries.length === 0 || normalizedCountryEntries.some((e) => e.code === 'remoto_global');
+
       let linkedInLocation = '';
       let secondaryLinkedInLocation = '';
-      let indeedBaseUrl = 'https://www.indeed.com/jobs';
-      let portalLocationLabel = personalLocation || 'Remote';
+      let primaryCountryCode = selectedSpecificEntries[0]?.code || (allowGlobalRemote ? 'remoto_global' : '');
+      const cleanProvinces = prefProvinces.map((p) => extractProvinceSearchTerm(p)).filter(Boolean);
 
-      if (prefCountries.length > 0) {
+      for (const p of prefProvinces) {
+        const normFull = normalizeLocationToken(p);
+        if (normFull.length >= 2) userProvinceHints.push(normFull);
+        const mainOnly = normalizeLocationToken(p.replace(/\([^)]*\)/g, '').trim());
+        if (mainOnly.length >= 2 && !userProvinceHints.includes(mainOnly)) userProvinceHints.push(mainOnly);
+        const inParen = p.match(/\(([^)]+)\)/);
+        if (inParen?.[1]) {
+          inParen[1].split('/').forEach((city) => {
+            const nc = normalizeLocationToken(city);
+            if (nc.length >= 2 && !userProvinceHints.includes(nc)) userProvinceHints.push(nc);
+          });
+        }
+      }
+
+      if (normalizedCountryEntries.length > 0) {
         const linkedInLocList: string[] = [];
-        for (const code of prefCountries) {
-          const rule = COUNTRY_PREFERENCE_RULES[code];
-          if (rule) {
-            userCountryHints.push(...rule.hints);
-            if (rule.linkedInLocation && !linkedInLocList.includes(rule.linkedInLocation)) {
-              linkedInLocList.push(rule.linkedInLocation);
+        for (const entry of normalizedCountryEntries) {
+          userCountryHints.push(...buildCountryMatchHints(entry));
+          if (entry.code !== 'remoto_global') {
+            const locLabel =
+              entry.code === 'europa'
+                ? 'European Union'
+                : cleanProvinces[0] && entry.code === primaryCountryCode
+                ? `${cleanProvinces[0]}, ${entry.nameEn}`
+                : entry.nameEn;
+            if (!linkedInLocList.includes(locLabel)) {
+              linkedInLocList.push(locLabel);
             }
           }
         }
-        const firstSpecificRule = selectedSpecificCountries[0]
-          ? COUNTRY_PREFERENCE_RULES[selectedSpecificCountries[0]]
-          : null;
-        if (firstSpecificRule) {
-          indeedBaseUrl = firstSpecificRule.indeedUrl;
-          portalLocationLabel = firstSpecificRule.linkedInLocation || firstSpecificRule.label;
-        }
         linkedInLocation = linkedInLocList[0] || '';
-        secondaryLinkedInLocation = linkedInLocList[1] || '';
-      } else {
-        if (/brasil|brazil|sao paulo|rio de janeiro|belo horizonte|curitiba/.test(locationNorm)) {
-          userCountryHints.push('br', 'brazil', 'latam', 'south america', 'americas');
-          linkedInLocation = 'Brazil';
-          indeedBaseUrl = 'https://br.indeed.com/jobs';
-        } else if (/portugal|lisboa|porto|coimbra|braga/.test(locationNorm)) {
-          userCountryHints.push('pt', 'portugal', 'europe', 'eu', 'emea');
-          linkedInLocation = 'Portugal';
-          indeedBaseUrl = 'https://pt.indeed.com/jobs';
-        } else if (/angola|luanda|benguela|huambo/.test(locationNorm)) {
-          userCountryHints.push('ao', 'angola', 'africa', 'emea');
-          linkedInLocation = 'Angola';
-        } else if (/espanha|spain|madrid|barcelona/.test(locationNorm)) {
-          userCountryHints.push('es', 'spain', 'europe', 'eu', 'emea');
-          linkedInLocation = 'Spain';
-          indeedBaseUrl = 'https://es.indeed.com/jobs';
+        secondaryLinkedInLocation = linkedInLocList[1] || (selectedSpecificEntries[0] && cleanProvinces[0] ? selectedSpecificEntries[0].nameEn : '');
+      } else if (locationNorm) {
+        const inferred = resolveCountryEntry(personalLocation);
+        if (inferred) {
+          userCountryHints.push(...buildCountryMatchHints(inferred));
+          linkedInLocation = inferred.code === 'remoto_global' ? '' : inferred.nameEn;
+          primaryCountryCode = inferred.code;
         }
       }
 
@@ -9957,6 +10029,10 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         searchQueries.slice(0, 2).join(' ') ||
         'software engineer';
       const linkedInKeywordEn = searchQueries.slice(0, 2).join(' ') || linkedInKeywordPrimary;
+      const primaryCountryNameEn =
+        selectedSpecificEntries[0] && selectedSpecificEntries[0].code !== 'europa'
+          ? selectedSpecificEntries[0].nameEn
+          : undefined;
 
       const radarTasks: Promise<any>[] = [
         fetchRadarApiJson(`/api/jobs?page=1&pageSize=50${wpParam}`).catch(() => null),
@@ -9975,7 +10051,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         remotiveFiltered,
         arbeitnowJobs,
         jobicyJobs,
-        remoteOkJobs
+        remoteOkJobs,
+        reliefWebJobs,
+        himalayasJobs,
+        theMuseJobs,
+        workingNomadsJobs
       ] = await Promise.all([
         Promise.all(radarTasks),
         fetchLinkedInGuestJobs(linkedInKeywordPrimary, linkedInLocation).catch(() => []),
@@ -9991,7 +10071,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           : Promise.resolve({ jobs: [], total: 0 }),
         fetchArbeitnowJobs().catch(() => []),
         fetchJobicyJobs(searchQueries[0]).catch(() => []),
-        fetchRemoteOkJobs().catch(() => [])
+        fetchRemoteOkJobs().catch(() => []),
+        fetchReliefWebJobs(searchQueries[0], primaryCountryNameEn).catch(() => []),
+        fetchHimalayasJobs().catch(() => []),
+        fetchTheMuseJobs().catch(() => []),
+        fetchWorkingNomadsJobs().catch(() => [])
       ]);
 
       const radarTotal = Number(
@@ -10042,7 +10126,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         ...remotiveFiltered.jobs,
         ...arbeitnowJobs,
         ...jobicyJobs,
-        ...remoteOkJobs
+        ...remoteOkJobs,
+        ...reliefWebJobs,
+        ...himalayasJobs,
+        ...theMuseJobs,
+        ...workingNomadsJobs
       );
 
       const deduped = new Map<string, any>();
@@ -10071,7 +10159,11 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         remotive: 0,
         arbeitnow: 0,
         jobicy: 0,
-        remoteok: 0
+        remoteok: 0,
+        reliefweb: 0,
+        himalayas: 0,
+        themuse: 0,
+        workingnomads: 0
       };
       const allCompatibleJobs: any[] = [];
 
@@ -10111,17 +10203,17 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           }
         }
 
-        // Country preference filtering & affinity
+        // Country & Province preference filtering & affinity
         const allowedList = Array.isArray(job.allowedCountries)
-          ? job.allowedCountries.map((c: string) => c.toLowerCase())
+          ? job.allowedCountries.map((c: string) => normalizeLocationToken(c))
           : [];
         const locationsList = Array.isArray(job.locations)
-          ? job.locations.map((l: string) => normalizeTextToken(l)).join(' ')
+          ? job.locations.map((l: string) => normalizeLocationToken(l)).join(' ')
           : '';
         const isGlobalRemoteJob =
           job.workplace === 'remote' &&
           allowedList.length === 0 &&
-          (locationsList === '' || /anywhere|worldwide|global|remote/i.test(locationsList));
+          (locationsList === '' || /anywhere|worldwide|global|remote|international/i.test(locationsList));
 
         const matchesConfiguredCountry = userCountryHints.some(
           (hint) =>
@@ -10129,27 +10221,32 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             (hint.length > 2 && locationsList.includes(hint))
         );
 
+        const matchesConfiguredProvince =
+          userProvinceHints.length === 0 ||
+          userProvinceHints.some((pHint) => locationsList.includes(pHint));
+
         if (prefCountries.length > 0) {
-          if (selectedSpecificCountries.length > 0 && !allowGlobalRemote) {
-            // User explicitly selected specific countries without "remoto_global"
+          if (selectedSpecificEntries.length > 0 && !allowGlobalRemote) {
             if (!matchesConfiguredCountry && !isGlobalRemoteJob) {
               continue;
             }
-            // Exclude explicit foreign country restriction when it doesn't match user country codes
             if (allowedList.length > 0 && !matchesConfiguredCountry) {
               continue;
             }
-          } else if (selectedSpecificCountries.length === 0 && allowGlobalRemote) {
-            // User selected ONLY "Remoto Global"
+          } else if (selectedSpecificEntries.length === 0 && allowGlobalRemote) {
             if (job.workplace !== 'remote') {
               continue;
             }
-          } else if (selectedSpecificCountries.length > 0 && allowGlobalRemote) {
-            // Selected specific countries + Remoto Global
+          } else if (selectedSpecificEntries.length > 0 && allowGlobalRemote) {
             if (!matchesConfiguredCountry && !isGlobalRemoteJob) {
               continue;
             }
           }
+        }
+
+        // If user explicitly picked a Province/State filter and this is a localized non-worldwide job, require province match unless it's a broad country/remote match
+        if (userProvinceHints.length > 0 && !isGlobalRemoteJob && !matchesConfiguredProvince && !matchesConfiguredCountry) {
+          continue;
         }
 
         let rawPoints = 0;
@@ -10186,12 +10283,15 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           }
         }
 
-        if (!userSearchNorm && rawPoints < 14 && matchedKeywords.length === 0) {
+        if (!userSearchNorm && rawPoints < 12 && matchedKeywords.length === 0 && !(userProvinceHints.length > 0 && matchesConfiguredProvince)) {
           continue;
         }
 
         let locationMatched = false;
-        if (matchesConfiguredCountry) {
+        if (userProvinceHints.length > 0 && matchesConfiguredProvince && !isGlobalRemoteJob) {
+          rawPoints += 20;
+          locationMatched = true;
+        } else if (matchesConfiguredCountry) {
           rawPoints += prefCountries.length > 0 ? 14 : 9;
           locationMatched = true;
         } else if (job.workplace === 'remote' && allowedList.length === 0) {
@@ -10223,7 +10323,13 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
         if (titleHits > 0) fitParts.push('Alinhamento direto com o cargo');
         if (skillHits > 0) fitParts.push(`${skillHits} competência(s) compatível(eis)`);
         if (locationMatched) {
-          fitParts.push(job.workplace === 'remote' ? 'Remoto compatível' : 'País compatível');
+          fitParts.push(
+            userProvinceHints.length > 0 && matchesConfiguredProvince && !isGlobalRemoteJob
+              ? 'Província/Estado compatível'
+              : job.workplace === 'remote'
+              ? 'Remoto compatível'
+              : 'País compatível'
+          );
         }
 
         if (typeof sourceCountsAll[job.sourcePortal] === 'number') {
@@ -10267,63 +10373,24 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
           ? allCompatibleJobs.filter((j) => j.sourcePortal === source)
           : allCompatibleJobs;
 
-      const roleQueryForExternal = encodeURIComponent(
+      const roleQueryForExternal =
         (typeof search === 'string' && search.trim()) ||
-          prefRoles[0] ||
-          personalTitle.trim() ||
-          searchQueries[0] ||
-          'Software'
-      );
-      const locQueryForExternal = encodeURIComponent(portalLocationLabel);
+        prefRoles[0] ||
+        personalTitle.trim() ||
+        searchQueries[0] ||
+        'Software';
 
-      const externalPortals = [
-        {
-          id: 'linkedin',
-          name: 'LinkedIn Vagas',
-          url: `https://www.linkedin.com/jobs/search/?keywords=${roleQueryForExternal}&location=${locQueryForExternal}`,
-          liveCount: sourceCountsAll.linkedin
-        },
-        {
-          id: 'indeed',
-          name: 'Indeed',
-          url: `${indeedBaseUrl}?q=${roleQueryForExternal}&l=${locQueryForExternal}`,
-          liveCount: null
-        },
-        {
-          id: 'glassdoor',
-          name: 'Glassdoor',
-          url: `https://www.glassdoor.com/Job/jobs.htm?sc.keyword=${roleQueryForExternal}`,
-          liveCount: null
-        },
-        {
-          id: 'gupy',
-          name: 'Gupy',
-          url: `https://portal.gupy.io/job-search/term=${roleQueryForExternal}`,
-          liveCount: null
-        },
-        {
-          id: 'infojobs',
-          name: 'InfoJobs',
-          url: `https://www.infojobs.com.br/empregos.aspx?palabra=${roleQueryForExternal}`,
-          liveCount: null
-        },
-        {
-          id: 'wellfound',
-          name: 'Wellfound',
-          url: `https://wellfound.com/jobs?query=${roleQueryForExternal}`,
-          liveCount: null
-        },
-        {
-          id: 'radar',
-          name: 'Radar de Vagas',
-          url: `${RADAR_BASE_URL}/?q=${roleQueryForExternal}`,
-          liveCount: sourceCountsAll.radar
-        }
-      ];
+      const externalPortals = getCountrySpecificPortals({
+        countryCode: primaryCountryCode || undefined,
+        province: cleanProvinces[0] || undefined,
+        roleQuery: roleQueryForExternal,
+        radarBaseUrl: RADAR_BASE_URL,
+        sourceCounts: sourceCountsAll
+      });
 
       return res.json({
         sourceUrl: RADAR_BASE_URL,
-        totalPlatformJobs: radarTotal + Number(remotiveMain.total || 0),
+        totalPlatformJobs: radarTotal + Number(remotiveMain.total || 0) + reliefWebJobs.length + himalayasJobs.length + theMuseJobs.length + workingNomadsJobs.length,
         scannedPoolCount: deduped.size,
         compatibleCount: filteredBySource.length,
         totalCompatibleAllSources: allCompatibleJobs.length,

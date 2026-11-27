@@ -77,7 +77,7 @@ interface HeaderProps {
   supportChatUnreadCount?: number;
 }
 
-type OpenHeaderMenu = 'more' | 'export' | 'notif' | 'user' | null;
+type OpenHeaderMenu = 'more' | 'lang' | 'export' | 'notif' | 'user' | null;
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
@@ -119,6 +119,8 @@ export const Header: React.FC<HeaderProps> = ({
   const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+  const langBtnRef = useRef<HTMLButtonElement>(null);
+  const notifBtnRef = useRef<HTMLButtonElement>(null);
   const exportBtnRef = useRef<HTMLButtonElement>(null);
   const userBtnRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -241,6 +243,10 @@ export const Header: React.FC<HeaderProps> = ({
     const triggerEl =
       menu === 'more'
         ? moreBtnRef.current
+        : menu === 'lang'
+        ? langBtnRef.current
+        : menu === 'notif'
+        ? notifBtnRef.current
         : menu === 'export'
         ? exportBtnRef.current
         : userBtnRef.current;
@@ -249,7 +255,8 @@ export const Header: React.FC<HeaderProps> = ({
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const margin = 10;
-    const targetWidth = menu === 'more' ? 316 : menu === 'notif' ? 320 : menu === 'export' ? 240 : 250;
+    const targetWidth =
+      menu === 'more' ? 316 : menu === 'notif' ? 320 : menu === 'lang' ? 232 : menu === 'export' ? 240 : 250;
     const width = Math.min(targetWidth, vw - margin * 2);
     const preferredLeft = menu === 'more' ? rect.left : rect.right - width;
     const left = Math.max(margin, Math.min(preferredLeft, vw - width - margin));
@@ -269,6 +276,8 @@ export const Header: React.FC<HeaderProps> = ({
       if (
         popoverRef.current?.contains(target) ||
         moreBtnRef.current?.contains(target) ||
+        langBtnRef.current?.contains(target) ||
+        notifBtnRef.current?.contains(target) ||
         exportBtnRef.current?.contains(target) ||
         userBtnRef.current?.contains(target)
       ) {
@@ -332,9 +341,28 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const handleOpenChat = () => {
+    setOpenMenu(null);
+    setMobileMenuOpen(false);
+    if (!isAuthenticated) {
+      onOpenAuthModal();
+    } else if (onOpenSupportChat) {
+      onOpenSupportChat();
+    }
+  };
+
+  const handleOpenNotifs = () => {
+    setMobileMenuOpen(false);
+    if (!isAuthenticated) {
+      onOpenAuthModal();
+    } else {
+      toggleMenu('notif');
+    }
+  };
+
   return (
     <header className="no-print bg-white dark:bg-[#0B0F17] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 w-full max-w-full">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-1.5 sm:gap-3 w-full min-w-0">
         {/* Zone 1: Brand */}
         <a
           href="#home"
@@ -342,12 +370,12 @@ export const Header: React.FC<HeaderProps> = ({
             e.preventDefault();
             handleSelectNav('home');
           }}
-          className="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white hover:text-slate-700 transition-colors flex items-center gap-2 min-w-0 shrink touch-manipulation"
+          className="text-sm sm:text-base font-bold tracking-tight text-slate-900 dark:text-white hover:text-slate-700 transition-colors flex items-center gap-1.5 sm:gap-2 min-w-0 shrink touch-manipulation"
         >
           <span className="w-7 h-7 rounded-md bg-blue-600 text-white flex items-center justify-center font-bold text-[11px] tracking-tight shrink-0 shadow-xs">
             CE
           </span>
-          <span className="truncate max-w-[140px] sm:max-w-none">{siteText.brandName}</span>
+          <span className="truncate max-w-[68px] min-[420px]:max-w-[125px] sm:max-w-[165px] xl:max-w-none">{siteText.brandName}</span>
         </a>
 
         {/* Zone 2: Streamlined Desktop Navigation (Início · Criar CV · Modelos · Planos · ☰ Mais) */}
@@ -430,8 +458,82 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Account + Single Primary CTA + Mobile Drawer Trigger */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {/* Zone 3: Language + Theme + Chat + Account + Primary CTA + Mobile Drawer */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Visible Language Selector */}
+          <button
+            ref={langBtnRef}
+            type="button"
+            onClick={() => toggleMenu('lang')}
+            aria-expanded={openMenu === 'lang'}
+            title={localizedCopy.language}
+            aria-label={localizedCopy.language}
+            className={`min-h-[36px] px-2 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+              openMenu === 'lang'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 shrink-0" />
+            <span className="font-mono uppercase">{siteLanguage}</span>
+          </button>
+
+          {/* Visible Light / Dark Mode Toggle */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={localizedCopy.themeLabel}
+            aria-label={localizedCopy.themeLabel}
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center p-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {isDark ? (
+              <Sun className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-600 shrink-0" />
+            )}
+          </button>
+
+          {/* Visible Notifications Bell Trigger */}
+          <button
+            ref={notifBtnRef}
+            type="button"
+            onClick={handleOpenNotifs}
+            aria-expanded={openMenu === 'notif'}
+            title={h.notificationsTitle}
+            aria-label={h.notificationsTitle}
+            className={`relative min-w-[34px] sm:min-w-[36px] min-h-[36px] flex items-center justify-center p-1.5 rounded-lg border transition-colors shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
+              openMenu === 'notif'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Bell className="w-4 h-4 shrink-0" />
+            {isAuthenticated && unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold tabular-nums flex items-center justify-center shadow-xs">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Visible Support Chat Trigger */}
+          {onOpenSupportChat && (
+            <button
+              type="button"
+              onClick={handleOpenChat}
+              title={localizedCopy.support}
+              aria-label={localizedCopy.support}
+              className="relative min-w-[34px] sm:min-w-[36px] min-h-[36px] px-1.5 sm:px-2 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="hidden xl:inline">Chat</span>
+              {isAuthenticated && hasUnreadSupportMsg && (
+                <span className="min-w-[16px] h-[16px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums flex items-center justify-center">
+                  {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
+                </span>
+              )}
+            </button>
+          )}
+
           {isAuthenticated && user ? (
             <button
               ref={userBtnRef}
@@ -459,10 +561,11 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenAuthModal}
-              className="min-h-[36px] flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 touch-manipulation"
+              aria-label={h.signIn}
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors whitespace-nowrap shrink-0 touch-manipulation"
             >
               <UserIcon className="w-3.5 h-3.5 shrink-0" />
-              <span>{h.signIn}</span>
+              <span className="hidden min-[400px]:inline">{h.signIn}</span>
             </button>
           )}
 
@@ -531,6 +634,40 @@ export const Header: React.FC<HeaderProps> = ({
             style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
             className="fixed z-60 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150"
           >
+            {openMenu === 'lang' && (
+              <div className="p-2 space-y-1">
+                <div className="px-2 py-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                  <Globe className="w-3.5 h-3.5 shrink-0" />
+                  <span>{localizedCopy.language}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-1">
+                  {siteLanguages.map((lang) => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => {
+                        setSiteLanguage(lang.code);
+                        setOpenMenu(null);
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center justify-between gap-2 transition-colors ${
+                        siteLanguage === lang.code
+                          ? 'bg-blue-600 text-white font-semibold'
+                          : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span>{lang.flag}</span>
+                        <span className="truncate">{lang.nativeName || lang.name}</span>
+                      </span>
+                      <span className="font-mono text-[10px] uppercase opacity-80 shrink-0">
+                        {lang.code}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {openMenu === 'export' && (
               <div className="p-1.5 space-y-1">
                 <button
@@ -1106,28 +1243,38 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Account / Admin / Support */}
+          {/* Account / Admin / Support / Notifications */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleOpenNotifs}
+              className="flex-1 min-h-[44px] py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 touch-manipulation"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span className="truncate">{h.notificationsTitle}</span>
+              {isAuthenticated && unreadCount > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-bold tabular-nums flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            {onOpenSupportChat && (
+              <button
+                type="button"
+                onClick={handleOpenChat}
+                className="flex-1 min-h-[44px] py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 touch-manipulation"
+              >
+                <MessageCircle className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
+                <span>Chat · {localizedCopy.support}</span>
+                {isAuthenticated && hasUnreadSupportMsg && (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold tabular-nums flex items-center justify-center">
+                    {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
+                  </span>
+                )}
+              </button>
+            )}
             {isAuthenticated && user ? (
               <>
-                {onOpenSupportChat && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      onOpenSupportChat();
-                    }}
-                    className="flex-1 min-h-[44px] py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border border-emerald-200 bg-emerald-50 text-emerald-900 touch-manipulation"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>{localizedCopy.support}</span>
-                    {hasUnreadSupportMsg && (
-                      <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center">
-                        {supportChatUnreadCount > 9 ? '9+' : supportChatUnreadCount}
-                      </span>
-                    )}
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -1160,7 +1307,7 @@ export const Header: React.FC<HeaderProps> = ({
                   setMobileMenuOpen(false);
                   onOpenAuthModal();
                 }}
-                className="w-full min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
+                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 touch-manipulation"
               >
                 <UserIcon className="w-3.5 h-3.5" />
                 <span>{h.mobileSignInRegister}</span>

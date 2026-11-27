@@ -293,6 +293,7 @@ export interface ResolvedTemplateStyleProfile {
   isAts: boolean;
   isStrictMonoAts: boolean;
   isEuropass: boolean;
+  europassVariant?: 'classic' | 'banner' | 'sidebar' | 'framed';
   isCreative: boolean;
   isTech: boolean;
   isMinimalist: boolean;
@@ -323,7 +324,17 @@ export function resolveTemplateStyleProfile(style: TemplateStyle): ResolvedTempl
     style === 'ats_compact' ||
     style === 'ats_professional' ||
     style === 'reverse_chronological';
-  const isEuropass = style === 'european_europass';
+  const europassVariant: 'classic' | 'banner' | 'sidebar' | 'framed' | undefined =
+    style === 'european_europass'
+      ? 'classic'
+      : style === 'europass_banner'
+      ? 'banner'
+      : style === 'europass_sidebar'
+      ? 'sidebar'
+      : style === 'europass_framed'
+      ? 'framed'
+      : undefined;
+  const isEuropass = Boolean(europassVariant);
   const isCreative = style === 'creative_split' || style === 'creative_resume';
   const isTech =
     style === 'tech_modern' ||
@@ -369,6 +380,7 @@ export function resolveTemplateStyleProfile(style: TemplateStyle): ResolvedTempl
     isAts,
     isStrictMonoAts,
     isEuropass,
+    europassVariant,
     isCreative,
     isTech,
     isMinimalist,
@@ -491,3 +503,193 @@ export const COVER_CHROME_LABELS: Record<LanguageCode, {
     translating: 'Übersetze...'
   }
 };
+
+export function normalizeHex(hex?: string, fallback = '0F172A'): string {
+  const raw = (hex || fallback).trim().replace(/^#/, '');
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : raw.padEnd(6, '0').slice(0, 6);
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+    return fallback.replace(/^#/, '').toUpperCase();
+  }
+  return full.toUpperCase();
+}
+
+export function isLightHexColor(hex?: string): boolean {
+  const full = normalizeHex(hex, '0F172A');
+  const r = parseInt(full.slice(0, 2), 16) / 255;
+  const g = parseInt(full.slice(2, 4), 16) / 255;
+  const b = parseInt(full.slice(4, 6), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  return luminance > 0.26;
+}
+
+function blendHex(hexA: string, hexB: string, ratioB: number): string {
+  const a = normalizeHex(hexA);
+  const b = normalizeHex(hexB);
+  const ch = (idx: number) => {
+    const va = parseInt(a.slice(idx, idx + 2), 16);
+    const vb = parseInt(b.slice(idx, idx + 2), 16);
+    return Math.min(255, Math.max(0, Math.round(va * (1 - ratioB) + vb * ratioB)))
+      .toString(16)
+      .padStart(2, '0')
+      .toUpperCase();
+  };
+  return `${ch(0)}${ch(2)}${ch(4)}`;
+}
+
+export interface SurfaceContrastPalette {
+  isLight: boolean;
+  bgHex: string;
+  text: string;
+  textHex: string;
+  mutedText: string;
+  mutedHex: string;
+  subtleText: string;
+  subtleHex: string;
+  borderColor: string;
+  borderHex: string;
+  cardBg: string;
+  cardHex: string;
+}
+
+export function getSurfaceContrastPalette(bgColor?: string): SurfaceContrastPalette {
+  const bgHex = normalizeHex(bgColor, '0F172A');
+  const isLight = isLightHexColor(bgHex);
+  if (isLight) {
+    return {
+      isLight: true,
+      bgHex,
+      text: '#0f172a',
+      textHex: '0F172A',
+      mutedText: '#334155',
+      mutedHex: '334155',
+      subtleText: '#475569',
+      subtleHex: '475569',
+      borderColor: 'rgba(15, 23, 42, 0.18)',
+      borderHex: blendHex(bgHex, '0F172A', 0.18),
+      cardBg: 'rgba(15, 23, 42, 0.07)',
+      cardHex: blendHex(bgHex, '0F172A', 0.07)
+    };
+  }
+  return {
+    isLight: false,
+    bgHex,
+    text: '#ffffff',
+    textHex: 'FFFFFF',
+    mutedText: 'rgba(255, 255, 255, 0.90)',
+    mutedHex: 'E2E8F0',
+    subtleText: 'rgba(255, 255, 255, 0.72)',
+    subtleHex: 'CBD5E1',
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    borderHex: blendHex(bgHex, 'FFFFFF', 0.28),
+    cardBg: 'rgba(255, 255, 255, 0.12)',
+    cardHex: blendHex(bgHex, 'FFFFFF', 0.12)
+  };
+}
+
+export function extractCefrGrade(level: string): string {
+  const explicit = level.match(/\b(C2|C1|B2|B1|A2|A1)\b/i);
+  if (explicit) return explicit[1].toUpperCase();
+  const lower = level.toLowerCase();
+  if (/nativ|matern|mother|fluen|biling|proficien|muttersprach/.test(lower)) return 'C2';
+  if (/avan[cç]|advanc|superior|verhandlungssicher|courant/.test(lower)) return 'C1';
+  if (/interm|indep|m[eé]di|flie[ßs]end/.test(lower)) return 'B2';
+  if (/b[aá]sic|elem|inici|grund/.test(lower)) return 'A2';
+  return 'B2';
+}
+
+export const EUROPASS_UI_LABELS: Record<
+  LanguageCode,
+  {
+    position: string;
+    aboutMyself: string;
+    contact: string;
+    understanding: string;
+    listening: string;
+    reading: string;
+    speaking: string;
+    spokenProd: string;
+    spokenInter: string;
+    writing: string;
+    cefrNote: string;
+    address: string;
+  }
+> = {
+  pt: {
+    position: 'Cargo Pretendido',
+    aboutMyself: 'Sobre Mim',
+    contact: 'Contacto',
+    understanding: 'Compreensão',
+    listening: 'Oral',
+    reading: 'Leitura',
+    speaking: 'Expressão Oral',
+    spokenProd: 'Produção oral',
+    spokenInter: 'Interação oral',
+    writing: 'Escrita',
+    cefrNote: 'Níveis: A1 e A2: Utilizador básico · B1 e B2: Utilizador independente · C1 e C2: Utilizador proficiente',
+    address: 'Morada'
+  },
+  en: {
+    position: 'Position',
+    aboutMyself: 'About Myself',
+    contact: 'Contact',
+    understanding: 'Understanding',
+    listening: 'Listening',
+    reading: 'Reading',
+    speaking: 'Speaking',
+    spokenProd: 'Spoken production',
+    spokenInter: 'Spoken interaction',
+    writing: 'Writing',
+    cefrNote: 'Levels: A1 and A2: Basic user · B1 and B2: Independent user · C1 and C2: Proficient user',
+    address: 'Address'
+  },
+  es: {
+    position: 'Puesto Solicitado',
+    aboutMyself: 'Sobre Mí',
+    contact: 'Contacto',
+    understanding: 'Comprensión',
+    listening: 'Auditiva',
+    reading: 'Lectura',
+    speaking: 'Expresión Oral',
+    spokenProd: 'Producción oral',
+    spokenInter: 'Interacción oral',
+    writing: 'Expresión escrita',
+    cefrNote: 'Niveles: A1 y A2: Usuario básico · B1 y B2: Usuario independiente · C1 y C2: Usuario competente',
+    address: 'Dirección'
+  },
+  fr: {
+    position: 'Poste Recherché',
+    aboutMyself: 'À Propos de Moi',
+    contact: 'Contact',
+    understanding: 'Compréhension',
+    listening: 'Écouter',
+    reading: 'Lire',
+    speaking: 'Parler',
+    spokenProd: 'Production orale',
+    spokenInter: 'Interaction orale',
+    writing: 'Écrire',
+    cefrNote: 'Niveaux : A1 et A2 : Utilisateur élémentaire · B1 et B2 : Utilisateur indépendant · C1 et C2 : Utilisateur expérimenté',
+    address: 'Adresse'
+  },
+  de: {
+    position: 'Angestrebte Position',
+    aboutMyself: 'Über Mich',
+    contact: 'Kontakt',
+    understanding: 'Verstehen',
+    listening: 'Hören',
+    reading: 'Lesen',
+    speaking: 'Sprechen',
+    spokenProd: 'Zusammenhängendes Sprechen',
+    spokenInter: 'An Gesprächen teilnehmen',
+    writing: 'Schreiben',
+    cefrNote: 'Stufen: A1 und A2: Elementare Sprachverwendung · B1 und B2: Selbstständige Sprachverwendung · C1 und C2: Kompetente Sprachverwendung',
+    address: 'Anschrift'
+  }
+};
+

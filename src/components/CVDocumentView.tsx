@@ -21,7 +21,11 @@ import {
   BookOpen,
   Sliders,
   Palette,
-  Loader2
+  Loader2,
+  Mail,
+  Phone,
+  MapPin,
+  Linkedin
 } from 'lucide-react';
 import { TemplateSelectorDropdown } from './TemplateSelectorDropdown';
 import { TemplateAdvisorModal } from './TemplateAdvisorModal';
@@ -36,9 +40,12 @@ import {
   SECTION_TITLES_BY_LANG,
   getResolvedSectionTitles,
   resolveTemplateStyleProfile,
-  resolveEffectiveSectionOrder
+  resolveEffectiveSectionOrder,
+  getSurfaceContrastPalette,
+  extractCefrGrade,
+  EUROPASS_UI_LABELS
 } from '../utils/cvDocumentLabels';
-import { getStoredPlatformSettingsSync, logGenerationError } from '../services/adminModulesService';
+import { getStoredPlatformSettingsSync } from '../services/adminModulesService';
 import { recordAuditLog } from '../services/auditLogService';
 import { dispatchUserNotification } from '../services/notificationService';
 
@@ -67,6 +74,16 @@ const ACCENT_COLORS = [
   { id: 'teal', name: 'Teal Corporativo', hex: '#0f766e' }
 ];
 
+const HEADER_BAR_PRESETS = [
+  { name: 'Cinza Claro Europass', hex: '#eceef1' },
+  { name: 'Ardósia Escuro', hex: '#0f172a' },
+  { name: 'Azul Marinho', hex: '#1e3a8a' },
+  { name: 'Azul Europeu', hex: '#1d4ed8' },
+  { name: 'Verde Esmeralda', hex: '#065f46' },
+  { name: 'Vinho Executivo', hex: '#831843' },
+  { name: 'Branco Puro', hex: '#ffffff' }
+];
+
 export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   cv,
   onChange,
@@ -83,19 +100,19 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 }) => {
   const { user, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showWarning, showError } = useToast();
-  const { studioText, siteLanguage, t } = useLanguage();
+  const { studioText } = useLanguage();
   void onExportWord;
   void isExportingWord;
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [copied, setCopied] = useState<boolean>(false);
   const [isInlineEditing, setIsInlineEditing] = useState<boolean>(false);
-  const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
   const [jsonImportSuccess, setJsonImportSuccess] = useState<string | null>(null);
   const [docLang, setDocLang] = useState<LanguageCode>(contentLanguage || 'en');
   const [isAdvisorModalOpen, setIsAdvisorModalOpen] = useState<boolean>(false);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState<boolean>(false);
   const [isMultiLangModalOpen, setIsMultiLangModalOpen] = useState<boolean>(false);
   const [customizationMenuOpen, setCustomizationMenuOpen] = useState<boolean>(false);
+  const [colorMenuOpen, setColorMenuOpen] = useState<boolean>(false);
   const [customizationPos, setCustomizationPos] = useState<{ top: number; left: number; width: number }>({
     top: 64,
     left: 12,
@@ -104,6 +121,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   const [langMenuOpen, setLangMenuOpen] = useState<boolean>(false);
   const customizationBtnRef = useRef<HTMLButtonElement>(null);
   const customizationMenuRef = useRef<HTMLDivElement>(null);
+  const colorMenuRef = useRef<HTMLDivElement>(null);
   const langMenuRef = useRef<HTMLDivElement>(null);
   const [, setAdminConfigVersion] = useState<number>(0);
   const [platformSettings, setPlatformSettings] = useState(() => getStoredPlatformSettingsSync());
@@ -121,7 +139,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!customizationMenuOpen && !langMenuOpen) return;
+    if (!customizationMenuOpen && !langMenuOpen && !colorMenuOpen) return;
     if (customizationMenuOpen) {
       updateCustomizationPos();
     }
@@ -129,12 +147,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       if (e.key === 'Escape') {
         setCustomizationMenuOpen(false);
         setLangMenuOpen(false);
+        setColorMenuOpen(false);
       }
     };
     const handleOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
       if (langMenuOpen && langMenuRef.current && !langMenuRef.current.contains(target)) {
         setLangMenuOpen(false);
+      }
+      if (colorMenuOpen && colorMenuRef.current && !colorMenuRef.current.contains(target)) {
+        setColorMenuOpen(false);
       }
       if (
         customizationMenuOpen &&
@@ -161,7 +183,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
       document.removeEventListener('mousedown', handleOutside);
       document.removeEventListener('touchstart', handleOutside);
     };
-  }, [customizationMenuOpen, langMenuOpen, updateCustomizationPos]);
+  }, [customizationMenuOpen, langMenuOpen, colorMenuOpen, updateCustomizationPos]);
 
   useEffect(() => {
     const syncHandler = () => {
@@ -197,6 +219,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     isAts,
     isStrictMonoAts,
     isEuropass,
+    europassVariant,
     isCreative,
     isTech,
     isMinimalist,
@@ -210,6 +233,23 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
     isBlueprint,
     supportsPhoto
   } = resolveTemplateStyleProfile(cv.templateStyle);
+
+  const europassAccent =
+    cv.accentColor && cv.accentColor !== '#0f172a'
+      ? cv.accentColor
+      : currentTemplate.accentColor || '#1d4ed8';
+
+  const customHeaderColor = cv.headerColor || (isEditorial ? currentAccent : undefined);
+  const customBarColor = cv.barColor;
+  const creativeSidebarBg = customBarColor || currentAccent;
+  const creativeSidebarContrast = getSurfaceContrastPalette(creativeSidebarBg);
+  const europassAsideBg = customBarColor || '#eceef1';
+  const europassAsideContrast = getSurfaceContrastPalette(europassAsideBg);
+  const europassBannerBg = cv.headerColor || '#f1f3f5';
+  const europassBannerContrast = getSurfaceContrastPalette(europassBannerBg);
+  const customHeaderContrast = getSurfaceContrastPalette(customHeaderColor || currentAccent);
+
+  const euroLabels = EUROPASS_UI_LABELS[docLang] || EUROPASS_UI_LABELS.en;
 
   const resolvedFontClass =
     cv.fontFamily === 'garamond'
@@ -473,18 +513,24 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
   };
 
   const setAccentColor = (hex: string) => {
-    if (!isAuthenticated) {
-      onOpenAuthModal?.('Inicie sessão ou crie uma conta para personalizar as cores do currículo.');
-      return;
-    }
-    if (!hasActivePlan) {
-      onOpenPricingModal?.(
-        'A personalização de cores executivas e tom corporativo é exclusiva para assinantes dos planos Pro ($8/mês) ou Executivo VIP ($12/mês).'
-      );
-      return;
-    }
     onChange({ ...cv, accentColor: hex });
-    setShowColorPicker(false);
+  };
+
+  const setHeaderColor = (hex?: string) => {
+    onChange({ ...cv, headerColor: hex });
+  };
+
+  const setBarColor = (hex?: string) => {
+    onChange({ ...cv, barColor: hex });
+  };
+
+  const resetColors = () => {
+    onChange({
+      ...cv,
+      accentColor: currentTemplate.accentColor || '#0f172a',
+      headerColor: undefined,
+      barColor: undefined
+    });
   };
 
 
@@ -515,6 +561,181 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             onOpenAdvisorModal={() => setIsAdvisorModalOpen(true)}
           />
 
+          {/* Direct Colors Popover (Cores: Accent, Header & Bars) */}
+          <div ref={colorMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setColorMenuOpen((prev) => !prev)}
+              aria-expanded={colorMenuOpen}
+              className={`min-h-[38px] flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap touch-manipulation ${
+                colorMenuOpen
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+              title="Personalizar cor principal, cabeçalho e barras do currículo"
+            >
+              <Palette className="w-3.5 h-3.5 shrink-0" />
+              <span>Cores</span>
+              <span className="flex items-center -space-x-1 shrink-0">
+                <span
+                  className="w-2.5 h-2.5 rounded-full border border-white shadow-2xs"
+                  style={{ backgroundColor: currentAccent }}
+                />
+                {cv.headerColor && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full border border-white shadow-2xs"
+                    style={{ backgroundColor: cv.headerColor }}
+                  />
+                )}
+                {cv.barColor && (
+                  <span
+                    className="w-2.5 h-2.5 rounded-full border border-white shadow-2xs"
+                    style={{ backgroundColor: cv.barColor }}
+                  />
+                )}
+              </span>
+            </button>
+
+            {colorMenuOpen && (
+              <div className="fixed sm:absolute left-3 right-3 sm:left-0 sm:right-auto mt-1.5 sm:w-80 max-h-[75dvh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 z-60 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-xs font-bold text-slate-900">Cores do Currículo</span>
+                  <button
+                    type="button"
+                    onClick={resetColors}
+                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                  >
+                    Repor Cores
+                  </button>
+                </div>
+
+                {/* Primary / Title Accent */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-700">Cor Principal / Títulos</span>
+                    <input
+                      type="color"
+                      value={currentAccent}
+                      onChange={(e) => setAccentColor(e.target.value)}
+                      className="w-7 h-6 rounded border border-slate-200 cursor-pointer bg-transparent p-0"
+                      aria-label="Escolher cor principal"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {ACCENT_COLORS.map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => setAccentColor(col.hex)}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center transition-transform hover:scale-110 ${
+                          currentAccent.toLowerCase() === col.hex.toLowerCase()
+                            ? 'ring-2 ring-slate-900 ring-offset-1 scale-105'
+                            : ''
+                        }`}
+                        style={{ backgroundColor: col.hex }}
+                        title={col.name}
+                      >
+                        {currentAccent.toLowerCase() === col.hex.toLowerCase() && (
+                          <Check className="w-3 h-3 text-white" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Header Background Color */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-700">Cor do Cabeçalho</span>
+                    <div className="flex items-center gap-1.5">
+                      {cv.headerColor && (
+                        <button
+                          type="button"
+                          onClick={() => setHeaderColor(undefined)}
+                          className="text-[10px] text-slate-500 hover:text-slate-800 underline"
+                        >
+                          Padrão
+                        </button>
+                      )}
+                      <input
+                        type="color"
+                        value={cv.headerColor || '#f1f3f5'}
+                        onChange={(e) => setHeaderColor(e.target.value)}
+                        className="w-7 h-6 rounded border border-slate-200 cursor-pointer bg-transparent p-0"
+                        aria-label="Escolher cor do cabeçalho"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {HEADER_BAR_PRESETS.map((preset) => {
+                      const active = (cv.headerColor || '').toLowerCase() === preset.hex.toLowerCase();
+                      const light = preset.hex === '#ffffff' || preset.hex === '#eceef1';
+                      return (
+                        <button
+                          key={`hdr-${preset.hex}`}
+                          type="button"
+                          onClick={() => setHeaderColor(preset.hex)}
+                          className={`w-6 h-6 rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 ${
+                            active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105' : ''
+                          }`}
+                          style={{ backgroundColor: preset.hex }}
+                          title={preset.name}
+                        >
+                          {active && <Check className={`w-3 h-3 ${light ? 'text-slate-900' : 'text-white'}`} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Bar / Sidebar / Frame Color */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-700">Cor das Barras / Lateral</span>
+                    <div className="flex items-center gap-1.5">
+                      {cv.barColor && (
+                        <button
+                          type="button"
+                          onClick={() => setBarColor(undefined)}
+                          className="text-[10px] text-slate-500 hover:text-slate-800 underline"
+                        >
+                          Padrão
+                        </button>
+                      )}
+                      <input
+                        type="color"
+                        value={cv.barColor || currentAccent}
+                        onChange={(e) => setBarColor(e.target.value)}
+                        className="w-7 h-6 rounded border border-slate-200 cursor-pointer bg-transparent p-0"
+                        aria-label="Escolher cor das barras e lateral"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {HEADER_BAR_PRESETS.map((preset) => {
+                      const active = (cv.barColor || '').toLowerCase() === preset.hex.toLowerCase();
+                      const light = preset.hex === '#ffffff' || preset.hex === '#eceef1';
+                      return (
+                        <button
+                          key={`bar-${preset.hex}`}
+                          type="button"
+                          onClick={() => setBarColor(preset.hex)}
+                          className={`w-6 h-6 rounded-full border border-slate-300 flex items-center justify-center transition-transform hover:scale-110 ${
+                            active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105' : ''
+                          }`}
+                          style={{ backgroundColor: preset.hex }}
+                          title={preset.name}
+                        >
+                          {active && <Check className={`w-3 h-3 ${light ? 'text-slate-900' : 'text-white'}`} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Unified Document Customization & Layout Popover (Ajustes) */}
           <div className="relative">
             <button
@@ -531,10 +752,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
             >
               <Sliders className="w-3.5 h-3.5 shrink-0" />
               <span>{studioText.docToolbar.settingsBtn}</span>
-              <span
-                className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
-                style={{ backgroundColor: currentAccent }}
-              />
             </button>
 
             {customizationMenuOpen && (
@@ -698,10 +915,19 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Accent Color Section */}
-                  <div className="pb-2.5 border-b border-slate-100">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Cor do Currículo
+                  {/* Accent, Header & Bar Colors Section */}
+                  <div className="pb-2.5 border-b border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Cores (Principal, Cabeçalho e Barras)
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetColors}
+                        className="text-[10px] font-semibold text-blue-600 hover:underline"
+                      >
+                        Repor
+                      </button>
                     </div>
                     <div className="grid grid-cols-7 gap-1.5 pt-0.5">
                       {ACCENT_COLORS.map((col) => (
@@ -709,15 +935,39 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           key={col.id}
                           type="button"
                           onClick={() => setAccentColor(col.hex)}
-                          className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-110 relative ${
-                            currentAccent === col.hex ? 'ring-2 ring-slate-900 ring-offset-2 scale-105' : ''
+                          className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 relative ${
+                            currentAccent.toLowerCase() === col.hex.toLowerCase()
+                              ? 'ring-2 ring-slate-900 ring-offset-2 scale-105'
+                              : ''
                           }`}
                           style={{ backgroundColor: col.hex }}
                           title={col.name}
                         >
-                          {currentAccent === col.hex && <Check className="w-3.5 h-3.5 text-white" />}
+                          {currentAccent.toLowerCase() === col.hex.toLowerCase() && (
+                            <Check className="w-3.5 h-3.5 text-white" />
+                          )}
                         </button>
                       ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <label className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-medium text-slate-700 cursor-pointer">
+                        <span>Cabeçalho</span>
+                        <input
+                          type="color"
+                          value={cv.headerColor || '#f1f3f5'}
+                          onChange={(e) => setHeaderColor(e.target.value)}
+                          className="w-5 h-5 rounded border-0 bg-transparent p-0 cursor-pointer"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-slate-50 border border-slate-200 text-[11px] font-medium text-slate-700 cursor-pointer">
+                        <span>Barras</span>
+                        <input
+                          type="color"
+                          value={cv.barColor || currentAccent}
+                          onChange={(e) => setBarColor(e.target.value)}
+                          className="w-5 h-5 rounded border-0 bg-transparent p-0 cursor-pointer"
+                        />
+                      </label>
                     </div>
                   </div>
 
@@ -830,7 +1080,11 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               ) : (
                 <Globe className="w-3.5 h-3.5 shrink-0" />
               )}
-              <span>{docLang.toUpperCase()}</span>
+              <span>
+                {isTranslatingContent && translatingTargetLang
+                  ? `A traduzir (${translatingTargetLang.toUpperCase()})...`
+                  : `Traduzir: ${docLang.toUpperCase()}`}
+              </span>
               <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${langMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
@@ -867,7 +1121,6 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           );
                           return;
                         }
-                        setDocLang(item.code);
                         onSelectLanguage?.(item.code);
                       }}
                       className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-colors ${
@@ -970,8 +1223,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Left Sidebar (35% width) */}
               <aside
-                className="cv-creative-sidebar w-full md:w-[35%] p-6 sm:p-8 text-white flex flex-col justify-between"
-                style={{ backgroundColor: currentAccent }}
+                className="cv-creative-sidebar w-full md:w-[35%] p-6 sm:p-8 flex flex-col justify-between"
+                style={{ backgroundColor: creativeSidebarBg, color: creativeSidebarContrast.text }}
               >
                 <div>
                   {/* Photo in Sidebar */}
@@ -980,11 +1233,15 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                       <img
                         src={cv.personalDetails.photoUrl}
                         alt={cv.personalDetails.name}
-                        className="w-28 h-28 rounded-2xl object-cover border-4 border-white/20 shadow-md"
+                        className="w-28 h-28 rounded-2xl object-cover border-4 shadow-md"
+                        style={{ borderColor: creativeSidebarContrast.borderColor }}
                       />
                     </div>
                   ) : (
-                    <div className="mb-4 inline-block px-3 py-1 bg-white/10 rounded-full text-[11px] font-bold tracking-wider uppercase">
+                    <div
+                      className="mb-4 inline-block px-3 py-1 rounded-full text-[11px] font-bold tracking-wider uppercase"
+                      style={{ backgroundColor: creativeSidebarContrast.cardBg, color: creativeSidebarContrast.text }}
+                    >
                       {currentTitles.creativeTag}
                     </div>
                   )}
@@ -998,7 +1255,8 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
                       })
                     }
-                    className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white leading-tight break-words"
+                    className="text-xl sm:text-2xl font-black uppercase tracking-tight leading-tight break-words"
+                    style={{ color: creativeSidebarContrast.text }}
                   >
                     {cv.personalDetails.name || 'SEU NOME'}
                   </h1>
@@ -1012,53 +1270,94 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         personalDetails: { ...cv.personalDetails, title: e.currentTarget.textContent || '' }
                       })
                     }
-                    className="text-xs sm:text-sm font-medium text-white/90 mt-1 opacity-95"
+                    className="text-xs sm:text-sm font-medium mt-1"
+                    style={{ color: creativeSidebarContrast.mutedText }}
                   >
                     {cv.personalDetails.title}
                   </div>
 
                   {/* Sidebar Contact Block */}
-                  <div className="mt-6 pt-5 border-t border-white/20 space-y-2.5 text-xs text-white/90">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-1">
+                  <div
+                    className="mt-6 pt-5 border-t space-y-2.5 text-xs"
+                    style={{ borderColor: creativeSidebarContrast.borderColor, color: creativeSidebarContrast.mutedText }}
+                  >
+                    <div
+                      className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                      style={{ color: creativeSidebarContrast.subtleText }}
+                    >
                       {currentTitles.contactsLabel}
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">{currentTitles.locationLabel}</span>
-                      <span className="font-medium">{cv.personalDetails.location}</span>
+                      <span className="block text-[10px]" style={{ color: creativeSidebarContrast.subtleText }}>
+                        {currentTitles.locationLabel}
+                      </span>
+                      <span className="font-medium" style={{ color: creativeSidebarContrast.text }}>
+                        {cv.personalDetails.location}
+                      </span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">{currentTitles.phoneLabel}</span>
-                      <span className="font-medium font-mono">{cv.personalDetails.phone}</span>
+                      <span className="block text-[10px]" style={{ color: creativeSidebarContrast.subtleText }}>
+                        {currentTitles.phoneLabel}
+                      </span>
+                      <span className="font-medium font-mono" style={{ color: creativeSidebarContrast.text }}>
+                        {cv.personalDetails.phone}
+                      </span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-white/60">{currentTitles.emailLabel}</span>
-                      <span className="font-medium break-all">{cv.personalDetails.email}</span>
+                      <span className="block text-[10px]" style={{ color: creativeSidebarContrast.subtleText }}>
+                        {currentTitles.emailLabel}
+                      </span>
+                      <span className="font-medium break-all" style={{ color: creativeSidebarContrast.text }}>
+                        {cv.personalDetails.email}
+                      </span>
                     </div>
                     {cv.personalDetails.linkedin && (
                       <div>
-                        <span className="block text-[10px] text-white/60">LinkedIn</span>
-                        <span className="font-medium break-all">{cv.personalDetails.linkedin}</span>
+                        <span className="block text-[10px]" style={{ color: creativeSidebarContrast.subtleText }}>
+                          LinkedIn
+                        </span>
+                        <span className="font-medium break-all" style={{ color: creativeSidebarContrast.text }}>
+                          {cv.personalDetails.linkedin}
+                        </span>
                       </div>
                     )}
                     {cv.personalDetails.website && (
                       <div>
-                        <span className="block text-[10px] text-white/60">{currentTitles.websiteLabel}</span>
-                        <span className="font-medium break-all">{cv.personalDetails.website}</span>
+                        <span className="block text-[10px]" style={{ color: creativeSidebarContrast.subtleText }}>
+                          {currentTitles.websiteLabel}
+                        </span>
+                        <span className="font-medium break-all" style={{ color: creativeSidebarContrast.text }}>
+                          {cv.personalDetails.website}
+                        </span>
                       </div>
                     )}
                   </div>
 
                   {/* Sidebar Skills / Competencies */}
                   {cv.competencies && cv.competencies.length > 0 && (
-                    <div className="mt-6 pt-5 border-t border-white/20">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-2.5">
+                    <div className="mt-6 pt-5 border-t" style={{ borderColor: creativeSidebarContrast.borderColor }}>
+                      <div
+                        className="text-[10px] font-bold uppercase tracking-wider mb-2.5"
+                        style={{ color: creativeSidebarContrast.subtleText }}
+                      >
                         {currentTitles.skillsShort}
                       </div>
                       <div className="space-y-2">
                         {cv.competencies.map((c, i) => (
-                          <div key={c.id || i} className="bg-white/10 rounded-lg p-2 text-xs">
-                            <span className="font-bold block text-white">{c.category}</span>
-                            <span className="text-[11px] text-white/80 line-clamp-2">{c.description}</span>
+                          <div
+                            key={c.id || i}
+                            className="rounded-lg p-2 text-xs"
+                            style={{ backgroundColor: creativeSidebarContrast.cardBg }}
+                          >
+                            <span className="font-bold block" style={{ color: creativeSidebarContrast.text }}>
+                              {c.category}
+                            </span>
+                            <span
+                              className="text-[11px] line-clamp-2"
+                              style={{ color: creativeSidebarContrast.mutedText }}
+                            >
+                              {c.description}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -1067,15 +1366,22 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
 
                   {/* Sidebar Languages */}
                   {cv.languages && cv.languages.length > 0 && (
-                    <div className="mt-6 pt-5 border-t border-white/20">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-white/60 mb-2">
+                    <div className="mt-6 pt-5 border-t" style={{ borderColor: creativeSidebarContrast.borderColor }}>
+                      <div
+                        className="text-[10px] font-bold uppercase tracking-wider mb-2"
+                        style={{ color: creativeSidebarContrast.subtleText }}
+                      >
                         {currentTitles.languagesShort}
                       </div>
                       <div className="space-y-1.5 text-xs">
                         {cv.languages.map((l, i) => (
                           <div key={i} className="flex justify-between items-center">
-                            <span className="font-bold text-white">{l.language}</span>
-                            <span className="text-[11px] text-white/80">{l.level}</span>
+                            <span className="font-bold" style={{ color: creativeSidebarContrast.text }}>
+                              {l.language}
+                            </span>
+                            <span className="text-[11px]" style={{ color: creativeSidebarContrast.mutedText }}>
+                              {l.level}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -1083,13 +1389,33 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                   )}
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-white/20 text-[10px] text-white/60 text-center">
+                <div
+                  className="mt-6 pt-4 border-t text-[10px] text-center"
+                  style={{ borderColor: creativeSidebarContrast.borderColor, color: creativeSidebarContrast.subtleText }}
+                >
                   {currentTitles.creativeFooter}
                 </div>
               </aside>
 
               {/* Right Main Column (65% width) */}
               <main className="cv-creative-main w-full md:w-[65%] p-6 sm:p-10 space-y-6">
+                {cv.headerColor && (
+                  <div
+                    className="rounded-xl p-4 mb-2 border"
+                    style={{
+                      backgroundColor: cv.headerColor,
+                      borderColor: customHeaderContrast.borderColor,
+                      color: customHeaderContrast.text
+                    }}
+                  >
+                    <div className="text-xs font-bold uppercase tracking-wider" style={{ color: customHeaderContrast.subtleText }}>
+                      {cv.personalDetails.title}
+                    </div>
+                    <div className="text-lg font-black uppercase tracking-tight" style={{ color: customHeaderContrast.text }}>
+                      {cv.personalDetails.name}
+                    </div>
+                  </div>
+                )}
                 {sectionOrder.map((sectionKey) => {
                   if (!isSectionVisible(sectionKey)) return null;
 
@@ -1223,20 +1549,1350 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 })}
               </main>
             </article>
-          ) : (
-            /* CASE 2: Single Column / Official Executive Layouts (Europass, Harvard, ATS, Corporativo, Tech, etc.) */
+          ) : isEuropass && europassVariant === 'sidebar' ? (
+            /* CASE 1B: Europass Sidebar (Custom/Gray Left Column + Blue Timeline Right) */
             <article
-              className={`cv-a4-sheet cv-single-column bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+              className={`cv-a4-sheet cv-europass-sidebar bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs min-h-[580px] md:min-h-[1120px] flex flex-col md:flex-row relative overflow-hidden ${
+                cv.fontFamily ? resolvedFontClass : 'font-jakarta'
+              } ${
                 density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
-              } ${isBoard ? 'border-t-[6px]' : ''} ${resolvedFontClass}`}
-              style={isBoard ? { borderTopColor: currentAccent } : undefined}
+              }`}
+            >
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
+              <aside
+                className="cv-europass-aside w-full md:w-[32%] p-6 sm:p-8 flex flex-col justify-between border-b md:border-b-0 md:border-r"
+                style={{
+                  backgroundColor: europassAsideBg,
+                  color: europassAsideContrast.text,
+                  borderColor: europassAsideContrast.borderColor,
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact'
+                }}
+              >
+                <div>
+                  {shouldRenderPhoto && (
+                    <div className="mb-5 flex justify-center">
+                      <img
+                        src={cv.personalDetails.photoUrl}
+                        alt={cv.personalDetails.name}
+                        className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-sm"
+                      />
+                    </div>
+                  )}
+
+                  <h1
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-xl font-bold text-center leading-snug break-words"
+                    style={{ color: europassAsideContrast.text }}
+                  >
+                    {cv.personalDetails.name || 'SEU NOME'}
+                  </h1>
+
+                  <div
+                    className="w-10 h-px mx-auto my-2.5"
+                    style={{ backgroundColor: europassAsideContrast.subtleText }}
+                  />
+
+                  <div
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, title: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-xs font-semibold text-center leading-relaxed"
+                    style={{ color: europassAsideContrast.mutedText }}
+                  >
+                    {cv.personalDetails.title}
+                  </div>
+
+                  {/* Contact Block */}
+                  <div
+                    className="mt-7 pt-5 border-t space-y-2.5 text-xs"
+                    style={{ borderColor: europassAsideContrast.borderColor, color: europassAsideContrast.mutedText }}
+                  >
+                    <h3
+                      className="text-[11px] font-bold uppercase tracking-wider mb-2"
+                      style={{ color: europassAsideContrast.text }}
+                    >
+                      {euroLabels.contact}
+                    </h3>
+                    {cv.personalDetails.location && (
+                      <div className="flex items-start gap-2">
+                        <MapPin
+                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                          style={{ color: europassAsideContrast.isLight ? europassAccent : '#ffffff' }}
+                        />
+                        <span className="leading-snug">{cv.personalDetails.location}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.email && (
+                      <div className="flex items-start gap-2">
+                        <Mail
+                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                          style={{ color: europassAsideContrast.isLight ? europassAccent : '#ffffff' }}
+                        />
+                        <span className="break-all leading-snug">{cv.personalDetails.email}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.phone && (
+                      <div className="flex items-start gap-2">
+                        <Phone
+                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                          style={{ color: europassAsideContrast.isLight ? europassAccent : '#ffffff' }}
+                        />
+                        <span className="font-mono leading-snug">{cv.personalDetails.phone}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.website && (
+                      <div className="flex items-start gap-2">
+                        <Globe
+                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                          style={{ color: europassAsideContrast.isLight ? europassAccent : '#ffffff' }}
+                        />
+                        <span className="break-all leading-snug">{cv.personalDetails.website}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.linkedin && (
+                      <div className="flex items-start gap-2">
+                        <Linkedin
+                          className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                          style={{ color: europassAsideContrast.isLight ? europassAccent : '#ffffff' }}
+                        />
+                        <span className="break-all leading-snug">{cv.personalDetails.linkedin}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sidebar Competencies */}
+                  {isSectionVisible('competencies') && cv.competencies && cv.competencies.length > 0 && (
+                    <div
+                      className="mt-6 pt-5 border-t space-y-2"
+                      style={{ borderColor: europassAsideContrast.borderColor }}
+                    >
+                      <h3
+                        className="text-[11px] font-bold uppercase tracking-wider"
+                        style={{ color: europassAsideContrast.text }}
+                      >
+                        {sectionTitles.competencies}
+                      </h3>
+                      <div className="space-y-2 text-[11.5px]">
+                        {cv.competencies.map((c, idx) => (
+                          <div key={c.id || idx}>
+                            <span className="font-bold block" style={{ color: europassAsideContrast.text }}>
+                              {c.category}
+                            </span>
+                            <span className="leading-snug" style={{ color: europassAsideContrast.mutedText }}>
+                              {c.description}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </aside>
+
+              <main className="cv-europass-main w-full md:w-[68%] bg-white p-6 sm:p-9 space-y-6">
+                {cv.headerColor && (
+                  <div
+                    className="rounded-lg px-4 py-3 border"
+                    style={{
+                      backgroundColor: cv.headerColor,
+                      borderColor: customHeaderContrast.borderColor,
+                      color: customHeaderContrast.text
+                    }}
+                  >
+                    <div className="text-base font-bold leading-tight" style={{ color: customHeaderContrast.text }}>
+                      {cv.personalDetails.name}
+                    </div>
+                    <div className="text-xs font-medium mt-0.5" style={{ color: customHeaderContrast.mutedText }}>
+                      {cv.personalDetails.title}
+                    </div>
+                  </div>
+                )}
+                {sectionOrder.map((sectionKey) => {
+                  if (!isSectionVisible(sectionKey) || sectionKey === 'competencies') return null;
+
+                  if (sectionKey === 'summary' && cv.summary) {
+                    return (
+                      <section key="summary" className="cv-section">
+                        <h2
+                          className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b pb-1 mb-2.5"
+                          style={{ borderColor: europassAccent }}
+                        >
+                          {euroLabels.aboutMyself}
+                        </h2>
+                        <p
+                          contentEditable={isInlineEditing}
+                          suppressContentEditableWarning
+                          onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
+                          className="text-xs sm:text-[13px] leading-relaxed text-slate-700"
+                        >
+                          {cv.summary}
+                        </p>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'experiences' && cv.experiences && cv.experiences.length > 0) {
+                    return (
+                      <section key="experiences" className="cv-section">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1 mb-3">
+                          {sectionTitles.experiences}
+                        </h2>
+                        <div className="space-y-4">
+                          {cv.experiences.map((exp) => (
+                            <div key={exp.id} className="cv-item relative pl-4 border-l border-slate-200 space-y-1">
+                              <span
+                                className="w-2 h-2 rounded-full absolute -left-[4.5px] top-1"
+                                style={{ backgroundColor: europassAccent }}
+                              />
+                              <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: europassAccent }}>
+                                {exp.period}
+                                {exp.location ? ` – ${exp.location}` : ''}
+                              </div>
+                              <div className="text-[13.5px] font-bold text-slate-900">{exp.role}</div>
+                              <div className="text-xs text-slate-500 font-medium">{exp.company}</div>
+                              {exp.donor && <div className="text-[11px] italic text-slate-500">{renderTextWithLinks(exp.donor)}</div>}
+                              <ul className="mt-1 space-y-1 text-xs text-slate-700">
+                                {exp.highlights.map((pt, pIdx) => (
+                                  <li key={pIdx} className="flex items-start">
+                                    <span className="mr-1.5 text-slate-400">•</span>
+                                    <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'educations' && cv.educations && cv.educations.length > 0) {
+                    return (
+                      <section key="educations" className="cv-section">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1 mb-3">
+                          {sectionTitles.educations}
+                        </h2>
+                        <div className="space-y-3.5">
+                          {cv.educations.map((edu) => (
+                            <div key={edu.id} className="cv-item relative pl-4 border-l border-slate-200 space-y-0.5">
+                              <span
+                                className="w-2 h-2 rounded-full absolute -left-[4.5px] top-1"
+                                style={{ backgroundColor: europassAccent }}
+                              />
+                              <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: europassAccent }}>
+                                {edu.period}
+                              </div>
+                              <div className="text-[13.5px] font-bold text-slate-900">{edu.degree}</div>
+                              <div className="text-xs text-slate-600">
+                                {edu.institution}
+                                {edu.gpaOrHonors ? ` (${edu.gpaOrHonors})` : ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'trainings' && cv.trainings && cv.trainings.length > 0) {
+                    return (
+                      <section key="trainings" className="cv-section">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1 mb-2">
+                          {sectionTitles.trainings}
+                        </h2>
+                        <ul className="space-y-1 text-xs text-slate-700">
+                          {cv.trainings.map((tr, idx) => (
+                            <li key={idx} className="flex items-start">
+                              <span className="mr-1.5 text-slate-400">•</span>
+                              <span>{tr}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'languages' && cv.languages && cv.languages.length > 0) {
+                    return (
+                      <section key="languages" className="cv-section">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1 mb-3">
+                          {sectionTitles.languages}
+                        </h2>
+                        <div className="space-y-3">
+                          {cv.languages.map((langItem, idx) => {
+                            const grade = extractCefrGrade(langItem.level);
+                            return (
+                              <div key={idx} className="cv-item border-b border-slate-100 pb-2.5 last:border-b-0">
+                                <div className="flex items-center justify-between gap-2 mb-1.5">
+                                  <span className="text-xs font-bold text-slate-900">{langItem.language}</span>
+                                  <span className="text-[10.5px] font-medium text-slate-500">{langItem.level}</span>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1.5 text-center text-[10px]">
+                                  <div className="bg-slate-50 rounded py-1 px-1">
+                                    <div className="text-slate-500 truncate">{euroLabels.listening}</div>
+                                    <div className="font-bold text-slate-900 font-mono">{grade}</div>
+                                  </div>
+                                  <div className="bg-slate-50 rounded py-1 px-1">
+                                    <div className="text-slate-500 truncate">{euroLabels.reading}</div>
+                                    <div className="font-bold text-slate-900 font-mono">{grade}</div>
+                                  </div>
+                                  <div className="bg-slate-50 rounded py-1 px-1">
+                                    <div className="text-slate-500 truncate">{euroLabels.spokenProd}</div>
+                                    <div className="font-bold text-slate-900 font-mono">{grade}</div>
+                                  </div>
+                                  <div className="bg-slate-50 rounded py-1 px-1">
+                                    <div className="text-slate-500 truncate">{euroLabels.spokenInter}</div>
+                                    <div className="font-bold text-slate-900 font-mono">{grade}</div>
+                                  </div>
+                                  <div className="bg-slate-50 rounded py-1 px-1">
+                                    <div className="text-slate-500 truncate">{euroLabels.writing}</div>
+                                    <div className="font-bold text-slate-900 font-mono">{grade}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'references' && cv.references && cv.references.length > 0) {
+                    return (
+                      <section key="references" className="cv-section">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-200 pb-1 mb-2">
+                          {sectionTitles.references}
+                        </h2>
+                        <div className="space-y-2 text-xs">
+                          {cv.references.map((ref, idx) => (
+                            <div key={ref.id || idx} className="cv-item flex flex-wrap justify-between gap-1">
+                              <div>
+                                <strong className="text-slate-900">{ref.name}</strong>
+                                <span className="text-slate-600"> — {ref.institutionAndPosition}</span>
+                              </div>
+                              <span className="font-mono text-slate-500 text-[11px]">{ref.contact}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  return null;
+                })}
+              </main>
+            </article>
+          ) : isEuropass && europassVariant === 'banner' ? (
+            /* CASE 1C: Europass Banner (Soft Gray/Custom Top Banner + Full CEFR Language Matrix Table) */
+            <article
+              className={`cv-a4-sheet cv-padded-sheet cv-europass-banner bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+                density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+              } ${resolvedFontClass}`}
+            >
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
+
+              {/* Full-bleed Gray/Custom Top Banner */}
+              <header
+                className="cv-europass-banner-header border-b -mx-5 sm:-mx-10 md:-mx-12 -mt-5 sm:-mt-10 md:-mt-12 px-5 sm:px-10 md:px-12 py-6 sm:py-7 mb-6"
+                style={{
+                  backgroundColor: europassBannerBg,
+                  borderColor: europassBannerContrast.borderColor,
+                  color: europassBannerContrast.text,
+                  WebkitPrintColorAdjust: 'exact',
+                  printColorAdjust: 'exact'
+                }}
+              >
+                <div className="flex flex-col sm:flex-row items-start gap-5">
+                  {shouldRenderPhoto && (
+                    <img
+                      src={cv.personalDetails.photoUrl}
+                      alt={cv.personalDetails.name}
+                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-white shadow-sm shrink-0 mx-auto sm:mx-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="flex flex-wrap items-baseline justify-between gap-2 pb-2 border-b"
+                      style={{ borderColor: europassBannerContrast.borderColor }}
+                    >
+                      <h1
+                        contentEditable={isInlineEditing}
+                        suppressContentEditableWarning
+                        onBlur={(e) =>
+                          onChange({
+                            ...cv,
+                            personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
+                          })
+                        }
+                        className="text-xl sm:text-2xl font-bold tracking-tight break-words"
+                        style={{ color: europassBannerContrast.text }}
+                      >
+                        {cv.personalDetails.name || 'YOUR FULL NAME'}
+                      </h1>
+                      <div
+                        contentEditable={isInlineEditing}
+                        suppressContentEditableWarning
+                        onBlur={(e) =>
+                          onChange({
+                            ...cv,
+                            personalDetails: { ...cv.personalDetails, title: e.currentTarget.textContent || '' }
+                          })
+                        }
+                        className="text-xs sm:text-sm font-semibold italic"
+                        style={{ color: europassBannerContrast.mutedText }}
+                      >
+                        {cv.personalDetails.title}
+                      </div>
+                    </div>
+
+                    <div
+                      className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs"
+                      style={{ color: europassBannerContrast.mutedText }}
+                    >
+                      {cv.personalDetails.phone && <span>{cv.personalDetails.phone}</span>}
+                      {cv.personalDetails.email && (
+                        <>
+                          <span style={{ color: europassBannerContrast.subtleText }}>|</span>
+                          <span className="break-all">{cv.personalDetails.email}</span>
+                        </>
+                      )}
+                      {cv.personalDetails.website && (
+                        <>
+                          <span style={{ color: europassBannerContrast.subtleText }}>|</span>
+                          <span className="break-all">{cv.personalDetails.website}</span>
+                        </>
+                      )}
+                      {cv.personalDetails.linkedin && (
+                        <>
+                          <span style={{ color: europassBannerContrast.subtleText }}>|</span>
+                          <span className="break-all">{cv.personalDetails.linkedin}</span>
+                        </>
+                      )}
+                      {cv.personalDetails.location && (
+                        <div className="w-full" style={{ color: europassBannerContrast.subtleText }}>
+                          {cv.personalDetails.location}
+                        </div>
+                      )}
+                    </div>
+
+                    {isSectionVisible('summary') && cv.summary && (
+                      <p
+                        contentEditable={isInlineEditing}
+                        suppressContentEditableWarning
+                        onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
+                        className="mt-3 text-xs sm:text-[13px] leading-relaxed"
+                        style={{ color: europassBannerContrast.mutedText }}
+                      >
+                        {cv.summary}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </header>
+
+              {/* Main Single-Column Sections */}
+              <div className="space-y-5">
+                {sectionOrder.map((sectionKey) => {
+                  if (!isSectionVisible(sectionKey) || sectionKey === 'summary') return null;
+
+                  const bannerBarColor = customBarColor || (cv.accentColor && cv.accentColor !== '#0f172a' ? cv.accentColor : '#0f172a');
+
+                  if (sectionKey === 'experiences' && cv.experiences && cv.experiences.length > 0) {
+                    return (
+                      <section key="experiences" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-3 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.experiences}</span>
+                        </h2>
+                        <div className="space-y-4">
+                          {cv.experiences.map((exp) => (
+                            <div key={exp.id} className="cv-item space-y-1">
+                              <div className="text-[11px] font-semibold uppercase text-slate-500">
+                                {exp.period}
+                                {exp.location ? ` – ${exp.location}` : ''}
+                              </div>
+                              <div className="text-[13.5px] font-bold text-slate-950">
+                                {exp.role} <span className="font-normal text-slate-600">— {exp.company}</span>
+                              </div>
+                              {exp.donor && <div className="text-xs italic text-slate-600">{renderTextWithLinks(exp.donor)}</div>}
+                              <ul className="mt-1 space-y-1 text-[13px] text-slate-800">
+                                {exp.highlights.map((pt, pIdx) => (
+                                  <li key={pIdx} className="flex items-start">
+                                    <span className="mr-2 text-slate-400">•</span>
+                                    <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'educations' && cv.educations && cv.educations.length > 0) {
+                    return (
+                      <section key="educations" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-3 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.educations}</span>
+                        </h2>
+                        <div className="space-y-2.5 text-[13px] text-slate-800">
+                          {cv.educations.map((edu) => (
+                            <div key={edu.id} className="cv-item">
+                              <div className="text-[11px] font-semibold uppercase text-slate-500">{edu.period}</div>
+                              <div>
+                                <strong className="text-slate-950 uppercase text-xs">{edu.degree}</strong>
+                                <span> — {edu.institution}</span>
+                                {edu.gpaOrHonors && <span className="text-slate-600 text-xs ml-1">({edu.gpaOrHonors})</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'competencies' && cv.competencies && cv.competencies.length > 0) {
+                    return (
+                      <section key="competencies" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-2 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.competencies}</span>
+                        </h2>
+                        <ul className="space-y-1 text-[13px] text-slate-800">
+                          {cv.competencies.map((comp, idx) => (
+                            <li key={comp.id || idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <div>
+                                <strong className="font-semibold text-slate-900">{comp.category}:</strong>{' '}
+                                <span>{comp.description}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'trainings' && cv.trainings && cv.trainings.length > 0) {
+                    return (
+                      <section key="trainings" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-2 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.trainings}</span>
+                        </h2>
+                        <ul className="space-y-1 text-[13px] text-slate-800">
+                          {cv.trainings.map((tr, idx) => (
+                            <li key={idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <span>{tr}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'languages' && cv.languages && cv.languages.length > 0) {
+                    return (
+                      <section key="languages" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-3 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.languages}</span>
+                        </h2>
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse border border-slate-300 text-[11px] text-center">
+                            <thead>
+                              <tr className="bg-slate-100 text-slate-800 font-bold uppercase">
+                                <th className="border border-slate-300 p-1.5 text-left" rowSpan={2}>
+                                  {currentTitles.europassLangCol}
+                                </th>
+                                <th className="border border-slate-300 p-1" colSpan={2}>
+                                  {euroLabels.understanding}
+                                </th>
+                                <th className="border border-slate-300 p-1" colSpan={2}>
+                                  {euroLabels.speaking}
+                                </th>
+                                <th className="border border-slate-300 p-1" rowSpan={2}>
+                                  {euroLabels.writing}
+                                </th>
+                              </tr>
+                              <tr className="bg-slate-50 text-slate-600 text-[10px]">
+                                <th className="border border-slate-300 p-1 font-medium">{euroLabels.listening}</th>
+                                <th className="border border-slate-300 p-1 font-medium">{euroLabels.reading}</th>
+                                <th className="border border-slate-300 p-1 font-medium">{euroLabels.spokenProd}</th>
+                                <th className="border border-slate-300 p-1 font-medium">{euroLabels.spokenInter}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cv.languages.map((langItem, idx) => {
+                                const grade = extractCefrGrade(langItem.level);
+                                return (
+                                  <tr key={idx} className={idx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}>
+                                    <td className="border border-slate-300 p-1.5 text-left font-bold text-slate-900 uppercase">
+                                      {langItem.language}
+                                    </td>
+                                    <td className="border border-slate-300 p-1.5 font-mono font-semibold">{grade}</td>
+                                    <td className="border border-slate-300 p-1.5 font-mono font-semibold">{grade}</td>
+                                    <td className="border border-slate-300 p-1.5 font-mono font-semibold">{grade}</td>
+                                    <td className="border border-slate-300 p-1.5 font-mono font-semibold">{grade}</td>
+                                    <td className="border border-slate-300 p-1.5 font-mono font-semibold">{grade}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <p className="mt-1.5 text-[10px] text-slate-500">{euroLabels.cefrNote}</p>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'references' && cv.references && cv.references.length > 0) {
+                    return (
+                      <section key="references" className="cv-section">
+                        <h2
+                          className="text-xs sm:text-[13px] font-extrabold uppercase tracking-wider border-b pb-1 mb-2 flex items-center gap-1.5"
+                          style={{ color: currentAccent, borderColor: bannerBarColor }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: bannerBarColor }} />
+                          <span>{sectionTitles.references}</span>
+                        </h2>
+                        <div className="space-y-2 text-xs">
+                          {cv.references.map((ref, idx) => (
+                            <div key={ref.id || idx} className="cv-item flex flex-wrap justify-between gap-1">
+                              <div>
+                                <strong className="text-slate-900">{ref.name}</strong>
+                                <span className="text-slate-600"> — {ref.institutionAndPosition}</span>
+                              </div>
+                              <span className="font-mono text-slate-500 text-[11px]">{ref.contact}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  return null;
+                })}
+              </div>
+            </article>
+          ) : isEuropass && europassVariant === 'framed' ? (
+            /* CASE 1D: Europass Modern Frame (Corner Brackets + Position & 2-Col Languages) */
+            <article
+              className={`cv-a4-sheet cv-europass-framed bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-6 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+                density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+              } ${resolvedFontClass}`}
+            >
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
+
+              {/* Decorative L-shaped corner brackets */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute top-0 left-0 w-10 h-10 border-t-[8px] border-l-[8px]"
+                style={{ borderColor: customBarColor || europassAccent }}
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute top-0 right-0 w-10 h-10 border-t-[8px] border-r-[8px]"
+                style={{ borderColor: customBarColor || europassAccent }}
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-0 left-0 w-10 h-10 border-b-[8px] border-l-[8px]"
+                style={{ borderColor: customBarColor || europassAccent }}
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute bottom-0 right-0 w-10 h-10 border-b-[8px] border-r-[8px]"
+                style={{ borderColor: customBarColor || europassAccent }}
+              />
+
+              {/* Top Header */}
+              <header
+                className={`flex flex-col sm:flex-row items-center sm:items-start gap-5 pb-5 mb-5 border-b ${
+                  cv.headerColor ? 'rounded-xl p-5 border-transparent' : 'border-slate-200'
+                }`}
+                style={
+                  cv.headerColor
+                    ? {
+                        backgroundColor: cv.headerColor,
+                        color: customHeaderContrast.text,
+                        WebkitPrintColorAdjust: 'exact',
+                        printColorAdjust: 'exact'
+                      }
+                    : undefined
+                }
+              >
+                {shouldRenderPhoto && (
+                  <img
+                    src={cv.personalDetails.photoUrl}
+                    alt={cv.personalDetails.name}
+                    className="w-24 h-24 rounded-full object-cover border-2 shadow-sm shrink-0"
+                    style={{ borderColor: customBarColor || europassAccent }}
+                  />
+                )}
+                <div className="flex-1 min-w-0 text-center sm:text-left">
+                  <h1
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-2xl sm:text-3xl font-bold tracking-tight break-words"
+                    style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                  >
+                    {cv.personalDetails.name || 'YOUR FULL NAME'}
+                  </h1>
+
+                  <div
+                    className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs"
+                    style={{ color: cv.headerColor ? customHeaderContrast.mutedText : '#334155' }}
+                  >
+                    {cv.personalDetails.location && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                        <MapPin
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                        />
+                        <span>{cv.personalDetails.location}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.phone && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                        <Phone
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                        />
+                        <span>{cv.personalDetails.phone}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.email && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                        <Mail
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                        />
+                        <span className="break-all">{cv.personalDetails.email}</span>
+                      </div>
+                    )}
+                    {cv.personalDetails.website && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                        <Globe
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                        />
+                        <span className="break-all">{cv.personalDetails.website}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </header>
+
+              {/* Dedicated Position Field */}
+              {cv.personalDetails.title && (
+                <section className="cv-section mb-4">
+                  <h2
+                    className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-1.5 border-b"
+                    style={{ color: europassAccent, borderColor: europassAccent }}
+                  >
+                    {euroLabels.position}
+                  </h2>
+                  <p
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, title: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-[13.5px] font-semibold text-slate-800"
+                  >
+                    {cv.personalDetails.title}
+                  </p>
+                </section>
+              )}
+
+              <div className="space-y-5">
+                {sectionOrder.map((sectionKey) => {
+                  if (!isSectionVisible(sectionKey)) return null;
+
+                  if (sectionKey === 'summary' && cv.summary) {
+                    return (
+                      <section key="summary" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {euroLabels.aboutMyself}
+                        </h2>
+                        <p
+                          contentEditable={isInlineEditing}
+                          suppressContentEditableWarning
+                          onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
+                          className="text-[13px] leading-relaxed text-slate-800"
+                        >
+                          {cv.summary}
+                        </p>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'experiences' && cv.experiences && cv.experiences.length > 0) {
+                    return (
+                      <section key="experiences" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2.5 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.experiences}
+                        </h2>
+                        <div className="space-y-4">
+                          {cv.experiences.map((exp) => (
+                            <div key={exp.id} className="cv-item space-y-0.5">
+                              <div className="text-[13.5px]">
+                                <span className="font-bold" style={{ color: europassAccent }}>
+                                  {exp.role}
+                                </span>{' '}
+                                <span className="text-xs text-slate-500 font-mono">{exp.period}</span>
+                              </div>
+                              <div className="text-xs font-bold italic text-slate-800">
+                                {exp.company}
+                                {exp.location ? ` – ${exp.location}` : ''}
+                              </div>
+                              {exp.donor && <div className="text-xs italic text-slate-600">{renderTextWithLinks(exp.donor)}</div>}
+                              <ul className="mt-1 space-y-1 text-[13px] text-slate-800">
+                                {exp.highlights.map((pt, pIdx) => (
+                                  <li key={pIdx} className="flex items-start">
+                                    <span className="mr-2 text-slate-400">•</span>
+                                    <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'educations' && cv.educations && cv.educations.length > 0) {
+                    return (
+                      <section key="educations" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2.5 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.educations}
+                        </h2>
+                        <div className="space-y-2.5">
+                          {cv.educations.map((edu) => (
+                            <div key={edu.id} className="cv-item">
+                              <div className="text-[13.5px]">
+                                <span className="font-bold" style={{ color: europassAccent }}>
+                                  {edu.degree}
+                                </span>{' '}
+                                <span className="text-xs text-slate-500 font-mono">{edu.period}</span>
+                              </div>
+                              <div className="text-xs font-semibold italic text-slate-700">
+                                {edu.institution}
+                                {edu.gpaOrHonors ? ` (${edu.gpaOrHonors})` : ''}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'competencies' && cv.competencies && cv.competencies.length > 0) {
+                    return (
+                      <section key="competencies" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.competencies}
+                        </h2>
+                        <ul className="space-y-1 text-[13px] text-slate-800">
+                          {cv.competencies.map((comp, idx) => (
+                            <li key={comp.id || idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <div>
+                                <strong className="font-semibold text-slate-900">{comp.category}:</strong>{' '}
+                                <span>{comp.description}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'trainings' && cv.trainings && cv.trainings.length > 0) {
+                    return (
+                      <section key="trainings" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.trainings}
+                        </h2>
+                        <ul className="space-y-1 text-[13px] text-slate-800">
+                          {cv.trainings.map((tr, idx) => (
+                            <li key={idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <span>{tr}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'languages' && cv.languages && cv.languages.length > 0) {
+                    return (
+                      <section key="languages" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2.5 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.languages}
+                        </h2>
+                        <div className="cv-europass-languages-grid grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          {cv.languages.map((langItem, idx) => {
+                            const grade = extractCefrGrade(langItem.level);
+                            return (
+                              <div key={idx} className="cv-item space-y-0.5">
+                                <div className="font-bold" style={{ color: europassAccent }}>
+                                  {langItem.language}{' '}
+                                  <span className="font-normal text-slate-500 text-[11px]">({langItem.level})</span>
+                                </div>
+                                <div className="text-[10.5px] text-slate-700 leading-relaxed">
+                                  <span className="font-semibold">{euroLabels.listening.toUpperCase()}:</span> {grade} ·{' '}
+                                  <span className="font-semibold">{euroLabels.reading.toUpperCase()}:</span> {grade} ·{' '}
+                                  <span className="font-semibold">{euroLabels.writing.toUpperCase()}:</span> {grade}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'references' && cv.references && cv.references.length > 0) {
+                    return (
+                      <section key="references" className="cv-section">
+                        <h2
+                          className="text-xs font-extrabold uppercase tracking-wider pb-1 mb-2 border-b"
+                          style={{ color: europassAccent, borderColor: europassAccent }}
+                        >
+                          {sectionTitles.references}
+                        </h2>
+                        <div className="space-y-1.5 text-xs">
+                          {cv.references.map((ref, idx) => (
+                            <div key={ref.id || idx} className="cv-item flex flex-wrap justify-between gap-1">
+                              <div>
+                                <strong className="text-slate-900">{ref.name}</strong>
+                                <span className="text-slate-600"> — {ref.institutionAndPosition}</span>
+                              </div>
+                              <span className="font-mono text-slate-500 text-[11px]">{ref.contact}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  return null;
+                })}
+              </div>
+            </article>
+          ) : isEuropass ? (
+            /* CASE 1E: Europass Classic (2-Column European Margin Layout, NO EUROPASS header stamp) */
+            <article
+              className={`cv-a4-sheet cv-padded-sheet cv-europass-classic bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+                density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+              } ${resolvedFontClass}`}
+            >
+              <CVWatermarkOverlay isVisible={!hasActivePlan} />
+
+              {/* Classic Europass Top Block */}
+              <header
+                className={`cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-4 sm:gap-6 items-center pb-5 mb-5 border-b ${
+                  cv.headerColor ? '-mx-5 sm:-mx-10 md:-mx-12 -mt-5 sm:-mt-10 md:-mt-12 px-5 sm:px-10 md:px-12 py-6 border-transparent' : 'border-slate-200'
+                }`}
+                style={
+                  cv.headerColor
+                    ? {
+                        backgroundColor: cv.headerColor,
+                        color: customHeaderContrast.text,
+                        WebkitPrintColorAdjust: 'exact',
+                        printColorAdjust: 'exact'
+                      }
+                    : undefined
+                }
+              >
+                <div className="flex justify-center sm:justify-end">
+                  {shouldRenderPhoto ? (
+                    <img
+                      src={cv.personalDetails.photoUrl}
+                      alt={cv.personalDetails.name}
+                      className="w-24 h-24 rounded-full object-cover border-2 shadow-sm"
+                      style={{ borderColor: customBarColor || europassAccent }}
+                    />
+                  ) : (
+                    <div className="hidden sm:block" />
+                  )}
+                </div>
+                <div className="min-w-0 text-center sm:text-left">
+                  <h1
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, name: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-2xl sm:text-3xl font-bold tracking-tight break-words"
+                    style={{ color: cv.headerColor ? customHeaderContrast.text : '#0f172a' }}
+                  >
+                    {cv.personalDetails.name || 'YOUR FULL NAME'}
+                  </h1>
+                  <div
+                    contentEditable={isInlineEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) =>
+                      onChange({
+                        ...cv,
+                        personalDetails: { ...cv.personalDetails, title: e.currentTarget.textContent || '' }
+                      })
+                    }
+                    className="text-sm font-semibold mt-0.5"
+                    style={{ color: cv.headerColor ? customHeaderContrast.mutedText : europassAccent }}
+                  >
+                    {cv.personalDetails.title}
+                  </div>
+                  <div
+                    className="mt-2.5 space-y-1 text-xs"
+                    style={{ color: cv.headerColor ? customHeaderContrast.mutedText : '#334155' }}
+                  >
+                    {cv.personalDetails.location && (
+                      <div className="flex items-center justify-center sm:justify-start gap-1.5">
+                        <MapPin
+                          className="w-3.5 h-3.5 shrink-0"
+                          style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                        />
+                        <span>
+                          <strong style={{ color: cv.headerColor ? customHeaderContrast.text : '#0f172a' }}>
+                            {euroLabels.address}:
+                          </strong>{' '}
+                          {cv.personalDetails.location}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1">
+                      {cv.personalDetails.email && (
+                        <span className="flex items-center gap-1.5 break-all">
+                          <Mail
+                            className="w-3.5 h-3.5 shrink-0"
+                            style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                          />
+                          <span>{cv.personalDetails.email}</span>
+                        </span>
+                      )}
+                      {cv.personalDetails.phone && (
+                        <span className="flex items-center gap-1.5">
+                          <Phone
+                            className="w-3.5 h-3.5 shrink-0"
+                            style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                          />
+                          <span>{cv.personalDetails.phone}</span>
+                        </span>
+                      )}
+                    </div>
+                    {(cv.personalDetails.website || cv.personalDetails.linkedin) && (
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1">
+                        {cv.personalDetails.website && (
+                          <span className="flex items-center gap-1.5 break-all">
+                            <Globe
+                              className="w-3.5 h-3.5 shrink-0"
+                              style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                            />
+                            <span>{cv.personalDetails.website}</span>
+                          </span>
+                        )}
+                        {cv.personalDetails.linkedin && (
+                          <span className="flex items-center gap-1.5 break-all">
+                            <Linkedin
+                              className="w-3.5 h-3.5 shrink-0"
+                              style={{ color: cv.headerColor ? customHeaderContrast.text : europassAccent }}
+                            />
+                            <span>{cv.personalDetails.linkedin}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </header>
+
+              {/* 2-Column Margin Grid Sections */}
+              <div className="space-y-5">
+                {sectionOrder.map((sectionKey) => {
+                  if (!isSectionVisible(sectionKey)) return null;
+                  const classicBorderColor = customBarColor || '#e2e8f0';
+
+                  if (sectionKey === 'summary' && cv.summary) {
+                    return (
+                      <section key="summary" className="cv-section cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1.5 gap-x-6">
+                        <h2
+                          className="cv-europass-label text-xs font-extrabold uppercase tracking-wider sm:text-right pt-0.5"
+                          style={{ color: europassAccent }}
+                        >
+                          {euroLabels.aboutMyself}
+                        </h2>
+                        <p
+                          contentEditable={isInlineEditing}
+                          suppressContentEditableWarning
+                          onBlur={(e) => onChange({ ...cv, summary: e.currentTarget.textContent || '' })}
+                          className="text-[13px] leading-relaxed text-slate-800 border-t pt-1.5 sm:border-t-0 sm:pt-0"
+                          style={{ borderColor: classicBorderColor }}
+                        >
+                          {cv.summary}
+                        </p>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'experiences' && cv.experiences && cv.experiences.length > 0) {
+                    return (
+                      <section key="experiences" className="cv-section space-y-4">
+                        {cv.experiences.map((exp, idx) => (
+                          <div key={exp.id} className="cv-item cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1 gap-x-6">
+                            <div className="cv-europass-label sm:text-right">
+                              {idx === 0 && (
+                                <h2
+                                  className="text-xs font-extrabold uppercase tracking-wider mb-1"
+                                  style={{ color: europassAccent }}
+                                >
+                                  {sectionTitles.experiences}
+                                </h2>
+                              )}
+                              <div className="text-[11px] font-mono text-slate-500">[ {exp.period} ]</div>
+                            </div>
+                            <div
+                              className={idx === 0 ? 'border-t pt-2' : 'pt-1'}
+                              style={idx === 0 ? { borderColor: classicBorderColor } : undefined}
+                            >
+                              <div className="text-[14px] font-bold" style={{ color: europassAccent }}>
+                                {exp.role}
+                              </div>
+                              <div className="text-xs font-semibold text-slate-800">
+                                {exp.company}
+                                {exp.location ? ` · ${exp.location}` : ''}
+                              </div>
+                              {exp.donor && <div className="text-xs italic text-slate-600 mt-0.5">{renderTextWithLinks(exp.donor)}</div>}
+                              <ul className="mt-1.5 space-y-1 text-[13px] text-slate-800">
+                                {exp.highlights.map((pt, pIdx) => (
+                                  <li key={pIdx} className="flex items-start">
+                                    <span className="mr-2 text-slate-400">•</span>
+                                    <span className="leading-relaxed">{renderTextWithLinks(pt)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        ))}
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'educations' && cv.educations && cv.educations.length > 0) {
+                    return (
+                      <section key="educations" className="cv-section space-y-3">
+                        {cv.educations.map((edu, idx) => (
+                          <div key={edu.id} className="cv-item cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1 gap-x-6">
+                            <div className="cv-europass-label sm:text-right">
+                              {idx === 0 && (
+                                <h2
+                                  className="text-xs font-extrabold uppercase tracking-wider mb-1"
+                                  style={{ color: europassAccent }}
+                                >
+                                  {sectionTitles.educations}
+                                </h2>
+                              )}
+                              <div className="text-[11px] font-mono text-slate-500">[ {edu.period} ]</div>
+                            </div>
+                            <div
+                              className={idx === 0 ? 'border-t pt-2' : 'pt-0.5'}
+                              style={idx === 0 ? { borderColor: classicBorderColor } : undefined}
+                            >
+                              <div className="text-[14px] font-bold" style={{ color: europassAccent }}>
+                                {edu.degree}
+                              </div>
+                              <div className="text-xs font-semibold text-slate-800">
+                                {edu.institution}
+                                {edu.gpaOrHonors ? ` (${edu.gpaOrHonors})` : ''}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'competencies' && cv.competencies && cv.competencies.length > 0) {
+                    return (
+                      <section key="competencies" className="cv-section cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1.5 gap-x-6">
+                        <h2
+                          className="cv-europass-label text-xs font-extrabold uppercase tracking-wider sm:text-right pt-2"
+                          style={{ color: europassAccent }}
+                        >
+                          {sectionTitles.competencies}
+                        </h2>
+                        <ul className="border-t pt-2 space-y-1.5 text-[13px] text-slate-800" style={{ borderColor: classicBorderColor }}>
+                          {cv.competencies.map((comp, idx) => (
+                            <li key={comp.id || idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <div>
+                                <strong className="font-semibold text-slate-900">{comp.category}:</strong>{' '}
+                                <span>{comp.description}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'trainings' && cv.trainings && cv.trainings.length > 0) {
+                    return (
+                      <section key="trainings" className="cv-section cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1.5 gap-x-6">
+                        <h2
+                          className="cv-europass-label text-xs font-extrabold uppercase tracking-wider sm:text-right pt-2"
+                          style={{ color: europassAccent }}
+                        >
+                          {sectionTitles.trainings}
+                        </h2>
+                        <ul className="border-t pt-2 space-y-1 text-[13px] text-slate-800" style={{ borderColor: classicBorderColor }}>
+                          {cv.trainings.map((tr, idx) => (
+                            <li key={idx} className="cv-item flex items-start">
+                              <span className="mr-2 text-slate-400">•</span>
+                              <span>{tr}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'languages' && cv.languages && cv.languages.length > 0) {
+                    return (
+                      <section key="languages" className="cv-section cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1.5 gap-x-6">
+                        <h2
+                          className="cv-europass-label text-xs font-extrabold uppercase tracking-wider sm:text-right pt-2"
+                          style={{ color: europassAccent }}
+                        >
+                          {sectionTitles.languages}
+                        </h2>
+                        <div className="border-t pt-2 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-slate-800" style={{ borderColor: classicBorderColor }}>
+                          {cv.languages.map((l, idx) => (
+                            <div key={idx} className="cv-item flex items-center gap-1.5">
+                              <strong className="font-semibold text-slate-950">• {l.language}:</strong>
+                              <span className="text-slate-700">{l.level}</span>
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 font-mono border border-blue-200"
+                                style={{ color: europassAccent }}
+                              >
+                                {extractCefrGrade(l.level)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  if (sectionKey === 'references' && cv.references && cv.references.length > 0) {
+                    return (
+                      <section key="references" className="cv-section cv-europass-grid grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-y-1.5 gap-x-6">
+                        <h2
+                          className="cv-europass-label text-xs font-extrabold uppercase tracking-wider sm:text-right pt-2"
+                          style={{ color: europassAccent }}
+                        >
+                          {sectionTitles.references}
+                        </h2>
+                        <div className="border-t pt-2 space-y-2 text-xs" style={{ borderColor: customBarColor || '#e2e8f0' }}>
+                          {cv.references.map((ref, idx) => (
+                            <div key={ref.id || idx} className="cv-item flex flex-wrap justify-between gap-1">
+                              <div>
+                                <strong className="text-slate-900">{ref.name}</strong>
+                                <span className="text-slate-600"> — {ref.institutionAndPosition}</span>
+                              </div>
+                              <span className="font-mono text-slate-500 text-[11px]">{ref.contact}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    );
+                  }
+
+                  return null;
+                })}
+              </div>
+            </article>
+          ) : (
+            /* CASE 2: Single Column / Official Executive Layouts (Harvard, ATS, Corporativo, Tech, etc.) */
+            <article
+              className={`cv-a4-sheet cv-padded-sheet cv-single-column ${
+                isEditorial ? 'cv-editorial-sheet' : ''
+              } ${cv.headerColor ? 'cv-custom-header' : ''} bg-white text-slate-900 shadow-[0_20px_60px_-15px_rgba(15,23,42,0.18),0_2px_8px_rgba(15,23,42,0.06)] border border-slate-300/70 rounded-xs p-5 sm:p-10 md:p-12 transition-all min-h-[1120px] relative overflow-hidden ${
+                density === 'compact' ? 'cv-density-compact' : density === 'relaxed' ? 'cv-density-relaxed' : ''
+              } ${isBoard || cv.barColor ? 'border-t-[6px]' : ''} ${resolvedFontClass}`}
+              style={isBoard || cv.barColor ? { borderTopColor: customBarColor || currentAccent } : undefined}
             >
               <CVWatermarkOverlay isVisible={!hasActivePlan} />
               {/* Header Section */}
               <header
                 className={`cv-header ${
-                  isEditorial
-                    ? '-mx-5 sm:-mx-10 md:-mx-12 -mt-5 sm:-mt-10 md:-mt-12 px-5 sm:px-10 md:px-12 py-6 sm:py-8 mb-6 text-white'
+                  isEditorial || cv.headerColor
+                    ? '-mx-5 sm:-mx-10 md:-mx-12 -mt-5 sm:-mt-10 md:-mt-12 px-5 sm:px-10 md:px-12 py-6 sm:py-8 mb-6'
                     : isFinance
                     ? 'border-b-4 border-double border-slate-900 pb-4 text-left'
                     : isBoard
@@ -1252,10 +2908,17 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                     : 'text-left pb-2'
                 }`}
                 style={
-                  isEditorial
-                    ? { backgroundColor: currentAccent, WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }
+                  isEditorial || cv.headerColor
+                    ? {
+                        backgroundColor: customHeaderColor || currentAccent,
+                        color: customHeaderContrast.text,
+                        WebkitPrintColorAdjust: 'exact',
+                        printColorAdjust: 'exact'
+                      }
                     : {
-                        borderColor: isFinance
+                        borderColor: customBarColor
+                          ? customBarColor
+                          : isFinance
                           ? '#0f172a'
                           : isModern || isHarvard || isEuropass || isTech || isProduct || isBlueprint
                           ? currentAccent
@@ -1387,7 +3050,16 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                           ? 'text-2xl sm:text-3xl font-black font-jakarta tracking-tight'
                           : 'text-2xl sm:text-3xl tracking-tight'
                       }`}
-                      style={{ color: isEditorial ? '#ffffff' : isEuropass ? '#003399' : isFinance ? '#0f172a' : currentAccent }}
+                      style={{
+                        color:
+                          isEditorial || cv.headerColor
+                            ? customHeaderContrast.text
+                            : isEuropass
+                            ? '#003399'
+                            : isFinance
+                            ? '#0f172a'
+                            : currentAccent
+                      }}
                     >
                       {cv.personalDetails.name || 'YOUR FULL NAME'}
                     </h1>
@@ -1402,54 +3074,60 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                         })
                       }
                       className={`text-sm sm:text-base font-semibold mt-1 ${
-                        isEditorial
-                          ? 'text-white/90'
+                        isEditorial || cv.headerColor
+                          ? ''
                           : isHarvard || isBoard
                           ? 'text-slate-700 italic font-serif-cv'
                           : isTech || isBlueprint
                           ? 'text-teal-700 font-mono text-xs sm:text-sm'
                           : 'text-slate-800'
                       }`}
+                      style={isEditorial || cv.headerColor ? { color: customHeaderContrast.mutedText } : undefined}
                     >
                       {cv.personalDetails.title}
                     </div>
 
                     <div
                       className={`text-xs sm:text-[13px] mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0 break-words ${
-                        isEditorial ? 'text-white/85' : 'text-slate-600'
+                        isEditorial || cv.headerColor ? '' : 'text-slate-600'
                       } ${isClassic || isBoard ? 'justify-center' : 'justify-start'}`}
+                      style={isEditorial || cv.headerColor ? { color: customHeaderContrast.mutedText } : undefined}
                     >
                       <span>{cv.personalDetails.location}</span>
-                      <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
+                      <span aria-hidden="true" style={isEditorial || cv.headerColor ? { color: customHeaderContrast.subtleText } : undefined} className={isEditorial || cv.headerColor ? '' : 'text-slate-400'}>|</span>
                       <span>{cv.personalDetails.phone}</span>
-                      <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
+                      <span aria-hidden="true" style={isEditorial || cv.headerColor ? { color: customHeaderContrast.subtleText } : undefined} className={isEditorial || cv.headerColor ? '' : 'text-slate-400'}>|</span>
                       <a
                         href={`mailto:${cv.personalDetails.email}`}
-                        className={`hover:underline break-all sm:break-normal ${isEditorial ? 'text-white' : 'text-slate-800'}`}
+                        className="hover:underline break-all sm:break-normal"
+                        style={isEditorial || cv.headerColor ? { color: customHeaderContrast.text } : undefined}
                       >
                         {cv.personalDetails.email}
                       </a>
                       {cv.personalDetails.linkedin && (
                         <>
-                          <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
+                          <span aria-hidden="true" style={isEditorial || cv.headerColor ? { color: customHeaderContrast.subtleText } : undefined} className={isEditorial || cv.headerColor ? '' : 'text-slate-400'}>|</span>
                           <span className="break-all sm:break-normal">{cv.personalDetails.linkedin}</span>
                         </>
                       )}
                       {cv.personalDetails.website && (
                         <>
-                          <span aria-hidden="true" className={isEditorial ? 'text-white/40' : 'text-slate-400'}>|</span>
+                          <span aria-hidden="true" style={isEditorial || cv.headerColor ? { color: customHeaderContrast.subtleText } : undefined} className={isEditorial || cv.headerColor ? '' : 'text-slate-400'}>|</span>
                           {getSafeHttpUrl(cv.personalDetails.website) ? (
                             <a
                               href={getSafeHttpUrl(cv.personalDetails.website)!}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="hover:underline font-semibold break-all sm:break-normal"
-                              style={{ color: isEditorial ? '#ffffff' : currentAccent }}
+                              style={{ color: isEditorial || cv.headerColor ? customHeaderContrast.text : currentAccent }}
                             >
                               {cv.personalDetails.website}
                             </a>
                           ) : (
-                            <span className="font-semibold break-all sm:break-normal" style={{ color: isEditorial ? '#ffffff' : currentAccent }}>
+                            <span
+                              className="font-semibold break-all sm:break-normal"
+                              style={{ color: isEditorial || cv.headerColor ? customHeaderContrast.text : currentAccent }}
+                            >
                               {cv.personalDetails.website}
                             </span>
                           )}
@@ -1529,6 +3207,7 @@ export const CVDocumentView: React.FC<CVDocumentViewProps> = ({
                 };
 
                 const getSectionBorderColor = () => {
+                  if (customBarColor) return customBarColor;
                   if (isHarvard || isFinance) return '#0f172a';
                   if (isAts) return '#94a3b8';
                   if (isTech) return '#0d9488';

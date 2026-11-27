@@ -16,6 +16,9 @@ export type TemplateStyle =
   | 'ats_compact'
   | 'european_modern'
   | 'european_europass'
+  | 'europass_banner'
+  | 'europass_sidebar'
+  | 'europass_framed'
   | 'creative_split'
   | 'tech_modern'
   | 'academic_lattes'
@@ -111,6 +114,8 @@ export interface CVData {
   references: Reference[];
   templateStyle: TemplateStyle;
   accentColor?: string;
+  headerColor?: string;
+  barColor?: string;
   fontFamily?: 'garamond' | 'jakarta' | 'mono' | 'cinzel';
   sectionOrder?: CVSectionKey[];
   sectionVisibility?: Partial<Record<CVSectionKey, boolean>>;

@@ -192,33 +192,123 @@ export const CV_TEMPLATES: CVTemplateInfo[] = [
   // ============================================================================
   {
     id: 'european_europass',
-    name: 'Europass CV',
-    shortName: 'Europass CV',
-    badge: '🇪🇺 Padrão Europeu',
+    name: 'Europass Classic (2 Colunas)',
+    shortName: 'Europass Classic',
+    badge: '🇪🇺 Europass 1 · Clássico',
     category: 'with_photo',
     hasPhoto: true,
     photoRule: 'recommended',
     photoRuleLabel: 'Foto Recomendada na Europa',
     photoRuleDescription:
-      'Layout europeu limpo (azul institucional, foto opcional e níveis de idioma CEFR) sem selo escrito "Europass" no cabeçalho.',
-    tagline: 'Formato padrão amplamente utilizado na Europa com blocos limpos e níveis de idioma CEFR.',
+      'Formato europeu tradicional em duas colunas (títulos e datas à esquerda, conteúdo à direita e níveis CEFR) sem selo escrito "Europass" no cabeçalho.',
+    tagline: 'O modelo europeu mais utilizado com coluna lateral de títulos/datas e níveis de idioma CEFR.',
     whenToUse:
-      'Candidaturas na Europa Continental, programas Erasmus+, estágios europeus e empresas em Portugal, Espanha, Alemanha ou França.',
+      'Candidaturas na Europa Continental, programas Erasmus+, instituições europeias e empresas em Portugal, Espanha, Alemanha ou França.',
     whereToUse: 'União Europeia (Portugal, Espanha, França, Alemanha, Itália, Bélgica) e empresas europeias.',
     regions: ['União Europeia', 'Portugal & Espanha', 'Alemanha & França', 'Suíça & Itália'],
     bestForIndustries: ['Empresas Europeias', 'Saúde & Educação', 'Engenharia', 'Administração Pública', 'Turismo & Serviços'],
-    atsScore: 91,
-    atsRatingText: '91% ATS Score - Layout europeu limpo sem ruído gráfico',
+    atsScore: 92,
+    atsRatingText: '92% ATS Score - Layout europeu clássico e organizado',
     whyPhotoOrNot:
-      'Mantém a clareza visual do modelo europeu e níveis CEFR (A1–C2) sem o carimbo "Europass" no cabeçalho, evitando aspeto genérico.',
+      'Mantém a clareza visual do modelo europeu e níveis CEFR (A1–C2) sem o carimbo "Europass" no cabeçalho.',
     keyFeatures: [
-      'Cabeçalho limpo com foto opcional integrada sem rótulo "Europass" desnecessário',
+      'Coluna esquerda dedicada para datas e títulos de secção em azul institucional',
+      'Cabeçalho limpo com foto circular opcional sem rótulo "Europass"',
       'Etiquetas de proficiência linguística CEFR (A1 a C2)',
-      'Estrutura clara por blocos fácil de ler em qualquer país europeu',
       'Compatível com exportação PDF e Word (.docx)'
     ],
-    proTip: 'Use uma fotografia formal com fundo neutro. Se preferir um visual mais neutro para o Reino Unido, desative a foto.',
+    proTip: 'Use uma fotografia formal com fundo neutro. Se preferir um visual neutro para o Reino Unido, desative a foto.',
     accentColor: '#1d4ed8'
+  },
+  {
+    id: 'europass_banner',
+    name: 'Europass Banner (Tabela Idiomas)',
+    shortName: 'Europass Banner',
+    badge: '🇪🇺 Europass 2 · Banner',
+    category: 'with_photo',
+    hasPhoto: true,
+    photoRule: 'recommended',
+    photoRuleLabel: 'Foto Circular no Banner Superior',
+    photoRuleDescription:
+      'Faixa superior cinza suave com foto, contactos e resumo integrados, seguida de tabela completa de idiomas CEFR.',
+    tagline: 'Cabeçalho cinza limpo com foto, bio no topo e matriz detalhada de idiomas (Compreensão, Oral e Escrita).',
+    whenToUse:
+      'Candidaturas europeias onde precisa de apresentar vários idiomas em tabela detalhada e leitura imediata.',
+    whereToUse: 'União Europeia, Bélgica, Luxemburgo, Portugal, Espanha e instituições multinacionais.',
+    regions: ['União Europeia', 'Bruxelas & Luxemburgo', 'Portugal & Espanha', 'Alemanha'],
+    bestForIndustries: ['Administração Europeia', 'Tradução & Comunicação', 'Comércio & Logística', 'Engenharia', 'Educação'],
+    atsScore: 94,
+    atsRatingText: '94% ATS Score - Secções em coluna única com matriz CEFR',
+    whyPhotoOrNot:
+      'Combina apresentação visual europeia no topo com corpo em coluna única altamente legível.',
+    keyFeatures: [
+      'Faixa superior em cinza suave com foto circular, contactos e resumo integrados',
+      'Secções em coluna única limpa para experiência e formação',
+      'Tabela completa de idiomas CEFR (Compreensão, Expressão Oral e Escrita)',
+      'Sem texto "Europass" no cabeçalho'
+    ],
+    proTip: 'Ideal quando fala 2 ou mais idiomas e quer mostrar os níveis CEFR em tabela estruturada.',
+    accentColor: '#1e293b'
+  },
+  {
+    id: 'europass_sidebar',
+    name: 'Europass Sidebar (Coluna Cinza)',
+    shortName: 'Europass Sidebar',
+    badge: '🇪🇺 Europass 3 · Sidebar',
+    category: 'with_photo',
+    hasPhoto: true,
+    photoRule: 'recommended',
+    photoRuleLabel: 'Foto em Destaque na Coluna Lateral',
+    photoRuleDescription:
+      'Barra lateral cinza clara com foto e contactos à esquerda, e linha do tempo cronológica com pontos azuis à direita.',
+    tagline: 'Design europeu elegante com barra lateral clara para contactos e linha do tempo cronológica à direita.',
+    whenToUse:
+      'Vagas corporativas modernas na Europa, agências, hotelaria, saúde, design e cargos técnicos.',
+    whereToUse: 'Europa Ocidental, Portugal, França, Espanha, Itália e Alemanha.',
+    regions: ['União Europeia', 'Portugal & França', 'Espanha & Itália', 'Suíça'],
+    bestForIndustries: ['Serviços Corporativos', 'Design & Comunicação', 'Tecnologia', 'Turismo', 'Consultoria'],
+    atsScore: 89,
+    atsRatingText: '89% ATS Score - Leitura moderna em 2 colunas',
+    whyPhotoOrNot:
+      'A barra lateral cinza separa contactos e perfil pessoal para deixar a experiência respirar na coluna principal.',
+    keyFeatures: [
+      'Barra lateral cinza suave com foto circular centralizada e ícones de contacto',
+      'Linha do tempo vertical azul para experiência e formação',
+      'Blocos limpos para competências linguísticas CEFR',
+      'Visual contemporâneo sem carimbo "Europass"'
+    ],
+    proTip: 'Excelente escolha se quer um currículo europeu mais moderno e visualmente equilibrado.',
+    accentColor: '#2563eb'
+  },
+  {
+    id: 'europass_framed',
+    name: 'Europass Modern Frame (Moldura Azul)',
+    shortName: 'Europass Frame',
+    badge: '🇪🇺 Europass 4 · Moldura',
+    category: 'with_photo',
+    hasPhoto: true,
+    photoRule: 'recommended',
+    photoRuleLabel: 'Foto Circular com Cabeçalho Aberto',
+    photoRuleDescription:
+      'Página A4 com cantos em azul europeu, foto e contactos em 2 colunas no topo e idiomas lado a lado.',
+    tagline: 'Estilo europeu com cantos em moldura azul, cargo em destaque e grelha de idiomas em duas colunas.',
+    whenToUse:
+      'Candidaturas na Europa, estágios, bolsas académicas e envio direto por e-mail a recrutadores.',
+    whereToUse: 'União Europeia, Erasmus+, universidades europeias e empresas internacionais.',
+    regions: ['União Europeia', 'Erasmus+ & Bolsas', 'Portugal & Espanha', 'Itália & Alemanha'],
+    bestForIndustries: ['Educação & Bolsas', 'Comunicação & Média', 'Engenharia', 'Saúde', 'Empresas Europeias'],
+    atsScore: 91,
+    atsRatingText: '91% ATS Score - Estrutura limpa com destaque visual azul',
+    whyPhotoOrNot:
+      'Dá destaque imediato ao cargo pretendido ("Posição") e organiza os idiomas lado a lado para poupar espaço.',
+    keyFeatures: [
+      'Cantos discretos em moldura azul institucional europeia',
+      'Secção dedicada ao cargo pretendido e perfil pessoal no topo',
+      'Grelha de idiomas em 2 colunas para caber confortavelmente em 1–2 páginas',
+      'Visual limpo sem a palavra "Europass" impressa'
+    ],
+    proTip: 'Ótimo para manter o currículo compacto quando tem várias experiências e idiomas.',
+    accentColor: '#3b82f6'
   },
   {
     id: 'executive_resume',

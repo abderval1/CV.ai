@@ -5,6 +5,7 @@ import { TOOLS_UI_TRANSLATIONS } from '../i18n/toolsUiTranslations';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { generateWordDocument } from '../utils/docxExport';
+import { exportElementToPdf } from '../utils/pdfExport';
 import { getTemplateById } from '../data/templateCatalog';
 import { recordAuditLog } from '../services/auditLogService';
 import { dispatchUserNotification } from '../services/notificationService';
@@ -82,12 +83,13 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
 
       const data = await response.json();
       if (data.translatedCV) {
-        // Merge keeping styling and order intact
         const merged: CVData = {
           ...cv,
           ...data.translatedCV,
           templateStyle: cv.templateStyle,
           accentColor: cv.accentColor,
+          headerColor: cv.headerColor,
+          barColor: cv.barColor,
           fontFamily: cv.fontFamily,
           sectionOrder: cv.sectionOrder,
           sectionVisibility: cv.sectionVisibility
@@ -247,13 +249,18 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       });
     }
 
-    // Apply the translated CV and language to the main app and trigger window.print()
+    // Apply the translated CV and language to the main app and trigger direct 1:1 A4 PDF download
     setLanguage(selectedLang);
     onApplyTranslatedCV(docToPrint);
     onClose();
+    const sanitizedName = docToPrint.personalDetails.name.trim().replace(/\s+/g, '_') || 'Resume';
+    const templateInfo = getTemplateById(docToPrint.templateStyle);
+    const pdfName = `CV_${sanitizedName}_${selectedLang.toUpperCase()}_${templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
     setTimeout(() => {
-      window.print();
-    }, 450);
+      void exportElementToPdf('.cv-a4-sheet', pdfName).catch(() => {
+        window.print();
+      });
+    }, 350);
   };
 
   const activeDoc = (lastTranslatedLang === selectedLang && translatedCV) ? translatedCV : null;

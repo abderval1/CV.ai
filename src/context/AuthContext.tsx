@@ -1806,10 +1806,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     title: string,
     targetJob?: string
   ): Promise<string> => {
-    const id = `cv-${Date.now()}`;
     const formattedDate = new Date().toLocaleDateString('pt-PT');
     const safeTitle = (title.trim() || cv.personalDetails?.title?.trim() || 'Meu Currículo Profissional').slice(0, 150);
     const safeTargetJob = (targetJob?.trim() || cv.personalDetails?.title?.trim() || 'Vaga Executiva').slice(0, 180);
+    const existingMatch = savedResumes.find(
+      (r) => r.title.trim().toLowerCase() === safeTitle.toLowerCase()
+    );
+    const id = existingMatch?.id || `cv-${Date.now()}`;
     const cleanCv = sanitizeForFirestore(cv);
 
     const newResume: SavedResume = {

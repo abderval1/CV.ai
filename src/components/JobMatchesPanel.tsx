@@ -6,6 +6,11 @@ import { authorizedFetch } from '../utils/authHeaders';
 import { TOOLS_UI_TRANSLATIONS, ToolsUiDictionary, getIntlLocale } from '../i18n/toolsUiTranslations';
 import { LightbulbStepBadge, StudioCreationMode } from './StudioGuideSystem';
 import {
+  WORLD_COUNTRIES,
+  resolveCountryEntry,
+  getCountryDisplayName
+} from '../data/worldLocations';
+import {
   Briefcase,
   ExternalLink,
   RefreshCw,
@@ -80,6 +85,7 @@ interface JobMatchResponse {
 
 export interface JobPreferences {
   countries: string[];
+  provinces: string[];
   targetRoles: string[];
   contractTypes: string[];
 }
@@ -475,31 +481,131 @@ function loadAppliedJobs(): AppliedJobRecord[] {
   return [];
 }
 
-const COUNTRY_IDS = [
+const QUICK_COUNTRY_CODES = [
   'remoto_global',
-  'brasil',
-  'portugal',
-  'angola',
-  'espanha',
-  'reino_unido',
-  'alemanha',
-  'franca',
-  'estados_unidos',
-  'canada',
+  'ao',
+  'br',
+  'pt',
+  'mz',
+  'cv',
+  'us',
+  'gb',
+  'ca',
+  'de',
+  'fr',
+  'es',
   'europa'
 ] as const;
 
 const CONTRACT_TYPE_IDS = ['full_time', 'contract', 'part_time', 'internship'] as const;
 
-const SOURCE_IDS: Array<'all' | 'linkedin' | 'radar' | 'remotive' | 'arbeitnow' | 'jobicy' | 'remoteok'> = [
+const SOURCE_IDS: Array<
+  | 'all'
+  | 'linkedin'
+  | 'radar'
+  | 'reliefweb'
+  | 'remotive'
+  | 'arbeitnow'
+  | 'jobicy'
+  | 'remoteok'
+  | 'himalayas'
+  | 'themuse'
+  | 'workingnomads'
+> = [
   'all',
   'linkedin',
   'radar',
+  'reliefweb',
   'remotive',
   'arbeitnow',
   'jobicy',
-  'remoteok'
+  'remoteok',
+  'himalayas',
+  'themuse',
+  'workingnomads'
 ];
+
+const GLOBAL_LOC_LABELS: Record<
+  SiteLanguageCode,
+  {
+    countryLabel: string;
+    allCountries: string;
+    provinceLabel: string;
+    allProvinces: string;
+    customProvPh: string;
+    popularGroup: string;
+    allCountriesGroup: string;
+    addAnyCountryLabel: string;
+    applyCustomProv: string;
+  }
+> = {
+  pt: {
+    countryLabel: 'País (Todo o Mundo)',
+    allCountries: 'Todos os Países',
+    provinceLabel: 'Província / Estado / Região',
+    allProvinces: 'Todas as Províncias / Estados',
+    customProvPh: 'Ou digite cidade / província...',
+    popularGroup: 'Mais Procurados',
+    allCountriesGroup: 'Todos os Países do Mundo (A–Z)',
+    addAnyCountryLabel: 'Adicionar qualquer país do mundo...',
+    applyCustomProv: 'Aplicar'
+  },
+  en: {
+    countryLabel: 'Country (Worldwide)',
+    allCountries: 'All Countries',
+    provinceLabel: 'Province / State / Region',
+    allProvinces: 'All Provinces / States',
+    customProvPh: 'Or type city / province...',
+    popularGroup: 'Popular Markets',
+    allCountriesGroup: 'All World Countries (A–Z)',
+    addAnyCountryLabel: 'Add any country worldwide...',
+    applyCustomProv: 'Apply'
+  },
+  es: {
+    countryLabel: 'País (Todo el Mundo)',
+    allCountries: 'Todos los Países',
+    provinceLabel: 'Provincia / Estado / Región',
+    allProvinces: 'Todas las Provincias / Estados',
+    customProvPh: 'O escribe ciudad / provincia...',
+    popularGroup: 'Más Buscados',
+    allCountriesGroup: 'Todos los Países del Mundo (A–Z)',
+    addAnyCountryLabel: 'Agregar cualquier país...',
+    applyCustomProv: 'Aplicar'
+  },
+  fr: {
+    countryLabel: 'Pays (Monde entier)',
+    allCountries: 'Tous les Pays',
+    provinceLabel: 'Province / État / Région',
+    allProvinces: 'Toutes les Provinces / Régions',
+    customProvPh: 'Ou saisir ville / province...',
+    popularGroup: 'Marchés populaires',
+    allCountriesGroup: 'Tous les pays du monde (A–Z)',
+    addAnyCountryLabel: 'Ajouter n’importe quel pays...',
+    applyCustomProv: 'Appliquer'
+  },
+  de: {
+    countryLabel: 'Land (Weltweit)',
+    allCountries: 'Alle Länder',
+    provinceLabel: 'Provinz / Bundesland / Region',
+    allProvinces: 'Alle Provinzen / Regionen',
+    customProvPh: 'Oder Stadt / Provinz eingeben...',
+    popularGroup: 'Beliebte Märkte',
+    allCountriesGroup: 'Alle Länder weltweit (A–Z)',
+    addAnyCountryLabel: 'Beliebiges Land hinzufügen...',
+    applyCustomProv: 'Anwenden'
+  },
+  it: {
+    countryLabel: 'Paese (Tutto il Mondo)',
+    allCountries: 'Tutti i Paesi',
+    provinceLabel: 'Provincia / Stato / Regione',
+    allProvinces: 'Tutte le Province / Regioni',
+    customProvPh: 'O digita città / provincia...',
+    popularGroup: 'Mercati principali',
+    allCountriesGroup: 'Tutti i paesi del mondo (A–Z)',
+    addAnyCountryLabel: 'Aggiungi qualsiasi paese...',
+    applyCustomProv: 'Applica'
+  }
+};
 
 function loadSavedPreferences(): JobPreferences {
   try {
@@ -508,6 +614,7 @@ function loadSavedPreferences(): JobPreferences {
       const parsed = JSON.parse(raw);
       return {
         countries: Array.isArray(parsed?.countries) ? parsed.countries.map(String) : [],
+        provinces: Array.isArray(parsed?.provinces) ? parsed.provinces.map(String) : [],
         targetRoles: Array.isArray(parsed?.targetRoles) ? parsed.targetRoles.map(String) : [],
         contractTypes: Array.isArray(parsed?.contractTypes) ? parsed.contractTypes.map(String) : []
       };
@@ -515,7 +622,7 @@ function loadSavedPreferences(): JobPreferences {
   } catch {
     // Fallback to empty defaults
   }
-  return { countries: [], targetRoles: [], contractTypes: [] };
+  return { countries: [], provinces: [], targetRoles: [], contractTypes: [] };
 }
 
 function formatSalaryDisplay(
@@ -663,9 +770,35 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
     return `${title}::${loc}::${comps}::${roles}`;
   }, [cv]);
 
+  const locUi = GLOBAL_LOC_LABELS[siteLanguage] || GLOBAL_LOC_LABELS.en;
+  const [customProvinceInput, setCustomProvinceInput] = useState<string>('');
+
+  const sortedWorldCountries = useMemo(() => {
+    const isPt = siteLanguage === 'pt';
+    return [...WORLD_COUNTRIES]
+      .filter((c) => c.code !== 'remoto_global' && c.code !== 'europa')
+      .sort((a, b) => (isPt ? a.namePt.localeCompare(b.namePt, 'pt') : a.nameEn.localeCompare(b.nameEn, 'en')));
+  }, [siteLanguage]);
+
+  const activePrimaryCountryCode = useMemo(() => {
+    const first = preferences.countries.find((c) => c !== 'remoto_global') || preferences.countries[0] || '';
+    const resolved = first ? resolveCountryEntry(first) : null;
+    return resolved?.code || '';
+  }, [preferences.countries]);
+
+  const activeCountryEntry = useMemo(
+    () => (activePrimaryCountryCode ? resolveCountryEntry(activePrimaryCountryCode) : null),
+    [activePrimaryCountryCode]
+  );
+
+  const availableProvinces = useMemo(
+    () => activeCountryEntry?.provinces || [],
+    [activeCountryEntry]
+  );
+
   const prefsSignature = useMemo(
     () =>
-      `${preferences.countries.join(',')}::${preferences.targetRoles.join(',')}::${preferences.contractTypes.join(',')}`,
+      `${preferences.countries.join(',')}::${preferences.provinces.join(',')}::${preferences.targetRoles.join(',')}::${preferences.contractTypes.join(',')}`,
     [preferences]
   );
 
@@ -713,13 +846,51 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   }, [profileSignature, prefsSignature, workplaceFilter, activeSearch, sourceFilter]);
 
   const toggleCountry = (id: string) => {
+    const resolved = resolveCountryEntry(id)?.code || id;
     setPreferences((prev) => {
-      const exists = prev.countries.includes(id);
+      const exists = prev.countries.some((c) => (resolveCountryEntry(c)?.code || c) === resolved);
+      const nextCountries = exists
+        ? prev.countries.filter((c) => (resolveCountryEntry(c)?.code || c) !== resolved)
+        : [...prev.countries, resolved];
       return {
         ...prev,
-        countries: exists ? prev.countries.filter((c) => c !== id) : [...prev.countries, id]
+        countries: nextCountries,
+        provinces: exists ? [] : prev.provinces
       };
     });
+  };
+
+  const handleSelectPrimaryCountry = (code: string) => {
+    if (!code) {
+      setPreferences((prev) => ({ ...prev, countries: [], provinces: [] }));
+      return;
+    }
+    const resolved = resolveCountryEntry(code)?.code || code;
+    setPreferences((prev) => {
+      const keepRemote = resolved !== 'remoto_global' && prev.countries.includes('remoto_global') ? ['remoto_global'] : [];
+      return {
+        ...prev,
+        countries: resolved === 'remoto_global' ? ['remoto_global'] : [resolved, ...keepRemote],
+        provinces: []
+      };
+    });
+  };
+
+  const handleSelectProvince = (provinceName: string) => {
+    setPreferences((prev) => ({
+      ...prev,
+      provinces: provinceName ? [provinceName] : []
+    }));
+  };
+
+  const handleApplyCustomProvince = (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = customProvinceInput.trim();
+    if (!clean) {
+      handleSelectProvince('');
+      return;
+    }
+    handleSelectProvince(clean);
   };
 
   const toggleContractType = (id: string) => {
@@ -765,7 +936,8 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
   };
 
   const handleResetPreferences = () => {
-    setPreferences({ countries: [], targetRoles: [], contractTypes: [] });
+    setCustomProvinceInput('');
+    setPreferences({ countries: [], provinces: [], targetRoles: [], contractTypes: [] });
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -953,6 +1125,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
 
   const activePrefCount =
     preferences.countries.length +
+    preferences.provinces.length +
     preferences.targetRoles.length +
     preferences.contractTypes.length;
 
@@ -1231,7 +1404,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
             <p className="text-xs text-slate-600 mt-1">
               {ui.subtitlePrefix}{' '}
               <span className="font-semibold text-slate-800">
-                LinkedIn, {ui.sources.radar}, Remotive, Arbeitnow, Jobicy & RemoteOK
+                LinkedIn, ReliefWeb (ONU), {ui.sources.radar}, Remotive, Himalayas, The Muse, Arbeitnow, Jobicy &amp; RemoteOK
               </span>{' '}
               {ui.subtitleMiddle}{' '}
               <span className="font-semibold text-slate-900">
@@ -1387,30 +1560,72 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               )}
             </div>
 
-            {/* 2. Preferred Countries / Regions */}
-            <div className="space-y-2 border-t border-slate-100 pt-3">
+            {/* 2. Preferred Countries & Provinces Worldwide */}
+            <div className="space-y-2.5 border-t border-slate-100 pt-3">
               <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
                 {ui.countriesLabel}
               </label>
               <div className="flex flex-wrap gap-1.5">
-                {COUNTRY_IDS.map((countryId) => {
-                  const selected = preferences.countries.includes(countryId);
+                {QUICK_COUNTRY_CODES.map((countryCode) => {
+                  const selected = preferences.countries.some(
+                    (c) => (resolveCountryEntry(c)?.code || c) === countryCode
+                  );
                   return (
                     <button
-                      key={countryId}
+                      key={countryCode}
                       type="button"
-                      onClick={() => toggleCountry(countryId)}
+                      onClick={() => toggleCountry(countryCode)}
                       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
                         selected
                           ? 'bg-slate-900 text-white'
                           : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                       }`}
                     >
-                      {ui.countries[countryId] || countryId}
+                      {getCountryDisplayName(countryCode, siteLanguage)}
                     </button>
                   );
                 })}
               </div>
+
+              {/* Any Extra Selected Countries outside quick shortcuts */}
+              {preferences.countries.some((c) => {
+                const resolved = resolveCountryEntry(c)?.code || c;
+                return !(QUICK_COUNTRY_CODES as readonly string[]).includes(resolved);
+              }) && (
+                <div className="flex flex-wrap gap-1.5">
+                  {preferences.countries
+                    .filter((c) => {
+                      const resolved = resolveCountryEntry(c)?.code || c;
+                      return !(QUICK_COUNTRY_CODES as readonly string[]).includes(resolved);
+                    })
+                    .map((c) => (
+                      <button
+                        key={`extra-country-${c}`}
+                        type="button"
+                        onClick={() => toggleCountry(c)}
+                        className="px-2.5 py-1 bg-slate-900 text-white rounded-md text-xs font-medium inline-flex items-center gap-1.5 hover:bg-slate-800"
+                      >
+                        <span>{getCountryDisplayName(c, siteLanguage)}</span>
+                        <X className="w-3 h-3 text-slate-300" />
+                      </button>
+                    ))}
+                </div>
+              )}
+
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) toggleCountry(e.target.value);
+                }}
+                className="w-full min-h-[40px] px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-slate-400"
+              >
+                <option value="">{locUi.addAnyCountryLabel}</option>
+                {sortedWorldCountries.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {siteLanguage === 'pt' ? c.namePt : c.nameEn}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* 3. Preferred Contract Types */}
@@ -1474,7 +1689,7 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
         </div>
       )}
 
-      {/* Filter & Search Bar + Portal Tabs */}
+      {/* Filter & Search Bar + Global Country/Province Filter + Portal Tabs */}
       <div className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5">
         <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
@@ -1484,13 +1699,13 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder={ui.searchPlaceholder}
-              className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
+              className="w-full min-h-[42px] pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
             />
           </div>
           <button
             type="submit"
             disabled={isLoading}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+            className="min-h-[42px] px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
           >
             {ui.filterBtn}
           </button>
@@ -1501,9 +1716,91 @@ export const JobMatchesPanel: React.FC<JobMatchesPanelProps> = ({
                 setSearchInput('');
                 setActiveSearch('');
               }}
-              className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-950 whitespace-nowrap shrink-0"
+              className="min-h-[42px] px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-950 whitespace-nowrap shrink-0"
             >
               {ui.clearFilterBtn}
+            </button>
+          )}
+        </form>
+
+        {/* Visible World Country + Province / State Cascading Selectors */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+              {locUi.countryLabel}
+            </label>
+            <select
+              value={activePrimaryCountryCode}
+              onChange={(e) => handleSelectPrimaryCountry(e.target.value)}
+              aria-label={locUi.countryLabel}
+              className="w-full min-h-[42px] px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium focus:outline-none focus:border-blue-600 focus:bg-white"
+            >
+              <option value="">{locUi.allCountries}</option>
+              <optgroup label={locUi.popularGroup}>
+                {QUICK_COUNTRY_CODES.map((code) => (
+                  <option key={`pop-${code}`} value={code}>
+                    {getCountryDisplayName(code, siteLanguage)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={locUi.allCountriesGroup}>
+                {sortedWorldCountries.map((country) => (
+                  <option key={`all-${country.code}`} value={country.code}>
+                    {siteLanguage === 'pt' ? country.namePt : country.nameEn}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+              {locUi.provinceLabel}
+            </label>
+            <select
+              value={availableProvinces.includes(preferences.provinces[0] || '') ? preferences.provinces[0] : ''}
+              onChange={(e) => {
+                setCustomProvinceInput('');
+                handleSelectProvince(e.target.value);
+              }}
+              aria-label={locUi.provinceLabel}
+              className="w-full min-h-[42px] px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium focus:outline-none focus:border-blue-600 focus:bg-white"
+            >
+              <option value="">{locUi.allProvinces}</option>
+              {availableProvinces.map((prov) => (
+                <option key={prov} value={prov}>
+                  {prov}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Optional Custom Province / City Search */}
+        <form onSubmit={handleApplyCustomProvince} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={customProvinceInput}
+            onChange={(e) => setCustomProvinceInput(e.target.value)}
+            placeholder={locUi.customProvPh}
+            className="flex-1 min-w-0 min-h-[38px] px-3 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white"
+          />
+          <button
+            type="submit"
+            className="min-h-[38px] px-3 py-1 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+          >
+            {locUi.applyCustomProv}
+          </button>
+          {preferences.provinces.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setCustomProvinceInput('');
+                handleSelectProvince('');
+              }}
+              className="min-h-[38px] px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-900 whitespace-nowrap shrink-0"
+            >
+              ✕
             </button>
           )}
         </form>

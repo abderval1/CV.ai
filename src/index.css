@@ -361,6 +361,97 @@ html.dark .page-break-line span {
   border-color: #334155;
 }
 
+/* Off-screen 1:1 A4 PDF capture layout lock (independent of mobile viewport width) */
+.pdf-capture-sheet {
+  width: 794px !important;
+  max-width: 794px !important;
+  min-height: 1123px !important;
+  box-shadow: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.pdf-capture-sheet.cv-padded-sheet {
+  padding: 40px !important;
+}
+
+.pdf-capture-sheet.cv-europass-framed {
+  padding: 44px !important;
+}
+
+.pdf-capture-sheet.cv-europass-banner .cv-europass-banner-header,
+.pdf-capture-sheet.cv-editorial-sheet .cv-header,
+.pdf-capture-sheet.cv-single-column.cv-custom-header .cv-header {
+  margin-left: -40px !important;
+  margin-right: -40px !important;
+  margin-top: -40px !important;
+  padding: 28px 40px !important;
+}
+
+.pdf-capture-sheet .cv-header-content {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+
+.pdf-capture-sheet.cv-creative-split,
+.pdf-capture-sheet.cv-europass-sidebar {
+  display: flex !important;
+  flex-direction: row !important;
+  padding: 0 !important;
+}
+
+.pdf-capture-sheet.cv-creative-split .cv-creative-sidebar {
+  width: 35% !important;
+  min-width: 35% !important;
+  max-width: 35% !important;
+  padding: 32px 24px !important;
+}
+
+.pdf-capture-sheet.cv-creative-split .cv-creative-main {
+  width: 65% !important;
+  min-width: 65% !important;
+  max-width: 65% !important;
+  padding: 36px 32px !important;
+}
+
+.pdf-capture-sheet.cv-europass-sidebar .cv-europass-aside {
+  width: 32% !important;
+  min-width: 32% !important;
+  max-width: 32% !important;
+  padding: 30px 22px !important;
+}
+
+.pdf-capture-sheet.cv-europass-sidebar .cv-europass-main {
+  width: 68% !important;
+  min-width: 68% !important;
+  max-width: 68% !important;
+  padding: 34px 30px !important;
+}
+
+.pdf-capture-sheet.cv-europass-classic .cv-europass-grid {
+  display: grid !important;
+  grid-template-columns: 150px 1fr !important;
+  column-gap: 24px !important;
+}
+
+.pdf-capture-sheet.cv-europass-classic .cv-europass-label {
+  text-align: right !important;
+}
+
+.pdf-capture-sheet .cv-europass-languages-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.pdf-capture-sheet.cover-a4-sheet {
+  padding: 78px 88px !important;
+}
+
 /* Print styling for pristine 1:1 PDF generation matching preview */
 @media print {
   * {
@@ -399,6 +490,7 @@ html.dark .page-break-line span {
   #root,
   main,
   section,
+  .cv-print-section,
   .cv-preview-container,
   .cover-preview-container {
     overflow: visible !important;
@@ -503,7 +595,7 @@ html.dark .page-break-line span {
     page: relaxed;
   }
 
-  /* Enforce full-bleed Creative Split layout during print (prevents column wrap & white borders) */
+  /* Full-bleed Creative Split */
   .cv-creative-split {
     page: creative;
     display: flex !important;
@@ -531,6 +623,75 @@ html.dark .page-break-line span {
     min-width: 65% !important;
     max-width: 65% !important;
     padding: 12mm 11mm !important;
+  }
+
+  /* Full-bleed Europass Sidebar */
+  .cv-europass-sidebar {
+    page: creative;
+    display: flex !important;
+    flex-direction: row !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .cv-europass-aside {
+    width: 32% !important;
+    min-width: 32% !important;
+    max-width: 32% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    padding: 11mm 8mm !important;
+  }
+
+  .cv-europass-main {
+    width: 68% !important;
+    min-width: 68% !important;
+    max-width: 68% !important;
+    padding: 11mm 10mm !important;
+  }
+
+  /* Full-bleed Europass Banner & Editorial / Custom Header */
+  .cv-europass-banner,
+  .cv-editorial-sheet,
+  .cv-single-column.cv-custom-header {
+    page: creative;
+    padding: 0 12.7mm 12.7mm 12.7mm !important;
+  }
+
+  .cv-europass-banner .cv-europass-banner-header,
+  .cv-editorial-sheet .cv-header,
+  .cv-single-column.cv-custom-header .cv-header {
+    margin: 0 -12.7mm 6mm -12.7mm !important;
+    padding: 10mm 12.7mm 8mm 12.7mm !important;
+    width: auto !important;
+  }
+
+  /* Europass Framed with safe margins for corner L-brackets */
+  .cv-europass-framed {
+    page: creative;
+    padding: 14mm !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Europass Classic 2-Column Margin Layout */
+  .cv-europass-classic .cv-europass-grid {
+    display: grid !important;
+    grid-template-columns: 40mm 1fr !important;
+    column-gap: 6mm !important;
+  }
+
+  .cv-europass-classic .cv-europass-label {
+    text-align: right !important;
+  }
+
+  .cv-europass-languages-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   /* Cover letter exact 1:1 A4 page matching screen preview */

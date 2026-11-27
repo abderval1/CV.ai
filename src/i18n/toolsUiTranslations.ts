@@ -479,7 +479,7 @@ export interface ToolsUiDictionary {
     contractsLabel: string;
     contracts: Record<string, string>;
     workplaces: Record<'all' | 'remote' | 'hybrid' | 'onsite', string>;
-    sources: Record<'all' | 'linkedin' | 'radar' | 'remotive' | 'arbeitnow' | 'jobicy' | 'remoteok', string>;
+    sources: Record<'all' | 'linkedin' | 'radar' | 'reliefweb' | 'remotive' | 'arbeitnow' | 'jobicy' | 'remoteok' | 'himalayas' | 'themuse' | 'workingnomads', string>;
     externalPortalsTitle: string;
     searchPlaceholder: string;
     filterBtn: string;
@@ -1071,10 +1071,14 @@ COMPETÊNCIAS:
         all: 'Todos os Portais',
         linkedin: 'LinkedIn',
         radar: 'Radar de Vagas',
+        reliefweb: 'ReliefWeb (ONU)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Pesquisar o seu perfil diretamente noutros grandes portais:',
       searchPlaceholder: 'Filtrar por cargo, empresa ou competência (ex: React, Finance, SAP)...',
@@ -1653,10 +1657,14 @@ SKILLS:
         all: 'All Portals',
         linkedin: 'LinkedIn',
         radar: 'Job Radar',
+        reliefweb: 'ReliefWeb (UN)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Search your profile directly on other major portals:',
       searchPlaceholder: 'Filter by role, company, or skill (e.g. React, Finance, SAP)...',
@@ -2234,10 +2242,14 @@ COMPETENCIAS:
         all: 'Todos los Portales',
         linkedin: 'LinkedIn',
         radar: 'Radar de Empleo',
+        reliefweb: 'ReliefWeb (ONU)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Buscar tu perfil directamente en otros grandes portales:',
       searchPlaceholder: 'Filtrar por puesto, empresa o habilidad (ej: React, Finance, SAP)...',
@@ -2815,10 +2827,14 @@ COMPÉTENCES :
         all: 'Tous les Portails',
         linkedin: 'LinkedIn',
         radar: 'Radar d’Offres',
+        reliefweb: 'ReliefWeb (ONU)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Rechercher votre profil directement sur d’autres grands portails :',
       searchPlaceholder: 'Filtrer par poste, entreprise ou compétence (ex : React, Finance, SAP)...',
@@ -3395,10 +3411,14 @@ KOMPETENZEN:
         all: 'Alle Portale',
         linkedin: 'LinkedIn',
         radar: 'Job-Radar',
+        reliefweb: 'ReliefWeb (UN)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Profil direkt auf weiteren großen Portalen suchen:',
       searchPlaceholder: 'Nach Position, Firma oder Skill filtern (z. B. React, Finance, SAP)...',
@@ -3976,10 +3996,14 @@ COMPETENZE:
         all: 'Tutti i Portali',
         linkedin: 'LinkedIn',
         radar: 'Radar Offerte',
+        reliefweb: 'ReliefWeb (ONU)',
         remotive: 'Remotive',
         arbeitnow: 'Arbeitnow',
         jobicy: 'Jobicy',
-        remoteok: 'RemoteOK'
+        remoteok: 'RemoteOK',
+        himalayas: 'Himalayas',
+        themuse: 'The Muse',
+        workingnomads: 'Working Nomads'
       },
       externalPortalsTitle: 'Cerca il tuo profilo direttamente su altri grandi portali:',
       searchPlaceholder: 'Filtra per ruolo, azienda o competenza (es: React, Finance, SAP)...',

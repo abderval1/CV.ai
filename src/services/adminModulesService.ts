@@ -127,7 +127,7 @@ export const DEFAULT_AI_ROUTING: AiModelRoutingConfig = {
   costSavingModel: 'gemini-3.1-flash-lite',
   advancedReasoningModel: 'gemini-4-hydrogen',
   maxRetries: 3,
-  timeoutMs: 8000,
+  timeoutMs: 30000,
   healthStatus: {
     'gemini-4-hydrogen': { status: 'healthy', latencyMs: 0 },
     'gemini-3.1-flash-lite': { status: 'healthy', latencyMs: 0 },

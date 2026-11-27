@@ -36,6 +36,7 @@ import { useLanguage, SUPPORTED_LANGUAGES, LanguageCode } from './context/Langua
 import { TOOLS_UI_TRANSLATIONS } from './i18n/toolsUiTranslations';
 import { detectCVLanguage, detectTextLanguage } from './utils/languageDetect';
 import { generateWordDocument, generateCoverLetterDocx, triggerDownload } from './utils/docxExport';
+import { exportElementToPdf } from './utils/pdfExport';
 import { getTemplateById } from './data/templateCatalog';
 import { isUserAdmin } from './services/saasDbService';
 import { recordAuditLog } from './services/auditLogService';
@@ -639,7 +640,6 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       );
       return;
     }
-    setContentLanguage(targetLang);
     trackFrontendTelemetry({ type: 'language_switched', language: targetLang });
 
     const currentLang = activeContentLangRef.current;
@@ -669,6 +669,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
     const isCacheGenuineForTarget = Boolean(
       cached &&
+        cached.verified &&
         (!cachedCvLang || cachedCvLang === targetLang) &&
         (!cached.letterBody?.trim() || !cachedLetterLang || cachedLetterLang === targetLang)
     );
@@ -691,6 +692,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           ...cached.cv,
           templateStyle: latestCv.templateStyle,
           accentColor: latestCv.accentColor,
+          headerColor: latestCv.headerColor,
+          barColor: latestCv.barColor,
           fontFamily: latestCv.fontFamily,
           sectionOrder: latestCv.sectionOrder,
           sectionVisibility: latestCv.sectionVisibility
@@ -734,46 +737,49 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       const sourceCvLang = detectCVLanguage(sourceEntry.cv);
       const sourceLetterLang = sourceHasLetter ? detectTextLanguage(sourceEntry.letterBody) : null;
 
-      // Translate CV whenever it isn't already genuinely in targetLang
-      const cvPromise =
-        sourceCvLang === targetLang && actualCvLang === targetLang
-          ? Promise.resolve(sourceEntry.cv)
-          : authorizedFetch('/api/translate-cv', {
-              method: 'POST',
-              body: JSON.stringify({
-                cvData: sourceEntry.cv,
-                targetLanguage: targetLang,
-                adminPromptConfig: adminTranslateConfig
-              })
-            }).then(async (res) => {
-              const data = await res.json().catch(() => ({}));
-              if (!res.ok) {
-                throw new Error(data.error || `Erro ${res.status} ao traduzir o currículo.`);
-              }
-              if (!data.translatedCV) {
-                throw new Error('Resposta inválida ao traduzir o currículo.');
-              }
-              return data.translatedCV as CVData;
-            });
+      // Always call /api/translate-cv unless visible content is genuinely verified in targetLang already
+      const shouldSkipCvTranslation =
+        targetLang === currentLang && sourceCvLang === targetLang && actualCvLang === targetLang;
+      const cvPromise = shouldSkipCvTranslation
+        ? Promise.resolve(sourceEntry.cv)
+        : authorizedFetch('/api/translate-cv', {
+            method: 'POST',
+            body: JSON.stringify({
+              cvData: sourceEntry.cv,
+              targetLanguage: targetLang,
+              adminPromptConfig: adminTranslateConfig
+            })
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data.error || `Erro ${res.status} ao traduzir o currículo.`);
+            }
+            if (!data.translatedCV) {
+              throw new Error('Resposta inválida ao traduzir o currículo.');
+            }
+            return data.translatedCV as CVData;
+          });
 
       // Translate Cover Letter whenever present and not already genuinely in targetLang
-      const letterPromise =
-        !sourceHasLetter || (sourceLetterLang === targetLang && actualLetterLang === targetLang)
-          ? Promise.resolve(sourceEntry.letterBody)
-          : authorizedFetch('/api/translate-letter', {
-              method: 'POST',
-              body: JSON.stringify({
-                text: sourceEntry.letterBody,
-                targetLanguage: targetLang,
-                adminPromptConfig: adminTranslateConfig
-              })
-            }).then(async (res) => {
-              const data = await res.json().catch(() => ({}));
-              if (!res.ok) {
-                throw new Error(data.error || `Erro ${res.status} ao traduzir a carta.`);
-              }
-              return (data.translatedText as string) || sourceEntry.letterBody;
-            });
+      const shouldSkipLetterTranslation =
+        !sourceHasLetter ||
+        (targetLang === currentLang && sourceLetterLang === targetLang && actualLetterLang === targetLang);
+      const letterPromise = shouldSkipLetterTranslation
+        ? Promise.resolve(sourceEntry.letterBody)
+        : authorizedFetch('/api/translate-letter', {
+            method: 'POST',
+            body: JSON.stringify({
+              text: sourceEntry.letterBody,
+              targetLanguage: targetLang,
+              adminPromptConfig: adminTranslateConfig
+            })
+          }).then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              throw new Error(data.error || `Erro ${res.status} ao traduzir a carta.`);
+            }
+            return (data.translatedText as string) || sourceEntry.letterBody;
+          });
 
       const [translatedCVRaw, translatedLetter] = await Promise.all([cvPromise, letterPromise]);
 
@@ -785,6 +791,8 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         ...translatedCVRaw,
         templateStyle: latestCv.templateStyle,
         accentColor: latestCv.accentColor,
+        headerColor: latestCv.headerColor,
+        barColor: latestCv.barColor,
         fontFamily: latestCv.fontFamily,
         sectionOrder: latestCv.sectionOrder,
         sectionVisibility: latestCv.sectionVisibility
@@ -840,7 +848,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         setTranslatingTargetLang(null);
       }
     }
-  }, [cv, hasActivePlan, isAuthenticated, letterBody, showError, showInfo, showSuccess, user, appUi, handleOpenPricingModal]);
+  }, [cv, hasActivePlan, isAuthenticated, letterBody, platformSettings.enableAiFeaturesGlobally, showError, showInfo, showSuccess, user, appUi, handleOpenPricingModal]);
 
   const handleExportWord = async () => {
     const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
@@ -960,7 +968,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     }
   };
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
     const requirePaidPlanForExport = platformSettings.requirePaidPlanForExport !== false;
     if (requirePaidPlanForExport && !isAuthenticated) {
       handleOpenAuth(appUi.authExportPrompt);
@@ -970,19 +978,57 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
       handleOpenPricingModal(appUi.planExportPrompt);
       return;
     }
-    void recordAuditLog({
-      actorUserId: user?.id,
-      actorEmail: user?.email,
-      actorRole: user?.role === 'admin' ? 'admin' : 'user',
-      action: 'cv_exported_pdf',
-      category: 'cv_export',
-      severity: 'info',
-      status: 'success',
-      targetResource: activeTab === 'cover' ? 'cover-letter/pdf' : `resumes/${cv.templateStyle}/pdf`,
-      details: `Exportação PDF via impressão oficial (${contentLanguage.toUpperCase()}).`,
-      metadata: { format: 'pdf', templateStyle: cv.templateStyle, language: contentLanguage }
-    });
-    window.print();
+
+    const sanitizedName = cv.personalDetails.name.trim().replace(/\s+/g, '_') || 'Curriculo_Estrategico';
+    const templateInfo = getTemplateById(cv.templateStyle);
+    const templateTag = templateInfo.shortName.replace(/[^a-zA-Z0-9]/g, '_');
+    const pdfFilename =
+      activeTab === 'cover'
+        ? `Carta_Apresentacao_${sanitizedName}.pdf`
+        : `Curriculo_${sanitizedName}_${templateTag}.pdf`;
+    const selector = activeTab === 'cover' ? '.cover-a4-sheet' : '.cv-a4-sheet';
+
+    try {
+      setIsExportingWord(true);
+      await exportElementToPdf(selector, pdfFilename);
+      void recordAuditLog({
+        actorUserId: user?.id,
+        actorEmail: user?.email,
+        actorRole: user?.role === 'admin' ? 'admin' : 'user',
+        action: 'cv_exported_pdf',
+        category: 'cv_export',
+        severity: 'info',
+        status: 'success',
+        targetResource: activeTab === 'cover' ? 'cover-letter/pdf' : `resumes/${cv.templateStyle}/pdf`,
+        details: `Exportação PDF direta 1:1 (${pdfFilename}, ${contentLanguage.toUpperCase()}).`,
+        metadata: { format: 'pdf', templateStyle: cv.templateStyle, language: contentLanguage }
+      });
+      showSuccess(
+        activeTab === 'cover' ? appUi.exportLetterTitle : appUi.exportCvTitle,
+        `${pdfFilename}`
+      );
+      if (user) {
+        void dispatchUserNotification({
+          user,
+          eventType: 'export',
+          title: appUi.notifExportTitle,
+          message:
+            activeTab === 'cover'
+              ? `${appUi.notifExportLetterMsgPrefix} ${pdfFilename}`
+              : `${appUi.notifExportCvMsgPrefix} ${templateInfo.shortName} (${contentLanguage.toUpperCase()}) (.pdf).`,
+          targetResource: activeTab === 'cover' ? 'cover-letter/pdf' : `resumes/${cv.templateStyle}/pdf`
+        });
+      }
+    } catch (err: any) {
+      console.warn('Direct PDF capture fallback to window.print():', err);
+      try {
+        window.print();
+      } catch {
+        showError(appUi.exportErrorTitle, err?.message || appUi.exportErrorDesc);
+      }
+    } finally {
+      setIsExportingWord(false);
+    }
   };
 
   useEffect(() => {
@@ -1631,7 +1677,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
 
             {/* Right Side: High-Fidelity A4 Document Canvas */}
             <section
-              className={`flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-slate-200/70 ${
+              className={`cv-print-section flex-1 min-h-0 flex flex-col h-full overflow-hidden bg-slate-200/70 ${
                 mobileViewMode === 'controls' ? 'hidden lg:flex' : 'flex'
               }`}
             >
@@ -1798,7 +1844,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
                     type="button"
                     onClick={() => {
                       setMobileExportOpen(false);
-                      handleExportPdf();
+                      void handleExportPdf();
                     }}
                     className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2"
                   >

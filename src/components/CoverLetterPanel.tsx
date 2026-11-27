@@ -14,6 +14,7 @@ import {
   Lock
 } from 'lucide-react';
 import { generateCoverLetterDocx, triggerDownload } from '../utils/docxExport';
+import { exportElementToPdf } from '../utils/pdfExport';
 import { authorizedFetch } from '../utils/authHeaders';
 import {
   getStoredPromptSync,
@@ -598,12 +599,17 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
           <span>{ui.editHint}</span>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               if (!isAuthenticated || !hasActivePlan) {
                 onOpenPricingModal?.(coverUi.planRequiredPdf);
                 return;
               }
-              window.print();
+              try {
+                const nameSlug = (cv.personalDetails.name || 'Carta').trim().replace(/\s+/g, '_');
+                await exportElementToPdf('.cover-a4-sheet', `Cover_Letter_${nameSlug}.pdf`);
+              } catch {
+                window.print();
+              }
             }}
             className="text-slate-700 hover:text-slate-950 font-semibold underline flex items-center gap-1"
           >

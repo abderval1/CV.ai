@@ -154,7 +154,8 @@ export const AtsRadarPanel: React.FC<AtsRadarPanelProps> = ({
     cv.templateStyle === 'creative_split' ||
     cv.templateStyle === 'creative_resume' ||
     cv.templateStyle === 'european_modern' ||
-    cv.templateStyle === 'european_europass';
+    cv.templateStyle === 'european_europass' ||
+    cv.templateStyle === 'europass_sidebar';
   const hasPhotoEnabled = Boolean(cv.personalDetails.showPhoto && cv.personalDetails.photoUrl);
   const contactFieldsFilled = [
     cv.personalDetails.name,
