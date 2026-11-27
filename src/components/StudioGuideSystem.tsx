@@ -105,7 +105,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finalizar',
-        clickHint: 'Gere a Carta de Apresentação ou clique em Baixar CV / PDF no topo.',
+        clickHint: 'Gere a Carta de Apresentação ou clique em Exportar CV no topo (PDF ou Word).',
         nextLabel: 'Exportar CV Final'
       }
     ],
@@ -159,7 +159,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finish',
-        clickHint: 'Generate your Cover Letter or download your finished resume / PDF at the top.',
+        clickHint: 'Generate your Cover Letter or click Export CV at the top (PDF or Word).',
         nextLabel: 'Export Final CV'
       }
     ],
@@ -213,7 +213,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finalizar',
-        clickHint: 'Genera tu Carta de Presentación o descarga tu currículum / PDF arriba.',
+        clickHint: 'Genera tu Carta de Presentación o haz clic en Exportar CV arriba (PDF o Word).',
         nextLabel: 'Exportar CV Final'
       }
     ],
@@ -267,7 +267,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Finaliser',
-        clickHint: 'Générez votre Lettre de Motivation ou téléchargez votre CV / PDF en haut.',
+        clickHint: 'Générez votre Lettre de Motivation ou cliquez sur Exporter CV en haut (PDF ou Word).',
         nextLabel: 'Exporter le CV Final'
       }
     ],
@@ -321,7 +321,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Abschließen',
-        clickHint: 'Anschreiben generieren oder fertigen Lebenslauf / PDF oben herunterladen.',
+        clickHint: 'Anschreiben generieren oder oben auf CV exportieren klicken (PDF oder Word).',
         nextLabel: 'Finalen CV Exportieren'
       }
     ],
@@ -375,7 +375,7 @@ const STUDIO_GUIDE_COPY: Record<SiteLanguageCode, StudioGuideCopy> = {
         num: 5,
         tab: 'cover',
         label: 'Completa',
-        clickHint: 'Genera la Lettera di Presentazione o scarica il tuo CV / PDF in alto.',
+        clickHint: 'Genera la Lettera di Presentazione o clicca su Esporta CV in alto (PDF o Word).',
         nextLabel: 'Esporta CV Finale'
       }
     ],

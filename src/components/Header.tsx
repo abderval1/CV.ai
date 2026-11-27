@@ -114,6 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
     width: 280
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false);
   const [notifications, setNotifications] = useState<UserNotificationItem[]>([]);
   const [avatarLoadError, setAvatarLoadError] = useState(false);
 
@@ -134,8 +135,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Templates',
           more: 'More',
           exportCv: activeTab === 'cover' ? 'Export Letter' : 'Export CV',
-          downloadPdf: 'Download PDF',
-          downloadWord: 'Download Word (.docx)',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Apply to Jobs',
           settings: 'Settings',
           language: 'Language',
@@ -149,8 +150,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Plantillas',
           more: 'Más',
           exportCv: activeTab === 'cover' ? 'Exportar Carta' : 'Exportar CV',
-          downloadPdf: 'Descargar PDF',
-          downloadWord: 'Descargar Word (.docx)',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Aplicar a Vacantes',
           settings: 'Ajustes',
           language: 'Idioma',
@@ -164,8 +165,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Modèles',
           more: 'Plus',
           exportCv: activeTab === 'cover' ? 'Exporter Lettre' : 'Exporter CV',
-          downloadPdf: 'Télécharger PDF',
-          downloadWord: 'Télécharger Word (.docx)',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Postuler aux Offres',
           settings: 'Réglages',
           language: 'Langue',
@@ -179,8 +180,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Vorlagen',
           more: 'Mehr',
           exportCv: activeTab === 'cover' ? 'Schreiben exportieren' : 'CV exportieren',
-          downloadPdf: 'PDF herunterladen',
-          downloadWord: 'Word (.docx) herunterladen',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Auf Jobs bewerben',
           settings: 'Einstellungen',
           language: 'Sprache',
@@ -194,8 +195,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Modelli',
           more: 'Altro',
           exportCv: activeTab === 'cover' ? 'Esporta Lettera' : 'Esporta CV',
-          downloadPdf: 'Scarica PDF',
-          downloadWord: 'Scarica Word (.docx)',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Candidati alle Offerte',
           settings: 'Impostazioni',
           language: 'Lingua',
@@ -209,8 +210,8 @@ export const Header: React.FC<HeaderProps> = ({
           models: 'Modelos',
           more: 'Mais',
           exportCv: activeTab === 'cover' ? 'Exportar Carta' : 'Exportar CV',
-          downloadPdf: 'Baixar PDF',
-          downloadWord: 'Baixar Word (.docx)',
+          downloadPdf: 'PDF (.pdf)',
+          downloadWord: 'Word (.docx)',
           applyJobs: 'Aplicar a vagas',
           settings: 'Ajustes',
           language: 'Idioma',
@@ -557,91 +558,109 @@ export const Header: React.FC<HeaderProps> = ({
 
             {openMenu === 'more' && (
               <div className="p-2.5 space-y-2.5 max-h-[78dvh] overflow-y-auto">
-                {/* Importar CV & Ferramentas */}
+                {/* 1. Importar CV & 2. Ferramentas (Collapsible Submenu) */}
                 <div className="space-y-1">
-                  <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    {localizedCopy.tools}
-                  </div>
                   <button
                     type="button"
                     onClick={() => handleSelectNav('raw')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
+                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-colors ${
                       activeTab === 'raw'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200'
+                        : 'text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800'
                     }`}
                   >
-                    <Upload className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <Upload className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                     <span>{studioNav.tabs.raw.label}</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleSelectNav('jobs')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
-                      activeTab === 'jobs'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
+                    onClick={() => setMoreToolsOpen((prev) => !prev)}
+                    aria-expanded={moreToolsOpen}
+                    className="w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between gap-2 transition-colors"
                   >
-                    <Briefcase className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                    <span>{localizedCopy.applyJobs}</span>
+                    <span className="flex items-center gap-2.5">
+                      <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>{localizedCopy.tools}</span>
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                        moreToolsOpen ? 'rotate-180' : ''
+                      }`}
+                    />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNav('ai')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
-                      activeTab === 'ai'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>{studioNav.tabs.ai.label}</span>
-                  </button>
+                  {moreToolsOpen && (
+                    <div className="pl-3 space-y-0.5 border-l border-slate-200 dark:border-slate-700 ml-3">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNav('jobs')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                          activeTab === 'jobs'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Briefcase className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                        <span>{localizedCopy.applyJobs}</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNav('ats')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
-                      activeTab === 'ats'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Target className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>{studioNav.tabs.ats.label}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNav('ai')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                          activeTab === 'ai'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Wand2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>{studioNav.tabs.ai.label}</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNav('cover')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
-                      activeTab === 'cover'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <Mail className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>{h.toolCover}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNav('ats')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                          activeTab === 'ats'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Target className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{studioNav.tabs.ats.label}</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNav('interview')}
-                    className={`w-full text-left px-2.5 py-2 rounded-lg text-xs flex items-center gap-2.5 transition-colors ${
-                      activeTab === 'interview'
-                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
-                        : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 text-violet-600 shrink-0" />
-                    <span>{studioNav.tabs.interview.label}</span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNav('cover')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                          activeTab === 'cover'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Mail className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>{h.toolCover}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectNav('interview')}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+                          activeTab === 'interview'
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-200 font-semibold'
+                            : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                        <span>{studioNav.tabs.interview.label}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Idioma */}
+                {/* 3. Idioma */}
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="px-2 py-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     <Globe className="w-3 h-3" />
@@ -669,7 +688,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
 
-                {/* Ajustes: Tema + Moeda + Notificações/Suporte */}
+                {/* 4. Ajustes: Tema + Moeda + Notificações/Suporte */}
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-2">
                   <div className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     {localizedCopy.settings}

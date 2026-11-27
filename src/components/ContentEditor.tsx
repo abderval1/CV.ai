@@ -212,6 +212,7 @@ const EDITOR_V2_COPY: Record<
     activeOnCv: string;
     changeGoalBtn: string;
     finishApplyBtn: string;
+    exportCvLabel: string;
   }
 > = {
   pt: {
@@ -244,7 +245,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Usar este modelo',
     activeOnCv: 'Ativo no seu CV',
     changeGoalBtn: 'Mudar objetivo',
-    finishApplyBtn: 'Aplicar a vagas'
+    finishApplyBtn: 'Aplicar a vagas',
+    exportCvLabel: 'Exportar CV'
   },
   en: {
     steps: {
@@ -276,7 +278,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Use this template',
     activeOnCv: 'Active on your CV',
     changeGoalBtn: 'Change goal',
-    finishApplyBtn: 'Apply to jobs'
+    finishApplyBtn: 'Apply to jobs',
+    exportCvLabel: 'Export CV'
   },
   es: {
     steps: {
@@ -308,7 +311,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Usar esta plantilla',
     activeOnCv: 'Activa en tu CV',
     changeGoalBtn: 'Cambiar objetivo',
-    finishApplyBtn: 'Aplicar a vacantes'
+    finishApplyBtn: 'Aplicar a vacantes',
+    exportCvLabel: 'Exportar CV'
   },
   fr: {
     steps: {
@@ -340,7 +344,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Utiliser ce modèle',
     activeOnCv: 'Actif sur votre CV',
     changeGoalBtn: 'Changer d’objectif',
-    finishApplyBtn: 'Postuler aux offres'
+    finishApplyBtn: 'Postuler aux offres',
+    exportCvLabel: 'Exporter CV'
   },
   de: {
     steps: {
@@ -372,7 +377,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Vorlage nutzen',
     activeOnCv: 'Aktiv im Lebenslauf',
     changeGoalBtn: 'Ziel ändern',
-    finishApplyBtn: 'Auf Stellen bewerben'
+    finishApplyBtn: 'Auf Stellen bewerben',
+    exportCvLabel: 'CV exportieren'
   },
   it: {
     steps: {
@@ -404,7 +410,8 @@ const EDITOR_V2_COPY: Record<
     useRecommendedBtn: 'Usa questo modello',
     activeOnCv: 'Attivo nel tuo CV',
     changeGoalBtn: 'Cambia obiettivo',
-    finishApplyBtn: 'Candidati alle offerte'
+    finishApplyBtn: 'Candidati alle offerte',
+    exportCvLabel: 'Esporta CV'
   }
 };
 
@@ -609,7 +616,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
 
   const { saveCurrentResume, isAuthenticated, hasActivePlan } = useAuth();
   const { showSuccess, showError } = useToast();
-  const { siteLanguage, studioText } = useLanguage();
+  const { siteLanguage } = useLanguage();
   const ui = (EDITOR_UI_TRANSLATIONS[siteLanguage] || EDITOR_UI_TRANSLATIONS.en).editor;
   const v2 = EDITOR_V2_COPY[siteLanguage] || EDITOR_V2_COPY.en;
   const guides = (STUDIO_NAV_TRANSLATIONS[siteLanguage] || STUDIO_NAV_TRANSLATIONS.en).editorGuides;
@@ -1410,28 +1417,73 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           />
         </div>
 
-        {/* Collapsible Live ATS Checklist Drawer (Opened from Options Menu) */}
-        {showDiagnostics && (
-          <div className="px-3.5 sm:px-5 py-3 bg-white border-t border-slate-200 divide-y divide-slate-100 max-h-64 overflow-y-auto">
-            <div className="pb-2 mb-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 font-mono tabular-nums">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold text-slate-900">ATS {cvMetrics.strengthScore}%</span>
-                <span aria-hidden="true" className="text-slate-300">·</span>
-                <span>{cvMetrics.totalWords} {ui.words}</span>
-                <span aria-hidden="true" className="text-slate-300">·</span>
-                <span>~{cvMetrics.estimatedPages} {ui.pagesA4}</span>
-                <span aria-hidden="true" className="text-slate-300">·</span>
-                <span>{completedCriteria}/{cvMetrics.completenessChecklist.length}</span>
+        {/* Collapsible Live ATS Score & Checklist Drawer */}
+        {showDiagnostics && (() => {
+          const hasDetailedExp =
+            cv.experiences.length > 0 &&
+            cv.experiences.some((e) => e.highlights.filter((h) => h.trim().length > 20).length >= 2);
+          const hasRelevantSkills = cv.competencies.length >= 2;
+          const summaryWords = cv.summary ? cv.summary.trim().split(/\s+/).filter(Boolean).length : 0;
+          const hasKeywords =
+            summaryWords >= 35 &&
+            (jobDescription.trim().length > 20 ? atsAudit.missingKeywords.length <= 3 : cvMetrics.totalWords >= 160);
+
+          return (
+            <div className="px-3.5 sm:px-5 py-3 bg-white border-t border-slate-200 divide-y divide-slate-100 max-h-72 overflow-y-auto">
+              <div className="pb-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 font-mono tabular-nums">
+                    <span className="font-bold text-slate-950">
+                      {v2.atsWidgetTitle}: {effectiveAtsScore}/100
+                    </span>
+                    <span aria-hidden="true" className="text-slate-300">·</span>
+                    <span className="text-[11px] text-slate-500">
+                      {cvMetrics.totalWords} {ui.words} · ~{cvMetrics.estimatedPages} {ui.pagesA4}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowDiagnostics(false)}
+                    className="text-[11px] text-slate-500 hover:text-slate-900 font-semibold"
+                  >
+                    {ui.stage1.close}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px]">
+                  <div className="flex items-center gap-1.5">
+                    {hasDetailedExp ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    )}
+                    <span className={hasDetailedExp ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                      {hasDetailedExp ? v2.expDetailed : v2.expMissing}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {hasRelevantSkills ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    )}
+                    <span className={hasRelevantSkills ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                      {hasRelevantSkills ? v2.skillsRelevant : v2.skillsMissing}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {hasKeywords ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    )}
+                    <span className={hasKeywords ? 'text-slate-700' : 'text-amber-800 font-medium'}>
+                      {hasKeywords ? v2.keywordsGood : v2.keywordsMissing}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowDiagnostics(false)}
-                className="text-slate-500 hover:text-slate-900 font-sans font-semibold"
-              >
-                {ui.stage1.close}
-              </button>
-            </div>
-            {cvMetrics.completenessChecklist.map((item, idx) => {
+              {cvMetrics.completenessChecklist.map((item, idx) => {
               const localizedCheck = ui.checklistItems[idx] || item;
               return (
                 <div
@@ -1471,8 +1523,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 </div>
               );
             })}
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* 2. SCROLLABLE STEP CONTENT AREA */}
@@ -3300,7 +3353,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                             className="flex-1 min-h-[44px] px-4 py-2.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center justify-center gap-2 shadow-xs touch-manipulation"
                           >
                             <Download className="w-4 h-4 shrink-0" />
-                            <span>{studioText.docToolbar.wordBtn}</span>
+                            <span>{v2.exportCvLabel}</span>
                           </button>
                         )}
                         {onOpenJobs && (
@@ -3335,10 +3388,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
           <span>{ui.footer.prev}</span>
         </button>
 
-        <span className="text-[11px] font-mono tabular-nums text-slate-500 hidden sm:inline">
-          {ui.footer.stepOf
-            .replace('{current}', String(currentStepIndex + 1))
-            .replace('{total}', String(STEPS.length))}
+        <span className="text-[11px] font-semibold tabular-nums text-emerald-700 hidden sm:inline-flex items-center gap-1">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+          <span>{STEPS.filter((s) => s.isCompleted).length}/{STEPS.length}</span>
         </span>
 
         <div className="flex items-center gap-2 min-w-0">
@@ -3368,7 +3420,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 className="min-h-[42px] px-4 py-2 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors flex items-center gap-1.5 whitespace-nowrap touch-manipulation"
               >
                 <Download className="w-4 h-4 shrink-0" />
-                <span>{studioText.docToolbar.wordBtn}</span>
+                <span>{v2.exportCvLabel}</span>
               </button>
             )
           )}
