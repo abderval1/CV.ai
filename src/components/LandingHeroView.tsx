@@ -99,7 +99,7 @@ export const LandingHeroView: React.FC<LandingHeroViewProps> = ({
   const [heroPreviewLang, setHeroPreviewLang] = useState<'en' | 'pt'>('en');
   const [templateFilter, setTemplateFilter] = useState<'all' | 'without_photo' | 'with_photo'>('all');
   const [showAllTemplates, setShowAllTemplates] = useState<boolean>(false);
-  const [pricingCycle, setPricingCycle] = useState<BillingCycle>('yearly');
+  const [pricingCycle, setPricingCycle] = useState<BillingCycle>('monthly');
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [adminTemplates, setAdminTemplates] = useState(() => getStoredTemplatesSync());
   const [adminPlans, setAdminPlans] = useState(() => getStoredPlansSync());

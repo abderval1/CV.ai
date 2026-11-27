@@ -4,4 +4,5 @@ Disallow: /api/
 Disallow: /conta
 Disallow: /admin
 
-Sitemap: https://ais-pre-ffiukhfder2kc5oxywnvqc-584774058317.europe-west2.run.app/sitemap.xml
+Sitemap: https://resume2job.vercel.app/sitemap.xml
+

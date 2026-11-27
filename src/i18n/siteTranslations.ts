@@ -443,11 +443,11 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Entrar / Registar'
     },
     landing: {
-      heroKicker: 'IA de Candidatura · Pontuação ATS · PDF & Word',
-      heroTitle: 'IA que adapta automaticamente o seu CV para qualquer vaga e aumenta as hipóteses de entrevista.',
+      heroKicker: 'Estúdio Executivo · Padrão ATS · Word & PDF',
+      heroTitle: 'Crie um currículo impecável do zero ou melhore o seu CV existente para conquistar entrevistas e salários melhores.',
       heroSubtitle:
-        'Cole o link de uma vaga, veja a sua compatibilidade ATS na hora e adapte resumo, conquistas e palavras-chave em 1 clique — pronto a exportar em PDF ou Word.',
-      ctaBuild: 'Adaptar CV e Começar',
+        'O método definitivo aprovado por recrutadores globais. Passe nos filtros ATS, organize o seu histórico com impacto mensurável e exporte em Word (.docx) ou PDF em segundos.',
+      ctaBuild: 'Criar ou Melhorar CV Agora',
       ctaExploreModels: 'Explorar 40+ Modelos',
       ctaMatchJobs: 'Filtrar Vagas pelo CV',
       linkCvModels: 'Modelos de CV',
@@ -474,27 +474,27 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       archKicker: 'Ciclo Completo de Candidatura',
       archTitle: 'Do currículo à candidatura direcionada em quatro passos',
       archDesc:
-        'Unimos criação de CV calibrado para ATS, radar de oportunidades compatíveis com o seu perfil, filtros inteligentes e adaptação automática para cada vaga.',
+        'Unimos criação de currículo calibrado para ATS, radar de oportunidades compatíveis com o seu perfil e ferramentas avançadas para destacar o seu potencial.',
       archSteps: [
         {
           num: '01',
-          title: 'Crie ou Importe o CV ATS',
-          desc: 'Escolha entre mais de 40 layouts internacionais em coluna única (Workday, Greenhouse, Taleo) ou importe PDF/LinkedIn.'
+          title: 'Crie ou Melhore o seu CV',
+          desc: 'Escolha entre mais de 40 layouts internacionais ou importe o seu currículo atual para otimização imediata.'
         },
         {
           num: '02',
-          title: 'Radar de Vagas por Perfil',
-          desc: 'O sistema lê o seu cargo, senioridade e competências para listar oportunidades reais com percentual de aderência.'
+          title: 'Radar de Oportunidades',
+          desc: 'Encontre vagas alinhadas com o seu cargo, senioridade e competências com análise de aderência.'
         },
         {
           num: '03',
-          title: 'Filtre & Adapte em 1 Clique',
-          desc: 'Filtre por remoto, híbrido, país ou contrato e aplique a Fórmula Google XYZ + palavras-chave da vaga no CV.'
+          title: 'Refine & Otimize',
+          desc: 'Aplique a Fórmula Google XYZ para transformar tarefas em conquistas quantificáveis de alto impacto.'
         },
         {
           num: '04',
           title: 'Exporte & Candidate-se',
-          desc: 'Gere Word (.docx) fiel, PDF limpo e carta de apresentação traduzida em 5 idiomas para enviar diretamente.'
+          desc: 'Baixe em Word (.docx) editável e PDF de alta resolução pronto para enviar aos recrutadores.'
         }
       ],
       jobMatch: {
@@ -1026,11 +1026,11 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       mobileSignInRegister: 'Sign In / Register'
     },
     landing: {
-      heroKicker: 'AI Job Tailoring · Live ATS Score · PDF & Word',
-      heroTitle: 'AI that automatically tailors your CV to any job and boosts your interview chances.',
+      heroKicker: 'Executive Studio · ATS Standard · Word & PDF',
+      heroTitle: 'Create a flawless resume from scratch or improve your existing CV to secure interviews and better salaries.',
       heroSubtitle:
-        'Paste any job link, get an instant ATS compatibility score, and adapt your summary, achievements, and keywords in 1 click — ready to export in PDF or Word.',
-      ctaBuild: 'Tailor My CV with AI',
+        'The ultimate professional method approved by top recruiters. Pass ATS filters, organize your career history with measurable impact, and export in Word (.docx) or PDF in seconds.',
+      ctaBuild: 'Create or Improve CV Now',
       ctaExploreModels: 'Explore 40+ Templates',
       ctaMatchJobs: 'Match Jobs to My CV',
       linkCvModels: 'CV Templates',

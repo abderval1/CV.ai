@@ -366,14 +366,14 @@ export function createApiApp() {
       if (req.headers.origin) {
         try {
           const reqOrig = new URL(String(req.headers.origin));
-          if (reqOrig.host === hostHeader || reqOrig.hostname.endsWith('.run.app') || reqOrig.hostname === 'localhost') {
+          if (reqOrig.host === hostHeader || reqOrig.hostname.endsWith('.run.app') || reqOrig.hostname.endsWith('.vercel.app') || reqOrig.hostname === 'localhost') {
             allowedOrigins.add(reqOrig.origin);
           }
         } catch { /* ignore */ }
       }
       if (
         allowedOrigins.has(target.origin) ||
-        (target.protocol === 'https:' && target.hostname.endsWith('.run.app'))
+        (target.protocol === 'https:' && (target.hostname.endsWith('.run.app') || target.hostname.endsWith('.vercel.app')))
       ) {
         return `${target.origin}${target.pathname}`;
       }
@@ -11008,7 +11008,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     if (hostHeader) {
       return `${protoHeader}://${hostHeader}`;
     }
-    return 'https://ais-pre-ffiukhfder2kc5oxywnvqc-584774058317.europe-west2.run.app';
+    return 'https://resume2job.vercel.app';
   }
 
   app.get('/robots.txt', (req, res) => {
