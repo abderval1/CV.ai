@@ -409,6 +409,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             type="button"
+            onClick={() => handleSelectNav('raw')}
+            className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+              activeTab === 'raw'
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-950 dark:text-white font-semibold'
+                : 'hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800/60'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5 shrink-0" />
+            <span>Importar CV</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => handleSelectNav('models-cv')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
               isShowcaseActive
