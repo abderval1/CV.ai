@@ -156,7 +156,14 @@ import {
   FileText,
   Wifi,
   WifiOff,
-  Clock
+  Clock,
+  Smartphone,
+  Monitor,
+  Tablet,
+  Star,
+  LogOut,
+  BarChart3,
+  UserCheck
 } from 'lucide-react';
 import {
   AdminFinancialCharts,
@@ -173,6 +180,7 @@ interface SaaSAdminDashboardProps {
 
 export type AdminActiveModule =
   | 'financial'
+  | 'audience_ux'
   | 'ai_prompts'
   | 'templates_content'
   | 'users_support'
@@ -191,33 +199,38 @@ const MODULE_META: Record<
     shortLabel: 'Financeiro & Insights',
     subtitle: 'Receita SaaS, unit economics, telemetria em tempo real, coortes e recomendações estratégicas'
   },
+  audience_ux: {
+    label: '2. Audiência, Funil & Experiência',
+    shortLabel: 'Audiência & Funil',
+    subtitle: 'Visitas, dispositivos, registos, desistências passo a passo, downloads Word/PDF e satisfação UX'
+  },
   ai_prompts: {
-    label: '2. IA, Prompts & Quotas',
+    label: '3. IA, Prompts & Quotas',
     shortLabel: 'IA, Prompts & Quotas',
     subtitle: 'Editor de prompts conectado à API Gemini, roteamento de modelos e limites por plano'
   },
   templates_content: {
-    label: '3. Templates, Exemplos & Idiomas',
+    label: '4. Templates, Exemplos & Idiomas',
     shortLabel: 'Templates & Conteúdo',
     subtitle: 'Ordem e níveis do catálogo, biblioteca de profissões e títulos em 5 idiomas'
   },
   users_support: {
-    label: '4. Utilizadores, CRM 360° & Faturas',
+    label: '5. Utilizadores, CRM 360° & Faturas',
     shortLabel: 'CRM & Faturas',
     subtitle: 'Perfis de clientes, notas CRM, ações manuais, reembolsos e modo Personificar'
   },
   support_chat: {
-    label: '5. Chat de Suporte & Atendimento',
+    label: '6. Chat de Suporte & Atendimento',
     shortLabel: 'Chat de Suporte',
     subtitle: 'Conversas em tempo real com utilizadores registados e respostas de Admin/Moderador'
   },
   pricing_marketing: {
-    label: '6. Monetização, Planos & Campanhas',
+    label: '7. Monetização, Planos & Campanhas',
     shortLabel: 'Planos & Marketing',
     subtitle: 'Edição ao vivo de preços, cupons promocionais e avisos transversais'
   },
   security_monitoring: {
-    label: '7. Segurança, RGPD & Governança',
+    label: '8. Segurança, RGPD & Governança',
     shortLabel: 'Segurança & Governança',
     subtitle: 'Modo manutenção, controlo global, logs de auditoria Firestore, RGPD e RBAC'
   }
@@ -2507,6 +2520,12 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
       icon: <TrendingUp className="w-4 h-4" />
     },
     {
+      id: 'audience_ux',
+      label: 'Audiência, Funil & UX',
+      icon: <BarChart3 className="w-4 h-4" />,
+      badge: telemetry.siteVisitsCount > 0 ? telemetry.siteVisitsCount : undefined
+    },
+    {
       id: 'ai_prompts',
       label: 'IA, Prompts & Quotas',
       icon: <Bot className="w-4 h-4" />,
@@ -3607,7 +3626,595 @@ export const SaaSAdminDashboard: React.FC<SaaSAdminDashboardProps> = ({ isOpen, 
                 )}
 
                 {/* ========================================================= */}
-                {/* MÓDULO 2: GESTÃO DE INTELIGÊNCIA ARTIFICIAL E PROMPTS */}
+                {/* MÓDULO 2: AUDIÊNCIA, DISPOSITIVOS, FUNIL CV & EXPERIÊNCIA */}
+                {/* ========================================================= */}
+                {activeModule === 'audience_ux' && (() => {
+                  const totalVisits = telemetry.siteVisitsCount || 0;
+                  const uniqueVisitors = telemetry.uniqueVisitorsCount || 0;
+                  const registeredTotal = usersList.length;
+                  const regRate = totalVisits > 0 ? Math.min(100, Math.round((registeredTotal / totalVisits) * 100)) : 0;
+
+                  const startedCv = Math.max(telemetry.resumesStartedCount || 0, telemetry.funnelSteps?.step1Personal || 0);
+                  const completedCv = Math.max(
+                    telemetry.resumesCompletedCount || 0,
+                    telemetry.funnelSteps?.completed || 0,
+                    (telemetry.wordExportsCount || 0) + (telemetry.pdfExportsCount || 0) > 0
+                      ? Math.max(telemetry.wordExportsCount || 0, telemetry.pdfExportsCount || 0)
+                      : 0
+                  );
+                  const abandonedCv = telemetry.resumesAbandonedCount || 0;
+                  const abandonRate = startedCv > 0 ? Math.min(100, Math.round((abandonedCv / startedCv) * 100)) : 0;
+                  const completionRate = startedCv > 0 ? Math.min(100, Math.round((completedCv / startedCv) * 100)) : 0;
+
+                  const wordDownloads = telemetry.wordExportsCount || 0;
+                  const pdfDownloads = telemetry.pdfExportsCount || 0;
+                  const totalDownloads = wordDownloads + pdfDownloads;
+
+                  const totalDevices = Math.max(
+                    (telemetry.devices?.mobile || 0) +
+                      (telemetry.devices?.desktop || 0) +
+                      (telemetry.devices?.tablet || 0),
+                    1
+                  );
+                  const avgDurationSec =
+                    (telemetry.sessionDurationsSec?.count || 0) > 0
+                      ? Math.round((telemetry.sessionDurationsSec?.totalSec || 0) / telemetry.sessionDurationsSec.count)
+                      : 0;
+                  const avgDurationLabel =
+                    avgDurationSec >= 60
+                      ? `${Math.floor(avgDurationSec / 60)}m ${avgDurationSec % 60}s`
+                      : `${avgDurationSec}s`;
+
+                  const avgUxScore =
+                    (telemetry.uxFeedback?.totalRatings || 0) > 0
+                      ? Number(((telemetry.uxFeedback?.sumRatings || 0) / telemetry.uxFeedback.totalRatings).toFixed(1))
+                      : 0;
+                  const uxSatisfactionPct =
+                    (telemetry.uxFeedback?.totalRatings || 0) > 0
+                      ? Math.round(((telemetry.uxFeedback?.positiveCount || 0) / telemetry.uxFeedback.totalRatings) * 100)
+                      : 0;
+
+                  const DROP_REASON_LABELS: Record<string, { label: string; hint: string; kind: 'user' | 'auto' }> = {
+                    reason_price: {
+                      label: 'Preço do plano considerado elevado',
+                      hint: 'Testar cupão promocional de boas-vindas ou plano diário/semanal.',
+                      kind: 'user'
+                    },
+                    reason_free_trial: {
+                      label: 'Queria testar/exportar grátis antes de pagar',
+                      hint: 'Destacar melhor os benefícios antes do paywall ou oferecer prévia mais interativa.',
+                      kind: 'user'
+                    },
+                    reason_payment_method: {
+                      label: 'Falta método de pagamento compatível no país',
+                      hint: 'Reforçar visibilidade de Multicaixa, Pix, Cartão ou métodos locais.',
+                      kind: 'user'
+                    },
+                    reason_complex_form: {
+                      label: 'Achou difícil ou demorado preencher o CV',
+                      hint: 'Promover mais a Importação Automática / LinkedIn e preenchimento rápido com IA.',
+                      kind: 'user'
+                    },
+                    reason_template_fit: {
+                      label: 'Não encontrou o modelo ideal',
+                      hint: 'Destacar modelos recomendados por objetivo logo no início.',
+                      kind: 'user'
+                    },
+                    reason_just_browsing: {
+                      label: 'Estava apenas a explorar o site',
+                      hint: 'Tráfego de topo de funil — usar avisos/exemplos claros na página inicial.',
+                      kind: 'user'
+                    },
+                    drop_auth_gate: {
+                      label: 'Desistiu quando pediu Login / Registo',
+                      hint: 'Permitir avançar mais no estúdio antes de exigir criação de conta.',
+                      kind: 'auto'
+                    },
+                    drop_pricing_paywall: {
+                      label: 'Desistiu na tela de Planos / Pagamento',
+                      hint: 'Rever clareza dos planos, garantia e opções de pagamento.',
+                      kind: 'auto'
+                    },
+                    drop_step1_personal: {
+                      label: 'Parou no Passo 1 (Dados Pessoais)',
+                      hint: 'Simplificar campos iniciais ou destacar botão de importar PDF/LinkedIn.',
+                      kind: 'auto'
+                    },
+                    drop_step2_experience: {
+                      label: 'Parou no Passo 2 (Experiência Profissional)',
+                      hint: 'Destacar botão "Melhorar com IA" e exemplos prontos por profissão.',
+                      kind: 'auto'
+                    },
+                    drop_step3_education: {
+                      label: 'Parou no Passo 3 (Educação & Competências)',
+                      hint: 'Sugerir competências com 1 clique conforme o cargo.',
+                      kind: 'auto'
+                    },
+                    drop_step4_finish: {
+                      label: 'Parou no Passo 4 (Finalização / Modelos)',
+                      hint: 'Facilitar acesso direto ao download e pré-visualização final.',
+                      kind: 'auto'
+                    },
+                    drop_raw_import: {
+                      label: 'Parou durante Importação (Texto / LinkedIn)',
+                      hint: 'Melhorar instruções de colar texto ou subir PDF do LinkedIn.',
+                      kind: 'auto'
+                    },
+                    drop_home_before_start: {
+                      label: 'Saiu da página inicial antes de iniciar CV',
+                      hint: 'Reforçar CTA principal e proposta de valor acima da dobra.',
+                      kind: 'auto'
+                    }
+                  };
+
+                  const STAGE_LABELS: Record<string, string> = {
+                    home: 'Página Inicial',
+                    rawImport: 'Importação / LinkedIn',
+                    step1Personal: 'Passo 1: Dados Pessoais',
+                    step2Experience: 'Passo 2: Experiência',
+                    step3Education: 'Passo 3: Educação',
+                    step4Finish: 'Passo 4: Finalizar',
+                    completed: 'CV Concluído',
+                    wordExported: 'Baixou Word (.docx)',
+                    pdfExported: 'Baixou PDF (.pdf)',
+                    authOpened: 'Abriu Login/Registo',
+                    auth_abandoned: 'Fechou Login/Registo',
+                    checkoutOpened: 'Abriu Planos/Checkout',
+                    pricing_abandoned: 'Fechou Planos/Checkout'
+                  };
+
+                  const funnelBars = [
+                    { label: '1. Visitas ao Site', value: totalVisits, color: 'bg-slate-900' },
+                    { label: '2. Contas Registadas', value: registeredTotal, color: 'bg-indigo-600' },
+                    { label: '3. Iniciaram CV / Importação', value: startedCv, color: 'bg-blue-600' },
+                    { label: '4. Passo 2 (Experiência)', value: telemetry.funnelSteps?.step2Experience || 0, color: 'bg-sky-600' },
+                    { label: '5. Passo 3 (Educação)', value: telemetry.funnelSteps?.step3Education || 0, color: 'bg-cyan-600' },
+                    { label: '6. Passo 4 (Finalizar)', value: telemetry.funnelSteps?.step4Finish || 0, color: 'bg-teal-600' },
+                    { label: '7. Finalizaram o CV', value: completedCv, color: 'bg-emerald-600' },
+                    { label: '8. Baixaram Word (.docx) ou PDF (.pdf)', value: totalDownloads, color: 'bg-amber-600' }
+                  ];
+                  const funnelMax = Math.max(...funnelBars.map((b) => b.value), 1);
+
+                  const dropOffList = Object.entries(telemetry.dropOffReasons || {})
+                    .sort(([, a], [, b]) => b - a);
+                  const totalDrops = Math.max(dropOffList.reduce((acc, [, v]) => acc + v, 0), 1);
+
+                  const osRanking = Object.entries(telemetry.operatingSystems || {})
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 6);
+                  const browserRanking = Object.entries(telemetry.browsers || {})
+                    .sort(([, a], [, b]) => b - a)
+                    .slice(0, 6);
+
+                  return (
+                    <div className="space-y-5">
+                      {/* Top KPIs: Visitas, Registos, Funil CV, Downloads Word/PDF */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Visitas ao Site
+                            </span>
+                            <Eye className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
+                            {totalVisits.toLocaleString()}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                            Visitantes únicos: <strong className="text-slate-800">{uniqueVisitors.toLocaleString()}</strong> · Tempo médio: <strong>{avgDurationLabel}</strong>
+                          </p>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Utilizadores Registados
+                            </span>
+                            <UserCheck className="w-4 h-4 text-indigo-600" />
+                          </div>
+                          <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
+                            {registeredTotal.toLocaleString()}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                            Conversão de visitas: <strong className="text-indigo-700">{regRate}%</strong>
+                          </p>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Criação de CV (Fim vs Desistência)
+                            </span>
+                            <Activity className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
+                            {completedCv} <span className="text-xs font-semibold text-emerald-700">concluídos</span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                            Iniciaram: <strong>{startedCv}</strong> · Desistiram: <strong className="text-rose-600">{abandonedCv} ({abandonRate}%)</strong> · Taxa fim: <strong className="text-emerald-700">{completionRate}%</strong>
+                          </p>
+                        </div>
+
+                        <div className="bg-white p-4 rounded-xl border border-slate-200">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              Downloads (Word &amp; PDF)
+                            </span>
+                            <Download className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <div className="text-2xl font-black text-slate-900 font-mono tabular-nums mt-1.5">
+                            {totalDownloads.toLocaleString()}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                            Word (.docx): <strong className="text-emerald-700">{wordDownloads}</strong> · PDF (.pdf): <strong className="text-blue-700">{pdfDownloads}</strong>
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Dispositivos + Sistemas/Navegadores + Funil Passo a Passo */}
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* Dispositivos, SO & Navegadores */}
+                        <div className="lg:col-span-5 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                Dispositivos &amp; Ambiente de Acesso
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Como os visitantes se conectam ao site.
+                              </p>
+                            </div>
+                            <Smartphone className="w-4 h-4 text-slate-400" />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                            {[
+                              {
+                                label: 'Telemóvel',
+                                count: telemetry.devices?.mobile || 0,
+                                icon: <Smartphone className="w-4 h-4 mx-auto text-blue-600" />
+                              },
+                              {
+                                label: 'Computador',
+                                count: telemetry.devices?.desktop || 0,
+                                icon: <Monitor className="w-4 h-4 mx-auto text-slate-800" />
+                              },
+                              {
+                                label: 'Tablet',
+                                count: telemetry.devices?.tablet || 0,
+                                icon: <Tablet className="w-4 h-4 mx-auto text-amber-600" />
+                              }
+                            ].map((dev) => {
+                              const pct = totalVisits > 0 ? Math.round((dev.count / totalDevices) * 100) : 0;
+                              return (
+                                <div key={dev.label} className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 space-y-1">
+                                  {dev.icon}
+                                  <div className="text-lg font-black text-slate-900 font-mono tabular-nums">
+                                    {dev.count}
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-slate-600">{dev.label}</div>
+                                  <div className="text-[10px] font-mono text-slate-400">{pct}%</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100 text-xs">
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                Sistemas Operativos
+                              </span>
+                              {osRanking.length === 0 ? (
+                                <p className="text-[11px] text-slate-400">Sem acessos registados ainda.</p>
+                              ) : (
+                                osRanking.map(([osName, cnt]) => (
+                                  <div key={osName} className="flex justify-between text-[11px] bg-slate-50 px-2 py-1 rounded">
+                                    <span className="font-medium text-slate-700 truncate">{osName}</span>
+                                    <strong className="font-mono text-slate-900">{cnt}</strong>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                Navegadores
+                              </span>
+                              {browserRanking.length === 0 ? (
+                                <p className="text-[11px] text-slate-400">Sem acessos registados ainda.</p>
+                              ) : (
+                                browserRanking.map(([brName, cnt]) => (
+                                  <div key={brName} className="flex justify-between text-[11px] bg-slate-50 px-2 py-1 rounded">
+                                    <span className="font-medium text-slate-700 truncate">{brName}</span>
+                                    <strong className="font-mono text-slate-900">{cnt}</strong>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Funil Passo a Passo */}
+                        <div className="lg:col-span-7 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                Funil Completo: Da Visita ao Download (Word / PDF)
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Veja exatamente em que etapa os utilizadores avançam ou param.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2.5 text-xs">
+                            {funnelBars.map((step) => {
+                              const pct = Math.round((step.value / funnelMax) * 100);
+                              return (
+                                <div key={step.label} className="space-y-1">
+                                  <div className="flex justify-between">
+                                    <span className="font-semibold text-slate-700">{step.label}</span>
+                                    <span className="font-mono font-bold tabular-nums text-slate-900">
+                                      {step.value} ({pct}%)
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={`h-full ${step.color} rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 3: Razões de Desistência + Satisfação & Experiência UX */}
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                        {/* Razões de Desistência & Pontos de Melhoria */}
+                        <div className="lg:col-span-6 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                Onde &amp; Por Que Desistem (Razões de Abandono)
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Combina pontos exatos de saída no site com motivos escolhidos pelos utilizadores.
+                              </p>
+                            </div>
+                            <LogOut className="w-4 h-4 text-rose-600" />
+                          </div>
+
+                          {dropOffList.length === 0 ? (
+                            <div className="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200 text-xs text-slate-500">
+                              Ainda não existem registos de desistência. Os pontos de saída aparecerão automaticamente conforme os visitantes utilizarem o site.
+                            </div>
+                          ) : (
+                            <div className="space-y-2.5">
+                              {dropOffList.slice(0, 8).map(([key, count]) => {
+                                const meta = DROP_REASON_LABELS[key] || {
+                                  label: key,
+                                  hint: 'Analisar etapa correspondente no editor.',
+                                  kind: 'auto' as const
+                                };
+                                const pct = Math.round((count / totalDrops) * 100);
+                                return (
+                                  <div key={key} className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 space-y-1.5 text-xs">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 ${
+                                            meta.kind === 'user'
+                                              ? 'bg-amber-100 text-amber-900'
+                                              : 'bg-rose-100 text-rose-800'
+                                          }`}
+                                        >
+                                          {meta.kind === 'user' ? 'Reportado' : 'Comportamento'}
+                                        </span>
+                                        <span className="font-bold text-slate-900 truncate">{meta.label}</span>
+                                      </div>
+                                      <span className="font-mono font-bold text-slate-900 shrink-0">
+                                        {count} ({pct}%)
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600">
+                                      <strong className="text-slate-700">Melhoria sugerida:</strong> {meta.hint}
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Experiência Geral & Avaliações UX */}
+                        <div className="lg:col-span-6 bg-white p-5 rounded-xl border border-slate-200 space-y-4">
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                Experiência dos Utilizadores (Satisfação UX)
+                              </h3>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Notas e comentários enviados diretamente pelos utilizadores durante a criação do CV.
+                              </p>
+                            </div>
+                            <Star className="w-4 h-4 text-amber-500" />
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-2.5 text-center text-xs">
+                            <div className="p-3 rounded-lg bg-amber-50/70 border border-amber-200/80">
+                              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                                {avgUxScore > 0 ? avgUxScore.toFixed(1) : '—'}
+                                <span className="text-xs font-normal text-slate-500">/5</span>
+                              </div>
+                              <div className="text-[11px] font-semibold text-amber-900 mt-0.5">Nota Média</div>
+                            </div>
+                            <div className="p-3 rounded-lg bg-emerald-50/70 border border-emerald-200/80">
+                              <div className="text-2xl font-black text-emerald-700 font-mono tabular-nums">
+                                {uxSatisfactionPct}%
+                              </div>
+                              <div className="text-[11px] font-semibold text-emerald-900 mt-0.5">Positivas (4-5★)</div>
+                            </div>
+                            <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                              <div className="text-2xl font-black text-slate-900 font-mono tabular-nums">
+                                {telemetry.uxFeedback?.totalRatings || 0}
+                              </div>
+                              <div className="text-[11px] font-semibold text-slate-700 mt-0.5">Avaliações</div>
+                            </div>
+                          </div>
+
+                          {/* Star Distribution */}
+                          <div className="space-y-1.5 text-[11px]">
+                            {[5, 4, 3, 2, 1].map((star) => {
+                              const cnt = telemetry.uxFeedback?.ratingDistribution?.[String(star)] || 0;
+                              const tot = Math.max(telemetry.uxFeedback?.totalRatings || 0, 1);
+                              const pct = Math.round((cnt / tot) * 100);
+                              return (
+                                <div key={star} className="flex items-center gap-2">
+                                  <span className="w-8 font-mono font-bold text-slate-700">{star} ★</span>
+                                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${star >= 4 ? 'bg-emerald-500' : star === 3 ? 'bg-amber-400' : 'bg-rose-500'}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className="w-14 text-right font-mono text-slate-600">{cnt} ({pct}%)</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Recent User UX Comments */}
+                          <div className="pt-2 border-t border-slate-100 space-y-2 max-h-56 overflow-y-auto">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                              Comentários &amp; Sugestões Recentes
+                            </span>
+                            {(telemetry.uxFeedback?.recentComments || []).length === 0 ? (
+                              <p className="text-[11px] text-slate-400">
+                                Nenhum comentário enviado ainda. Os feedbacks aparecerão aqui em tempo real.
+                              </p>
+                            ) : (
+                              telemetry.uxFeedback.recentComments.map((item) => (
+                                <div key={item.id} className="p-2.5 rounded-lg bg-slate-50 border border-slate-200/80 text-xs space-y-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-bold text-amber-600 font-mono">
+                                      {'★'.repeat(item.rating)}{'☆'.repeat(Math.max(0, 5 - item.rating))}
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                      {item.device} · {STAGE_LABELS[item.stage] || item.stage} · {new Date(item.createdAt).toLocaleDateString('pt-PT')}
+                                    </span>
+                                  </div>
+                                  <p className="text-slate-700 leading-snug">{item.comment}</p>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 4: Últimas Sessões / Jornadas Individuais */}
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div>
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                              Últimas Sessões &amp; Jornadas dos Utilizadores
+                            </h3>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Registo em tempo real dos últimos acessos, dispositivo usado, progresso e motivo de saída.
+                            </p>
+                          </div>
+                          <span className="text-[11px] font-mono text-slate-500">
+                            {(telemetry.recentSessions || []).length} sessões
+                          </span>
+                        </div>
+
+                        {(telemetry.recentSessions || []).length === 0 ? (
+                          <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-lg border border-slate-100">
+                            Sem sessões registadas ainda.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead className="text-[10px] font-bold uppercase text-slate-400 border-b border-slate-100">
+                                <tr>
+                                  <th className="py-2 pr-3">Data / Hora</th>
+                                  <th className="py-2 px-3">Dispositivo / SO / Browser</th>
+                                  <th className="py-2 px-3">Duração</th>
+                                  <th className="py-2 px-3">Último Passo</th>
+                                  <th className="py-2 px-3">Resultado</th>
+                                  <th className="py-2 pl-3">Motivo Saída</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {telemetry.recentSessions.slice(0, 25).map((sess) => {
+                                  const dur =
+                                    sess.durationSec >= 60
+                                      ? `${Math.floor(sess.durationSec / 60)}m ${sess.durationSec % 60}s`
+                                      : `${sess.durationSec || 0}s`;
+                                  const statusLabel = sess.exportedWord && sess.exportedPdf
+                                    ? 'Baixou Word & PDF'
+                                    : sess.exportedWord
+                                    ? 'Baixou Word'
+                                    : sess.exportedPdf
+                                    ? 'Baixou PDF'
+                                    : sess.completedCv
+                                    ? 'Finalizou CV'
+                                    : sess.abandoned
+                                    ? sess.startedCv
+                                      ? 'Desistiu do CV'
+                                      : 'Saiu sem iniciar'
+                                    : sess.registered
+                                    ? 'Registado / Ativo'
+                                    : sess.startedCv
+                                    ? 'A criar CV'
+                                    : 'Visitante';
+                                  const statusColor =
+                                    sess.exportedWord || sess.exportedPdf || sess.completedCv
+                                      ? 'bg-emerald-100 text-emerald-900'
+                                      : sess.abandoned
+                                      ? 'bg-rose-100 text-rose-800'
+                                      : 'bg-blue-100 text-blue-900';
+
+                                  return (
+                                    <tr key={sess.sessionId}>
+                                      <td className="py-2 pr-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                                        {new Date(sess.lastActiveAt || sess.startedAt).toLocaleString('pt-PT', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </td>
+                                      <td className="py-2 px-3 text-slate-700 whitespace-nowrap">
+                                        <span className="font-semibold capitalize">{sess.device}</span> · {sess.os} · {sess.browser}
+                                      </td>
+                                      <td className="py-2 px-3 font-mono text-slate-600 whitespace-nowrap">{dur}</td>
+                                      <td className="py-2 px-3 text-slate-700 whitespace-nowrap">
+                                        {STAGE_LABELS[sess.lastStage] || sess.lastStage}
+                                      </td>
+                                      <td className="py-2 px-3 whitespace-nowrap">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor}`}>
+                                          {statusLabel}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 pl-3 text-[11px] text-slate-500">
+                                        {sess.dropOffReason
+                                          ? DROP_REASON_LABELS[sess.dropOffReason]?.label || sess.dropOffReason
+                                          : '—'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* ========================================================= */}
+                {/* MÓDULO 3: GESTÃO DE INTELIGÊNCIA ARTIFICIAL E PROMPTS */}
                 {/* ========================================================= */}
                 {activeModule === 'ai_prompts' && (
                   <div className="space-y-4">

@@ -9,6 +9,7 @@ import { exportElementToPdf } from '../utils/pdfExport';
 import { getTemplateById } from '../data/templateCatalog';
 import { recordAuditLog } from '../services/auditLogService';
 import { dispatchUserNotification } from '../services/notificationService';
+import { trackFrontendTelemetry } from '../services/adminModulesService';
 import { authorizedFetch } from '../utils/authHeaders';
 import {
   X,
@@ -170,6 +171,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      trackFrontendTelemetry({ type: 'word_exported', templateStyle: docToExport.templateStyle });
 
       void recordAuditLog({
         action: 'cv_exported_docx',
@@ -230,6 +232,7 @@ export const MultiLanguageDownloadModal: React.FC<MultiLanguageDownloadModalProp
       return;
     }
 
+    trackFrontendTelemetry({ type: 'pdf_exported', templateStyle: docToPrint.templateStyle });
     void recordAuditLog({
       action: 'cv_exported_pdf',
       category: 'cv_export',

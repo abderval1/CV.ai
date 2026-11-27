@@ -607,6 +607,7 @@ ${[candPhone, candEmail].filter(Boolean).join(' | ')}`;
               try {
                 const nameSlug = (cv.personalDetails.name || 'Carta').trim().replace(/\s+/g, '_');
                 await exportElementToPdf('.cover-a4-sheet', `Cover_Letter_${nameSlug}.pdf`);
+                trackFrontendTelemetry({ type: 'pdf_exported', templateStyle: 'cover_letter' });
               } catch {
                 window.print();
               }

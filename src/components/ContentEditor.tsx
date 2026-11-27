@@ -72,7 +72,12 @@ import { auditCVAgainstJob } from '../utils/atsAnalyzer';
 import { authorizedFetch } from '../utils/authHeaders';
 import { OnboardingGoalId, getGoalPreset, getSavedOnboardingGoal } from '../utils/onboardingGoals';
 import { getTemplateById } from '../data/templateCatalog';
-import { getStoredSnippetsSync, trackFrontendTelemetry } from '../services/adminModulesService';
+import {
+  getStoredSnippetsSync,
+  trackFrontendTelemetry,
+  trackSessionStage,
+  submitUxFeedback
+} from '../services/adminModulesService';
 import { ProfessionSnippetExample } from '../types/adminModules';
 
 const COMPLETION_EVAL_COPY: Record<
@@ -533,6 +538,9 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [isSavingManual, setIsSavingManual] = useState<boolean>(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [uxRating, setUxRating] = useState<number>(0);
+  const [uxComment, setUxComment] = useState<string>('');
+  const [uxSubmitted, setUxSubmitted] = useState<boolean>(false);
   const [improvingFieldKey, setImprovingFieldKey] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<ProfessionSnippetExample[]>(() => getStoredSnippetsSync());
   const [showSnippetPicker, setShowSnippetPicker] = useState<boolean>(false);
@@ -734,6 +742,22 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
     );
   };
 
+  // Track editor step funnel progression & completion accurately
+  useEffect(() => {
+    const stageMap = ['step1Personal', 'step2Experience', 'step3Education', 'step4Finish'] as const;
+    const stageKey = stageMap[currentStepIndex] || 'step1Personal';
+    const hasCoreInfo =
+      Boolean(cv.personalDetails.name?.trim()) &&
+      (cv.experiences.length > 0 || cv.educations.length > 0);
+    trackSessionStage(stageKey, {
+      startedCv: true,
+      completedCv: currentStepIndex === 3 && hasCoreInfo
+    });
+    if (currentStepIndex === 3 && hasCoreInfo) {
+      trackSessionStage('completed', { startedCv: true, completedCv: true });
+    }
+  }, [currentStepIndex, cv.personalDetails.name, cv.experiences.length, cv.educations.length]);
+
   // Track unsaved edits strictly without auto-saving to cloud or triggering notifications
   useEffect(() => {
     if (!hasMountedEditorRef.current) {
@@ -759,6 +783,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
       const role = cv.personalDetails.title?.trim() || ui.toasts.defaultCvTitle;
       const title = name ? `${name} - ${role}` : ui.toasts.defaultCvTitle;
       await saveCurrentResume(cv, title, cv.personalDetails.title);
+      trackSessionStage('completed', { startedCv: true, completedCv: true });
       setHasUnsavedChanges(false);
       setLastSavedAt(Date.now());
       showSuccess(v2.savedSuccessTitle, v2.savedSuccessMsg.replace('{title}', title));
@@ -3462,6 +3487,72 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Quick Optional UX Satisfaction Rating */}
+                  <div className="p-4 sm:p-5 bg-white border-t border-slate-200 space-y-2.5">
+                    {uxSubmitted ? (
+                      <p className="text-xs font-semibold text-emerald-700 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>Obrigado pela sua avaliação! A sua opinião ajuda-nos a melhorar.</span>
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-800">
+                            Como está a ser a sua experiência no site?
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <button
+                                key={star}
+                                type="button"
+                                onClick={() => setUxRating(star)}
+                                aria-label={`${star} estrelas`}
+                                className={`p-1 rounded transition-colors ${
+                                  star <= uxRating
+                                    ? 'text-amber-500'
+                                    : 'text-slate-300 hover:text-amber-400'
+                                }`}
+                              >
+                                <Star
+                                  className="w-4 h-4"
+                                  fill={star <= uxRating ? 'currentColor' : 'none'}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {uxRating > 0 && (
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="text"
+                              value={uxComment}
+                              onChange={(e) => setUxComment(e.target.value)}
+                              maxLength={280}
+                              placeholder="O que podemos melhorar? (opcional)"
+                              className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-600"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                submitUxFeedback({
+                                  rating: uxRating,
+                                  category: uxRating >= 4 ? 'positivo' : 'melhoria',
+                                  comment: uxComment,
+                                  stage: 'step4Finish',
+                                  userType: !isAuthenticated ? 'visitor' : hasActivePlan ? 'paid' : 'free'
+                                });
+                                setUxSubmitted(true);
+                              }}
+                              className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold whitespace-nowrap"
+                            >
+                              Enviar Avaliação
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })()}

@@ -289,16 +289,90 @@ export interface PlatformSettingsConfig {
   updatedBy: string;
 }
 
+export type DeviceCategory = 'mobile' | 'desktop' | 'tablet';
+
+export interface FunnelStepsTelemetry {
+  home: number;
+  rawImport: number;
+  step1Personal: number;
+  step2Experience: number;
+  step3Education: number;
+  step4Finish: number;
+  completed: number;
+  wordExported: number;
+  pdfExported: number;
+  authOpened: number;
+  checkoutOpened: number;
+}
+
+export interface UxFeedbackItem {
+  id: string;
+  rating: number;
+  category: string;
+  comment: string;
+  device: DeviceCategory;
+  stage: string;
+  createdAt: string;
+  userType: 'visitor' | 'free' | 'paid';
+}
+
+export interface TrackedSessionSummary {
+  sessionId: string;
+  visitorId: string;
+  device: DeviceCategory;
+  os: string;
+  browser: string;
+  startedAt: string;
+  lastActiveAt: string;
+  lastStage: string;
+  stagesReached?: string[];
+  registered: boolean;
+  startedCv: boolean;
+  completedCv: boolean;
+  exportedWord: boolean;
+  exportedPdf: boolean;
+  abandoned: boolean;
+  dropOffReason?: string;
+  durationSec: number;
+}
+
 export interface FrontendTelemetryData {
   resumesStartedCount: number;
+  resumesCompletedCount: number;
+  resumesAbandonedCount: number;
   checkoutOpenedCount: number;
   wordExportsCount: number;
+  pdfExportsCount: number;
+  siteVisitsCount: number;
+  uniqueVisitorsCount: number;
   aiCallsCount: number;
   todayAiCallsDate?: string;
   todayAiCallsCount?: number;
   estimatedTokensUsed: number;
   templateSelections: Record<string, number>;
   languageSelections: Record<string, number>;
+  devices: {
+    mobile: number;
+    desktop: number;
+    tablet: number;
+  };
+  operatingSystems: Record<string, number>;
+  browsers: Record<string, number>;
+  funnelSteps: FunnelStepsTelemetry;
+  dropOffReasons: Record<string, number>;
+  sessionDurationsSec: {
+    totalSec: number;
+    count: number;
+  };
+  uxFeedback: {
+    totalRatings: number;
+    sumRatings: number;
+    ratingDistribution: Record<string, number>;
+    positiveCount: number;
+    negativeCount: number;
+    recentComments: UxFeedbackItem[];
+  };
+  recentSessions: TrackedSessionSummary[];
   featureUsage: {
     aiTailor: number;
     atsRadar: number;

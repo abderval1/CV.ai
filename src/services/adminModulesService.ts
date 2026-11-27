@@ -25,7 +25,8 @@ import {
   FinancialMetrics,
   EditablePlanConfig,
   PlatformSettingsConfig,
-  FrontendTelemetryData
+  FrontendTelemetryData,
+  DeviceCategory
 } from '../types/adminModules';
 import { CV_TEMPLATES } from '../data/templateCatalog';
 import { SECTION_TITLES_BY_LANG } from '../utils/cvDocumentLabels';
@@ -1413,14 +1414,53 @@ export async function savePlatformSettings(settings: PlatformSettingsConfig): Pr
 // -------------------------------------------------------------
 const DEFAULT_TELEMETRY: FrontendTelemetryData = {
   resumesStartedCount: 0,
+  resumesCompletedCount: 0,
+  resumesAbandonedCount: 0,
   checkoutOpenedCount: 0,
   wordExportsCount: 0,
+  pdfExportsCount: 0,
+  siteVisitsCount: 0,
+  uniqueVisitorsCount: 0,
   aiCallsCount: 0,
   todayAiCallsDate: new Date().toISOString().slice(0, 10),
   todayAiCallsCount: 0,
   estimatedTokensUsed: 0,
   templateSelections: {},
   languageSelections: {},
+  devices: {
+    mobile: 0,
+    desktop: 0,
+    tablet: 0
+  },
+  operatingSystems: {},
+  browsers: {},
+  funnelSteps: {
+    home: 0,
+    rawImport: 0,
+    step1Personal: 0,
+    step2Experience: 0,
+    step3Education: 0,
+    step4Finish: 0,
+    completed: 0,
+    wordExported: 0,
+    pdfExported: 0,
+    authOpened: 0,
+    checkoutOpened: 0
+  },
+  dropOffReasons: {},
+  sessionDurationsSec: {
+    totalSec: 0,
+    count: 0
+  },
+  uxFeedback: {
+    totalRatings: 0,
+    sumRatings: 0,
+    ratingDistribution: { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
+    positiveCount: 0,
+    negativeCount: 0,
+    recentComments: []
+  },
+  recentSessions: [],
   featureUsage: {
     aiTailor: 0,
     atsRadar: 0,
@@ -1469,14 +1509,43 @@ export async function fetchServerTelemetry(): Promise<FrontendTelemetryData> {
       const localToday = local.todayAiCallsDate === todayYmd ? Number(local.todayAiCallsCount) || 0 : 0;
       const merged: FrontendTelemetryData = {
         resumesStartedCount: Math.max(Number(srv.resumesStartedCount) || 0, local.resumesStartedCount || 0),
+        resumesCompletedCount: Math.max(Number(srv.resumesCompletedCount) || 0, local.resumesCompletedCount || 0),
+        resumesAbandonedCount: Math.max(Number(srv.resumesAbandonedCount) || 0, local.resumesAbandonedCount || 0),
         checkoutOpenedCount: Math.max(Number(srv.checkoutOpenedCount) || 0, local.checkoutOpenedCount || 0),
         wordExportsCount: Math.max(Number(srv.wordExportsCount) || 0, local.wordExportsCount || 0),
+        pdfExportsCount: Math.max(Number(srv.pdfExportsCount) || 0, local.pdfExportsCount || 0),
+        siteVisitsCount: Math.max(Number(srv.siteVisitsCount) || 0, local.siteVisitsCount || 0),
+        uniqueVisitorsCount: Math.max(Number(srv.uniqueVisitorsCount) || 0, local.uniqueVisitorsCount || 0),
         aiCallsCount: Math.max(Number(srv.aiCallsCount) || 0, local.aiCallsCount || 0),
         todayAiCallsDate: todayYmd,
         todayAiCallsCount: Math.max(srvToday, localToday),
         estimatedTokensUsed: Math.max(Number(srv.estimatedTokensUsed) || 0, local.estimatedTokensUsed || 0),
         templateSelections: { ...(local.templateSelections || {}), ...(srv.templateSelections || {}) },
         languageSelections: { ...(local.languageSelections || {}), ...(srv.languageSelections || {}) },
+        devices: {
+          mobile: Number(srv.devices?.mobile) || local.devices?.mobile || 0,
+          desktop: Number(srv.devices?.desktop) || local.devices?.desktop || 0,
+          tablet: Number(srv.devices?.tablet) || local.devices?.tablet || 0
+        },
+        operatingSystems: srv.operatingSystems || local.operatingSystems || {},
+        browsers: srv.browsers || local.browsers || {},
+        funnelSteps: {
+          ...DEFAULT_TELEMETRY.funnelSteps,
+          ...(local.funnelSteps || {}),
+          ...(srv.funnelSteps || {})
+        },
+        dropOffReasons: srv.dropOffReasons || local.dropOffReasons || {},
+        sessionDurationsSec: srv.sessionDurationsSec || local.sessionDurationsSec || { totalSec: 0, count: 0 },
+        uxFeedback: {
+          ...DEFAULT_TELEMETRY.uxFeedback,
+          ...(srv.uxFeedback || {}),
+          ratingDistribution: {
+            ...DEFAULT_TELEMETRY.uxFeedback.ratingDistribution,
+            ...(srv.uxFeedback?.ratingDistribution || {})
+          },
+          recentComments: Array.isArray(srv.uxFeedback?.recentComments) ? srv.uxFeedback.recentComments : []
+        },
+        recentSessions: Array.isArray(srv.recentSessions) ? srv.recentSessions : [],
         featureUsage: {
           aiTailor: Math.max(Number(srv.featureUsage?.aiTailor) || 0, local.featureUsage?.aiTailor || 0),
           atsRadar: Math.max(Number(srv.featureUsage?.atsRadar) || 0, local.featureUsage?.atsRadar || 0),
@@ -1496,7 +1565,309 @@ export async function fetchServerTelemetry(): Promise<FrontendTelemetryData> {
 }
 
 export function getFrontendTelemetry(): FrontendTelemetryData {
-  return getStored('curriculopro_frontend_telemetry', DEFAULT_TELEMETRY);
+  const stored = getStored<Partial<FrontendTelemetryData>>('curriculopro_frontend_telemetry', DEFAULT_TELEMETRY);
+  return {
+    ...DEFAULT_TELEMETRY,
+    ...stored,
+    devices: { ...DEFAULT_TELEMETRY.devices, ...(stored?.devices || {}) },
+    funnelSteps: { ...DEFAULT_TELEMETRY.funnelSteps, ...(stored?.funnelSteps || {}) },
+    sessionDurationsSec: { ...DEFAULT_TELEMETRY.sessionDurationsSec, ...(stored?.sessionDurationsSec || {}) },
+    uxFeedback: {
+      ...DEFAULT_TELEMETRY.uxFeedback,
+      ...(stored?.uxFeedback || {}),
+      ratingDistribution: {
+        ...DEFAULT_TELEMETRY.uxFeedback.ratingDistribution,
+        ...(stored?.uxFeedback?.ratingDistribution || {})
+      },
+      recentComments: Array.isArray(stored?.uxFeedback?.recentComments) ? stored.uxFeedback.recentComments : []
+    },
+    recentSessions: Array.isArray(stored?.recentSessions) ? stored.recentSessions : [],
+    featureUsage: { ...DEFAULT_TELEMETRY.featureUsage, ...(stored?.featureUsage || {}) }
+  };
+}
+
+// -------------------------------------------------------------
+// LIVE SESSION, DEVICE, FUNNEL & UX FEEDBACK TRACKING
+// -------------------------------------------------------------
+const sessionTrackerState = {
+  initialized: false,
+  visitorId: '',
+  sessionId: '',
+  startedAtMs: Date.now(),
+  device: 'desktop' as DeviceCategory,
+  os: 'Outro',
+  browser: 'Outro',
+  lastStage: 'home',
+  startedCv: false,
+  completedCv: false,
+  exportedWord: false,
+  exportedPdf: false,
+  registered: false,
+  sentStages: new Set<string>(),
+  finalized: false
+};
+
+export function detectClientEnvironment(): { device: DeviceCategory; os: string; browser: string } {
+  if (typeof navigator === 'undefined') {
+    return { device: 'desktop', os: 'Outro', browser: 'Outro' };
+  }
+  const ua = navigator.userAgent || '';
+  const width = typeof window !== 'undefined' ? window.innerWidth : 1280;
+  const isTablet = /iPad|Tablet|PlayBook|Silk|(Android(?!.*Mobile))/i.test(ua) || (width >= 640 && width <= 1024 && /Touch|Android|iPad/i.test(ua));
+  const isMobile = !isTablet && (/Mobi|Android|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) || width < 640);
+  const device: DeviceCategory = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+
+  let os = 'Outro';
+  if (/Android/i.test(ua)) os = 'Android';
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+  else if (/Windows/i.test(ua)) os = 'Windows';
+  else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+  else if (/Linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Outro';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua) && !/Chromium|Edg\//i.test(ua)) browser = 'Chrome';
+  else if (/Safari\//i.test(ua) && !/Chrome|Chromium/i.test(ua)) browser = 'Safari';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+
+  return { device, os, browser };
+}
+
+function getOrCreateVisitorId(): string {
+  if (typeof window === 'undefined') return 'anon';
+  try {
+    const existing = localStorage.getItem('curriculo_visitor_id');
+    if (existing) return existing;
+    const created = `vis_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem('curriculo_visitor_id', created);
+    return created;
+  } catch {
+    return `vis_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+function getOrCreateSessionId(): string {
+  if (typeof window === 'undefined') return `sess_${Date.now()}`;
+  try {
+    const existing = sessionStorage.getItem('curriculo_session_id');
+    if (existing) return existing;
+    const created = `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    sessionStorage.setItem('curriculo_session_id', created);
+    return created;
+  } catch {
+    return `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
+
+function sendTelemetryBeacon(payload: Record<string, any>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    fetch('/api/telemetry/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(() => {});
+  } catch {
+    // non-blocking
+  }
+}
+
+export function initTelemetrySession(): void {
+  if (typeof window === 'undefined' || sessionTrackerState.initialized) return;
+  sessionTrackerState.initialized = true;
+  sessionTrackerState.visitorId = getOrCreateVisitorId();
+  sessionTrackerState.sessionId = getOrCreateSessionId();
+  sessionTrackerState.startedAtMs = Date.now();
+  const env = detectClientEnvironment();
+  sessionTrackerState.device = env.device;
+  sessionTrackerState.os = env.os;
+  sessionTrackerState.browser = env.browser;
+  sessionTrackerState.sentStages.add('home');
+
+  const alreadySentVisitInTab = (() => {
+    try {
+      return sessionStorage.getItem('curriculo_visit_logged') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!alreadySentVisitInTab) {
+    try {
+      sessionStorage.setItem('curriculo_visit_logged', '1');
+    } catch {
+      // ignore
+    }
+    const cur = getFrontendTelemetry();
+    cur.siteVisitsCount += 1;
+    cur.devices[env.device] = (cur.devices[env.device] || 0) + 1;
+    cur.operatingSystems[env.os] = (cur.operatingSystems[env.os] || 0) + 1;
+    cur.browsers[env.browser] = (cur.browsers[env.browser] || 0) + 1;
+    cur.funnelSteps.home += 1;
+    cur.lastUpdated = new Date().toISOString();
+    setStored('curriculopro_frontend_telemetry', cur);
+
+    sendTelemetryBeacon({
+      type: 'visit',
+      visitorId: sessionTrackerState.visitorId,
+      sessionId: sessionTrackerState.sessionId,
+      device: env.device,
+      os: env.os,
+      browser: env.browser
+    });
+  }
+}
+
+export function trackSessionStage(
+  stage:
+    | 'home'
+    | 'rawImport'
+    | 'step1Personal'
+    | 'step2Experience'
+    | 'step3Education'
+    | 'step4Finish'
+    | 'completed'
+    | 'authOpened'
+    | 'auth_abandoned'
+    | 'pricing_abandoned',
+  opts?: { startedCv?: boolean; completedCv?: boolean; registered?: boolean }
+): void {
+  initTelemetrySession();
+  sessionTrackerState.lastStage = stage;
+  if (opts?.startedCv) sessionTrackerState.startedCv = true;
+  if (opts?.completedCv || stage === 'completed') sessionTrackerState.completedCv = true;
+  if (opts?.registered) sessionTrackerState.registered = true;
+
+  if (sessionTrackerState.sentStages.has(stage)) return;
+  sessionTrackerState.sentStages.add(stage);
+
+  const cur = getFrontendTelemetry();
+  if (stage in cur.funnelSteps) {
+    const key = stage as keyof FrontendTelemetryData['funnelSteps'];
+    cur.funnelSteps[key] = (cur.funnelSteps[key] || 0) + 1;
+  }
+  if (stage === 'completed') {
+    cur.resumesCompletedCount += 1;
+  }
+  cur.lastUpdated = new Date().toISOString();
+  setStored('curriculopro_frontend_telemetry', cur);
+
+  sendTelemetryBeacon({
+    type: 'stage',
+    sessionId: sessionTrackerState.sessionId,
+    visitorId: sessionTrackerState.visitorId,
+    stage,
+    startedCv: sessionTrackerState.startedCv,
+    completedCv: sessionTrackerState.completedCv,
+    registered: sessionTrackerState.registered
+  });
+}
+
+export function trackSessionRegistered(): void {
+  initTelemetrySession();
+  if (sessionTrackerState.registered) return;
+  sessionTrackerState.registered = true;
+  sendTelemetryBeacon({
+    type: 'session_registered',
+    sessionId: sessionTrackerState.sessionId,
+    visitorId: sessionTrackerState.visitorId
+  });
+}
+
+export function reportDropOffReason(reasonKey: string, explicitStage?: string): void {
+  initTelemetrySession();
+  const lastStage = explicitStage || sessionTrackerState.lastStage;
+  const cur = getFrontendTelemetry();
+  cur.dropOffReasons[reasonKey] = (cur.dropOffReasons[reasonKey] || 0) + 1;
+  cur.lastUpdated = new Date().toISOString();
+  setStored('curriculopro_frontend_telemetry', cur);
+
+  sendTelemetryBeacon({
+    type: 'drop_off_reason',
+    sessionId: sessionTrackerState.sessionId,
+    reasonKey,
+    lastStage
+  });
+}
+
+export function submitUxFeedback(input: {
+  rating: number;
+  category?: string;
+  comment?: string;
+  stage?: string;
+  userType?: 'visitor' | 'free' | 'paid';
+}): void {
+  initTelemetrySession();
+  const rating = Math.max(1, Math.min(5, Math.round(input.rating)));
+  const comment = (input.comment || '').trim().slice(0, 400);
+  const category = input.category || 'geral';
+  const stage = input.stage || sessionTrackerState.lastStage;
+  const userType = input.userType || 'visitor';
+
+  const cur = getFrontendTelemetry();
+  cur.uxFeedback.totalRatings += 1;
+  cur.uxFeedback.sumRatings += rating;
+  const rk = String(rating);
+  cur.uxFeedback.ratingDistribution[rk] = (cur.uxFeedback.ratingDistribution[rk] || 0) + 1;
+  if (rating >= 4) cur.uxFeedback.positiveCount += 1;
+  else if (rating <= 2) cur.uxFeedback.negativeCount += 1;
+  if (comment || rating <= 3) {
+    cur.uxFeedback.recentComments = [
+      {
+        id: `ux_${Date.now()}`,
+        rating,
+        category,
+        comment: comment || `Avaliação ${rating}/5 (${category})`,
+        device: sessionTrackerState.device,
+        stage,
+        createdAt: new Date().toISOString(),
+        userType
+      },
+      ...cur.uxFeedback.recentComments
+    ].slice(0, 60);
+  }
+  cur.lastUpdated = new Date().toISOString();
+  setStored('curriculopro_frontend_telemetry', cur);
+
+  sendTelemetryBeacon({
+    type: 'ux_feedback',
+    sessionId: sessionTrackerState.sessionId,
+    rating,
+    category,
+    comment,
+    device: sessionTrackerState.device,
+    stage,
+    userType
+  });
+}
+
+export function finalizeTelemetrySession(): void {
+  if (typeof window === 'undefined' || !sessionTrackerState.initialized || sessionTrackerState.finalized) return;
+  sessionTrackerState.finalized = true;
+  const durationSec = Math.max(1, Math.round((Date.now() - sessionTrackerState.startedAtMs) / 1000));
+  const payload = {
+    type: 'session_end',
+    sessionId: sessionTrackerState.sessionId,
+    durationSec,
+    lastStage: sessionTrackerState.lastStage,
+    startedCv: sessionTrackerState.startedCv,
+    completedCv: sessionTrackerState.completedCv,
+    exportedWord: sessionTrackerState.exportedWord,
+    exportedPdf: sessionTrackerState.exportedPdf,
+    registered: sessionTrackerState.registered
+  };
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      navigator.sendBeacon('/api/telemetry/event', blob);
+      return;
+    }
+  } catch {
+    // fallback to fetch keepalive
+  }
+  sendTelemetryBeacon(payload);
 }
 
 export function trackFrontendTelemetry(
@@ -1504,10 +1875,12 @@ export function trackFrontendTelemetry(
     | { type: 'resume_started' }
     | { type: 'checkout_opened' }
     | { type: 'word_exported'; templateStyle?: string }
+    | { type: 'pdf_exported'; templateStyle?: string }
     | { type: 'template_selected'; templateStyle: string }
     | { type: 'language_switched'; language: string }
     | { type: 'ai_called'; feature: keyof FrontendTelemetryData['featureUsage']; tokens?: number }
 ): void {
+  initTelemetrySession();
   const cur = getFrontendTelemetry();
   const todayYmd = new Date().toISOString().slice(0, 10);
   if (cur.todayAiCallsDate !== todayYmd) {
@@ -1516,10 +1889,30 @@ export function trackFrontendTelemetry(
   }
   if (event.type === 'resume_started') {
     cur.resumesStartedCount += 1;
+    sessionTrackerState.startedCv = true;
+    sessionTrackerState.lastStage = 'step1Personal';
   } else if (event.type === 'checkout_opened') {
     cur.checkoutOpenedCount += 1;
+    sessionTrackerState.lastStage = 'checkoutOpened';
   } else if (event.type === 'word_exported') {
     cur.wordExportsCount += 1;
+    cur.funnelSteps.wordExported += 1;
+    sessionTrackerState.exportedWord = true;
+    if (!sessionTrackerState.completedCv) {
+      sessionTrackerState.completedCv = true;
+      cur.resumesCompletedCount += 1;
+    }
+    if (event.templateStyle) {
+      cur.templateSelections[event.templateStyle] = (cur.templateSelections[event.templateStyle] || 0) + 1;
+    }
+  } else if (event.type === 'pdf_exported') {
+    cur.pdfExportsCount += 1;
+    cur.funnelSteps.pdfExported += 1;
+    sessionTrackerState.exportedPdf = true;
+    if (!sessionTrackerState.completedCv) {
+      sessionTrackerState.completedCv = true;
+      cur.resumesCompletedCount += 1;
+    }
     if (event.templateStyle) {
       cur.templateSelections[event.templateStyle] = (cur.templateSelections[event.templateStyle] || 0) + 1;
     }
@@ -1537,12 +1930,10 @@ export function trackFrontendTelemetry(
   setStored('curriculopro_frontend_telemetry', cur);
 
   if (typeof window !== 'undefined' && event.type !== 'ai_called') {
-    fetch('/api/telemetry/event', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-      keepalive: true
-    }).catch(() => {});
+    sendTelemetryBeacon({
+      ...event,
+      sessionId: sessionTrackerState.sessionId
+    });
   }
 }
 

@@ -56,6 +56,11 @@ import {
   getStoredQuotasSync,
   getStoredTemplatesSync,
   trackFrontendTelemetry,
+  initTelemetrySession,
+  finalizeTelemetrySession,
+  trackSessionStage,
+  trackSessionRegistered,
+  reportDropOffReason,
   logGenerationError,
   emitAdminConfigUpdated
 } from './services/adminModulesService';
@@ -79,7 +84,8 @@ import {
   MessageSquare,
   ChevronDown,
   LayoutGrid,
-  Printer
+  Printer,
+  X
 } from 'lucide-react';
 
 export default function App() {
@@ -281,6 +287,32 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   const [isOnboardingGoalModalOpen, setIsOnboardingGoalModalOpen] = useState<boolean>(false);
   const hasPromptedGoalRef = useRef<boolean>(false);
   const [mobileExportOpen, setMobileExportOpen] = useState<boolean>(false);
+  const [exitReasonPrompt, setExitReasonPrompt] = useState<{ stage: string } | null>(null);
+  const hasPromptedExitReasonRef = useRef<boolean>(false);
+
+  // Initialize visit, device, OS, browser telemetry & end-of-session abandonment beacon
+  useEffect(() => {
+    initTelemetrySession();
+    const handleUnload = () => finalizeTelemetrySession();
+    window.addEventListener('pagehide', handleUnload);
+    window.addEventListener('beforeunload', handleUnload);
+    return () => {
+      window.removeEventListener('pagehide', handleUnload);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      trackSessionRegistered();
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!exitReasonPrompt) return;
+    const timer = setTimeout(() => setExitReasonPrompt(null), 15000);
+    return () => clearTimeout(timer);
+  }, [exitReasonPrompt]);
 
   // Hydrate Admin Governance, Editable Plans, Prompts, Templates, Locales & Banners from Firestore on app boot
   useEffect(() => {
@@ -323,6 +355,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
   }, []);
 
   const handleOpenAuth = (prompt?: string, mode: 'login' | 'register' = prompt ? 'register' : 'login') => {
+    trackSessionStage('authOpened');
     setAuthModalPrompt(prompt);
     setAuthDefaultMode(mode);
     setIsAuthModalOpen(true);
@@ -340,6 +373,7 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     initialPlan?: SubscriptionPlan,
     initialCycle?: BillingCycle
   ) => {
+    trackFrontendTelemetry({ type: 'checkout_opened' });
     setPricingPromptMessage(
       prompt || appUi.pricingDefaultPrompt
     );
@@ -526,8 +560,13 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     };
   }, []);
 
-  // Track resume_started once user enters studio editing flow
+  // Track resume_started & stage once user enters studio editing flow
   useEffect(() => {
+    if (activeTab === 'raw') {
+      trackSessionStage('rawImport', { startedCv: true });
+    } else if (activeTab === 'editor') {
+      trackSessionStage('step1Personal', { startedCv: true });
+    }
     if (!resumeStartedTrackedRef.current && (activeTab === 'editor' || activeTab === 'raw')) {
       resumeStartedTrackedRef.current = true;
       trackFrontendTelemetry({ type: 'resume_started' });
@@ -991,6 +1030,10 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
     try {
       setIsExportingWord(true);
       await exportElementToPdf(selector, pdfFilename);
+      trackFrontendTelemetry({
+        type: 'pdf_exported',
+        templateStyle: activeTab === 'cover' ? 'cover_letter' : cv.templateStyle
+      });
       void recordAuditLog({
         actorUserId: user?.id,
         actorEmail: user?.email,
@@ -1878,6 +1921,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           if (!isAuthenticated) {
             setPendingModelTarget(null);
             setPendingCheckout(null);
+            trackSessionStage('auth_abandoned');
+            if (!hasPromptedExitReasonRef.current) {
+              hasPromptedExitReasonRef.current = true;
+              setExitReasonPrompt({ stage: 'auth_abandoned' });
+            }
           }
         }}
         promptMessage={authModalPrompt}
@@ -1894,6 +1942,11 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
           setPricingInitialCycle(undefined);
           if (!hasActivePlan) {
             setPendingModelTarget(null);
+            trackSessionStage('pricing_abandoned');
+            if (!hasPromptedExitReasonRef.current) {
+              hasPromptedExitReasonRef.current = true;
+              setExitReasonPrompt({ stage: 'pricing_abandoned' });
+            }
           }
         }}
         promptMessage={pricingPromptMessage}
@@ -1956,6 +2009,47 @@ ${GENERIC_DEFAULT_CV.personalDetails.phone} | ${GENERIC_DEFAULT_CV.personalDetai
         onSelectGoal={handleSelectOnboardingGoal}
         onClose={() => setIsOnboardingGoalModalOpen(false)}
       />
+
+      {/* Subtle, non-intrusive 1-click exit-reason prompt when user dismisses Auth or Pricing */}
+      {exitReasonPrompt && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl p-3.5 text-xs space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-200 print:hidden">
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-bold text-slate-900 dark:text-white leading-snug">
+              O que o impediu de continuar?
+            </p>
+            <button
+              type="button"
+              onClick={() => setExitReasonPrompt(null)}
+              aria-label="Fechar"
+              className="p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { key: 'reason_price', label: 'Preço do plano' },
+              { key: 'reason_free_trial', label: 'Testar grátis antes' },
+              { key: 'reason_payment_method', label: 'Método de pagamento' },
+              { key: 'reason_complex_form', label: 'Difícil preencher' },
+              { key: 'reason_just_browsing', label: 'Só a explorar' }
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  reportDropOffReason(item.key, exitReasonPrompt.stage);
+                  setExitReasonPrompt(null);
+                  showInfo('Obrigado pelo feedback!', 'A sua resposta ajuda-nos a melhorar o serviço.');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-900/40 text-slate-700 dark:text-slate-200 hover:text-blue-700 font-medium border border-slate-200 dark:border-slate-700 transition-colors text-[11px]"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

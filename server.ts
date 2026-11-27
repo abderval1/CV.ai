@@ -401,16 +401,90 @@ export function createApiApp() {
     return raw;
   }
 
+  type TelemetryDeviceType = 'mobile' | 'desktop' | 'tablet';
+
+  interface TelemetryFunnelSteps {
+    home: number;
+    rawImport: number;
+    step1Personal: number;
+    step2Experience: number;
+    step3Education: number;
+    step4Finish: number;
+    completed: number;
+    wordExported: number;
+    pdfExported: number;
+    authOpened: number;
+    checkoutOpened: number;
+  }
+
+  interface TelemetryUxFeedbackItem {
+    id: string;
+    rating: number;
+    category: string;
+    comment: string;
+    device: TelemetryDeviceType;
+    stage: string;
+    createdAt: string;
+    userType: 'visitor' | 'free' | 'paid';
+  }
+
+  interface TelemetrySessionSummary {
+    sessionId: string;
+    visitorId: string;
+    device: TelemetryDeviceType;
+    os: string;
+    browser: string;
+    startedAt: string;
+    lastActiveAt: string;
+    lastStage: string;
+    stagesReached?: string[];
+    registered: boolean;
+    startedCv: boolean;
+    completedCv: boolean;
+    exportedWord: boolean;
+    exportedPdf: boolean;
+    abandoned: boolean;
+    dropOffReason?: string;
+    durationSec: number;
+  }
+
   interface ServerTelemetryData {
     resumesStartedCount: number;
+    resumesCompletedCount: number;
+    resumesAbandonedCount: number;
     checkoutOpenedCount: number;
     wordExportsCount: number;
+    pdfExportsCount: number;
+    siteVisitsCount: number;
+    uniqueVisitorsCount: number;
     aiCallsCount: number;
     todayAiCallsDate?: string;
     todayAiCallsCount?: number;
     estimatedTokensUsed: number;
     templateSelections: Record<string, number>;
     languageSelections: Record<string, number>;
+    devices: {
+      mobile: number;
+      desktop: number;
+      tablet: number;
+    };
+    operatingSystems: Record<string, number>;
+    browsers: Record<string, number>;
+    funnelSteps: TelemetryFunnelSteps;
+    dropOffReasons: Record<string, number>;
+    sessionDurationsSec: {
+      totalSec: number;
+      count: number;
+    };
+    uxFeedback: {
+      totalRatings: number;
+      sumRatings: number;
+      ratingDistribution: Record<string, number>;
+      positiveCount: number;
+      negativeCount: number;
+      recentComments: TelemetryUxFeedbackItem[];
+    };
+    recentSessions: TelemetrySessionSummary[];
     featureUsage: {
       aiTailor: number;
       atsRadar: number;
@@ -424,14 +498,53 @@ export function createApiApp() {
   function createEmptyTelemetry(): ServerTelemetryData {
     return {
       resumesStartedCount: 0,
+      resumesCompletedCount: 0,
+      resumesAbandonedCount: 0,
       checkoutOpenedCount: 0,
       wordExportsCount: 0,
+      pdfExportsCount: 0,
+      siteVisitsCount: 0,
+      uniqueVisitorsCount: 0,
       aiCallsCount: 0,
       todayAiCallsDate: new Date().toISOString().slice(0, 10),
       todayAiCallsCount: 0,
       estimatedTokensUsed: 0,
       templateSelections: {},
       languageSelections: {},
+      devices: {
+        mobile: 0,
+        desktop: 0,
+        tablet: 0
+      },
+      operatingSystems: {},
+      browsers: {},
+      funnelSteps: {
+        home: 0,
+        rawImport: 0,
+        step1Personal: 0,
+        step2Experience: 0,
+        step3Education: 0,
+        step4Finish: 0,
+        completed: 0,
+        wordExported: 0,
+        pdfExported: 0,
+        authOpened: 0,
+        checkoutOpened: 0
+      },
+      dropOffReasons: {},
+      sessionDurationsSec: {
+        totalSec: 0,
+        count: 0
+      },
+      uxFeedback: {
+        totalRatings: 0,
+        sumRatings: 0,
+        ratingDistribution: { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 },
+        positiveCount: 0,
+        negativeCount: 0,
+        recentComments: []
+      },
+      recentSessions: [],
       featureUsage: {
         aiTailor: 0,
         atsRadar: 0,
@@ -444,42 +557,308 @@ export function createApiApp() {
   }
 
   function ensureServerTelemetry(): ServerTelemetryData {
+    const empty = createEmptyTelemetry();
     if (!authStore.telemetry || typeof authStore.telemetry !== 'object') {
-      authStore.telemetry = createEmptyTelemetry();
+      authStore.telemetry = empty;
     }
-    if (!authStore.telemetry.templateSelections) authStore.telemetry.templateSelections = {};
-    if (!authStore.telemetry.languageSelections) authStore.telemetry.languageSelections = {};
-    if (!authStore.telemetry.featureUsage) {
-      authStore.telemetry.featureUsage = createEmptyTelemetry().featureUsage;
+    const t = authStore.telemetry as ServerTelemetryData;
+    t.resumesStartedCount = Number(t.resumesStartedCount) || 0;
+    t.resumesCompletedCount = Number(t.resumesCompletedCount) || 0;
+    t.resumesAbandonedCount = Number(t.resumesAbandonedCount) || 0;
+    t.checkoutOpenedCount = Number(t.checkoutOpenedCount) || 0;
+    t.wordExportsCount = Number(t.wordExportsCount) || 0;
+    t.pdfExportsCount = Number(t.pdfExportsCount) || 0;
+    t.siteVisitsCount = Number(t.siteVisitsCount) || 0;
+    t.uniqueVisitorsCount = Number(t.uniqueVisitorsCount) || 0;
+    t.aiCallsCount = Number(t.aiCallsCount) || 0;
+    t.estimatedTokensUsed = Number(t.estimatedTokensUsed) || 0;
+    if (!t.templateSelections || typeof t.templateSelections !== 'object') t.templateSelections = {};
+    if (!t.languageSelections || typeof t.languageSelections !== 'object') t.languageSelections = {};
+    if (!t.devices || typeof t.devices !== 'object') t.devices = { ...empty.devices };
+    t.devices.mobile = Number(t.devices.mobile) || 0;
+    t.devices.desktop = Number(t.devices.desktop) || 0;
+    t.devices.tablet = Number(t.devices.tablet) || 0;
+    if (!t.operatingSystems || typeof t.operatingSystems !== 'object') t.operatingSystems = {};
+    if (!t.browsers || typeof t.browsers !== 'object') t.browsers = {};
+    if (!t.funnelSteps || typeof t.funnelSteps !== 'object') {
+      t.funnelSteps = { ...empty.funnelSteps };
+    } else {
+      t.funnelSteps = { ...empty.funnelSteps, ...t.funnelSteps };
+    }
+    if (!t.dropOffReasons || typeof t.dropOffReasons !== 'object') t.dropOffReasons = {};
+    if (!t.sessionDurationsSec || typeof t.sessionDurationsSec !== 'object') {
+      t.sessionDurationsSec = { ...empty.sessionDurationsSec };
+    }
+    if (!t.uxFeedback || typeof t.uxFeedback !== 'object') {
+      t.uxFeedback = { ...empty.uxFeedback };
+    } else {
+      t.uxFeedback = {
+        ...empty.uxFeedback,
+        ...t.uxFeedback,
+        ratingDistribution: {
+          ...empty.uxFeedback.ratingDistribution,
+          ...(t.uxFeedback.ratingDistribution || {})
+        },
+        recentComments: Array.isArray(t.uxFeedback.recentComments) ? t.uxFeedback.recentComments : []
+      };
+    }
+    if (!Array.isArray(t.recentSessions)) t.recentSessions = [];
+    if (!t.featureUsage || typeof t.featureUsage !== 'object') {
+      t.featureUsage = { ...empty.featureUsage };
+    } else {
+      t.featureUsage = { ...empty.featureUsage, ...t.featureUsage };
     }
     const todayYmd = new Date().toISOString().slice(0, 10);
-    if (authStore.telemetry.todayAiCallsDate !== todayYmd) {
-      authStore.telemetry.todayAiCallsDate = todayYmd;
-      authStore.telemetry.todayAiCallsCount = 0;
+    if (t.todayAiCallsDate !== todayYmd) {
+      t.todayAiCallsDate = todayYmd;
+      t.todayAiCallsCount = 0;
     }
-    return authStore.telemetry as ServerTelemetryData;
+    return t;
+  }
+
+  function parseUserAgentFallback(uaRaw: string): { device: TelemetryDeviceType; os: string; browser: string } {
+    const ua = String(uaRaw || '');
+    const isTablet = /iPad|Tablet|PlayBook|Silk|(Android(?!.*Mobile))/i.test(ua);
+    const isMobile = !isTablet && /Mobi|Android|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    const device: TelemetryDeviceType = isTablet ? 'tablet' : isMobile ? 'mobile' : 'desktop';
+    let os = 'Outro';
+    if (/Android/i.test(ua)) os = 'Android';
+    else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS';
+    else if (/Windows/i.test(ua)) os = 'Windows';
+    else if (/Mac OS X|Macintosh/i.test(ua)) os = 'macOS';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+    let browser = 'Outro';
+    if (/Edg\//i.test(ua)) browser = 'Edge';
+    else if (/OPR\/|Opera/i.test(ua)) browser = 'Opera';
+    else if (/Chrome\//i.test(ua) && !/Chromium|Edg\//i.test(ua)) browser = 'Chrome';
+    else if (/Safari\//i.test(ua) && !/Chrome|Chromium/i.test(ua)) browser = 'Safari';
+    else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+    return { device, os, browser };
+  }
+
+  function mapStageToAutoDropReason(stageRaw: string): string {
+    const stage = String(stageRaw || '').trim();
+    if (stage === 'auth_abandoned' || stage === 'authOpened') return 'drop_auth_gate';
+    if (stage === 'pricing_abandoned' || stage === 'checkoutOpened') return 'drop_pricing_paywall';
+    if (stage === 'rawImport') return 'drop_raw_import';
+    if (stage === 'step1Personal') return 'drop_step1_personal';
+    if (stage === 'step2Experience') return 'drop_step2_experience';
+    if (stage === 'step3Education') return 'drop_step3_education';
+    if (stage === 'step4Finish') return 'drop_step4_finish';
+    return 'drop_home_before_start';
+  }
+
+  function upsertTelemetrySession(
+    tel: ServerTelemetryData,
+    sessionIdRaw: string,
+    defaults: Partial<TelemetrySessionSummary>
+  ): TelemetrySessionSummary {
+    const sid = String(sessionIdRaw || '').trim().slice(0, 80);
+    const nowIso = new Date().toISOString();
+    let idx = tel.recentSessions.findIndex((s) => s.sessionId === sid);
+    if (idx === -1) {
+      const created: TelemetrySessionSummary = {
+        sessionId: sid,
+        visitorId: String(defaults.visitorId || 'anon').slice(0, 80),
+        device: defaults.device || 'desktop',
+        os: String(defaults.os || 'Outro').slice(0, 32),
+        browser: String(defaults.browser || 'Outro').slice(0, 32),
+        startedAt: nowIso,
+        lastActiveAt: nowIso,
+        lastStage: String(defaults.lastStage || 'home').slice(0, 48),
+        stagesReached: Array.isArray(defaults.stagesReached) ? defaults.stagesReached : ['home'],
+        registered: Boolean(defaults.registered),
+        startedCv: Boolean(defaults.startedCv),
+        completedCv: Boolean(defaults.completedCv),
+        exportedWord: Boolean(defaults.exportedWord),
+        exportedPdf: Boolean(defaults.exportedPdf),
+        abandoned: Boolean(defaults.abandoned),
+        durationSec: Math.max(0, Number(defaults.durationSec) || 0)
+      };
+      tel.recentSessions = [created, ...tel.recentSessions].slice(0, 100);
+      return created;
+    }
+    const cur = tel.recentSessions[idx];
+    cur.lastActiveAt = nowIso;
+    if (defaults.device) cur.device = defaults.device;
+    if (defaults.os) cur.os = String(defaults.os).slice(0, 32);
+    if (defaults.browser) cur.browser = String(defaults.browser).slice(0, 32);
+    if (defaults.lastStage) cur.lastStage = String(defaults.lastStage).slice(0, 48);
+    if (defaults.registered) cur.registered = true;
+    if (defaults.startedCv) cur.startedCv = true;
+    if (defaults.completedCv) cur.completedCv = true;
+    if (defaults.exportedWord) cur.exportedWord = true;
+    if (defaults.exportedPdf) cur.exportedPdf = true;
+    if (typeof defaults.durationSec === 'number' && defaults.durationSec > cur.durationSec) {
+      cur.durationSec = Math.min(86400, Math.round(defaults.durationSec));
+    }
+    if (defaults.dropOffReason) cur.dropOffReason = String(defaults.dropOffReason).slice(0, 64);
+    if (defaults.abandoned !== undefined) cur.abandoned = defaults.abandoned;
+    return cur;
   }
 
   function recordServerTelemetry(
     event:
-      | { type: 'resume_started' }
-      | { type: 'checkout_opened' }
-      | { type: 'word_exported'; templateStyle?: string }
+      | { type: 'visit'; visitorId?: string; sessionId?: string; device?: TelemetryDeviceType; os?: string; browser?: string }
+      | { type: 'stage'; sessionId?: string; visitorId?: string; stage: string; startedCv?: boolean; completedCv?: boolean; registered?: boolean }
+      | { type: 'session_registered'; sessionId?: string; visitorId?: string }
+      | { type: 'resume_started'; sessionId?: string }
+      | { type: 'checkout_opened'; sessionId?: string }
+      | { type: 'word_exported'; templateStyle?: string; sessionId?: string }
+      | { type: 'pdf_exported'; templateStyle?: string; sessionId?: string }
       | { type: 'template_selected'; templateStyle: string }
       | { type: 'language_switched'; language: string }
+      | { type: 'drop_off_reason'; sessionId?: string; reasonKey: string; lastStage?: string }
+      | { type: 'session_end'; sessionId?: string; durationSec?: number; lastStage?: string; startedCv?: boolean; completedCv?: boolean; exportedWord?: boolean; exportedPdf?: boolean; registered?: boolean }
+      | { type: 'ux_feedback'; sessionId?: string; rating: number; category?: string; comment?: string; device?: TelemetryDeviceType; stage?: string; userType?: 'visitor' | 'free' | 'paid' }
       | { type: 'ai_called'; feature: 'aiTailor' | 'atsRadar' | 'coverLetter' | 'interviewSim' | 'rawImport'; tokens?: number }
   ) {
     try {
       const tel = ensureServerTelemetry();
-      if (event.type === 'resume_started') {
+      if (event.type === 'visit') {
+        const sid = String(event.sessionId || `sess_${Date.now()}`).slice(0, 80);
+        const alreadyRecordedVisit = tel.recentSessions.some((s) => s.sessionId === sid);
+        if (!alreadyRecordedVisit) {
+          tel.siteVisitsCount += 1;
+          const dev: TelemetryDeviceType =
+            event.device === 'mobile' || event.device === 'tablet' || event.device === 'desktop'
+              ? event.device
+              : 'desktop';
+          tel.devices[dev] = (tel.devices[dev] || 0) + 1;
+          const osKey = String(event.os || 'Outro').slice(0, 32);
+          const brKey = String(event.browser || 'Outro').slice(0, 32);
+          tel.operatingSystems[osKey] = (tel.operatingSystems[osKey] || 0) + 1;
+          tel.browsers[brKey] = (tel.browsers[brKey] || 0) + 1;
+          tel.funnelSteps.home += 1;
+
+          const vid = String(event.visitorId || '').trim().slice(0, 80);
+          if (vid) {
+            if (!Array.isArray(authStore.telemetryVisitorIds)) authStore.telemetryVisitorIds = [];
+            if (!authStore.telemetryVisitorIds.includes(vid)) {
+              tel.uniqueVisitorsCount += 1;
+              authStore.telemetryVisitorIds.push(vid);
+              if (authStore.telemetryVisitorIds.length > 5000) {
+                authStore.telemetryVisitorIds = authStore.telemetryVisitorIds.slice(-5000);
+              }
+            }
+          }
+          upsertTelemetrySession(tel, sid, {
+            visitorId: vid || 'anon',
+            device: dev,
+            os: osKey,
+            browser: brKey,
+            lastStage: 'home',
+            stagesReached: ['home']
+          });
+        }
+      } else if (event.type === 'stage') {
+        const stage = String(event.stage || '').trim().slice(0, 48);
+        if (stage) {
+          const sid = String(event.sessionId || '').trim().slice(0, 80);
+          let isFirstForSession = true;
+          if (sid) {
+            const session = upsertTelemetrySession(tel, sid, {
+              visitorId: event.visitorId,
+              lastStage: stage,
+              startedCv: event.startedCv,
+              completedCv: event.completedCv,
+              registered: event.registered
+            });
+            const stages = Array.isArray(session.stagesReached) ? session.stagesReached : [];
+            if (stages.includes(stage)) {
+              isFirstForSession = false;
+            } else {
+              stages.push(stage);
+              session.stagesReached = stages.slice(-24);
+            }
+            if (stage === 'completed') {
+              session.completedCv = true;
+              session.abandoned = false;
+            }
+          }
+          if (isFirstForSession) {
+            if (stage in tel.funnelSteps) {
+              const key = stage as keyof TelemetryFunnelSteps;
+              tel.funnelSteps[key] = (tel.funnelSteps[key] || 0) + 1;
+            }
+            if (stage === 'completed') {
+              tel.resumesCompletedCount += 1;
+            }
+          }
+        }
+      } else if (event.type === 'session_registered') {
+        if (event.sessionId) {
+          upsertTelemetrySession(tel, event.sessionId, {
+            visitorId: event.visitorId,
+            registered: true
+          });
+        }
+      } else if (event.type === 'resume_started') {
         tel.resumesStartedCount += 1;
+        if (event.sessionId) {
+          upsertTelemetrySession(tel, event.sessionId, {
+            startedCv: true,
+            lastStage: 'step1Personal'
+          });
+        }
       } else if (event.type === 'checkout_opened') {
         tel.checkoutOpenedCount += 1;
+        if (event.sessionId) {
+          const session = upsertTelemetrySession(tel, event.sessionId, {
+            lastStage: 'checkoutOpened'
+          });
+          const stages = session.stagesReached || [];
+          if (!stages.includes('checkoutOpened')) {
+            stages.push('checkoutOpened');
+            session.stagesReached = stages.slice(-24);
+            tel.funnelSteps.checkoutOpened += 1;
+          }
+        } else {
+          tel.funnelSteps.checkoutOpened += 1;
+        }
       } else if (event.type === 'word_exported') {
         tel.wordExportsCount += 1;
+        tel.funnelSteps.wordExported += 1;
         if (event.templateStyle) {
           const k = String(event.templateStyle).slice(0, 60);
           tel.templateSelections[k] = (tel.templateSelections[k] || 0) + 1;
+        }
+        if (event.sessionId) {
+          const session = upsertTelemetrySession(tel, event.sessionId, {
+            exportedWord: true,
+            lastStage: 'wordExported',
+            abandoned: false
+          });
+          if (!session.completedCv) {
+            session.completedCv = true;
+            tel.resumesCompletedCount += 1;
+            if (!session.stagesReached?.includes('completed')) {
+              session.stagesReached = [...(session.stagesReached || []), 'completed'].slice(-24);
+              tel.funnelSteps.completed += 1;
+            }
+          }
+        }
+      } else if (event.type === 'pdf_exported') {
+        tel.pdfExportsCount += 1;
+        tel.funnelSteps.pdfExported += 1;
+        if (event.templateStyle) {
+          const k = String(event.templateStyle).slice(0, 60);
+          tel.templateSelections[k] = (tel.templateSelections[k] || 0) + 1;
+        }
+        if (event.sessionId) {
+          const session = upsertTelemetrySession(tel, event.sessionId, {
+            exportedPdf: true,
+            lastStage: 'pdfExported',
+            abandoned: false
+          });
+          if (!session.completedCv) {
+            session.completedCv = true;
+            tel.resumesCompletedCount += 1;
+            if (!session.stagesReached?.includes('completed')) {
+              session.stagesReached = [...(session.stagesReached || []), 'completed'].slice(-24);
+              tel.funnelSteps.completed += 1;
+            }
+          }
         }
       } else if (event.type === 'template_selected') {
         const k = String(event.templateStyle || '').slice(0, 60);
@@ -487,6 +866,80 @@ export function createApiApp() {
       } else if (event.type === 'language_switched') {
         const l = String(event.language || '').slice(0, 16).toLowerCase();
         if (l) tel.languageSelections[l] = (tel.languageSelections[l] || 0) + 1;
+      } else if (event.type === 'drop_off_reason') {
+        const rk = String(event.reasonKey || 'reason_other').slice(0, 64);
+        tel.dropOffReasons[rk] = (tel.dropOffReasons[rk] || 0) + 1;
+        if (event.sessionId) {
+          upsertTelemetrySession(tel, event.sessionId, {
+            dropOffReason: rk,
+            lastStage: event.lastStage,
+            abandoned: true
+          });
+        }
+      } else if (event.type === 'session_end') {
+        const dur = Math.max(0, Math.min(86400, Math.round(Number(event.durationSec) || 0)));
+        if (event.sessionId) {
+          const existing = tel.recentSessions.find((s) => s.sessionId === event.sessionId);
+          const alreadyEndedWithDur = Boolean(existing && existing.durationSec > 0);
+          const alreadyAbandoned = Boolean(existing && existing.abandoned);
+          const session = upsertTelemetrySession(tel, event.sessionId, {
+            durationSec: dur,
+            lastStage: event.lastStage,
+            startedCv: event.startedCv,
+            completedCv: event.completedCv,
+            exportedWord: event.exportedWord,
+            exportedPdf: event.exportedPdf,
+            registered: event.registered
+          });
+          if (!alreadyEndedWithDur && dur > 0) {
+            tel.sessionDurationsSec.totalSec += dur;
+            tel.sessionDurationsSec.count += 1;
+          }
+          const finished = session.completedCv || session.exportedWord || session.exportedPdf;
+          if (!finished && !alreadyAbandoned) {
+            session.abandoned = true;
+            if (session.startedCv) {
+              tel.resumesAbandonedCount += 1;
+            }
+            if (!session.dropOffReason) {
+              const autoReason = mapStageToAutoDropReason(session.lastStage);
+              session.dropOffReason = autoReason;
+              tel.dropOffReasons[autoReason] = (tel.dropOffReasons[autoReason] || 0) + 1;
+            }
+          }
+        }
+      } else if (event.type === 'ux_feedback') {
+        const rating = Math.max(1, Math.min(5, Math.round(Number(event.rating) || 5)));
+        const comment = String(event.comment || '').replace(/[<>]/g, '').trim().slice(0, 400);
+        const category = String(event.category || 'geral').slice(0, 40);
+        const stage = String(event.stage || 'editor').slice(0, 48);
+        const device: TelemetryDeviceType =
+          event.device === 'mobile' || event.device === 'tablet' || event.device === 'desktop'
+            ? event.device
+            : 'desktop';
+        const userType: 'visitor' | 'free' | 'paid' =
+          event.userType === 'paid' || event.userType === 'free' ? event.userType : 'visitor';
+        tel.uxFeedback.totalRatings += 1;
+        tel.uxFeedback.sumRatings += rating;
+        const rk = String(rating);
+        tel.uxFeedback.ratingDistribution[rk] = (tel.uxFeedback.ratingDistribution[rk] || 0) + 1;
+        if (rating >= 4) tel.uxFeedback.positiveCount += 1;
+        else if (rating <= 2) tel.uxFeedback.negativeCount += 1;
+        if (comment || rating <= 3) {
+          tel.uxFeedback.recentComments = [
+            {
+              id: `ux_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              rating,
+              category,
+              comment: comment || `Avaliação ${rating}/5 (${category})`,
+              device,
+              stage,
+              createdAt: new Date().toISOString(),
+              userType
+            },
+            ...tel.uxFeedback.recentComments
+          ].slice(0, 60);
+        }
       } else if (event.type === 'ai_called') {
         const todayYmd = new Date().toISOString().slice(0, 10);
         if (tel.todayAiCallsDate !== todayYmd) {
@@ -4826,6 +5279,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     supportChats?: Record<string, SupportChatThreadRecord>;
     promoSessions?: Record<string, any>;
     telemetry?: ServerTelemetryData;
+    telemetryVisitorIds?: string[];
   }
 
   const FIREBASE_PROJECT_ID =
@@ -5134,7 +5588,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             telemetry:
               parsed.telemetry && typeof parsed.telemetry === 'object'
                 ? parsed.telemetry
-                : createEmptyTelemetry()
+                : createEmptyTelemetry(),
+            telemetryVisitorIds: Array.isArray(parsed.telemetryVisitorIds) ? parsed.telemetryVisitorIds : []
           };
         }
       }
@@ -5156,7 +5611,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       notificationsByUser: {},
       supportChats: {},
       promoSessions: {},
-      telemetry: createEmptyTelemetry()
+      telemetry: createEmptyTelemetry(),
+      telemetryVisitorIds: []
     };
   }
 
@@ -5174,6 +5630,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
   if (!authStore.supportChats) authStore.supportChats = {};
   if (!authStore.promoSessions) authStore.promoSessions = {};
   if (!authStore.telemetry) authStore.telemetry = createEmptyTelemetry();
+  if (!Array.isArray(authStore.telemetryVisitorIds)) authStore.telemetryVisitorIds = [];
 
   function persistAuthStore() {
     try {
@@ -8172,7 +8629,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
     return res.json({ auditLogs: authStore.auditLogs || [] });
   });
 
-  // Public Telemetry Intake (Funnel, Template Selections, Exports, Languages)
+  // Public Telemetry Intake (Visits, Devices, Funnel, Abandonment Reasons, UX Feedback, Exports)
   app.post('/api/telemetry/event', (req, res) => {
     try {
       if (!checkTelemetryRateLimit(req)) {
@@ -8180,19 +8637,96 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
       }
       const body = req.body || {};
       const type = String(body.type || '');
-      if (type === 'resume_started') {
-        recordServerTelemetry({ type: 'resume_started' });
+      const uaParsed = parseUserAgentFallback(String(req.headers['user-agent'] || ''));
+
+      if (type === 'visit') {
+        recordServerTelemetry({
+          type: 'visit',
+          visitorId: typeof body.visitorId === 'string' ? body.visitorId : undefined,
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          device:
+            body.device === 'mobile' || body.device === 'tablet' || body.device === 'desktop'
+              ? body.device
+              : uaParsed.device,
+          os: typeof body.os === 'string' && body.os.trim() ? body.os : uaParsed.os,
+          browser: typeof body.browser === 'string' && body.browser.trim() ? body.browser : uaParsed.browser
+        });
+      } else if (type === 'stage' && typeof body.stage === 'string') {
+        recordServerTelemetry({
+          type: 'stage',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          visitorId: typeof body.visitorId === 'string' ? body.visitorId : undefined,
+          stage: body.stage,
+          startedCv: Boolean(body.startedCv),
+          completedCv: Boolean(body.completedCv),
+          registered: Boolean(body.registered)
+        });
+      } else if (type === 'session_registered') {
+        recordServerTelemetry({
+          type: 'session_registered',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          visitorId: typeof body.visitorId === 'string' ? body.visitorId : undefined
+        });
+      } else if (type === 'resume_started') {
+        recordServerTelemetry({
+          type: 'resume_started',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined
+        });
       } else if (type === 'checkout_opened') {
-        recordServerTelemetry({ type: 'checkout_opened' });
+        recordServerTelemetry({
+          type: 'checkout_opened',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined
+        });
       } else if (type === 'word_exported') {
         recordServerTelemetry({
           type: 'word_exported',
-          templateStyle: typeof body.templateStyle === 'string' ? body.templateStyle : undefined
+          templateStyle: typeof body.templateStyle === 'string' ? body.templateStyle : undefined,
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined
+        });
+      } else if (type === 'pdf_exported') {
+        recordServerTelemetry({
+          type: 'pdf_exported',
+          templateStyle: typeof body.templateStyle === 'string' ? body.templateStyle : undefined,
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined
         });
       } else if (type === 'template_selected' && typeof body.templateStyle === 'string') {
         recordServerTelemetry({ type: 'template_selected', templateStyle: body.templateStyle });
       } else if (type === 'language_switched' && typeof body.language === 'string') {
         recordServerTelemetry({ type: 'language_switched', language: body.language });
+      } else if (type === 'drop_off_reason' && typeof body.reasonKey === 'string') {
+        recordServerTelemetry({
+          type: 'drop_off_reason',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          reasonKey: body.reasonKey,
+          lastStage: typeof body.lastStage === 'string' ? body.lastStage : undefined
+        });
+      } else if (type === 'session_end') {
+        recordServerTelemetry({
+          type: 'session_end',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          durationSec: Number(body.durationSec) || 0,
+          lastStage: typeof body.lastStage === 'string' ? body.lastStage : undefined,
+          startedCv: Boolean(body.startedCv),
+          completedCv: Boolean(body.completedCv),
+          exportedWord: Boolean(body.exportedWord),
+          exportedPdf: Boolean(body.exportedPdf),
+          registered: Boolean(body.registered)
+        });
+      } else if (type === 'ux_feedback' && typeof body.rating === 'number') {
+        recordServerTelemetry({
+          type: 'ux_feedback',
+          sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+          rating: body.rating,
+          category: typeof body.category === 'string' ? body.category : 'geral',
+          comment: typeof body.comment === 'string' ? body.comment : '',
+          device:
+            body.device === 'mobile' || body.device === 'tablet' || body.device === 'desktop'
+              ? body.device
+              : uaParsed.device,
+          stage: typeof body.stage === 'string' ? body.stage : 'editor',
+          userType:
+            body.userType === 'paid' || body.userType === 'free' ? body.userType : 'visitor'
+        });
       } else {
         return res.status(400).json({ error: 'Evento de telemetria inválido.' });
       }
