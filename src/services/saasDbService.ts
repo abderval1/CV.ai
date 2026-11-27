@@ -25,7 +25,7 @@ import { recordAuditLog } from './auditLogService';
 
 export const ADMIN_EMAILS = [
   'gugurai923@gmail.com',
-  'admin@curriculoestrategico.com',
+  'admin@resume2job.vercel.app',
   'mballoaliou2000@yahoo.fr'
 ];
 

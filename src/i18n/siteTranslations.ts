@@ -371,7 +371,7 @@ export interface SiteDictionary {
 
 export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
   pt: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Mensal', shortUnit: 'mês' },
       quarterly: { label: 'Trimestral', shortUnit: 'trimestre' },
@@ -718,7 +718,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'dias',
       includesStarAndCLevel: 'Inclui Simulador STAR e Modelos C-Level',
       roiKicker: 'Retorno Sobre o Investimento',
-      roiTitle: 'Consultoria Tradicional vs. Currículo Estratégico',
+      roiTitle: 'Consultoria Tradicional vs. Resume2Job',
       roiSavings: 'Economize até 95% frente a agências de recolocação',
       roiAgencyTitle: 'Consultoria / Freelancer Tradicional',
       roiAgencyPrice: '$150 – $400 / entrega',
@@ -728,7 +728,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Tradução para inglês ou outro idioma cobrada à parte (+$80)',
         '• Sem pontuação ATS ao vivo nem simulador de entrevista'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro & VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro & VIP)',
       roiPlatformPricePrefix: 'A partir de',
       roiPlatformPoints: [
         '• Criação e exportação em Word (.docx) e PDF em menos de 5 min',
@@ -954,7 +954,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     }
   },
   en: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Monthly', shortUnit: 'mo' },
       quarterly: { label: 'Quarterly', shortUnit: 'quarter' },
@@ -1301,7 +1301,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'days',
       includesStarAndCLevel: 'Includes STAR Simulator & C-Level Templates',
       roiKicker: 'Return on Investment',
-      roiTitle: 'Traditional Resume Agency vs. Currículo Estratégico',
+      roiTitle: 'Traditional Resume Agency vs. Resume2Job',
       roiSavings: 'Save up to 95% compared to executive career agencies',
       roiAgencyTitle: 'Traditional Agency / Freelancer',
       roiAgencyPrice: '$150 – $400 / delivery',
@@ -1311,7 +1311,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Translation into English or a second language billed separately (+$80)',
         '• No live ATS match score or interview simulator'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro & VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro & VIP)',
       roiPlatformPricePrefix: 'Starting at',
       roiPlatformPoints: [
         '• Create and export clean Word (.docx) & PDF in under 5 min',
@@ -1537,7 +1537,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     }
   },
   es: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Mensual', shortUnit: 'mes' },
       quarterly: { label: 'Trimestral', shortUnit: 'trimestre' },
@@ -1883,7 +1883,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'días',
       includesStarAndCLevel: 'Incluye Simulador STAR y Plantillas C-Level',
       roiKicker: 'Retorno de la Inversión',
-      roiTitle: 'Consultoría Tradicional vs. Currículo Estratégico',
+      roiTitle: 'Consultoría Tradicional vs. Resume2Job',
       roiSavings: 'Ahorra hasta un 95% frente a agencias de recolocación',
       roiAgencyTitle: 'Consultoría / Freelancer Tradicional',
       roiAgencyPrice: '$150 – $400 / entrega',
@@ -1893,7 +1893,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Traducción a inglés u otro idioma cobrada aparte (+$80)',
         '• Sin puntuación ATS en vivo ni simulador de entrevista'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro y VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro y VIP)',
       roiPlatformPricePrefix: 'Desde',
       roiPlatformPoints: [
         '• Creación y exportación en Word (.docx) y PDF en menos de 5 min',
@@ -2115,7 +2115,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     }
   },
   fr: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Mensuel', shortUnit: 'mois' },
       quarterly: { label: 'Trimestriel', shortUnit: 'trimestre' },
@@ -2461,7 +2461,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'jours',
       includesStarAndCLevel: 'Inclut Simulateur STAR et Modèles Direction',
       roiKicker: 'Retour sur Investissement',
-      roiTitle: 'Cabinet de Conseil vs. Currículo Estratégico',
+      roiTitle: 'Cabinet de Conseil vs. Resume2Job',
       roiSavings: 'Économisez jusqu’à 95% par rapport aux agences de carrière',
       roiAgencyTitle: 'Cabinet / Rédacteur Traditionnel',
       roiAgencyPrice: '150 $ – 400 $ / dossier',
@@ -2471,7 +2471,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Traduction en anglais facturée à part (+80 $)',
         '• Aucun score ATS en direct ni simulateur d’entretien'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro & VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro & VIP)',
       roiPlatformPricePrefix: 'À partir de',
       roiPlatformPoints: [
         '• Création et export Word (.docx) & PDF en moins de 5 min',
@@ -2693,7 +2693,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     }
   },
   de: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Monatlich', shortUnit: 'Monat' },
       quarterly: { label: 'Vierteljährlich', shortUnit: 'Quartal' },
@@ -3039,7 +3039,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'Tage',
       includesStarAndCLevel: 'Inkl. STAR-Simulator & C-Level-Vorlagen',
       roiKicker: 'Wirtschaftlichkeit',
-      roiTitle: 'Klassische Karriereberatung vs. Currículo Estratégico',
+      roiTitle: 'Klassische Karriereberatung vs. Resume2Job',
       roiSavings: 'Sparen Sie bis zu 95% gegenüber Bewerbungsagenturen',
       roiAgencyTitle: 'Klassische Agentur / Ghostwriter',
       roiAgencyPrice: '$150 – $400 / Auftrag',
@@ -3049,7 +3049,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Übersetzung ins Englische wird separat berechnet (+$80)',
         '• Kein Live-ATS-Score und kein Interview-Training'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro & VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro & VIP)',
       roiPlatformPricePrefix: 'Ab',
       roiPlatformPoints: [
         '• Erstellung & Word (.docx) / PDF-Export in unter 5 Min.',
@@ -3271,7 +3271,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
     }
   },
   it: {
-    brandName: 'Currículo Estratégico',
+    brandName: 'Resume2Job',
     billingCycles: {
       monthly: { label: 'Mensile', shortUnit: 'mese' },
       quarterly: { label: 'Trimestrale', shortUnit: 'trimestre' },
@@ -3617,7 +3617,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
       daysSuffix: 'giorni',
       includesStarAndCLevel: 'Include Simulatore STAR e Modelli Executive',
       roiKicker: 'Ritorno sull’Investimento',
-      roiTitle: 'Consulenza Tradizionale vs. Currículo Estratégico',
+      roiTitle: 'Consulenza Tradizionale vs. Resume2Job',
       roiSavings: 'Risparmia fino al 95% rispetto alle agenzie di carriera',
       roiAgencyTitle: 'Consulenza / Freelancer Tradizionale',
       roiAgencyPrice: '$150 – $400 / consegna',
@@ -3627,7 +3627,7 @@ export const SITE_DICTIONARIES: Record<SiteLanguageCode, SiteDictionary> = {
         '• Traduzione in inglese o altra lingua fatturata a parte (+$80)',
         '• Nessun punteggio ATS in diretta né simulatore colloqui'
       ],
-      roiPlatformTitle: 'Currículo Estratégico (Pro & VIP)',
+      roiPlatformTitle: 'Resume2Job (Pro & VIP)',
       roiPlatformPricePrefix: 'Da',
       roiPlatformPoints: [
         '• Creazione ed export Word (.docx) e PDF in meno di 5 min',

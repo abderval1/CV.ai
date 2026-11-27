@@ -53,7 +53,7 @@ const SEO_LOCALIZED_DATA: Record<
   }
 > = {
   pt: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'Modelos de Currículo A4 Executivos, Harvard e Europass compatíveis com ATS',
@@ -64,7 +64,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Estúdio de Currículo & ATS',
+        title: 'Resume2Job — Estúdio de Currículo & ATS',
         description:
           'Crie currículos A4 executivos e cartas de apresentação com Radar ATS, fórmula Google XYZ, tradução em 5 idiomas e exportação nativa Word (.docx) e PDF.',
         keywords:
@@ -72,7 +72,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Início'
       },
       'models-cv': {
-        title: 'Modelos de Currículo ATS & Harvard A4 — Currículo Estratégico',
+        title: 'Modelos de Currículo ATS & Harvard A4 — Resume2Job',
         description:
           'Explore modelos de currículo executivo A4 aprovados em filtros ATS Workday, Greenhouse e Taleo. Formatos Harvard, Moderno e Europass editáveis em Word e PDF.',
         keywords:
@@ -80,7 +80,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modelos de Currículo'
       },
       'examples-cv': {
-        title: 'Exemplos Reais de Currículo Executivo — Currículo Estratégico',
+        title: 'Exemplos Reais de Currículo Executivo — Resume2Job',
         description:
           'Veja exemplos reais de currículos aprovados para Direção, Tecnologia, Finanças, Saúde e Academia com métricas quantificáveis e estrutura Google XYZ.',
         keywords:
@@ -88,7 +88,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Exemplos de Currículo'
       },
       'models-cover': {
-        title: 'Modelos de Carta de Apresentação A4 — Currículo Estratégico',
+        title: 'Modelos de Carta de Apresentação A4 — Resume2Job',
         description:
           'Modelos de carta de apresentação executiva e corporativa prontos a personalizar, traduzir em 5 idiomas e exportar em Word (.docx) e PDF.',
         keywords:
@@ -96,7 +96,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modelos de Carta'
       },
       'examples-cover': {
-        title: 'Exemplos de Carta de Apresentação — Currículo Estratégico',
+        title: 'Exemplos de Carta de Apresentação — Resume2Job',
         description:
           'Inspire-se com exemplos prontos de carta de apresentação para tecnologia, finanças, liderança, mudança de área e primeiro emprego.',
         keywords:
@@ -104,7 +104,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Exemplos de Carta'
       },
       editor: {
-        title: 'Editor de Currículo A4 em Tempo Real — Currículo Estratégico',
+        title: 'Editor de Currículo A4 em Tempo Real — Resume2Job',
         description:
           'Edite o seu currículo em folha A4 com pré-visualização instantânea, ajuste de densidade, tradução em 5 idiomas e download direto em Word (.docx) e PDF.',
         keywords:
@@ -112,7 +112,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Editor de Currículo'
       },
       raw: {
-        title: 'Importar LinkedIn ou Texto para CV — Currículo Estratégico',
+        title: 'Importar LinkedIn ou Texto para CV — Resume2Job',
         description:
           'Transforme automaticamente o seu perfil do LinkedIn, PDF antigo ou texto livre num currículo executivo estruturado e compatível com sistemas ATS.',
         keywords:
@@ -120,7 +120,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Importar Dados'
       },
       ats: {
-        title: 'Radar ATS & Compatibilidade de Vaga — Currículo Estratégico',
+        title: 'Radar ATS & Compatibilidade de Vaga — Resume2Job',
         description:
           'Analise o seu currículo contra a descrição da vaga, descubra palavras-chave em falta e aumente a taxa de aprovação em filtros ATS como Workday e Taleo.',
         keywords:
@@ -128,7 +128,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Radar ATS'
       },
       jobs: {
-        title: 'Vagas Compatíveis com o seu CV — Currículo Estratégico',
+        title: 'Vagas Compatíveis com o seu CV — Resume2Job',
         description:
           'Encontre vagas remotas e internacionais alinhadas com as competências do seu currículo e adapte a candidatura com um clique.',
         keywords:
@@ -136,7 +136,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Vagas Compatíveis'
       },
       ai: {
-        title: 'Otimizador IA Google XYZ para CV — Currículo Estratégico',
+        title: 'Otimizador IA Google XYZ para CV — Resume2Job',
         description:
           'Reescreva responsabilidades em conquistas mensuráveis usando verbos de ação executivos e a fórmula Google XYZ com inteligência artificial.',
         keywords:
@@ -144,7 +144,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Otimizador IA'
       },
       cover: {
-        title: 'Gerador de Carta de Apresentação IA — Currículo Estratégico',
+        title: 'Gerador de Carta de Apresentação IA — Resume2Job',
         description:
           'Gere cartas de apresentação personalizadas para qualquer vaga em segundos, traduza em 5 idiomas e exporte em Word (.docx) e PDF.',
         keywords:
@@ -152,7 +152,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Carta de Apresentação'
       },
       interview: {
-        title: 'Simulador de Entrevista STAR com IA — Currículo Estratégico',
+        title: 'Simulador de Entrevista STAR com IA — Resume2Job',
         description:
           'Treine perguntas comportamentais e executivas baseadas no seu currículo e receba feedback estruturado no método STAR.',
         keywords:
@@ -160,16 +160,16 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Simulador de Entrevista'
       },
       profile: {
-        title: 'Minha Conta & Preferências — Currículo Estratégico',
+        title: 'Minha Conta & Preferências — Resume2Job',
         description:
-          'Gerencie os seus currículos guardados, assinatura, faturas e preferências de notificação na sua conta Currículo Estratégico.',
+          'Gerencie os seus currículos guardados, assinatura, faturas e preferências de notificação na sua conta Resume2Job.',
         keywords: 'minha conta curriculo estrategico, gerir assinatura',
         breadcrumb: 'Minha Conta'
       }
     }
   },
   en: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'Executive, Harvard & Europass A4 Resume Templates built for ATS parsers',
@@ -180,7 +180,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Executive Resume & ATS Studio',
+        title: 'Resume2Job — Executive Resume & ATS Studio',
         description:
           'Build ATS-ready A4 executive resumes and cover letters with ATS Radar, Google XYZ AI rewriting, 5-language translation, and native Word (.docx) & PDF export.',
         keywords:
@@ -188,7 +188,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Home'
       },
       'models-cv': {
-        title: 'ATS & Harvard A4 Resume Templates — Currículo Estratégico',
+        title: 'ATS & Harvard A4 Resume Templates — Resume2Job',
         description:
           'Browse ATS-verified executive A4 resume templates built for Workday, Greenhouse, and Taleo. Harvard, Modern, and Europass layouts in Word & PDF.',
         keywords:
@@ -196,7 +196,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Resume Templates'
       },
       'examples-cv': {
-        title: 'Executive Resume Examples by Sector — Currículo Estratégico',
+        title: 'Executive Resume Examples by Sector — Resume2Job',
         description:
           'Inspect real-world executive resume examples across Tech, C-Suite, Finance, Healthcare, and Academia formatted with quantifiable Google XYZ metrics.',
         keywords:
@@ -204,7 +204,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Resume Examples'
       },
       'models-cover': {
-        title: 'Executive Cover Letter Templates — Currículo Estratégico',
+        title: 'Executive Cover Letter Templates — Resume2Job',
         description:
           'Clean A4 executive and ATS cover letter templates ready to tailor, translate into 5 languages, and export as Word (.docx) or PDF.',
         keywords:
@@ -212,7 +212,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Cover Letter Templates'
       },
       'examples-cover': {
-        title: 'Professional Cover Letter Examples — Currículo Estratégico',
+        title: 'Professional Cover Letter Examples — Resume2Job',
         description:
           'Explore proven cover letter samples for technology, finance, executive leadership, career transition, and entry-level roles.',
         keywords:
@@ -220,7 +220,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Cover Letter Examples'
       },
       editor: {
-        title: 'Live A4 Resume Editor & Word Export — Currículo Estratégico',
+        title: 'Live A4 Resume Editor & Word Export — Resume2Job',
         description:
           'Edit your A4 resume with live page preview, typography spacing controls, 5-language AI translation, and instant Word (.docx) and PDF export.',
         keywords:
@@ -228,7 +228,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Resume Editor'
       },
       raw: {
-        title: 'Import LinkedIn or PDF to Resume — Currículo Estratégico',
+        title: 'Import LinkedIn or PDF to Resume — Resume2Job',
         description:
           'Convert LinkedIn profiles, legacy PDFs, or raw career notes into a structured, ATS-compliant executive resume in seconds.',
         keywords:
@@ -236,7 +236,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Import Resume'
       },
       ats: {
-        title: 'ATS Radar & Job Match Checker — Currículo Estratégico',
+        title: 'ATS Radar & Job Match Checker — Resume2Job',
         description:
           'Scan your resume against any job description, uncover missing keywords, and boost your ATS match score for Workday, Greenhouse, and Taleo.',
         keywords:
@@ -244,7 +244,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'ATS Radar'
       },
       jobs: {
-        title: 'Matched Jobs for Your Resume — Currículo Estratégico',
+        title: 'Matched Jobs for Your Resume — Resume2Job',
         description:
           'Discover remote and global job openings matched to your resume skills and tailor your application in one click.',
         keywords:
@@ -252,7 +252,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Job Matches'
       },
       ai: {
-        title: 'Google XYZ AI Resume Optimizer — Currículo Estratégico',
+        title: 'Google XYZ AI Resume Optimizer — Resume2Job',
         description:
           'Transform passive job duties into high-impact achievements using executive action verbs and the Google XYZ formula.',
         keywords:
@@ -260,7 +260,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'AI Optimizer'
       },
       cover: {
-        title: 'AI Executive Cover Letter Builder — Currículo Estratégico',
+        title: 'AI Executive Cover Letter Builder — Resume2Job',
         description:
           'Generate tailored executive cover letters matched to any job posting, translate across 5 languages, and export in Word (.docx) or PDF.',
         keywords:
@@ -268,7 +268,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Cover Letter'
       },
       interview: {
-        title: 'AI STAR Interview Simulator — Currículo Estratégico',
+        title: 'AI STAR Interview Simulator — Resume2Job',
         description:
           'Practice behavioral and leadership interview questions tailored to your CV with structured STAR method feedback.',
         keywords:
@@ -276,16 +276,16 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Interview Simulator'
       },
       profile: {
-        title: 'My Account & Settings — Currículo Estratégico',
+        title: 'My Account & Settings — Resume2Job',
         description:
-          'Manage saved resumes, subscription billing, and notification preferences in your Currículo Estratégico account.',
+          'Manage saved resumes, subscription billing, and notification preferences in your Resume2Job account.',
         keywords: 'account settings, saved resumes',
         breadcrumb: 'My Account'
       }
     }
   },
   es: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'Plantillas de CV A4 Ejecutivas, Harvard y Europass compatibles con ATS',
@@ -296,7 +296,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Estudio de CV Ejecutivo & ATS',
+        title: 'Resume2Job — Estudio de CV Ejecutivo & ATS',
         description:
           'Crea currículums A4 ejecutivos y cartas de presentación con Radar ATS, fórmula Google XYZ, traducción en 5 idiomas y descarga en Word (.docx) y PDF.',
         keywords:
@@ -304,7 +304,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Inicio'
       },
       'models-cv': {
-        title: 'Plantillas de Currículum ATS & Harvard — Currículo Estratégico',
+        title: 'Plantillas de Currículum ATS & Harvard — Resume2Job',
         description:
           'Explora plantillas de CV A4 aprobadas en filtros ATS Workday y Taleo. Formatos Harvard, Moderno y Europass listos para Word (.docx) y PDF.',
         keywords:
@@ -312,7 +312,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Plantillas de CV'
       },
       'examples-cv': {
-        title: 'Ejemplos de Currículum Ejecutivo — Currículo Estratégico',
+        title: 'Ejemplos de Currículum Ejecutivo — Resume2Job',
         description:
           'Consulta ejemplos reales de currículums para Tecnología, Dirección, Finanzas y Salud estructurados con métricas cuantificables Google XYZ.',
         keywords:
@@ -320,7 +320,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Ejemplos de CV'
       },
       'models-cover': {
-        title: 'Plantillas de Carta de Presentación — Currículo Estratégico',
+        title: 'Plantillas de Carta de Presentación — Resume2Job',
         description:
           'Modelos de carta de presentación ejecutiva en formato A4 listos para personalizar, traducir en 5 idiomas y exportar en Word y PDF.',
         keywords:
@@ -328,7 +328,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Plantillas de Carta'
       },
       'examples-cover': {
-        title: 'Ejemplos de Carta de Presentación — Currículo Estratégico',
+        title: 'Ejemplos de Carta de Presentación — Resume2Job',
         description:
           'Inspírate con ejemplos reales de carta de presentación para tecnología, finanzas, liderazgo y cambio profesional.',
         keywords:
@@ -336,7 +336,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Ejemplos de Carta'
       },
       editor: {
-        title: 'Editor de CV A4 en Tiempo Real — Currículo Estratégico',
+        title: 'Editor de CV A4 en Tiempo Real — Resume2Job',
         description:
           'Edita tu currículum A4 con vista previa instantánea, control de espaciado, traducción en 5 idiomas y descarga nativa en Word (.docx) y PDF.',
         keywords:
@@ -344,7 +344,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Editor de CV'
       },
       raw: {
-        title: 'Importar LinkedIn o PDF a CV — Currículo Estratégico',
+        title: 'Importar LinkedIn o PDF a CV — Resume2Job',
         description:
           'Convierte tu perfil de LinkedIn, PDF antiguo o texto libre en un currículum ejecutivo estructurado y compatible con ATS.',
         keywords:
@@ -352,7 +352,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Importar Datos'
       },
       ats: {
-        title: 'Radar ATS & Compatibilidad de Puesto — Currículo Estratégico',
+        title: 'Radar ATS & Compatibilidad de Puesto — Resume2Job',
         description:
           'Analiza tu currículum frente a cualquier oferta laboral, detecta palabras clave faltantes y supera filtros ATS como Workday y Taleo.',
         keywords:
@@ -360,7 +360,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Radar ATS'
       },
       jobs: {
-        title: 'Ofertas Compatibles con tu CV — Currículo Estratégico',
+        title: 'Ofertas Compatibles con tu CV — Resume2Job',
         description:
           'Encuentra vacantes remotas e internacionales alineadas con las competencias de tu currículum y postula con mayor precisión.',
         keywords:
@@ -368,7 +368,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Vacantes'
       },
       ai: {
-        title: 'Optimizador IA Google XYZ para CV — Currículo Estratégico',
+        title: 'Optimizador IA Google XYZ para CV — Resume2Job',
         description:
           'Reescribe responsabilidades en logros medibles usando verbos de acción ejecutivos y la fórmula Google XYZ con inteligencia artificial.',
         keywords:
@@ -376,7 +376,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Optimizador IA'
       },
       cover: {
-        title: 'Generador de Carta de Presentación IA — Currículo Estratégico',
+        title: 'Generador de Carta de Presentación IA — Resume2Job',
         description:
           'Crea cartas de presentación personalizadas para cualquier vacante, tradúcelas en 5 idiomas y expórtalas en Word (.docx) y PDF.',
         keywords:
@@ -384,7 +384,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Carta de Presentación'
       },
       interview: {
-        title: 'Simulador de Entrevista STAR con IA — Currículo Estratégico',
+        title: 'Simulador de Entrevista STAR con IA — Resume2Job',
         description:
           'Practica preguntas conductuales y ejecutivas basadas en tu currículum con retroalimentación guiada por el método STAR.',
         keywords:
@@ -392,16 +392,16 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Simulador de Entrevista'
       },
       profile: {
-        title: 'Mi Cuenta y Preferencias — Currículo Estratégico',
+        title: 'Mi Cuenta y Preferencias — Resume2Job',
         description:
-          'Gestiona tus currículums guardados, suscripción y preferencias de notificación en Currículo Estratégico.',
+          'Gestiona tus currículums guardados, suscripción y preferencias de notificación en Resume2Job.',
         keywords: 'mi cuenta curriculum estrategico, gestionar suscripcion',
         breadcrumb: 'Mi Cuenta'
       }
     }
   },
   fr: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'Modèles de CV A4 Exécutifs, Harvard et Europass compatibles ATS',
@@ -412,7 +412,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Studio CV Exécutif & ATS',
+        title: 'Resume2Job — Studio CV Exécutif & ATS',
         description:
           'Créez des CV A4 exécutifs et lettres de motivation avec Radar ATS, méthode Google XYZ, traduction en 5 langues et export Word (.docx) & PDF.',
         keywords:
@@ -420,7 +420,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Accueil'
       },
       'models-cv': {
-        title: 'Modèles de CV ATS & Harvard A4 — Currículo Estratégico',
+        title: 'Modèles de CV ATS & Harvard A4 — Resume2Job',
         description:
           'Parcourez nos modèles de CV A4 validés pour Workday, Greenhouse et Taleo. Formats Harvard, Moderne et Europass exportables en Word et PDF.',
         keywords:
@@ -428,7 +428,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modèles de CV'
       },
       'examples-cv': {
-        title: 'Exemples de CV Exécutifs par Secteur — Currículo Estratégico',
+        title: 'Exemples de CV Exécutifs par Secteur — Resume2Job',
         description:
           'Consultez des exemples réels de CV pour Tech, Direction, Finance et Santé rédigés avec des résultats chiffrés Google XYZ.',
         keywords:
@@ -436,7 +436,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Exemples de CV'
       },
       'models-cover': {
-        title: 'Modèles de Lettre de Motivation A4 — Currículo Estratégico',
+        title: 'Modèles de Lettre de Motivation A4 — Resume2Job',
         description:
           'Modèles de lettres de motivation exécutives A4 prêts à adapter, traduire en 5 langues et exporter en Word (.docx) et PDF.',
         keywords:
@@ -444,7 +444,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modèles de Lettre'
       },
       'examples-cover': {
-        title: 'Exemples de Lettres de Motivation — Currículo Estratégico',
+        title: 'Exemples de Lettres de Motivation — Resume2Job',
         description:
           'Découvrez des exemples de lettres de motivation pour la tech, la finance, le leadership et la reconversion professionnelle.',
         keywords:
@@ -452,7 +452,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Exemples de Lettre'
       },
       editor: {
-        title: 'Éditeur de CV A4 en Temps Réel — Currículo Estratégico',
+        title: 'Éditeur de CV A4 en Temps Réel — Resume2Job',
         description:
           'Éditez votre CV A4 avec aperçu en direct, contrôle d’espacement, traduction en 5 langues et export direct Word (.docx) et PDF.',
         keywords:
@@ -460,7 +460,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Éditeur de CV'
       },
       raw: {
-        title: 'Importer LinkedIn ou PDF vers CV — Currículo Estratégico',
+        title: 'Importer LinkedIn ou PDF vers CV — Resume2Job',
         description:
           'Transformez un profil LinkedIn, un ancien PDF ou du texte brut en un CV exécutif structuré et compatible ATS.',
         keywords:
@@ -468,7 +468,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Importer des Données'
       },
       ats: {
-        title: 'Radar ATS & Adéquation au Poste — Currículo Estratégico',
+        title: 'Radar ATS & Adéquation au Poste — Resume2Job',
         description:
           'Analysez votre CV face à une offre d’emploi, identifiez les mots-clés manquants et optimisez votre score ATS Workday et Taleo.',
         keywords:
@@ -476,7 +476,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Radar ATS'
       },
       jobs: {
-        title: 'Offres d’Emploi Compatibles CV — Currículo Estratégico',
+        title: 'Offres d’Emploi Compatibles CV — Resume2Job',
         description:
           'Trouvez des postes en télétravail et internationaux alignés avec les compétences de votre CV et adaptez votre candidature.',
         keywords:
@@ -484,7 +484,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Offres d’Emploi'
       },
       ai: {
-        title: 'Optimiseur IA Google XYZ pour CV — Currículo Estratégico',
+        title: 'Optimiseur IA Google XYZ pour CV — Resume2Job',
         description:
           'Transformez vos missions en réalisations mesurables grâce aux verbes d’action exécutifs et à la formule Google XYZ.',
         keywords:
@@ -492,7 +492,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Optimiseur IA'
       },
       cover: {
-        title: 'Générateur de Lettre de Motivation IA — Currículo Estratégico',
+        title: 'Générateur de Lettre de Motivation IA — Resume2Job',
         description:
           'Générez une lettre de motivation personnalisée pour chaque poste, traduisez-la en 5 langues et exportez en Word (.docx) ou PDF.',
         keywords:
@@ -500,7 +500,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Lettre de Motivation'
       },
       interview: {
-        title: 'Simulateur d’Entretien STAR avec IA — Currículo Estratégico',
+        title: 'Simulateur d’Entretien STAR avec IA — Resume2Job',
         description:
           'Entraînez-vous aux questions comportementales et de direction basées sur votre CV avec évaluation selon la méthode STAR.',
         keywords:
@@ -508,16 +508,16 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Simulateur d’Entretien'
       },
       profile: {
-        title: 'Mon Compte & Préférences — Currículo Estratégico',
+        title: 'Mon Compte & Préférences — Resume2Job',
         description:
-          'Gérez vos CV enregistrés, votre abonnement et vos préférences de notification sur Currículo Estratégico.',
+          'Gérez vos CV enregistrés, votre abonnement et vos préférences de notification sur Resume2Job.',
         keywords: 'mon compte, cv enregistres',
         breadcrumb: 'Mon Compte'
       }
     }
   },
   de: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'A4-Lebenslauf-Vorlagen im Executive-, Harvard- und Europass-Stil (ATS-konform)',
@@ -528,7 +528,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Executive Lebenslauf & ATS-Studio',
+        title: 'Resume2Job — Executive Lebenslauf & ATS-Studio',
         description:
           'Erstellen Sie ATS-konforme A4-Lebensläufe und Anschreiben mit ATS-Radar, Google-XYZ-KI, 5-Sprachen-Übersetzung sowie Word- (.docx) & PDF-Export.',
         keywords:
@@ -536,7 +536,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Startseite'
       },
       'models-cv': {
-        title: 'ATS & Harvard A4-Lebenslauf-Vorlagen — Currículo Estratégico',
+        title: 'ATS & Harvard A4-Lebenslauf-Vorlagen — Resume2Job',
         description:
           'Entdecken Sie ATS-geprüfte A4-Lebenslauf-Vorlagen für Workday, Greenhouse und Taleo. Harvard-, Modern- und Europass-Designs für Word & PDF.',
         keywords:
@@ -544,7 +544,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Lebenslauf-Vorlagen'
       },
       'examples-cv': {
-        title: 'Executive-Lebenslauf-Beispiele — Currículo Estratégico',
+        title: 'Executive-Lebenslauf-Beispiele — Resume2Job',
         description:
           'Sehen Sie praxisnahe Lebenslauf-Beispiele für Tech, Geschäftsführung, Finanzen und Gesundheitswesen mit messbaren Google-XYZ-Erfolgen.',
         keywords:
@@ -552,7 +552,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Lebenslauf-Beispiele'
       },
       'models-cover': {
-        title: 'Anschreiben-Vorlagen im A4-Format — Currículo Estratégico',
+        title: 'Anschreiben-Vorlagen im A4-Format — Resume2Job',
         description:
           'Professionelle Executive-Anschreiben-Vorlagen im A4-Format zum Anpassen, Übersetzen in 5 Sprachen und Exportieren als Word (.docx) oder PDF.',
         keywords:
@@ -560,7 +560,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Anschreiben-Vorlagen'
       },
       'examples-cover': {
-        title: 'Professionelle Anschreiben-Beispiele — Currículo Estratégico',
+        title: 'Professionelle Anschreiben-Beispiele — Resume2Job',
         description:
           'Überzeugende Anschreiben-Beispiele für IT, Finanzen, Management, Quereinstieg und Berufseinstieg.',
         keywords:
@@ -568,7 +568,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Anschreiben-Beispiele'
       },
       editor: {
-        title: 'Live A4-Lebenslauf-Editor & Word-Export — Currículo Estratégico',
+        title: 'Live A4-Lebenslauf-Editor & Word-Export — Resume2Job',
         description:
           'Bearbeiten Sie Ihren A4-Lebenslauf mit Live-Vorschau, Abstandsregelung, 5-Sprachen-Übersetzung und direktem Word- (.docx) und PDF-Export.',
         keywords:
@@ -576,7 +576,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Lebenslauf-Editor'
       },
       raw: {
-        title: 'LinkedIn oder PDF in Lebenslauf importieren — Currículo Estratégico',
+        title: 'LinkedIn oder PDF in Lebenslauf importieren — Resume2Job',
         description:
           'Verwandeln Sie Ihr LinkedIn-Profil, alte PDFs oder Rohtext in Sekunden in einen strukturierten, ATS-konformen Lebenslauf.',
         keywords:
@@ -584,7 +584,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Daten importieren'
       },
       ats: {
-        title: 'ATS-Radar & Stellenabgleich — Currículo Estratégico',
+        title: 'ATS-Radar & Stellenabgleich — Resume2Job',
         description:
           'Prüfen Sie Ihren Lebenslauf gegen Stellenanzeigen, finden Sie fehlende Keywords und steigern Sie Ihren ATS-Score für Workday und Taleo.',
         keywords:
@@ -592,7 +592,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'ATS-Radar'
       },
       jobs: {
-        title: 'Passende Stellen für Ihren Lebenslauf — Currículo Estratégico',
+        title: 'Passende Stellen für Ihren Lebenslauf — Resume2Job',
         description:
           'Finden Sie internationale Remote- und Führungspositionen passend zu Ihren Kompetenzen im Lebenslauf.',
         keywords:
@@ -600,7 +600,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Stellenangebote'
       },
       ai: {
-        title: 'Google-XYZ KI-Lebenslauf-Optimierer — Currículo Estratégico',
+        title: 'Google-XYZ KI-Lebenslauf-Optimierer — Resume2Job',
         description:
           'Formulieren Sie Aufgaben mit starken Aktionsverben und der Google-XYZ-Formel in messbare Executive-Erfolge um.',
         keywords:
@@ -608,7 +608,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'KI-Optimierer'
       },
       cover: {
-        title: 'KI-Anschreiben-Generator — Currículo Estratégico',
+        title: 'KI-Anschreiben-Generator — Resume2Job',
         description:
           'Erstellen Sie maßgeschneiderte Anschreiben für jede Stelle, übersetzen Sie in 5 Sprachen und exportieren Sie als Word (.docx) oder PDF.',
         keywords:
@@ -616,7 +616,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Anschreiben'
       },
       interview: {
-        title: 'KI STAR-Interview-Simulator — Currículo Estratégico',
+        title: 'KI STAR-Interview-Simulator — Resume2Job',
         description:
           'Trainieren Sie Verhaltens- und Führungsfragen passend zu Ihrem Lebenslauf mit strukturiertem STAR-Feedback.',
         keywords:
@@ -624,7 +624,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Interview-Simulator'
       },
       profile: {
-        title: 'Mein Konto & Einstellungen — Currículo Estratégico',
+        title: 'Mein Konto & Einstellungen — Resume2Job',
         description:
           'Verwalten Sie gespeicherte Lebensläufe, Ihr Abonnement und Benachrichtigungen in Ihrem Konto.',
         keywords: 'mein konto, gespeicherte lebenslaeufe',
@@ -633,7 +633,7 @@ const SEO_LOCALIZED_DATA: Record<
     }
   },
   it: {
-    brand: 'Currículo Estratégico',
+    brand: 'Resume2Job',
     appCategory: 'BusinessApplication',
     featureList: [
       'Modelli di CV A4 Executive, Harvard ed Europass compatibili con ATS',
@@ -644,7 +644,7 @@ const SEO_LOCALIZED_DATA: Record<
     ],
     routes: {
       home: {
-        title: 'Currículo Estratégico — Studio CV Executive & ATS',
+        title: 'Resume2Job — Studio CV Executive & ATS',
         description:
           'Crea CV A4 executive e lettere di presentazione con Radar ATS, formula Google XYZ, traduzione in 5 lingue ed export Word (.docx) e PDF.',
         keywords:
@@ -652,7 +652,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Home'
       },
       'models-cv': {
-        title: 'Modelli CV ATS & Harvard A4 — Currículo Estratégico',
+        title: 'Modelli CV ATS & Harvard A4 — Resume2Job',
         description:
           'Esplora modelli di CV A4 ottimizzati per Workday, Greenhouse e Taleo. Layout Harvard, Moderno ed Europass pronti in Word e PDF.',
         keywords:
@@ -660,7 +660,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modelli CV'
       },
       'examples-cv': {
-        title: 'Esempi di CV Executive per Settore — Currículo Estratégico',
+        title: 'Esempi di CV Executive per Settore — Resume2Job',
         description:
           'Scopri esempi reali di CV per Tech, Direzione, Finanza e Sanità strutturati con metriche quantificabili Google XYZ.',
         keywords:
@@ -668,7 +668,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Esempi CV'
       },
       'models-cover': {
-        title: 'Modelli Lettera di Presentazione A4 — Currículo Estratégico',
+        title: 'Modelli Lettera di Presentazione A4 — Resume2Job',
         description:
           'Modelli di lettera di presentazione executive in formato A4 pronti da personalizzare, tradurre in 5 lingue ed esportare in Word e PDF.',
         keywords:
@@ -676,7 +676,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Modelli Lettera'
       },
       'examples-cover': {
-        title: 'Esempi di Lettera di Presentazione — Currículo Estratégico',
+        title: 'Esempi di Lettera di Presentazione — Resume2Job',
         description:
           'Esempi efficaci di lettera di presentazione per tecnologia, finanza, leadership e cambio di carriera.',
         keywords:
@@ -684,7 +684,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Esempi Lettera'
       },
       editor: {
-        title: 'Editor CV A4 in Tempo Reale — Currículo Estratégico',
+        title: 'Editor CV A4 in Tempo Reale — Resume2Job',
         description:
           'Modifica il tuo CV A4 con anteprima dal vivo, controllo spaziature, traduzione in 5 lingue ed export immediato in Word (.docx) e PDF.',
         keywords:
@@ -692,7 +692,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Editor CV'
       },
       raw: {
-        title: 'Importa LinkedIn o PDF in CV — Currículo Estratégico',
+        title: 'Importa LinkedIn o PDF in CV — Resume2Job',
         description:
           'Trasforma il profilo LinkedIn, vecchi PDF o testo libero in un curriculum executive strutturato e compatibile con i sistemi ATS.',
         keywords:
@@ -700,7 +700,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Importa Dati'
       },
       ats: {
-        title: 'Radar ATS & Compatibilità Offerta — Currículo Estratégico',
+        title: 'Radar ATS & Compatibilità Offerta — Resume2Job',
         description:
           'Analizza il tuo CV rispetto all’annuncio di lavoro, individua le parole chiave mancanti e migliora il punteggio ATS su Workday e Taleo.',
         keywords:
@@ -708,7 +708,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Radar ATS'
       },
       jobs: {
-        title: 'Offerte Compatibili con il tuo CV — Currículo Estratégico',
+        title: 'Offerte Compatibili con il tuo CV — Resume2Job',
         description:
           'Scopri posizioni remote e internazionali in linea con le competenze del tuo CV e adatta la candidatura in un clic.',
         keywords:
@@ -716,7 +716,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Offerte di Lavoro'
       },
       ai: {
-        title: 'Ottimizzatore IA Google XYZ per CV — Currículo Estratégico',
+        title: 'Ottimizzatore IA Google XYZ per CV — Resume2Job',
         description:
           'Trasforma le mansioni in risultati misurabili usando verbi d’azione executive e la formula Google XYZ con intelligenza artificiale.',
         keywords:
@@ -724,7 +724,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Ottimizzatore IA'
       },
       cover: {
-        title: 'Generatore Lettera di Presentazione IA — Currículo Estratégico',
+        title: 'Generatore Lettera di Presentazione IA — Resume2Job',
         description:
           'Genera lettere di presentazione su misura per ogni annuncio, traducile in 5 lingue ed esportale in Word (.docx) e PDF.',
         keywords:
@@ -732,7 +732,7 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Lettera di Presentazione'
       },
       interview: {
-        title: 'Simulatore Colloquio STAR con IA — Currículo Estratégico',
+        title: 'Simulatore Colloquio STAR con IA — Resume2Job',
         description:
           'Esercitati su domande comportamentali ed executive basate sul tuo CV con feedback strutturato secondo il metodo STAR.',
         keywords:
@@ -740,9 +740,9 @@ const SEO_LOCALIZED_DATA: Record<
         breadcrumb: 'Simulatore Colloquio'
       },
       profile: {
-        title: 'Il Mio Account & Preferenze — Currículo Estratégico',
+        title: 'Il Mio Account & Preferenze — Resume2Job',
         description:
-          'Gestisci i tuoi CV salvati, l’abbonamento e le preferenze di notifica nel tuo account Currículo Estratégico.',
+          'Gestisci i tuoi CV salvati, l’abbonamento e le preferenze di notifica nel tuo account Resume2Job.',
         keywords: 'mio account, curriculum salvati',
         breadcrumb: 'Il Mio Account'
       }

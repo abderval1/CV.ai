@@ -3552,8 +3552,8 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
     const targetName =
       plan === 'executive'
-        ? 'Currículo Estratégico - Plano Executivo VIP'
-        : 'Currículo Estratégico - Plano Profissional Pro';
+        ? 'Resume2Job - Plano Executivo VIP'
+        : 'Resume2Job - Plano Profissional Pro';
 
     const list = await stripeClient.products.list({ active: true, limit: 25 });
     const found = list.data.find((p) => p.metadata?.saasPlanId === plan || p.name === targetName);
@@ -4438,7 +4438,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
             price_data: {
               currency: targetCurrency,
               product_data: {
-                name: `Currículo Estratégico - Plano ${pricing.planLabel} (${pricing.spec.label})`,
+                name: `Resume2Job - Plano ${pricing.planLabel} (${pricing.spec.label})`,
                 description: `Assinatura recorrente ${pricing.spec.label.toLowerCase()} (a cada ${pricing.spec.months} ${
                   pricing.spec.months === 1 ? 'mês' : 'meses'
                 }). Exportações Word (.docx) e PDF ilimitadas, IA completa e análise ATS.`
@@ -5190,7 +5190,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
 
   const ADMIN_EMAILS_BACKEND = new Set([
     'gugurai923@gmail.com',
-    'admin@curriculoestrategico.com',
+    'admin@resume2job.vercel.app',
     'mballoaliou2000@yahoo.fr'
   ]);
 
@@ -7460,7 +7460,7 @@ Forneça uma avaliação rigorosa, construtiva e realista em formato JSON:
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              from: process.env.NOTIFICATION_FROM_EMAIL || 'Currículo Estratégico <noreply@curriculoestrategico.com>',
+              from: process.env.NOTIFICATION_FROM_EMAIL || 'Resume2Job <noreply@resume2job.vercel.app>',
               to: [userRecord.email],
               subject: safeTitle,
               text: `${safeTitle}\n\n${safeMessage}\n\nGerido nas suas Preferências de Notificações.`

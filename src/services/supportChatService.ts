@@ -58,7 +58,7 @@ function sanitizeUserName(name?: string | null, email?: string | null): string {
 function sanitizeUserEmail(email?: string | null, fallbackEmail?: string | null): string {
   const raw = String(email || fallbackEmail || '').trim();
   if (raw.length >= 3) return raw.slice(0, 180);
-  return 'user@curriculoestrategico.com';
+  return 'user@resume2job.vercel.app';
 }
 
 function sanitizeAvatarUrl(url?: string | null): string | undefined {

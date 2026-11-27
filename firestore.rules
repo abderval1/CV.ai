@@ -29,7 +29,7 @@ service cloud.firestore {
              request.auth.token.email_verified == true &&
              request.auth.token.email.lower() in [
                'gugurai923@gmail.com',
-               'admin@curriculoestrategico.com',
+               'admin@resume2job.vercel.app',
                'mballoaliou2000@yahoo.fr'
              ];
     }

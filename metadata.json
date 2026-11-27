@@ -1,5 +1,5 @@
 {
-  "name": "Currículo Estratégico - AI CV & ATS Resume Studio",
+  "name": "Resume2Job - AI CV & ATS Resume Studio",
   "description": "Gerador e otimizador de currículos executivos e de alta liderança para vagas corporativas globais (C-Level, Big Tech, Finanças e Operações) com exportação nativa Word (.docx), radar ATS e inteligência artificial.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
